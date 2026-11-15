@@ -54,8 +54,8 @@ def main():
     scaled.num_updates_per_batch = 5
 
     scaled.episode_length = 1000
-    scaled.num_timesteps = 262_144
-    scaled.num_evals = 2
+    scaled.num_timesteps = 400_000_000
+    scaled.num_evals = 16
 
     steps_per_rollout = (
         scaled.batch_size
@@ -67,8 +67,13 @@ def main():
     assert scaled.batch_size * scaled.num_minibatches == scaled.num_envs
     assert steps_per_rollout == 262_144
 
+    eval_intervals = scaled.num_evals - 1
+
     num_rollout_batches = (
-        scaled.num_timesteps // steps_per_rollout
+        math.ceil(
+            scaled.num_timesteps /
+            (eval_intervals * steps_per_rollout)
+        ) * eval_intervals
     )
 
     optimizer_updates = (
@@ -77,12 +82,10 @@ def main():
         * scaled.num_minibatches
     )
 
-    eval_intervals = scaled.num_evals - 1
-
-    assert scaled.num_timesteps % steps_per_rollout == 0
-    assert num_rollout_batches == 1
-    assert optimizer_updates == 40
-    assert scaled.num_evals == 2
+    assert num_rollout_batches * steps_per_rollout == 401_080_320
+    assert num_rollout_batches == 1530
+    assert optimizer_updates == 61_200
+    assert scaled.num_evals == 16
     assert num_rollout_batches % eval_intervals == 0
 
     print("M420C_NUM_ENVS:", scaled.num_envs)
@@ -205,7 +208,7 @@ def main():
             **cfg,
         )
 
-        expected = scaled.num_timesteps
+        expected = num_rollout_batches * steps_per_rollout
 
         if (
             not progress_history
