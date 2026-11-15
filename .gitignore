@@ -1,0 +1,26 @@
+cat > .gitignore <<'EOF'
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+.venv*/
+
+# Training outputs and GPU artifacts
+*.msgpack
+*.ckpt
+*.npz
+*.npy
+*.log
+*.tar
+*.tar.gz
+*.zip
+
+# Rendered simulation outputs
+*.mp4
+*.webm
+*.avi
+
+# Temporary files
+*.tmp
+EOF

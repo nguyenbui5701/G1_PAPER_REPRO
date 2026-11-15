@@ -1,0 +1,54 @@
+{
+  "experiment": "M4.30_training_seed_replication",
+  "status": "PREPARED_NOT_TRAINED",
+  "created_utc": "2026-11-14T05:04:28.266781+00:00",
+  "seed": 1,
+  "seed0_source": "/home/labrobot/nguyenbui/humanoid/G1_PAPER_REPRO/pilot.py",
+  "seed0_source_sha256": "d2f66d246646ffe9c88d2c29c6ef59ce5eb98fc35a17548f52ae8942947cf4dc",
+  "seed1_source": "/home/labrobot/nguyenbui/humanoid/G1_PAPER_REPRO/m430_seed1/pilot_seed1.py",
+  "seed1_source_sha256": "febbe5b7ccf81ccbe3ad7d2bc3da349232f1e2447bc694c02d02481d99d5e22a",
+  "source_patch": "7 verified AST spans: six M4.23 schedule adaptations plus cfg.update(seed=0) -> seed=1",
+  "baseline_report": "pilot_20261113_170501_977563_report.json",
+  "baseline_report_sha256": "9263420f9f0b15a06c11ae884d7e7f57ad84b73c21c0705119c5c3a481b71837",
+  "baseline_final_checkpoint_sha256": "396f1bb7121418d3bb2ad0e7bd7aabe095d97fc5f72208bc0913e1bee3edc9aa",
+  "baseline_scaled_config": {
+    "action_repeat": 1,
+    "batch_size": 256,
+    "clipping_epsilon": 0.2,
+    "discounting": 0.98,
+    "entropy_cost": 0.0,
+    "episode_length": 1000,
+    "learning_rate": 0.0001,
+    "max_grad_norm": 1.0,
+    "network_factory": {
+      "policy_hidden_layer_sizes": [
+        512,
+        256,
+        64
+      ],
+      "policy_obs_key": "state",
+      "value_hidden_layer_sizes": [
+        256,
+        256,
+        256,
+        256
+      ],
+      "value_obs_key": "privileged_state"
+    },
+    "normalize_observations": true,
+    "num_envs": 8192,
+    "num_eval_envs": 2,
+    "num_evals": 16,
+    "num_minibatches": 32,
+    "num_resets_per_eval": 1,
+    "num_timesteps": 400000000,
+    "num_updates_per_batch": 5,
+    "reward_scaling": 0.1,
+    "unroll_length": 32
+  },
+  "training_steps_target": 400000000,
+  "training_steps_expected_actual": 401080320,
+  "no_resume": true,
+  "paper_exact": false,
+  "output_directory": "/home/labrobot/nguyenbui/humanoid/G1_PAPER_REPRO/m430_seed1"
+}
