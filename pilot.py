@@ -48,14 +48,14 @@ def main():
     scaled.num_envs = 8192
     scaled.num_eval_envs = 2
 
-    scaled.batch_size = 256
-    scaled.num_minibatches = 32
+    scaled.batch_size = 1024
+    scaled.num_minibatches = 8
     scaled.unroll_length = 32
     scaled.num_updates_per_batch = 5
 
     scaled.episode_length = 1000
-    scaled.num_timesteps = 7_864_320
-    scaled.num_evals = 16
+    scaled.num_timesteps = 262_144
+    scaled.num_evals = 2
 
     steps_per_rollout = (
         scaled.batch_size
@@ -80,9 +80,9 @@ def main():
     eval_intervals = scaled.num_evals - 1
 
     assert scaled.num_timesteps % steps_per_rollout == 0
-    assert num_rollout_batches == 30
-    assert optimizer_updates == 4800
-    assert scaled.num_evals == 16
+    assert num_rollout_batches == 1
+    assert optimizer_updates == 40
+    assert scaled.num_evals == 2
     assert num_rollout_batches % eval_intervals == 0
 
     print("M420C_NUM_ENVS:", scaled.num_envs)
