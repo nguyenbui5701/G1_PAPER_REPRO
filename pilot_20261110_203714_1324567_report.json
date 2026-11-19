@@ -1,0 +1,156 @@
+{
+  "status": "PILOT_FAILED",
+  "paper_reproduced": false,
+  "environment": "G1JoystickFlatTerrain",
+  "domain_randomization_enabled": true,
+  "paper_config": {
+    "action_repeat": 1,
+    "batch_size": 1024,
+    "clipping_epsilon": 0.2,
+    "discounting": 0.98,
+    "entropy_cost": 0.0,
+    "episode_length": 1000,
+    "learning_rate": 0.0001,
+    "max_grad_norm": 1.0,
+    "network_factory": {
+      "policy_hidden_layer_sizes": [
+        512,
+        256,
+        64
+      ],
+      "policy_obs_key": "state",
+      "value_hidden_layer_sizes": [
+        256,
+        256,
+        256,
+        256
+      ],
+      "value_obs_key": "privileged_state"
+    },
+    "normalize_observations": true,
+    "num_envs": 32768,
+    "num_evals": 16,
+    "num_minibatches": 32,
+    "num_resets_per_eval": 1,
+    "num_timesteps": 400000000,
+    "num_updates_per_batch": 5,
+    "reward_scaling": 0.1,
+    "unroll_length": 32
+  },
+  "scaled_config": {
+    "action_repeat": 1,
+    "batch_size": 16,
+    "clipping_epsilon": 0.2,
+    "discounting": 0.98,
+    "entropy_cost": 0.0,
+    "episode_length": 1000,
+    "learning_rate": 0.0001,
+    "max_grad_norm": 1.0,
+    "network_factory": {
+      "policy_hidden_layer_sizes": [
+        512,
+        256,
+        64
+      ],
+      "policy_obs_key": "state",
+      "value_hidden_layer_sizes": [
+        256,
+        256,
+        256,
+        256
+      ],
+      "value_obs_key": "privileged_state"
+    },
+    "normalize_observations": true,
+    "num_envs": 16,
+    "num_eval_envs": 2,
+    "num_evals": 9,
+    "num_minibatches": 1,
+    "num_resets_per_eval": 1,
+    "num_timesteps": 1048576,
+    "num_updates_per_batch": 5,
+    "reward_scaling": 0.1,
+    "unroll_length": 32
+  },
+  "progress": [
+    {
+      "step": 0,
+      "eval_reward": -7.3063459396362305
+    },
+    {
+      "step": 131072,
+      "eval_reward": -3.9958715438842773
+    },
+    {
+      "step": 262144,
+      "eval_reward": -3.7633771896362305
+    },
+    {
+      "step": 393216,
+      "eval_reward": -3.002357006072998
+    },
+    {
+      "step": 524288,
+      "eval_reward": -2.511641025543213
+    },
+    {
+      "step": 655360,
+      "eval_reward": -2.3763999938964844
+    },
+    {
+      "step": 786432,
+      "eval_reward": -4.106927871704102
+    },
+    {
+      "step": 917504,
+      "eval_reward": -4.6862874031066895
+    },
+    {
+      "step": 1048576,
+      "eval_reward": -3.0006470680236816
+    }
+  ],
+  "checkpoints": [
+    {
+      "step": 131072,
+      "file": "/home/labrobot/nguyenbui/humanoid/G1_PAPER_REPRO/checkpoint_pilot_20261110_203714_1324567_step_000131072.msgpack",
+      "sha256": "872d19d83af8fcd421bcb3f9a82852c60665875eeb12fc45500e0c6a52548502"
+    },
+    {
+      "step": 262144,
+      "file": "/home/labrobot/nguyenbui/humanoid/G1_PAPER_REPRO/checkpoint_pilot_20261110_203714_1324567_step_000262144.msgpack",
+      "sha256": "32333cdb3fc1cb4b08672436abd7f99dfa97e2aac37082e9501779e25b7179c2"
+    },
+    {
+      "step": 393216,
+      "file": "/home/labrobot/nguyenbui/humanoid/G1_PAPER_REPRO/checkpoint_pilot_20261110_203714_1324567_step_000393216.msgpack",
+      "sha256": "66130fef4fe63b59532877ed59e0e1299756b3f434d00fbf76e8e6c21b02d644"
+    },
+    {
+      "step": 524288,
+      "file": "/home/labrobot/nguyenbui/humanoid/G1_PAPER_REPRO/checkpoint_pilot_20261110_203714_1324567_step_000524288.msgpack",
+      "sha256": "6c693718f1f697cde5994db3024ce53a45049f00843a804180fd42aeea1b12ca"
+    },
+    {
+      "step": 655360,
+      "file": "/home/labrobot/nguyenbui/humanoid/G1_PAPER_REPRO/checkpoint_pilot_20261110_203714_1324567_step_000655360.msgpack",
+      "sha256": "048e7acf555829e6fe7745fed788e1742239cc6481c821f9bfa1f25de12b7e5c"
+    },
+    {
+      "step": 786432,
+      "file": "/home/labrobot/nguyenbui/humanoid/G1_PAPER_REPRO/checkpoint_pilot_20261110_203714_1324567_step_000786432.msgpack",
+      "sha256": "adb4e79d8bac2bb269378daa25cab486fdf8969628fb72ad817733671b7830d2"
+    },
+    {
+      "step": 917504,
+      "file": "/home/labrobot/nguyenbui/humanoid/G1_PAPER_REPRO/checkpoint_pilot_20261110_203714_1324567_step_000917504.msgpack",
+      "sha256": "ca7f79055773f52c7c0bbc657f04506baf556c105fcfcef9377c18f00e94684c"
+    },
+    {
+      "step": 1048576,
+      "file": "/home/labrobot/nguyenbui/humanoid/G1_PAPER_REPRO/checkpoint_pilot_20261110_203714_1324567_step_001048576.msgpack",
+      "sha256": "8854b79e3c7ed9804fb076f391af521a6ce121d927ecee031be5417f791bbaeb"
+    }
+  ],
+  "error": "ValueError('The size of the list and the state dict do not match, got 3 and 2 at path .')"
+}

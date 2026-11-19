@@ -1,0 +1,10 @@
+{
+  "status": "FINAL_PARAMETERS_MATCH",
+  "environment_steps": 1048576,
+  "training_repeated": false,
+  "callback_sha256": "8854b79e3c7ed9804fb076f391af521a6ce121d927ecee031be5417f791bbaeb",
+  "returned_sha256": "0623355eb4d2cb7930f36e428ddc9f4f8e3592e28e955c69d9cc77e044404268",
+  "tensor_values_equal": true,
+  "mismatch_count": 0,
+  "mismatches": []
+}
