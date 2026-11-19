@@ -1,0 +1,450 @@
+{
+  "status": "M427_EVALUATION_COMPLETED",
+  "evaluation_type": "matched_brax_wrapper_stochastic_nominal_vs_dr",
+  "environment": "G1JoystickFlatTerrain",
+  "checkpoint_step": 401080320,
+  "training_repeated": false,
+  "policy_mode": "stochastic",
+  "num_envs": 32,
+  "steps_max": 1000,
+  "seeds": [
+    5001,
+    5038,
+    5075,
+    5112,
+    5149,
+    5186,
+    5223,
+    5260,
+    5297,
+    5334,
+    5371,
+    5408,
+    5445,
+    5482,
+    5519,
+    5556,
+    5593,
+    5630,
+    5667,
+    5704,
+    5741,
+    5778,
+    5815,
+    5852,
+    5889,
+    5926,
+    5963,
+    6000,
+    6037,
+    6074,
+    6111,
+    6148
+  ],
+  "same_reset_keys_between_conditions": true,
+  "source_randomizer_applied": true,
+  "max_body_mass_delta": 1.4295663833618164,
+  "results": [
+    {
+      "mode": "nominal",
+      "mean_steps_survived": 563.90625,
+      "median_steps_survived": 447.5,
+      "episode_successes": 2,
+      "rollouts": [
+        {
+          "seed": 5001,
+          "steps_survived": 389,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 10.577992301274207
+        },
+        {
+          "seed": 5038,
+          "steps_survived": 487,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 13.629316041478887
+        },
+        {
+          "seed": 5075,
+          "steps_survived": 385,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 9.701583556830883
+        },
+        {
+          "seed": 5112,
+          "steps_survived": 369,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 7.828477952964022
+        },
+        {
+          "seed": 5149,
+          "steps_survived": 350,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 7.403185476672661
+        },
+        {
+          "seed": 5186,
+          "steps_survived": 994,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 17.859350923958118
+        },
+        {
+          "seed": 5223,
+          "steps_survived": 440,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 11.416395875203307
+        },
+        {
+          "seed": 5260,
+          "steps_survived": 461,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 9.921625724236947
+        },
+        {
+          "seed": 5297,
+          "steps_survived": 1000,
+          "completed_1000_steps": true,
+          "episode_reward_until_first_done": 27.65104083143524
+        },
+        {
+          "seed": 5334,
+          "steps_survived": 795,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 21.91231311223237
+        },
+        {
+          "seed": 5371,
+          "steps_survived": 847,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 20.912721778968262
+        },
+        {
+          "seed": 5408,
+          "steps_survived": 840,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 12.099295137100853
+        },
+        {
+          "seed": 5445,
+          "steps_survived": 912,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 23.03248815707775
+        },
+        {
+          "seed": 5482,
+          "steps_survived": 402,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 7.5729110540414695
+        },
+        {
+          "seed": 5519,
+          "steps_survived": 280,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 7.039808509754948
+        },
+        {
+          "seed": 5556,
+          "steps_survived": 421,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 9.235822518916393
+        },
+        {
+          "seed": 5593,
+          "steps_survived": 1000,
+          "completed_1000_steps": true,
+          "episode_reward_until_first_done": 29.750538068125024
+        },
+        {
+          "seed": 5630,
+          "steps_survived": 491,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 12.427999765372078
+        },
+        {
+          "seed": 5667,
+          "steps_survived": 443,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 10.06177993190795
+        },
+        {
+          "seed": 5704,
+          "steps_survived": 518,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 14.41294632233621
+        },
+        {
+          "seed": 5741,
+          "steps_survived": 490,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 8.862740496791957
+        },
+        {
+          "seed": 5778,
+          "steps_survived": 339,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 8.648992317866941
+        },
+        {
+          "seed": 5815,
+          "steps_survived": 401,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 7.811096597681171
+        },
+        {
+          "seed": 5852,
+          "steps_survived": 386,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 8.536960098674172
+        },
+        {
+          "seed": 5889,
+          "steps_survived": 314,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 7.8093524201831315
+        },
+        {
+          "seed": 5926,
+          "steps_survived": 442,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 12.511371012591553
+        },
+        {
+          "seed": 5963,
+          "steps_survived": 755,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 19.106650351335702
+        },
+        {
+          "seed": 6000,
+          "steps_survived": 896,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 24.490931640873896
+        },
+        {
+          "seed": 6037,
+          "steps_survived": 361,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 6.984346275858115
+        },
+        {
+          "seed": 6074,
+          "steps_survived": 452,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 9.316252083313884
+        },
+        {
+          "seed": 6111,
+          "steps_survived": 414,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 9.238920159055851
+        },
+        {
+          "seed": 6148,
+          "steps_survived": 971,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 26.758222941483837
+        }
+      ]
+    },
+    {
+      "mode": "source_domain_randomization",
+      "mean_steps_survived": 583.0625,
+      "median_steps_survived": 482.5,
+      "episode_successes": 3,
+      "rollouts": [
+        {
+          "seed": 5001,
+          "steps_survived": 963,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 20.885146013655685
+        },
+        {
+          "seed": 5038,
+          "steps_survived": 486,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 13.038883753994014
+        },
+        {
+          "seed": 5075,
+          "steps_survived": 706,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 18.430028886767104
+        },
+        {
+          "seed": 5112,
+          "steps_survived": 370,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 7.470961563543824
+        },
+        {
+          "seed": 5149,
+          "steps_survived": 373,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 6.815589071600698
+        },
+        {
+          "seed": 5186,
+          "steps_survived": 1000,
+          "completed_1000_steps": true,
+          "episode_reward_until_first_done": 21.521922870742856
+        },
+        {
+          "seed": 5223,
+          "steps_survived": 433,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 10.40960556981372
+        },
+        {
+          "seed": 5260,
+          "steps_survived": 457,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 8.330293012098991
+        },
+        {
+          "seed": 5297,
+          "steps_survived": 1000,
+          "completed_1000_steps": true,
+          "episode_reward_until_first_done": 27.812607724954432
+        },
+        {
+          "seed": 5334,
+          "steps_survived": 800,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 22.025767716535483
+        },
+        {
+          "seed": 5371,
+          "steps_survived": 847,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 19.642467192999902
+        },
+        {
+          "seed": 5408,
+          "steps_survived": 561,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 0.8563396313111298
+        },
+        {
+          "seed": 5445,
+          "steps_survived": 914,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 22.471367199039378
+        },
+        {
+          "seed": 5482,
+          "steps_survived": 402,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 8.059956624249025
+        },
+        {
+          "seed": 5519,
+          "steps_survived": 288,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 6.476128184440313
+        },
+        {
+          "seed": 5556,
+          "steps_survived": 414,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 9.16384874470532
+        },
+        {
+          "seed": 5593,
+          "steps_survived": 1000,
+          "completed_1000_steps": true,
+          "episode_reward_until_first_done": 26.332760352175683
+        },
+        {
+          "seed": 5630,
+          "steps_survived": 479,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 11.062386543489993
+        },
+        {
+          "seed": 5667,
+          "steps_survived": 745,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 16.92550073651364
+        },
+        {
+          "seed": 5704,
+          "steps_survived": 506,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 13.78303015329584
+        },
+        {
+          "seed": 5741,
+          "steps_survived": 505,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 8.88334314286476
+        },
+        {
+          "seed": 5778,
+          "steps_survived": 341,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 8.083629428525455
+        },
+        {
+          "seed": 5815,
+          "steps_survived": 712,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 10.33963781807688
+        },
+        {
+          "seed": 5852,
+          "steps_survived": 370,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 7.897728695825208
+        },
+        {
+          "seed": 5889,
+          "steps_survived": 310,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 7.455562754403218
+        },
+        {
+          "seed": 5926,
+          "steps_survived": 443,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 12.482213724651956
+        },
+        {
+          "seed": 5963,
+          "steps_survived": 754,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 17.455288006778574
+        },
+        {
+          "seed": 6000,
+          "steps_survived": 473,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 11.148968597190105
+        },
+        {
+          "seed": 6037,
+          "steps_survived": 173,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 0.8707324001188681
+        },
+        {
+          "seed": 6074,
+          "steps_survived": 440,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 8.608283428824507
+        },
+        {
+          "seed": 6111,
+          "steps_survived": 421,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 9.437188963318476
+        },
+        {
+          "seed": 6148,
+          "steps_survived": 972,
+          "completed_1000_steps": false,
+          "episode_reward_until_first_done": 26.300286252546357
+        }
+      ]
+    }
+  ],
+  "limitations": "Batched Brax wrapper with source domain randomization, not an identical reproduction of Brax PPO evaluator's metrics or RNG. Success here means 1000 environment steps, not necessarily good gait. No termination-cause breakdown is produced in this batched run."
+}
