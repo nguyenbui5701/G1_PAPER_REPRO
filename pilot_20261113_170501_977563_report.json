@@ -1,0 +1,228 @@
+{
+  "status": "PILOT_COMPLETED",
+  "paper_reproduced": false,
+  "experiment_class": "hardware_scaled_8192",
+  "expected_actual_steps": 401080320,
+  "environment": "G1JoystickFlatTerrain",
+  "domain_randomization_enabled": true,
+  "paper_config": {
+    "action_repeat": 1,
+    "batch_size": 1024,
+    "clipping_epsilon": 0.2,
+    "discounting": 0.98,
+    "entropy_cost": 0.0,
+    "episode_length": 1000,
+    "learning_rate": 0.0001,
+    "max_grad_norm": 1.0,
+    "network_factory": {
+      "policy_hidden_layer_sizes": [
+        512,
+        256,
+        64
+      ],
+      "policy_obs_key": "state",
+      "value_hidden_layer_sizes": [
+        256,
+        256,
+        256,
+        256
+      ],
+      "value_obs_key": "privileged_state"
+    },
+    "normalize_observations": true,
+    "num_envs": 32768,
+    "num_evals": 16,
+    "num_minibatches": 32,
+    "num_resets_per_eval": 1,
+    "num_timesteps": 400000000,
+    "num_updates_per_batch": 5,
+    "reward_scaling": 0.1,
+    "unroll_length": 32
+  },
+  "scaled_config": {
+    "action_repeat": 1,
+    "batch_size": 256,
+    "clipping_epsilon": 0.2,
+    "discounting": 0.98,
+    "entropy_cost": 0.0,
+    "episode_length": 1000,
+    "learning_rate": 0.0001,
+    "max_grad_norm": 1.0,
+    "network_factory": {
+      "policy_hidden_layer_sizes": [
+        512,
+        256,
+        64
+      ],
+      "policy_obs_key": "state",
+      "value_hidden_layer_sizes": [
+        256,
+        256,
+        256,
+        256
+      ],
+      "value_obs_key": "privileged_state"
+    },
+    "normalize_observations": true,
+    "num_envs": 8192,
+    "num_eval_envs": 2,
+    "num_evals": 16,
+    "num_minibatches": 32,
+    "num_resets_per_eval": 1,
+    "num_timesteps": 400000000,
+    "num_updates_per_batch": 5,
+    "reward_scaling": 0.1,
+    "unroll_length": 32
+  },
+  "progress": [
+    {
+      "step": 0,
+      "eval_reward": -7.8765692710876465
+    },
+    {
+      "step": 26738688,
+      "eval_reward": -4.765033721923828
+    },
+    {
+      "step": 53477376,
+      "eval_reward": -3.6898956298828125
+    },
+    {
+      "step": 80216064,
+      "eval_reward": -1.6831947565078735
+    },
+    {
+      "step": 106954752,
+      "eval_reward": -1.2322516441345215
+    },
+    {
+      "step": 133693440,
+      "eval_reward": -2.641505718231201
+    },
+    {
+      "step": 160432128,
+      "eval_reward": -1.531536340713501
+    },
+    {
+      "step": 187170816,
+      "eval_reward": 7.109176158905029
+    },
+    {
+      "step": 213909504,
+      "eval_reward": 0.3668874502182007
+    },
+    {
+      "step": 240648192,
+      "eval_reward": 2.408782958984375
+    },
+    {
+      "step": 267386880,
+      "eval_reward": -0.13139009475708008
+    },
+    {
+      "step": 294125568,
+      "eval_reward": 6.273540496826172
+    },
+    {
+      "step": 320864256,
+      "eval_reward": 18.570167541503906
+    },
+    {
+      "step": 347602944,
+      "eval_reward": 2.412613868713379
+    },
+    {
+      "step": 374341632,
+      "eval_reward": 4.568169593811035
+    },
+    {
+      "step": 401080320,
+      "eval_reward": 12.812783241271973
+    }
+  ],
+  "checkpoints": [
+    {
+      "step": 26738688,
+      "file": "/home/labrobot/nguyenbui/humanoid/G1_PAPER_REPRO/checkpoint_pilot_20261113_170501_977563_step_026738688.msgpack",
+      "sha256": "0e4e68a800f0d0c8b6bd938abad35f8a3e63abf34b3f6135f8c19a2e79d92ca4"
+    },
+    {
+      "step": 53477376,
+      "file": "/home/labrobot/nguyenbui/humanoid/G1_PAPER_REPRO/checkpoint_pilot_20261113_170501_977563_step_053477376.msgpack",
+      "sha256": "8e626540e3497a58182c5fab2a0a9a519ae504951164f5592c409fd68de741d3"
+    },
+    {
+      "step": 80216064,
+      "file": "/home/labrobot/nguyenbui/humanoid/G1_PAPER_REPRO/checkpoint_pilot_20261113_170501_977563_step_080216064.msgpack",
+      "sha256": "c4e2c299b63a7a98d9b0118d4dcf6049724c2988e4c788045597c2ba4627ff9e"
+    },
+    {
+      "step": 106954752,
+      "file": "/home/labrobot/nguyenbui/humanoid/G1_PAPER_REPRO/checkpoint_pilot_20261113_170501_977563_step_106954752.msgpack",
+      "sha256": "81bea8d783dd119e8f6e8ad953275b60046187f509394a967ef58e433b209365"
+    },
+    {
+      "step": 133693440,
+      "file": "/home/labrobot/nguyenbui/humanoid/G1_PAPER_REPRO/checkpoint_pilot_20261113_170501_977563_step_133693440.msgpack",
+      "sha256": "acac608b020e8bbb1043d9ab93a1d5de69687a465a29994f46c2b27a67bcb7ff"
+    },
+    {
+      "step": 160432128,
+      "file": "/home/labrobot/nguyenbui/humanoid/G1_PAPER_REPRO/checkpoint_pilot_20261113_170501_977563_step_160432128.msgpack",
+      "sha256": "fc1fbb0060e6bc74746ec0ea7405080466b9ea920e9bee152585dae8549f13bf"
+    },
+    {
+      "step": 187170816,
+      "file": "/home/labrobot/nguyenbui/humanoid/G1_PAPER_REPRO/checkpoint_pilot_20261113_170501_977563_step_187170816.msgpack",
+      "sha256": "843b7e7ce5990dd113a0be9f0629adbcbf1c8f227b2f331224ca37551755dbb9"
+    },
+    {
+      "step": 213909504,
+      "file": "/home/labrobot/nguyenbui/humanoid/G1_PAPER_REPRO/checkpoint_pilot_20261113_170501_977563_step_213909504.msgpack",
+      "sha256": "71f2561b5fdec8bf4dbadbbd23096e81e6cdb3be205cedfba498ad00d59b2739"
+    },
+    {
+      "step": 240648192,
+      "file": "/home/labrobot/nguyenbui/humanoid/G1_PAPER_REPRO/checkpoint_pilot_20261113_170501_977563_step_240648192.msgpack",
+      "sha256": "b2b5bf4375e58b0c1cac2e5790b9860358f313fa33bd1b35ada48e1d4febf50b"
+    },
+    {
+      "step": 267386880,
+      "file": "/home/labrobot/nguyenbui/humanoid/G1_PAPER_REPRO/checkpoint_pilot_20261113_170501_977563_step_267386880.msgpack",
+      "sha256": "20e974dd5122f8c54ffa70ccbd7688415508d057da4ba2b02313c03317780822"
+    },
+    {
+      "step": 294125568,
+      "file": "/home/labrobot/nguyenbui/humanoid/G1_PAPER_REPRO/checkpoint_pilot_20261113_170501_977563_step_294125568.msgpack",
+      "sha256": "3f0069e26af2b0e822a5829c400571cd8dacb139cdaa5fe2040d60c5a8aaeaaf"
+    },
+    {
+      "step": 320864256,
+      "file": "/home/labrobot/nguyenbui/humanoid/G1_PAPER_REPRO/checkpoint_pilot_20261113_170501_977563_step_320864256.msgpack",
+      "sha256": "342331501f6f0c54e7276584719028af7e5e9b154b0a84172279fd7ec525b2dc"
+    },
+    {
+      "step": 347602944,
+      "file": "/home/labrobot/nguyenbui/humanoid/G1_PAPER_REPRO/checkpoint_pilot_20261113_170501_977563_step_347602944.msgpack",
+      "sha256": "095f3682adcc075f668100d79a1d65da0e72c91e4c58097b2725da0922268034"
+    },
+    {
+      "step": 374341632,
+      "file": "/home/labrobot/nguyenbui/humanoid/G1_PAPER_REPRO/checkpoint_pilot_20261113_170501_977563_step_374341632.msgpack",
+      "sha256": "e5b55141033fb89335de882d7fe17f90b50d995dd3e9f0e09f507aac764712e3"
+    },
+    {
+      "step": 401080320,
+      "file": "/home/labrobot/nguyenbui/humanoid/G1_PAPER_REPRO/checkpoint_pilot_20261113_170501_977563_step_401080320.msgpack",
+      "sha256": "396f1bb7121418d3bb2ad0e7bd7aabe095d97fc5f72208bc0913e1bee3edc9aa"
+    }
+  ],
+  "final_checkpoint_comparison": {
+    "returned_final_file": "/home/labrobot/nguyenbui/humanoid/G1_PAPER_REPRO/checkpoint_pilot_20261113_170501_977563_returned_final.msgpack",
+    "returned_final_sha256": "69a4624d30d5dc9aa8120e7cff9669a652532628f37d453dcab6b3785b9db435",
+    "callback_sha256": "396f1bb7121418d3bb2ad0e7bd7aabe095d97fc5f72208bc0913e1bee3edc9aa",
+    "serialized_bytes_equal": false,
+    "tensor_values_equal": true,
+    "mismatched_leaf_indices": []
+  }
+}

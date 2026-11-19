@@ -1,0 +1,686 @@
+{
+  "source_file": "m437_gait_kinematics/m437_gait_20261115_083532_880960.json",
+  "source_sha256": "fb481c0f81616fb332c8260b8dd89b61b9c96f4927e76ef50f8e331feb99ac44",
+  "status": "M437_GAIT_KINEMATICS_COMPLETED",
+  "experiment_class": "READ_ONLY_KINEMATICS_DIAGNOSTIC_NOT_PAPER_BENCHMARK",
+  "environment": "G1JoystickFlatTerrain",
+  "checkpoint_step": 401080320,
+  "train_seed": 1,
+  "reset_seed": 5001,
+  "checkpoint_sha256": "1ccf579ea35d4518713b00ea20d77db8463bc469b7de903b8f10f457b3dc90b8",
+  "max_steps": 1000,
+  "no_training": true,
+  "policy_mode": "deterministic",
+  "domain_randomization": false,
+  "contacts_note": "Source G1 geoms_colliding(foot_geom, floor_geom) only; other support contacts omitted.",
+  "slip_note": "foot-site XY world velocity while foot-geom floor contact is true. NOT true contact-point slip; differs from source feet_slip reward formulation.",
+  "clearance_note": "foot-site height above plane geom_position.z during non-contact. NOT lowest foot surface clearance.",
+  "tilt_note": "torso IMU site orientation Euler roll/pitch and absolute tilt relative to global Z; site alignment may not equal anatomical torso angles.",
+  "phase_note": "Source phase advances even for zero commands in this pinned revision; recorded phases are diagnostic only, no gait phase override.",
+  "rollouts": [
+    {
+      "case": "stand",
+      "command": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "push_enabled": true,
+      "steps": 388,
+      "terminated": true,
+      "completed_1000_steps": false,
+      "push_events": [
+        {
+          "step": 342,
+          "direction_xy": [
+            0.5685362219810486,
+            0.8226582407951355
+          ]
+        }
+      ],
+      "summary": {
+        "sample_count": 388,
+        "root_height_m": {
+          "count": 388,
+          "mean": 0.7413613303113229,
+          "min": 0.19788238406181335,
+          "max": 0.766027569770813,
+          "p95": 0.761740505695343
+        },
+        "torso_roll_deg": {
+          "count": 388,
+          "mean": -1.3219468721258159,
+          "min": -19.27745761155229,
+          "max": 3.370188225647657,
+          "p95": 2.1174785979012514
+        },
+        "torso_pitch_deg": {
+          "count": 388,
+          "mean": 2.7613192477603348,
+          "min": -8.314171564376728,
+          "max": 7.004554934899891,
+          "p95": 5.501880874098528
+        },
+        "torso_tilt_deg": {
+          "count": 388,
+          "mean": 4.568898343915298,
+          "min": 0.121946637668444,
+          "max": 20.366056576563505,
+          "p95": 13.183829211444543
+        },
+        "foot": {
+          "left": {
+            "geom_contact_fraction": 0.9381443298969072,
+            "stance_site_xy_speed_mps": {
+              "count": 364,
+              "mean": 0.05107445923143086,
+              "min": 0.0002892086431724587,
+              "max": 1.33150258893838,
+              "p95": 0.27306506182593804
+            },
+            "stance_site_speed_gt_0p1_fraction": 0.12362637362637363,
+            "swing_site_height_m": {
+              "count": 24,
+              "mean": 0.05315905281653007,
+              "min": 0.037680454552173615,
+              "max": 0.06777673214673996,
+              "p95": 0.0672653317451477
+            },
+            "swing_site_height_gt_0p05_fraction": 0.7083333333333334,
+            "touchdown_count": 8,
+            "liftoff_count": 8,
+            "successive_touchdown_site_xy_displacement_m": {
+              "count": 7,
+              "mean": 0.058087989446639836,
+              "min": 0.010288023906143744,
+              "max": 0.2479928610078174,
+              "p95": 0.2479928610078174
+            },
+            "note": "Foot-site velocity during foot-geom floor-contact is a slip proxy; not an exact contact patch speed."
+          },
+          "right": {
+            "geom_contact_fraction": 0.8530927835051546,
+            "stance_site_xy_speed_mps": {
+              "count": 331,
+              "mean": 0.04057656723685809,
+              "min": 0.000405198408789718,
+              "max": 0.9906059574469346,
+              "p95": 0.19725693713501977
+            },
+            "stance_site_speed_gt_0p1_fraction": 0.09969788519637462,
+            "swing_site_height_m": {
+              "count": 57,
+              "mean": 0.07904634840394321,
+              "min": 0.03710271418094635,
+              "max": 0.13184846937656403,
+              "p95": 0.1280273050069809
+            },
+            "swing_site_height_gt_0p05_fraction": 0.7894736842105263,
+            "touchdown_count": 10,
+            "liftoff_count": 10,
+            "successive_touchdown_site_xy_displacement_m": {
+              "count": 9,
+              "mean": 0.0793579506477174,
+              "min": 0.003169484710706364,
+              "max": 0.5856948925631497,
+              "p95": 0.5856948925631497
+            },
+            "note": "Foot-site velocity during foot-geom floor-contact is a slip proxy; not an exact contact patch speed."
+          }
+        },
+        "joints_rad": {
+          "left_knee_joint": {
+            "count": 388,
+            "mean": 0.6824817067185014,
+            "min": 0.1986389011144638,
+            "max": 1.4995476007461548,
+            "p95": 0.7954568862915039
+          },
+          "left_hip_pitch_joint": {
+            "count": 388,
+            "mean": -0.34633164334389355,
+            "min": -0.7783835530281067,
+            "max": -0.19693048298358917,
+            "p95": -0.27886414527893066
+          },
+          "left_ankle_pitch_joint": {
+            "count": 388,
+            "mean": -0.31419887878576813,
+            "min": -0.6485195755958557,
+            "max": -0.03953683748841286,
+            "p95": -0.2508436441421509
+          },
+          "right_knee_joint": {
+            "count": 388,
+            "mean": 0.6530112754745582,
+            "min": 0.36198168992996216,
+            "max": 1.145552635192871,
+            "p95": 0.7230782508850098
+          },
+          "right_hip_pitch_joint": {
+            "count": 388,
+            "mean": -0.34933327357332733,
+            "min": -0.8164348602294922,
+            "max": -0.23822703957557678,
+            "p95": -0.2830491364002228
+          },
+          "right_ankle_pitch_joint": {
+            "count": 388,
+            "mean": -0.30464924305446983,
+            "min": -0.7637544870376587,
+            "max": -0.0955999568104744,
+            "p95": -0.20513421297073364
+          }
+        },
+        "mean_local_vel_x_mps": -0.11274831601794805,
+        "mean_local_vel_y_mps": 0.13584285126497206,
+        "mean_body_yaw_rate_radps": -0.002113614760317657,
+        "xy_rmse_mps": 0.5330149553264123,
+        "yaw_rmse_radps": 0.36337668761556047,
+        "gait_phase_unwrapped_progress_rad": {
+          "left": 67.80595467879539,
+          "right": 67.8059568245626
+        },
+        "knee_peak_to_peak_rad": {
+          "left": 1.300908699631691,
+          "right": 0.7835709452629089,
+          "absolute_difference": 0.517337754368782
+        }
+      }
+    },
+    {
+      "case": "stand",
+      "command": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "push_enabled": false,
+      "steps": 1000,
+      "terminated": false,
+      "completed_1000_steps": true,
+      "push_events": [],
+      "summary": {
+        "sample_count": 1000,
+        "root_height_m": {
+          "count": 1000,
+          "mean": 0.7577672801613807,
+          "min": 0.7508980631828308,
+          "max": 0.766027569770813,
+          "p95": 0.7615276575088501
+        },
+        "torso_roll_deg": {
+          "count": 1000,
+          "mean": -0.14504965830548538,
+          "min": -3.8916082819810156,
+          "max": 3.4492374200067997,
+          "p95": 1.9260064107944028
+        },
+        "torso_pitch_deg": {
+          "count": 1000,
+          "mean": 3.121637535204278,
+          "min": -0.7908137095343568,
+          "max": 7.004554934899891,
+          "p95": 5.066592918293615
+        },
+        "torso_tilt_deg": {
+          "count": 1000,
+          "mean": 3.3981801367792346,
+          "min": 0.121946637668444,
+          "max": 7.00450840423617,
+          "p95": 5.271133605160226
+        },
+        "foot": {
+          "left": {
+            "geom_contact_fraction": 0.954,
+            "stance_site_xy_speed_mps": {
+              "count": 954,
+              "mean": 0.0319369569814426,
+              "min": 0.0002271184832423735,
+              "max": 1.171277218246615,
+              "p95": 0.16719205907736343
+            },
+            "stance_site_speed_gt_0p1_fraction": 0.0880503144654088,
+            "swing_site_height_m": {
+              "count": 46,
+              "mean": 0.045204649476901344,
+              "min": 0.0371457040309906,
+              "max": 0.06357279419898987,
+              "p95": 0.060928139835596085
+            },
+            "swing_site_height_gt_0p05_fraction": 0.2391304347826087,
+            "touchdown_count": 21,
+            "liftoff_count": 20,
+            "successive_touchdown_site_xy_displacement_m": {
+              "count": 20,
+              "mean": 0.012696573836137518,
+              "min": 0.0013581579594473354,
+              "max": 0.03264274695700918,
+              "p95": 0.02887893234331024
+            },
+            "note": "Foot-site velocity during foot-geom floor-contact is a slip proxy; not an exact contact patch speed."
+          },
+          "right": {
+            "geom_contact_fraction": 0.959,
+            "stance_site_xy_speed_mps": {
+              "count": 959,
+              "mean": 0.03158143791841464,
+              "min": 0.00022037684149363412,
+              "max": 0.9171541223128156,
+              "p95": 0.15164156932041842
+            },
+            "stance_site_speed_gt_0p1_fraction": 0.08446298227320125,
+            "swing_site_height_m": {
+              "count": 41,
+              "mean": 0.04434726759791374,
+              "min": 0.03710271418094635,
+              "max": 0.05752815306186676,
+              "p95": 0.055487748235464096
+            },
+            "swing_site_height_gt_0p05_fraction": 0.1951219512195122,
+            "touchdown_count": 25,
+            "liftoff_count": 25,
+            "successive_touchdown_site_xy_displacement_m": {
+              "count": 24,
+              "mean": 0.015880986595898487,
+              "min": 0.0027545884702585744,
+              "max": 0.038579358846437914,
+              "p95": 0.03686098067123081
+            },
+            "note": "Foot-site velocity during foot-geom floor-contact is a slip proxy; not an exact contact patch speed."
+          }
+        },
+        "joints_rad": {
+          "left_knee_joint": {
+            "count": 1000,
+            "mean": 0.6730799514651299,
+            "min": 0.5600089430809021,
+            "max": 0.8822137713432312,
+            "p95": 0.714076042175293
+          },
+          "left_hip_pitch_joint": {
+            "count": 1000,
+            "mean": -0.32845276029407977,
+            "min": -0.4131864607334137,
+            "max": -0.19693048298358917,
+            "p95": -0.2860777676105499
+          },
+          "left_ankle_pitch_joint": {
+            "count": 1000,
+            "mean": -0.3118634751290083,
+            "min": -0.6485195755958557,
+            "max": -0.23648950457572937,
+            "p95": -0.2638568580150604
+          },
+          "right_knee_joint": {
+            "count": 1000,
+            "mean": 0.653046934992075,
+            "min": 0.4825691878795624,
+            "max": 0.7887802124023438,
+            "p95": 0.7018687725067139
+          },
+          "right_hip_pitch_joint": {
+            "count": 1000,
+            "mean": -0.33621702808141707,
+            "min": -0.4891447126865387,
+            "max": -0.2611074447631836,
+            "p95": -0.2850649356842041
+          },
+          "right_ankle_pitch_joint": {
+            "count": 1000,
+            "mean": -0.28572484529018405,
+            "min": -0.4271748661994934,
+            "max": -0.1768026351928711,
+            "p95": -0.22111615538597107
+          }
+        },
+        "mean_local_vel_x_mps": 0.0021474642633111216,
+        "mean_local_vel_y_mps": 0.008575822332219105,
+        "mean_body_yaw_rate_radps": 0.03205444914556574,
+        "xy_rmse_mps": 0.08266224112949257,
+        "yaw_rmse_radps": 0.21356810673094342,
+        "gait_phase_unwrapped_progress_rad": {
+          "left": 175.03397714282235,
+          "right": 175.0339788117524
+        },
+        "knee_peak_to_peak_rad": {
+          "left": 0.3222048282623291,
+          "right": 0.30621102452278137,
+          "absolute_difference": 0.01599380373954773
+        }
+      }
+    },
+    {
+      "case": "backward",
+      "command": [
+        -0.3,
+        0.0,
+        0.0
+      ],
+      "push_enabled": true,
+      "steps": 383,
+      "terminated": true,
+      "completed_1000_steps": false,
+      "push_events": [
+        {
+          "step": 342,
+          "direction_xy": [
+            0.5685362219810486,
+            0.8226582407951355
+          ]
+        }
+      ],
+      "summary": {
+        "sample_count": 383,
+        "root_height_m": {
+          "count": 383,
+          "mean": 0.7398745766585552,
+          "min": 0.18574438989162445,
+          "max": 0.7686542272567749,
+          "p95": 0.7659184336662292
+        },
+        "torso_roll_deg": {
+          "count": 383,
+          "mean": -0.7456876159494972,
+          "min": -16.834964888882805,
+          "max": 4.523527565593663,
+          "p95": 3.628989642828141
+        },
+        "torso_pitch_deg": {
+          "count": 383,
+          "mean": 1.419229240473653,
+          "min": -8.609906802607233,
+          "max": 6.261472614997993,
+          "p95": 4.700042278748419
+        },
+        "torso_tilt_deg": {
+          "count": 383,
+          "mean": 3.6874286390685813,
+          "min": 0.11534995559068106,
+          "max": 18.158279889626925,
+          "p95": 13.435424352163839
+        },
+        "foot": {
+          "left": {
+            "geom_contact_fraction": 0.6997389033942559,
+            "stance_site_xy_speed_mps": {
+              "count": 268,
+              "mean": 0.07726754136464839,
+              "min": 0.0010521340041756675,
+              "max": 1.394362698849113,
+              "p95": 0.38188576227904164
+            },
+            "stance_site_speed_gt_0p1_fraction": 0.2126865671641791,
+            "swing_site_height_m": {
+              "count": 115,
+              "mean": 0.07210349826061208,
+              "min": 0.03989939019083977,
+              "max": 0.11867128312587738,
+              "p95": 0.10799922049045563
+            },
+            "swing_site_height_gt_0p05_fraction": 0.8782608695652174,
+            "touchdown_count": 13,
+            "liftoff_count": 13,
+            "successive_touchdown_site_xy_displacement_m": {
+              "count": 12,
+              "mean": 0.12464287050640362,
+              "min": 0.00027974420085988326,
+              "max": 0.30569416866891913,
+              "p95": 0.30569416866891913
+            },
+            "note": "Foot-site velocity during foot-geom floor-contact is a slip proxy; not an exact contact patch speed."
+          },
+          "right": {
+            "geom_contact_fraction": 0.6135770234986945,
+            "stance_site_xy_speed_mps": {
+              "count": 235,
+              "mean": 0.08888254265853332,
+              "min": 0.0010283986461501328,
+              "max": 1.0636530187580888,
+              "p95": 0.38839652945845604
+            },
+            "stance_site_speed_gt_0p1_fraction": 0.23829787234042554,
+            "swing_site_height_m": {
+              "count": 148,
+              "mean": 0.07167944244134265,
+              "min": 0.03739628940820694,
+              "max": 0.13131217658519745,
+              "p95": 0.10894929617643356
+            },
+            "swing_site_height_gt_0p05_fraction": 0.7702702702702703,
+            "touchdown_count": 17,
+            "liftoff_count": 18,
+            "successive_touchdown_site_xy_displacement_m": {
+              "count": 16,
+              "mean": 0.11681231427708952,
+              "min": 0.0033701195408941454,
+              "max": 0.4779669048720395,
+              "p95": 0.4779669048720395
+            },
+            "note": "Foot-site velocity during foot-geom floor-contact is a slip proxy; not an exact contact patch speed."
+          }
+        },
+        "joints_rad": {
+          "left_knee_joint": {
+            "count": 383,
+            "mean": 0.7543106731173264,
+            "min": 0.20415009558200836,
+            "max": 1.4362419843673706,
+            "p95": 1.095076322555542
+          },
+          "left_hip_pitch_joint": {
+            "count": 383,
+            "mean": -0.3783282200676965,
+            "min": -0.8063884973526001,
+            "max": -0.15672405064105988,
+            "p95": -0.2555546462535858
+          },
+          "left_ankle_pitch_joint": {
+            "count": 383,
+            "mean": -0.32335235928391975,
+            "min": -0.6672265529632568,
+            "max": -0.026086391881108284,
+            "p95": -0.15837493538856506
+          },
+          "right_knee_joint": {
+            "count": 383,
+            "mean": 0.6932023583130799,
+            "min": 0.371823787689209,
+            "max": 1.1339600086212158,
+            "p95": 1.0521135330200195
+          },
+          "right_hip_pitch_joint": {
+            "count": 383,
+            "mean": -0.37453017518041026,
+            "min": -0.7797305583953857,
+            "max": -0.22035053372383118,
+            "p95": -0.2699659466743469
+          },
+          "right_ankle_pitch_joint": {
+            "count": 383,
+            "mean": -0.3086766109220664,
+            "min": -0.7321732640266418,
+            "max": -0.07585601508617401,
+            "p95": -0.11499405652284622
+          }
+        },
+        "mean_local_vel_x_mps": -0.28273324627327723,
+        "mean_local_vel_y_mps": 0.14114954129936522,
+        "mean_body_yaw_rate_radps": 0.008259202458825225,
+        "xy_rmse_mps": 0.5322209696209808,
+        "yaw_rmse_radps": 0.40630691927781487,
+        "gait_phase_unwrapped_progress_rad": {
+          "left": 66.92990825965171,
+          "right": 66.92991159751182
+        },
+        "knee_peak_to_peak_rad": {
+          "left": 1.2320918887853622,
+          "right": 0.7621362209320068,
+          "absolute_difference": 0.4699556678533554
+        }
+      }
+    },
+    {
+      "case": "backward",
+      "command": [
+        -0.3,
+        0.0,
+        0.0
+      ],
+      "push_enabled": false,
+      "steps": 1000,
+      "terminated": false,
+      "completed_1000_steps": true,
+      "push_events": [],
+      "summary": {
+        "sample_count": 1000,
+        "root_height_m": {
+          "count": 1000,
+          "mean": 0.7587568666934967,
+          "min": 0.7397699952125549,
+          "max": 0.7889179587364197,
+          "p95": 0.7695674300193787
+        },
+        "torso_roll_deg": {
+          "count": 1000,
+          "mean": 0.256567086878572,
+          "min": -5.396632781630509,
+          "max": 5.603657096034065,
+          "p95": 4.033892221449783
+        },
+        "torso_pitch_deg": {
+          "count": 1000,
+          "mean": 1.7664318755829282,
+          "min": -2.284628054486861,
+          "max": 6.261472614997993,
+          "p95": 4.402987960234455
+        },
+        "torso_tilt_deg": {
+          "count": 1000,
+          "mean": 2.8610702525200966,
+          "min": 0.11534995559068106,
+          "max": 6.394026523107254,
+          "p95": 5.216838723900501
+        },
+        "foot": {
+          "left": {
+            "geom_contact_fraction": 0.681,
+            "stance_site_xy_speed_mps": {
+              "count": 681,
+              "mean": 0.0742773430243229,
+              "min": 0.0007945050651671474,
+              "max": 1.394362698849113,
+              "p95": 0.3527536591912743
+            },
+            "stance_site_speed_gt_0p1_fraction": 0.21585903083700442,
+            "swing_site_height_m": {
+              "count": 319,
+              "mean": 0.08253736157542486,
+              "min": 0.03989939019083977,
+              "max": 0.1324547380208969,
+              "p95": 0.11690671741962433
+            },
+            "swing_site_height_gt_0p05_fraction": 0.9247648902821317,
+            "touchdown_count": 28,
+            "liftoff_count": 27,
+            "successive_touchdown_site_xy_displacement_m": {
+              "count": 27,
+              "mean": 0.16824353646720117,
+              "min": 0.010802593045776819,
+              "max": 0.3009557378893871,
+              "p95": 0.3006271349809803
+            },
+            "note": "Foot-site velocity during foot-geom floor-contact is a slip proxy; not an exact contact patch speed."
+          },
+          "right": {
+            "geom_contact_fraction": 0.608,
+            "stance_site_xy_speed_mps": {
+              "count": 608,
+              "mean": 0.07605997618409,
+              "min": 0.00014149637169852815,
+              "max": 0.899134078442611,
+              "p95": 0.32544851700395017
+            },
+            "stance_site_speed_gt_0p1_fraction": 0.23519736842105263,
+            "swing_site_height_m": {
+              "count": 392,
+              "mean": 0.07877467191607064,
+              "min": 0.03739628940820694,
+              "max": 0.14957593381404877,
+              "p95": 0.12012609839439392
+            },
+            "swing_site_height_gt_0p05_fraction": 0.8367346938775511,
+            "touchdown_count": 36,
+            "liftoff_count": 36,
+            "successive_touchdown_site_xy_displacement_m": {
+              "count": 35,
+              "mean": 0.13031025792889797,
+              "min": 0.0033701195408941454,
+              "max": 0.2838731291557326,
+              "p95": 0.2579075982723472
+            },
+            "note": "Foot-site velocity during foot-geom floor-contact is a slip proxy; not an exact contact patch speed."
+          }
+        },
+        "joints_rad": {
+          "left_knee_joint": {
+            "count": 1000,
+            "mean": 0.7562338251173496,
+            "min": 0.47732532024383545,
+            "max": 1.184237003326416,
+            "p95": 1.1084212064743042
+          },
+          "left_hip_pitch_joint": {
+            "count": 1000,
+            "mean": -0.35266897941380737,
+            "min": -0.538596510887146,
+            "max": -0.04686497896909714,
+            "p95": -0.20249047875404358
+          },
+          "left_ankle_pitch_joint": {
+            "count": 1000,
+            "mean": -0.33691034706681966,
+            "min": -0.7522627711296082,
+            "max": -0.06868214160203934,
+            "p95": -0.14901763200759888
+          },
+          "right_knee_joint": {
+            "count": 1000,
+            "mean": 0.7256174534261227,
+            "min": 0.4631379246711731,
+            "max": 1.1664488315582275,
+            "p95": 1.0848488807678223
+          },
+          "right_hip_pitch_joint": {
+            "count": 1000,
+            "mean": -0.36960103115439413,
+            "min": -0.5520601868629456,
+            "max": -0.21763452887535095,
+            "p95": -0.27308574318885803
+          },
+          "right_ankle_pitch_joint": {
+            "count": 1000,
+            "mean": -0.32257043262198565,
+            "min": -0.7087713479995728,
+            "max": -0.04787951335310936,
+            "p95": -0.1067727580666542
+          }
+        },
+        "mean_local_vel_x_mps": -0.2211687138332636,
+        "mean_local_vel_y_mps": 0.012640703961631515,
+        "mean_body_yaw_rate_radps": 0.03607722632517107,
+        "xy_rmse_mps": 0.15134683531381302,
+        "yaw_rmse_radps": 0.24452223870613674,
+        "gait_phase_unwrapped_progress_rad": {
+          "left": 175.03397714282235,
+          "right": 175.0339788117524
+        },
+        "knee_peak_to_peak_rad": {
+          "left": 0.7069116830825806,
+          "right": 0.7033109068870544,
+          "absolute_difference": 0.003600776195526123
+        }
+      }
+    }
+  ]
+}
