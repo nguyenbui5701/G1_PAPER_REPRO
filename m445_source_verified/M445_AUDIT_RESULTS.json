@@ -1,0 +1,172 @@
+{
+  "status": "M445_PAPER_FIDELITY_AUDIT_COMPLETED",
+  "method": "READ_ONLY_ARCHIVE_AND_PINNED_SOURCE_AUDIT_NO_TRAINING_NO_NEW_SEEDS",
+  "reference": "Demonstrating MuJoCo Playground (RSS 2025), Appendix F.2, Tables XV and XX",
+  "reference_url": "https://www.roboticsproceedings.org/rss21/p020.pdf",
+  "archive_filename": "m430_seed1.tar.gz",
+  "reported_environment": "G1JoystickFlatTerrain",
+  "reported_source_commit": "9bcbe736177472ba35d60773e3030a36e37962b7",
+  "checkpoint_step": 401080320,
+  "checkpoint_sha256": "1ccf579ea35d4518713b00ea20d77db8463bc469b7de903b8f10f457b3dc90b8",
+  "train_script_sha256": "febbe5b7ccf81ccbe3ad7d2bc3da349232f1e2447bc694c02d02481d99d5e22a",
+  "final_checkpoint_bytes_sha_verified": true,
+  "ppo_paper_target": {
+    "episode_length": 1000,
+    "num_timesteps": 400000000,
+    "num_evals": 16,
+    "num_resets_per_eval": 1,
+    "reward_scaling": 0.1,
+    "normalize_observations": true,
+    "action_repeat": 1,
+    "unroll_length": 32,
+    "num_minibatches": 32,
+    "num_updates_per_batch": 5,
+    "discounting": 0.98,
+    "learning_rate": 0.0001,
+    "entropy_cost": 0.0,
+    "num_envs": 32768,
+    "batch_size": 1024,
+    "clipping_epsilon": 0.2,
+    "max_grad_norm": 1.0,
+    "network_factory": {
+      "policy_hidden_layer_sizes": [
+        512,
+        256,
+        64
+      ],
+      "value_hidden_layer_sizes": [
+        256,
+        256,
+        256,
+        256
+      ],
+      "policy_obs_key": "state",
+      "value_obs_key": "privileged_state"
+    }
+  },
+  "ppo_scaled_actual": {
+    "action_repeat": 1,
+    "batch_size": 256,
+    "clipping_epsilon": 0.2,
+    "discounting": 0.98,
+    "entropy_cost": 0.0,
+    "episode_length": 1000,
+    "learning_rate": 0.0001,
+    "max_grad_norm": 1.0,
+    "network_factory": {
+      "policy_hidden_layer_sizes": [
+        512,
+        256,
+        64
+      ],
+      "policy_obs_key": "state",
+      "value_hidden_layer_sizes": [
+        256,
+        256,
+        256,
+        256
+      ],
+      "value_obs_key": "privileged_state"
+    },
+    "normalize_observations": true,
+    "num_envs": 8192,
+    "num_eval_envs": 2,
+    "num_evals": 16,
+    "num_minibatches": 32,
+    "num_resets_per_eval": 1,
+    "num_timesteps": 400000000,
+    "num_updates_per_batch": 5,
+    "reward_scaling": 0.1,
+    "unroll_length": 32
+  },
+  "matching_ppo_fields": [
+    "episode_length",
+    "num_timesteps",
+    "num_evals",
+    "num_resets_per_eval",
+    "reward_scaling",
+    "normalize_observations",
+    "action_repeat",
+    "unroll_length",
+    "num_minibatches",
+    "num_updates_per_batch",
+    "discounting",
+    "learning_rate",
+    "entropy_cost",
+    "clipping_epsilon",
+    "max_grad_norm",
+    "network_factory"
+  ],
+  "differing_ppo_fields": [
+    {
+      "key": "num_envs",
+      "paper": 32768,
+      "actual": 8192,
+      "classification": "hardware_scaled"
+    },
+    {
+      "key": "batch_size",
+      "paper": 1024,
+      "actual": 256,
+      "classification": "hardware_scaled"
+    }
+  ],
+  "non_table_xx_eval_env_count_actual": 2,
+  "reference_num_eval_envs_status": "Not specified in Table XX; should be compared to original training runner/default and paper evaluation procedure",
+  "in_run_eval_count_provenance": 16,
+  "paper_equivalent_schedule_if_full_config": {
+    "environment_steps_per_rollout_batch": 1048576,
+    "rollout_batches": 390,
+    "actual_scheduled_environment_steps": 408944640,
+    "optimizer_minibatch_updates": 62400,
+    "evaluation_intervals": 15
+  },
+  "scaled_schedule_actual": {
+    "environment_steps_per_rollout_batch": 262144,
+    "rollout_batches": 1530,
+    "actual_scheduled_environment_steps": 401080320,
+    "optimizer_minibatch_updates": 244800,
+    "evaluation_intervals": 15
+  },
+  "optimizer_update_ratio_scaled_over_full": 3.923076923076923,
+  "source": {
+    "checked_direct_local_pinned_repo": true,
+    "findings": {
+      "uses_knees_bent_keyframe": true,
+      "default_push_enabled": true,
+      "default_push_magnitude_range_0_1_to_2_0": true,
+      "default_reward_tracking_lin_vel_1_0": true,
+      "default_reward_tracking_ang_vel_0_75": true,
+      "default_reward_feet_phase_1_0": true,
+      "noise_config_present": true,
+      "command_config_present": true,
+      "phase_update_present": true
+    },
+    "unresolved": [],
+    "commit": "9bcbe736177472ba35d60773e3030a36e37962b7",
+    "joystick_sha256": "9d3b6d04fbc86c99f1ebf69bb7e3fc7ae11dbd8588ec3fd2daf4d8e28a41a5a4",
+    "randomize_source_sha256": "59d9c47bfefc7bb61e654e9f5178e7ac251e924d056f7391670659bb31861588",
+    "randomize_function_defined": true,
+    "randomize_source_mentions": {
+      "pair_friction": true,
+      "body_mass": true,
+      "body_ipos": false,
+      "dof_damping": false,
+      "geom_friction": false,
+      "actuator_gainprm": false
+    }
+  },
+  "training_script_uses_environment_default_config": true,
+  "training_script_passes_domain_randomizer": true,
+  "training_script_mutates_reward": "NO_EVIDENCE_IN_CAPTURED_TRAINING_SCRIPT",
+  "paper_exact_reproduction": false,
+  "limitations": [
+    "Table XX and Table XV establish PPO settings; not full equivalence of model, observation, command, reward, domain randomization or evaluation.",
+    "Source pinned is from 2025; up-to-date GitHub main may differ and is not a substitute for this training source.",
+    "GPU OOM at 32,768 envs previously observed on RTX3060 12GB, so full paper batch was not completed on that hardware.",
+    "The effect of extra optimizer updates on gait or push recovery is a hypothesis, not established causation.",
+    "The in-training scalar eval reward does not prove identical metric or domain randomization settings to the physical results in the paper.",
+    "No policy was retrained or evaluated as part of this audit."
+  ],
+  "next_step": "M4.46: compare existing visual/gait metrics against paper and inspect command/reward/domain-randomizer semantics; train only after deciding compute and experiment protocol."
+}
