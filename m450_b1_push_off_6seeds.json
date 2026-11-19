@@ -1,0 +1,304 @@
+{
+  "status": "M426_EVALUATION_COMPLETED",
+  "experiment_class": "hardware_scaled_8192",
+  "environment": "G1JoystickFlatTerrain",
+  "training_repeated": false,
+  "evaluation_domain_randomization": false,
+  "evaluation_observation_noise": "environment_default",
+  "policy_modes": [
+    "deterministic",
+    "stochastic"
+  ],
+  "heldout_seeds": true,
+  "seeds": [
+    5001,
+    5186,
+    5445,
+    5667,
+    5889,
+    6148
+  ],
+  "max_steps": 1000,
+  "results": [
+    {
+      "policy_mode": "deterministic",
+      "checkpoint_step": 401080320,
+      "mean_steps_survived": 541.6666666666666,
+      "episode_successes": 3,
+      "terminated_count": 3,
+      "rollouts": [
+        {
+          "seed": 5001,
+          "steps_survived": 1000,
+          "terminated": false,
+          "terminal_metrics": {},
+          "terminal_qpos_has_nan": false,
+          "terminal_qvel_has_nan": false,
+          "final_height": 0.7473339438438416,
+          "mean_height": 0.7527223309278488,
+          "xy_rmse": 0.7678002658024774,
+          "yaw_rmse": 0.47641551394223614,
+          "first18_coverage": 18,
+          "first18_xy_rmse": 0.32229636253106597,
+          "first18_yaw_rmse": 0.695474727784608,
+          "terminal_diagnosis": null
+        },
+        {
+          "seed": 5186,
+          "steps_survived": 1000,
+          "terminated": false,
+          "terminal_metrics": {},
+          "terminal_qpos_has_nan": false,
+          "terminal_qvel_has_nan": false,
+          "final_height": 0.7437182664871216,
+          "mean_height": 0.7486389838457107,
+          "xy_rmse": 0.2561899198389569,
+          "yaw_rmse": 0.5082970151312677,
+          "first18_coverage": 18,
+          "first18_xy_rmse": 0.21685901163879287,
+          "first18_yaw_rmse": 0.337513755548645,
+          "terminal_diagnosis": null
+        },
+        {
+          "seed": 5445,
+          "steps_survived": 125,
+          "terminated": true,
+          "terminal_metrics": {},
+          "terminal_qpos_has_nan": false,
+          "terminal_qvel_has_nan": false,
+          "final_height": 0.06457443535327911,
+          "mean_height": 0.6851224336624145,
+          "xy_rmse": 1.3316180583378334,
+          "yaw_rmse": 0.4768438971685156,
+          "first18_coverage": 18,
+          "first18_xy_rmse": 0.6458785345014009,
+          "first18_yaw_rmse": 0.4574292220381726,
+          "terminal_diagnosis": {
+            "torso_gravity_z": 0.9174047708511353,
+            "reasons": {
+              "fall_torso": false,
+              "right_foot_left_foot": true,
+              "left_foot_right_shin": false,
+              "right_foot_left_shin": false,
+              "qpos_nan": false,
+              "qvel_nan": false
+            },
+            "triggered": [
+              "right_foot_left_foot"
+            ],
+            "recomputed_done": true
+          }
+        },
+        {
+          "seed": 5667,
+          "steps_survived": 48,
+          "terminated": true,
+          "terminal_metrics": {},
+          "terminal_qpos_has_nan": false,
+          "terminal_qvel_has_nan": false,
+          "final_height": -0.08925289660692215,
+          "mean_height": 0.5918643599725328,
+          "xy_rmse": 1.379489145245418,
+          "yaw_rmse": 0.3001337347952445,
+          "first18_coverage": 18,
+          "first18_xy_rmse": 0.23414820670757427,
+          "first18_yaw_rmse": 0.3464302540421357,
+          "terminal_diagnosis": {
+            "torso_gravity_z": 0.9298486709594727,
+            "reasons": {
+              "fall_torso": false,
+              "right_foot_left_foot": true,
+              "left_foot_right_shin": false,
+              "right_foot_left_shin": false,
+              "qpos_nan": false,
+              "qvel_nan": false
+            },
+            "triggered": [
+              "right_foot_left_foot"
+            ],
+            "recomputed_done": true
+          }
+        },
+        {
+          "seed": 5889,
+          "steps_survived": 77,
+          "terminated": true,
+          "terminal_metrics": {},
+          "terminal_qpos_has_nan": false,
+          "terminal_qvel_has_nan": false,
+          "final_height": 0.05679734796285629,
+          "mean_height": 0.6654843742197211,
+          "xy_rmse": 0.8259493636548147,
+          "yaw_rmse": 0.35122856733312113,
+          "first18_coverage": 18,
+          "first18_xy_rmse": 0.23101575228723345,
+          "first18_yaw_rmse": 0.34203364173224415,
+          "terminal_diagnosis": {
+            "torso_gravity_z": 0.9252279996871948,
+            "reasons": {
+              "fall_torso": false,
+              "right_foot_left_foot": true,
+              "left_foot_right_shin": false,
+              "right_foot_left_shin": false,
+              "qpos_nan": false,
+              "qvel_nan": false
+            },
+            "triggered": [
+              "right_foot_left_foot"
+            ],
+            "recomputed_done": true
+          }
+        },
+        {
+          "seed": 6148,
+          "steps_survived": 1000,
+          "terminated": false,
+          "terminal_metrics": {},
+          "terminal_qpos_has_nan": false,
+          "terminal_qvel_has_nan": false,
+          "final_height": 0.7391520142555237,
+          "mean_height": 0.746865734577179,
+          "xy_rmse": 0.6299086723313906,
+          "yaw_rmse": 0.7104606213149438,
+          "first18_coverage": 18,
+          "first18_xy_rmse": 0.5252091701941691,
+          "first18_yaw_rmse": 0.38421419019198966,
+          "terminal_diagnosis": null
+        }
+      ]
+    },
+    {
+      "policy_mode": "stochastic",
+      "checkpoint_step": 401080320,
+      "mean_steps_survived": 686.5,
+      "episode_successes": 4,
+      "terminated_count": 2,
+      "rollouts": [
+        {
+          "seed": 5001,
+          "steps_survived": 1000,
+          "terminated": false,
+          "terminal_metrics": {},
+          "terminal_qpos_has_nan": false,
+          "terminal_qvel_has_nan": false,
+          "final_height": 0.7572193741798401,
+          "mean_height": 0.7531875552535057,
+          "xy_rmse": 0.7709465470848944,
+          "yaw_rmse": 0.6288825370303315,
+          "first18_coverage": 18,
+          "first18_xy_rmse": 0.3247162438982366,
+          "first18_yaw_rmse": 0.7533814434072605,
+          "terminal_diagnosis": null
+        },
+        {
+          "seed": 5186,
+          "steps_survived": 1000,
+          "terminated": false,
+          "terminal_metrics": {},
+          "terminal_qpos_has_nan": false,
+          "terminal_qvel_has_nan": false,
+          "final_height": 0.7386773228645325,
+          "mean_height": 0.7492392780184746,
+          "xy_rmse": 0.26632591794537225,
+          "yaw_rmse": 0.6574106798556433,
+          "first18_coverage": 18,
+          "first18_xy_rmse": 0.21910113921383093,
+          "first18_yaw_rmse": 0.3329765711523455,
+          "terminal_diagnosis": null
+        },
+        {
+          "seed": 5445,
+          "steps_survived": 1000,
+          "terminated": false,
+          "terminal_metrics": {},
+          "terminal_qpos_has_nan": false,
+          "terminal_qvel_has_nan": false,
+          "final_height": 0.7484959363937378,
+          "mean_height": 0.7457316262722016,
+          "xy_rmse": 0.6871683915848349,
+          "yaw_rmse": 0.6190357951942943,
+          "first18_coverage": 18,
+          "first18_xy_rmse": 0.6447676248518186,
+          "first18_yaw_rmse": 0.5261984001846653,
+          "terminal_diagnosis": null
+        },
+        {
+          "seed": 5667,
+          "steps_survived": 48,
+          "terminated": true,
+          "terminal_metrics": {},
+          "terminal_qpos_has_nan": false,
+          "terminal_qvel_has_nan": false,
+          "final_height": -0.13537725806236267,
+          "mean_height": 0.5798083735474696,
+          "xy_rmse": 1.4191928558478115,
+          "yaw_rmse": 0.35833373983600963,
+          "first18_coverage": 18,
+          "first18_xy_rmse": 0.24313901569005858,
+          "first18_yaw_rmse": 0.39813643841118446,
+          "terminal_diagnosis": {
+            "torso_gravity_z": 0.9156680107116699,
+            "reasons": {
+              "fall_torso": false,
+              "right_foot_left_foot": true,
+              "left_foot_right_shin": false,
+              "right_foot_left_shin": false,
+              "qpos_nan": false,
+              "qvel_nan": false
+            },
+            "triggered": [
+              "right_foot_left_foot"
+            ],
+            "recomputed_done": true
+          }
+        },
+        {
+          "seed": 5889,
+          "steps_survived": 71,
+          "terminated": true,
+          "terminal_metrics": {},
+          "terminal_qpos_has_nan": false,
+          "terminal_qvel_has_nan": false,
+          "final_height": 0.049593955278396606,
+          "mean_height": 0.6569504596188035,
+          "xy_rmse": 0.8592847332142752,
+          "yaw_rmse": 0.3697924540800614,
+          "first18_coverage": 18,
+          "first18_xy_rmse": 0.23028928365283546,
+          "first18_yaw_rmse": 0.3706393536108008,
+          "terminal_diagnosis": {
+            "torso_gravity_z": 0.9025824069976807,
+            "reasons": {
+              "fall_torso": false,
+              "right_foot_left_foot": true,
+              "left_foot_right_shin": false,
+              "right_foot_left_shin": false,
+              "qpos_nan": false,
+              "qvel_nan": false
+            },
+            "triggered": [
+              "right_foot_left_foot"
+            ],
+            "recomputed_done": true
+          }
+        },
+        {
+          "seed": 6148,
+          "steps_survived": 1000,
+          "terminated": false,
+          "terminal_metrics": {},
+          "terminal_qpos_has_nan": false,
+          "terminal_qvel_has_nan": false,
+          "final_height": 0.7453927993774414,
+          "mean_height": 0.7474706060886384,
+          "xy_rmse": 0.6371055828685797,
+          "yaw_rmse": 0.8499346774680526,
+          "first18_coverage": 18,
+          "first18_xy_rmse": 0.5271866459706024,
+          "first18_yaw_rmse": 0.37780649522068055,
+          "terminal_diagnosis": null
+        }
+      ]
+    }
+  ]
+}

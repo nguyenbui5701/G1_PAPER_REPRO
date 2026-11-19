@@ -1,0 +1,28 @@
+{
+  "status": "M450_PUSH_OFF_COMPLETED",
+  "label": "b1",
+  "no_training": true,
+  "checkpoint_step": 401080320,
+  "checkpoint_sha256": "21ad713f61ef8ac22b72de2bec6aec9b45ca7de27101afdec21a043fe17ef173",
+  "training_report": "pilot_20261115_210149_3046829_report.json",
+  "evaluator": "m426_heldout_det_stoch.py",
+  "evaluator_sha256": "6edf683137b6eac139f48a0f3fad92174444ce2cd90c87713566027ad40aadae",
+  "reset_seeds": [
+    5001,
+    5186,
+    5445,
+    5667,
+    5889,
+    6148
+  ],
+  "policy_modes": [
+    "deterministic",
+    "stochastic"
+  ],
+  "domain_randomization_enabled": false,
+  "push_enabled": false,
+  "only_environment_change": "push_config.enable=False",
+  "source_default_config_intercept_count": 1,
+  "result_file": "m450_b1_push_off_6seeds.json",
+  "result_sha256": "a97baadcf6f9f431e9a9cff2d7acf80fafcd10e9cd2846c59a079dae5f626013"
+}
