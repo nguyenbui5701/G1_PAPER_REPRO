@@ -1,0 +1,215 @@
+{
+  "status": "M457_1000_STEP_REVIEW_COMPLETED",
+  "evidence_class": "single-reset-seed nominal fixed-command sim-to-sim diagnostic, not a paper benchmark",
+  "source_file": "m457_run_seed5186_20261120_094043_665761.json",
+  "source_file_sha256": "4b8567eff33e46908836744b5cc2351efa96e7a7430b1cd8b9112eaf40a3c28f",
+  "source_script_sha256": "8438aef9a9ece0c694ac204953f931971f07a43582f9554f9d8e6213ecfdf7f9",
+  "checkpoint_step": 401080320,
+  "checkpoint_sha256": "1ccf579ea35d4518713b00ea20d77db8463bc469b7de903b8f10f457b3dc90b8",
+  "eval_seed": 5186,
+  "max_steps": 1000,
+  "ctrl_dt_s": 0.02,
+  "push_enabled": false,
+  "domain_randomization": false,
+  "physics_cpu": "mujoco.mj_step",
+  "policy_backend": "JAX CUDA (NOT pure CPU policy inference)",
+  "joint_verdict": "3/3 command cases and 6/6 engine-specific episodes completed 1000 steps with no termination; qualitative control transfer shown but no numerical parity or paper-exact reproduction established",
+  "results": [
+    {
+      "case": "stand",
+      "command": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "mjx": {
+        "steps": 1000,
+        "terminated": false,
+        "mean_vx_mps": 0.0075111716910323595,
+        "mean_yaw_radps": 0.012685400357469916,
+        "xy_rmse_mps": 0.07782133937827584,
+        "yaw_rmse_radps": 0.19261222158187521,
+        "root_z_min_m": 0.7473872303962708
+      },
+      "cpu": {
+        "steps": 1000,
+        "terminated": false,
+        "mean_vx_mps": 0.006129703714290997,
+        "mean_yaw_radps": 0.017358782209138352,
+        "xy_rmse_mps": 0.08025106083874468,
+        "yaw_rmse_radps": 0.20019328400196434,
+        "root_z_min_m": 0.7466473095246379
+      },
+      "cpu_minus_mjx": {
+        "mean_vx_mps": -0.0013814679767413622,
+        "mean_yaw_radps": 0.004673381851668436,
+        "xy_rmse_pct": 3.122178929173125,
+        "yaw_rmse_pct": 3.93591972400702
+      },
+      "paired_error_peak": {
+        "root_xyz_max_abs_per_axis_m": {
+          "value": 0.04059218559443514,
+          "step": 999
+        },
+        "joint_qpos_max_abs_rad": {
+          "value": 0.27501228312902515,
+          "step": 40
+        },
+        "joint_qvel_max_abs_radps": {
+          "value": 8.232974588500644,
+          "step": 45
+        },
+        "max_abs_action": {
+          "value": 1.0677573084831238,
+          "step": 46
+        }
+      },
+      "paired_error_at_step_1000": {
+        "root_xyz_max_abs": 0.04057917209195061,
+        "root_quat_max_abs": 0.03957174302081351,
+        "joint_qpos_max_abs": 0.01379876615174458,
+        "joint_qvel_max_abs": 0.20516127582671717,
+        "actor_obs_max_abs": 0.20516127347946167
+      },
+      "first_action_max_abs_difference": 0.0,
+      "initial_sensor_max_abs_difference": {
+        "local_linvel_pelvis_max_abs": 1.4592933000878716e-08,
+        "gyro_pelvis_max_abs": 0.0,
+        "upvector_torso_max_abs": 4.249157647961965e-08
+      }
+    },
+    {
+      "case": "forward",
+      "command": [
+        0.3,
+        0.0,
+        0.0
+      ],
+      "mjx": {
+        "steps": 1000,
+        "terminated": false,
+        "mean_vx_mps": 0.21308778943680226,
+        "mean_yaw_radps": 0.017562759187538177,
+        "xy_rmse_mps": 0.15185416173176372,
+        "yaw_rmse_radps": 0.22416792689594536,
+        "root_z_min_m": 0.7432660460472107
+      },
+      "cpu": {
+        "steps": 1000,
+        "terminated": false,
+        "mean_vx_mps": 0.22245173366477033,
+        "mean_yaw_radps": 0.011592733794399073,
+        "xy_rmse_mps": 0.14651823133383945,
+        "yaw_rmse_radps": 0.23567110422467502,
+        "root_z_min_m": 0.7434448895293714
+      },
+      "cpu_minus_mjx": {
+        "mean_vx_mps": 0.009363944227968074,
+        "mean_yaw_radps": -0.005970025393139103,
+        "xy_rmse_pct": -3.5138519333765106,
+        "yaw_rmse_pct": 5.131500071403705
+      },
+      "paired_error_peak": {
+        "root_xyz_max_abs_per_axis_m": {
+          "value": 0.19724592193578427,
+          "step": 974
+        },
+        "joint_qpos_max_abs_rad": {
+          "value": 0.27808541200193493,
+          "step": 974
+        },
+        "joint_qvel_max_abs_radps": {
+          "value": 12.232095888581991,
+          "step": 921
+        },
+        "max_abs_action": {
+          "value": 1.4597769379615784,
+          "step": 999
+        }
+      },
+      "paired_error_at_step_1000": {
+        "root_xyz_max_abs": 0.18344058916330575,
+        "root_quat_max_abs": 0.05431103654873437,
+        "joint_qpos_max_abs": 0.10158502408049092,
+        "joint_qvel_max_abs": 3.1503099462165034,
+        "actor_obs_max_abs": 3.1503100655972958
+      },
+      "first_action_max_abs_difference": 0.0,
+      "initial_sensor_max_abs_difference": {
+        "local_linvel_pelvis_max_abs": 1.4592933000878716e-08,
+        "gyro_pelvis_max_abs": 0.0,
+        "upvector_torso_max_abs": 4.249157647961965e-08
+      }
+    },
+    {
+      "case": "yaw_left",
+      "command": [
+        0.0,
+        0.0,
+        0.4
+      ],
+      "mjx": {
+        "steps": 1000,
+        "terminated": false,
+        "mean_vx_mps": 0.012750363809202098,
+        "mean_yaw_radps": 0.304495131819509,
+        "xy_rmse_mps": 0.11471173939910412,
+        "yaw_rmse_radps": 0.25881785463040685,
+        "root_z_min_m": 0.7424682974815369
+      },
+      "cpu": {
+        "steps": 1000,
+        "terminated": false,
+        "mean_vx_mps": 0.025836379921000872,
+        "mean_yaw_radps": 0.29771061962637363,
+        "xy_rmse_mps": 0.11603847266259576,
+        "yaw_rmse_radps": 0.2754981476619313,
+        "root_z_min_m": 0.7347167007849863
+      },
+      "cpu_minus_mjx": {
+        "mean_vx_mps": 0.013086016111798774,
+        "mean_yaw_radps": -0.006784512193135361,
+        "xy_rmse_pct": 1.1565801987150515,
+        "yaw_rmse_pct": 6.444799975389648
+      },
+      "paired_error_peak": {
+        "root_xyz_max_abs_per_axis_m": {
+          "value": 0.23273688824249977,
+          "step": 673
+        },
+        "joint_qpos_max_abs_rad": {
+          "value": 0.5159079355022216,
+          "step": 58
+        },
+        "joint_qvel_max_abs_radps": {
+          "value": 13.764268990730677,
+          "step": 856
+        },
+        "max_abs_action": {
+          "value": 1.7430238127708435,
+          "step": 173
+        }
+      },
+      "paired_error_at_step_1000": {
+        "root_xyz_max_abs": 0.10926118888450587,
+        "root_quat_max_abs": 0.05544229724933669,
+        "joint_qpos_max_abs": 0.07155169333857248,
+        "joint_qvel_max_abs": 1.7539883363701227,
+        "actor_obs_max_abs": 1.7539883255958557
+      },
+      "first_action_max_abs_difference": 0.0,
+      "initial_sensor_max_abs_difference": {
+        "local_linvel_pelvis_max_abs": 1.4592933000878716e-08,
+        "gyro_pelvis_max_abs": 0.0,
+        "upvector_torso_max_abs": 4.249157647961965e-08
+      }
+    }
+  ],
+  "limitations": [
+    "Only reset seed 5186 and three fixed commands were tested with push OFF, domain randomization OFF.",
+    "CPU MuJoCo computes physics independently; PPO inference uses JAX CUDA and is not CPU-only deployment.",
+    "Initial policy action equality is imposed by using a common observation; it is not a proof of CPU/MJX actor-observation parity.",
+    "Numerical trajectories diverge; the per-axis maximum root_xyz error is not a Euclidean distance.",
+    "No natural-gait, robustness, real-robot or paper-exact claim follows."
+  ]
+}
