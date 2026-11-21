@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.1.0  
+**Version:** 1.2.0  
 **Ngày cập nhật:** 2026-11-21 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -16,6 +16,14 @@
 **Chuỗi hành vi cần chứng minh:** `FOLLOW_COMMAND → PUSHED → RECOVER_UPRIGHT` **hoặc** `FALLEN → GET_UP → REORIENT → RESUME_COMMAND`. Không được tính reset episode, teleport pose, đặt lại root `qpos`, hoặc xuất hiện robot đứng sẵn ở episode mới là một lần tự đứng dậy thành công.
 
 **Ưu tiên nghiên cứu:** push exposure thật → push recovery → phát hiện ngã chính xác → học get-up → nối get-up với locomotion và resume. Không tiếp tục tối ưu reward cho gait bình thường như mục tiêu độc lập; vẫn phải bảo toàn gait đã đạt. Paper fidelity (source/original) và *hardware-scaled robustness extension* phải báo cáo thành hai dòng riêng.
+
+### Current workstream lock — A ONLY (2026-11-21, user-directed)
+
+**Nhánh A ACTIVE, ưu tiên duy nhất:** phát triển locomotion G1 giữ gait, tăng actual PPO push exposure đa chiều và cải thiện stability/command-tracking recovery dưới push (đặc biệt xoay, tốc độ cao, push liên tiếp/đang mất cân bằng). Tập trung kiểm tra thực nghiệm có thông tin cao: chỉnh curriculum khi có dữ liệu, bounded PPO training và đánh giá C/P đúng thước đo; tránh lặp nhiều thử nghiệm hình thức hay tạo script mới khi không cần.
+
+**Nhánh B ON HOLD đến khi người dùng chủ động nói chuyển:** KHÔNG khởi tạo task F0/F1/F2/F3/F4 theo hướng get-up/fallen-state sandbox, không viết code, train, thiết kế implementation, benchmark hay thay đổi roadmap ưu tiên cho fall detection, get-up, reorient, resume. Giữ tài liệu yêu cầu của B làm mục tiêu dài hạn nhưng không chủ động đưa vào NEXT TASK. Khi người dùng yêu cầu chuyển mới tiếp tục B và thực hiện các gate liên quan.
+
+**Phân biệt với safety/telemetry trong A:** vẫn đo termination, instability, root height/contact nếu hữu ích để hiểu *failure của push recovery*, nhưng không coi đó là mở nhánh B hoặc cấp phép get-up implementation. Baseline/checkpoint PIN và quy tắc ghi bằng chứng không thay đổi. **Một thử nghiệm khám phá A có thể CONDITIONAL GO** với ngân sách/tiêu chí dừng khóa trước; chỉ công bố robustness PASS khi có nominal gait + matched-OFF + held-out đáng tin. Không làm các vòng lặp tái lập không cần thiết nếu không làm thay đổi quyết định quan trọng, nhưng phải công khai uncertainty về evaluator.
 
 ## 2. Baseline bất biến, môi trường, provenance
 
@@ -131,6 +139,9 @@ RULES_VERSION_USED:
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-21)
 
+**WORKSTREAM DECISION (2026-11-21, user): NHÁNH A ONLY.** Ưu tiên nâng cao locomotion và push recovery trước. Tuyệt đối không khởi động nhánh B/F0-F4 cho tới khi người dùng ra lệnh chuyển. Các gate B là mục tiêu dài hạn, không phải NEXT TASK hiện hành. Rà lại độ cần thiết của mỗi thí nghiệm để tối đa thông tin trên chi phí GPU; bounded A exploratory pilot có thể xét CONDITIONAL GO với guardrails, khác với tuyên bố scientific robustness PASS.
+
+
 **M4.63 push-exposure GPU Smoke:** `M463_COVERAGE_SMOKE_PASS`; PPO train từ trọng số C với Adam reset, đã quan sát **6.503** push events thực trong training transitions; actual single support **3.454**, double support **3.045**, no-foot **4**, 6/6 hướng và 6/6 nhóm motion có exposure; VRAM peak **9.018/12.288 MiB**. **Lưu ý:** chỉ chứng minh exposure; không chứng minh learned get-up hay recovery. Eval reward nguồn 2-env giảm đáng kể, vẫn phải giữ cảnh báo regression.
 
 **M4.63 Gate 3b mới nhận:** dữ liệu `gate3b_cp_dose050_20261121_043902.json` và audit/log cùng tên. **36 cặp C/P** (3 development reset seeds × 6 motion × 2 lateral directions), **72 policy cases**, `Δqvel=0,50m/s`, push ở step300, horizon1000; static checks và aggregator hoàn thành.
@@ -164,12 +175,13 @@ RULES_VERSION_USED:
 
 **M4.66-D profile-order test verified (2026-11-21; EDIT-FIRST):** User files `m466_order_probe_20261121_094303.log` SHA256 `10f7f4659787c1ea6dae98ab434bf214dea8099690a0ab89ec8ee7bb6f574ffb` and `m466_order_probe_20261121_094303.json` SHA256 `ff94e607795eac0e2d377dbb7c24a8a9c0a3a9ce1793a384cc852a8e4ce357d2`; **16/16 evaluator cases complete**, seed7331 profiles stand,forward_slow,forward_fast,turn_left × left/right push × C,P, fixed qvelΔ0.50m/s step300, horizon1000, no training. C 7331/turn_left nominal XY RMSE `0.17992138068282318`, left push termination step `373`, right push matched-OFF recovery `3.40s`, **identical to M4.66 12-case and M4.66-C 4-case**, but **different** from M4.66-B 72-case C `0.1731101129364172`, step `359`, right recovery `4.98s`. P 7331/turn_left remains identical in all four results: nominal `0.18373593489767456`, left/right survive horizon1000, matched-OFF recovery left `4.26s` / right `4.20s`. Comparing 16 overlapping result records between M4.66-D and M4.66-B: **13 exact matches; 2 C turn_left records differ substantively and 1 P forward_slow-right record has small pushed-tracking RMSE variation**. **INFERENCE LIMIT:** inserting prior `forward_slow` profile alone does NOT reproduce C mismatch; hypothesis of preceding seed 7301 workload/compilation-order effect is NOT TESTED yet, and numerical non-determinism remains plausible. Repeat source warnings about HLO integer lexer/JAX cast are not proven causal. **DECISION:** 16-case run TECH PASS; reproducibility gate remains PENDING, HELD-OUT/long pilot20/get-up training NO-GO. Next controlled experiment is existing evaluator with **seeds 7301,7331** × 6 profile order × 2 push dirs × C/P = **48 cases**; do not modify code/checkpoints, do not create new scripts. Review specifically C seed7331 turn_left raw pose heading, XY RMSE, left termination, right recovery and P forward_slow-right numerical variation. If difference persists only with preceding seed, investigate JIT caching, rollout state, RNG, MJX numerical sensitivity with minimal in-place instrumentation before any held-out claim.
 
-**NEXT TASK ƯU TIÊN:** M4.66-E `PRECEDING_SEED_REPRO_GATE`: use **unchanged existing** `m463_gate3_cp_eval.py` with seeds `7301,7331`, profiles `stand,forward_slow,forward_fast,turn_left,turn_right,strafe`, directions `left,right`, push step300, magnitude0.50m/s, horizon1000, max_cases48. Compare C seed7331 turn_left with M4.66-B 72-case vs M4.66-D 16-case; compare P as unchanged control, and check whether earlier seed workload recreates discrepancy. Verify source/checkpoint hash and report no-source-change. If results explain order dependence, do not immediately claim GPU nondeterminism; instead isolate first divergent step via minimal instrumentation in `m463_gate3_cp_eval.py` (physical state/PRNG hash at reset, step1, step299) and freeze evaluator provenance. No new script. Held-out seed evaluation/PPO pilot20/get-up training NOT authorized until reliable reproducibility established. F0/get-up still design-only.
+**NEXT TASK ƯU TIÊN — NHÁNH A ONLY:** tiếp tục nâng chất lượng locomotion + push recovery. M4.66-E preceding-seed reproducibility probe (48 cases) là **optional/high-information diagnostic**, chỉ chạy nếu kết quả có khả năng thay đổi quyết định học/đánh giá; không xem là rào cản tuyệt đối cho *bounded exploratory PPO*. Trước thử nghiệm PPO lớn hơn: kiểm tra cấu hình runner 5-rollout đang có, budget 12-GiB/finite, observation of real push + postpush tails, nominal 6-command C/P, per-epoch checkpoint và exit rules; bản thử nghiệm thăm dò có thể CONDITIONAL GO nếu các bảo vệ đạt. Không nâng checkpoint P thành baseline chính thức chỉ vì 26/36→27/36 hoặc recovery 19/36→24/36 từ development grid; kết luận robustness đợi held-out và kiểm tra sai khác evaluator. Giữ script hiện có, tự sửa theo diff rõ lý do, không tạo file mới theo thói quen. **Nhánh B (F0–F4 get-up, fall/resume) hoãn cho đến khi người dùng yêu cầu chuyển.**
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
 | Ngày | Task | Bằng chứng | Quyết định | Rules |
 |---|---|---|---|---|
+| 2026-11-21 | User-directed workstream lock A-only | Ưu tiên locomotion + push recovery, B get-up chỉ bắt đầu khi người dùng yêu cầu; giữ baseline và phân biệt exploratory vs scientific | A ACTIVE / B ON HOLD / EDIT-FIRST / bounded A pilots conditional | 1.2.0 |
 | 2026-11-21 | M4.66-D 16-case profile-order control / M4.66-E planned | C turn_left isolated nominal 0.179921/step373/recovery3.40 repeats in 16-case; grid 72 C differs 0.173110/step359/recovery4.98; 13/16 overlap exact and one P forward_slow-right tiny deviation | TECH PASS / forward_slow insertion alone not cause / preceding-seed 48-case probe next / holdout+pilot NO-GO | 1.1.0 |
 | 2026-11-21 | M4.66-C 4-case reproducer and controlled M4.66-D planned | C isolated nominal 0.179921, step373, recovery3.40 matches prior 12-case; disagrees with 72-case C nominal 0.173110, step359, recovery4.98; P identical across runs | 4-case TECH PASS / DETERMINISM UNKNOWN / profile-order control next / HELD-OUT+PILOT NO-GO | 1.1.0 |
 | 2026-11-21 | M4.66-B 36-pair development grid C/P, source/raw/reviewer/log independently cross-checked | Survival C26/P27; matched-OFF recovery <=2s C1/P4, <=5s C19/P24; nominal seed7331 turn_left XY P +6.138% missed by reviewer; prior 12-case C mismatch to reproduce | DEV TECH PASS / ROBUSTNESS UNCERTAIN / reviewer screen + minimal reproducibility repeat next / pilot20 NO-GO | 1.1.0 |
@@ -184,6 +196,7 @@ RULES_VERSION_USED:
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
 
+- **v1.2.0 — 2026-11-21:** Theo yêu cầu người dùng, khóa workstream hiện tại thành **A ONLY** (locomotion + push robustness/recovery). **B/F0–F4 ON HOLD** cho tới chỉ thị chuyển nhánh rõ ràng; vẫn giữ North Star get-up lâu dài. Đánh giá thử nghiệm theo information gain, tách bounded exploratory GO khỏi scientific PASS; không bắt lặp các phép thử tái lập chi phí cao như gate tuyệt đối nếu không quyết định được bước A. Giữ EDIT-FIRST và baseline pin.
 - **v1.1.0 — 2026-11-21:** Thêm quy tắc bắt buộc EDIT-FIRST: ưu tiên chỉ rõ file/hàm/diff/lý do/test/rollback để người dùng tự sửa; chỉ tạo file mới khi có nhu cầu độc lập thực sự. Sửa trạng thái bằng chứng M4.65-T1: Brax host reset sau mỗi epoch khi `num_resets_per_eval=1`; 5 rollout cập nhật PPO nhưng không liên tục trạng thái vật lý. Đề xuất thay đúng 2 file runner/audit hiện có; chưa chạy lại GPU.
 - **v1.0.0 — 2026-11-21:** Tạo single source-of-truth cho nghiên cứu G1. Mục tiêu mới bắt buộc: push exposure và recovery **cùng** tự đứng dậy sau ngã rồi tiếp tục command. Khóa cấu hình/baseline, phân biệt termination với fall, bổ sung Gate F0–F4, workflow từng task, và tích hợp Gate3b dose0.50 thực tế.
 
