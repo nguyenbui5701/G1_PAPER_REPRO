@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.0.0  
+**Version:** 1.1.0  
 **Ngày cập nhật:** 2026-11-21 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -99,6 +99,16 @@ Các tư thế nghiên cứu get-up: ngã sấp, ngã ngửa, nằm nghiêng tr�
 8. Cập nhật `CURRENT STATE`, thêm **1 dòng** vào `TASK LEDGER` và `CHANGELOG` khi có thay đổi rules/mục tiêu, bump version. Commit **chỉ file có ý nghĩa** lên nhánh `experiment/b1-hardware-scaled`, không push secrets, cache, huge checkpoint/video hoặc thay `main`/baseline; lưu SHA commit và đường dẫn báo cáo.
 9. Khi trả lời người dùng: ghi rõ đã/chưa chạy, bằng chứng được kiểm tra, còn thiếu gì, lệnh chạy có sẵn, nguồn rủi ro và bước thử **nhỏ nhất đủ trả lời câu hỏi**.
 
+### Quy tắc EDIT-FIRST — sửa file hiện có trước, chỉ tạo file mới khi cần (v1.1.0)
+
+**Mặc định: KHÔNG tạo script, runner, audit, runbook, ZIP, Markdown hoặc artifact mới cho mỗi task.** Ưu tiên đọc lại source + script/evaluator/audit đang sử dụng và **đề xuất cho người dùng tự sửa** số ít dòng nhất tại đúng tầng xảy ra vấn đề. Một task có thể chỉ cần hướng dẫn sửa trực tiếp trong câu trả lời; không cần deliverable mới.
+
+**Trước khi đề xuất thay đổi code, bắt buộc trình bày:** (1) tên file và vị trí/hàm/đoạn có thể tìm bằng `grep`; (2) code đang có và code thay thế hoặc unified diff ngắn; (3) lý do nhân–quả, giả thuyết và bằng chứng nguồn; (4) biến được thay và các biến cố định; (5) tác dụng phụ, độ tương thích source/checkpoint/audit; (6) lệnh syntax/unit/plan/smoke test, tiêu chí PASS/NO-GO và rollback; (7) cần chạy lại training hay chỉ re-audit kết quả cũ. **Không được mặc định sinh toàn bộ file khi một patch vài dòng đã đủ.**
+
+**Chỉ tạo file mới** khi có nhu cầu độc lập thực sự: (a) tách môi trường get-up khỏi source locomotion gốc; (b) yêu cầu artifact có cấu trúc (định dạng báo cáo/manifest/chứng cứ không thể truyền qua chat hoặc log hiện có); (c) quy mô thay đổi lớn, rủi ro mất code, hoặc cần kiểm thử cách ly; (d) người dùng yêu cầu file. Khi tạo, giải thích tại sao sửa file cũ không phù hợp, phạm vi tối thiểu, đặt tên tái sử dụng và tránh tạo nhiều bản `*_v2`, `*_fixed`, `*_hotfix` cho cùng một chức năng. Artifact từ lần chạy do người dùng chủ động sinh (log/report/checkpoint) không bị cấm; nhưng không được phát sinh thêm file hướng dẫn/code lặp lại không cần thiết.
+
+**Không tự ý ghi đè repo trên GitHub** chỉ để sửa source huấn luyện; mặc định gửi hướng dẫn để người dùng tự chỉnh và kiểm thử. Ngoại lệ: người dùng đã yêu cầu **cập nhật rules hiện hành**, hoặc xác nhận muốn assistant sửa repo. Bất kỳ thay đổi nào phải giữ baseline pin và có đường rollback. Nếu phát hiện lỗi giả định/mô tả từ task trước, đính chính công khai trong CURRENT STATE/TASK LEDGER, không tiếp tục dựa trên kết luận cũ.
+
 ### Mẫu biên bản task (copy vào báo cáo hoặc phần TASK LEDGER rút gọn)
 
 ```text
@@ -142,12 +152,15 @@ RULES_VERSION_USED:
 
 **M4.65-T1 prepared offline:** A source-preserving **5 consecutive rollouts** (1,310,720 env steps) from original 401M weights with **fresh Adam** and identical easy push config; NOT a continuation from T0 or previous M4.63 P checkpoint. New separate `m465_probe5_train.py` refuses pilot20/medium/hard, checks T0 audited report and instrumented Brax SHA before training, saves 5 sequential checkpoint states (0/1/2/3/4/5 evals). `m465_probe5_audit.py` checks >=25/50/99 postpush milestones, checkpoint SHA and per-epoch counts. **9/9 offline tests + PLAN PASS, GPU T1 NOT RUN**; no empirical robustness improvement claimed. Output artifact package and runbook available from current conversation. T1 may proceed as a *bounded diagnostic* only, while **20-rollout pilot remains NO-GO** until follow-on fixed-seed gait/push recovery comparison. F0/F1 get-up continues **design only**.
 
+**M4.65-T1 GPU reviewed (2026-11-21; user's three files):** `m465_t1_probe5_20261121_062502.log`, `report(5).json`, `tail_audit.json`: technical/PPO exposure PASS. Five training rollouts, 1,310,720 environment steps, 32,505 pushes in PPO, 375,503 later action transitions, 11.55 action transitions per push; thresholds >=25/50/99 all **ZERO** across all five; peak 8,972/12,288 MiB. Initial 2-env source reward 21.64 and final 6.08 (small stochastic evaluator, warning only). Five saved checkpoint SHAs per report; get-up NOT IMPLEMENTED. **ROOT CAUSE CONFIRMED BY BRAX 0.12.1 SOURCE:** `m465_probe5_train.py` retains `scaled.num_resets_per_eval=1` from source hardware-scaled config while setting `scaled.num_evals=6`. Brax runs exactly 1 PPO rollout per training epoch and then executes `env_state = reset_fn(key_envs) if num_resets_per_eval > 0 else env_state`; therefore host resets ALL training env physical states **after each rollout**, despite optimizer weights continuing. The previous note "5 rollouts share env state" in `m465_probe5_audit.py` was WRONG for the actual T1 configuration. Absence of >=25 action tails is expected under this reset design, NOT proof physical recovery cannot be learned after proper continuous-rollout evaluation. **DECISION:** T1 technical PASS / continuous-postpush-exposure NOT TESTED / robustness NOT PROVEN; 20-rollout pilot, medium/hard/get-up training NO-GO. **EDIT-FIRST candidate for user's local re-run only:** in existing `m465_probe5_train.py`, set `scaled.num_resets_per_eval = 0` with comment and assert prior to `cfg=scaled.to_dict()`; in existing `m465_probe5_audit.py`, add a strict check that `hardware_scaled_config.num_resets_per_eval == 0` before considering tail-coverage PASS. Keep `num_evals=6`, PPO batch size, source, checkpoint and push parameters unchanged. Check syntax/plan, check report config on next run, then check >=25/50/99 and gait. This is an experimental runner config change and requires fresh output/checkpoint SHA, NOT resume from old T1. Follow user rule EDIT-FIRST: **do not generate new runner/audit files**.
+
 **NEXT TASK ƯU TIÊN:** M4.65-T1 `PROBE5_EXTENDED_POSTPUSH_ACTION_GATE`: run only 5 consecutive easy rollouts after verified local T0 provenance, audit count of PPO actions after push across unroll boundaries, and perform NEW fixed-seed C versus T1 checkpoint gait/robustness evaluation. Reject no-data/OOM/nonfinite/nominal regression. Do not call reset 'get-up'. Long PPO pilot/medium/hard/get-up training remain NO-GO until separate gates.
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
 | Ngày | Task | Bằng chứng | Quyết định | Rules |
 |---|---|---|---|---|
+| 2026-11-21 | M4.65 T1 five-rollout GPU review + EDIT-FIRST governance | 32505 actual pushes; >=25 postpush actions 0; Brax host `num_resets_per_eval=1` resets env each epoch; 5 rollouts trained but not physically continuous | Technical PASS / exposure-horizon NO-GO / correct existing runner then re-test / long pilot NO-GO | 1.1.0 |
 | 2026-11-21 | M4.64 T0 user audit + M4.65 T1 offline preparation | 6501 PPO pushes, 75377 subsequent actions, >=25 none; 9/9 offline tests for 5-rollout runner/audit, GPU T1 untested | T0 PASS/exposure only; T1 bounded PROBE GO; long pilot NO-GO; get-up NOT IMPLEMENTED | 1.0.0 |
 | 2026-11-21 | M4.64-T0 audit-only metric naming hotfix | singular/plural mismatch verified in shipped scripts; 5 prior offline tests + alias tests PASS, GPU report not supplied | AUDIT FIX READY / WAIT FOR REAUDIT / NO PPO RERUN | 1.0.0 |
 | 2026-11-21 | M4.64 offline C/P forensics + tail instrumentation preparation | 36 pairs verified; 2 discordant, P nominal flag 6.97%; 5/5 offline tests; T0 GPU pending | DATA PASS / TAIL T0 PENDING / PILOT NO-GO / F0-F1 DESIGN ONLY | 1.0.0 |
@@ -156,6 +169,7 @@ RULES_VERSION_USED:
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
 
+- **v1.1.0 — 2026-11-21:** Thêm quy tắc bắt buộc EDIT-FIRST: ưu tiên chỉ rõ file/hàm/diff/lý do/test/rollback để người dùng tự sửa; chỉ tạo file mới khi có nhu cầu độc lập thực sự. Sửa trạng thái bằng chứng M4.65-T1: Brax host reset sau mỗi epoch khi `num_resets_per_eval=1`; 5 rollout cập nhật PPO nhưng không liên tục trạng thái vật lý. Đề xuất thay đúng 2 file runner/audit hiện có; chưa chạy lại GPU.
 - **v1.0.0 — 2026-11-21:** Tạo single source-of-truth cho nghiên cứu G1. Mục tiêu mới bắt buộc: push exposure và recovery **cùng** tự đứng dậy sau ngã rồi tiếp tục command. Khóa cấu hình/baseline, phân biệt termination với fall, bổ sung Gate F0–F4, workflow từng task, và tích hợp Gate3b dose0.50 thực tế.
 
 ---
