@@ -1,0 +1,9 @@
+# G1 repository agent instructions
+
+Before any research, code change, simulation, PPO training, evaluation, or report in this repository, **read the entire root `G1_RESEARCH_RULES.md`**, especially `CURRENT STATE`, `TASK LEDGER`, and `CHANGELOG`. Treat it as the project source of truth.
+
+**Locked research goal:** retain nominal Unitree G1 locomotion; train with real measured push exposure and recovery; then develop a physically simulated get-up behavior from a genuine fallen state, stabilize, and resume the commanded action. An auto-reset/teleport is **not** get-up. Separate source/paper fidelity from hardware-scaled research extensions.
+
+**Must preserve:** `main`, baseline tags/checkpoints, pinned Playground/Brax source, and existing results. Work only on `experiment/b1-hardware-scaled`. Respect RTX 3060 12-GiB constraints. Prefer reuse/minimal changes to existing scripts. Never run a long pilot or claim improved robustness from PPO reward, event count, or a single reset seed alone.
+
+For every task: document hypothesis, inputs/SHAs, unchanged controls, risk/stop gates, observations versus inference, and GO/NO-GO. After a completed task update `G1_RESEARCH_RULES.md` CURRENT STATE and TASK LEDGER (and increment rules version/CHANGELOG when the rules themselves change). Never silently modify rewards, termination, PD, observation/action semantics, or physics. Experimental get-up changes must remain isolated from the pinned locomotion source.
