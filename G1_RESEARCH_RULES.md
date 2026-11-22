@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.3  
+**Version:** 1.2.4  
 **Ngày cập nhật:** 2026-11-22 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -187,6 +187,119 @@ PY
 
 **Chú ý:** Đây là bootstrap/preflight, không thay bài kiểm thử 12 trường hợp M4.70-K. Task hiện tại phải đính kèm **toàn bộ** logic assertions và `M470K_JAX_SOURCE_EXPR_PASS` trong **một heredoc tự đủ**, đọc nguyên file local SHA `aab0cd38...` và các telemetry expression bằng AST. Không ghép chồng các đoạn từ các tin nhắn cũ. `M470K_JAX_SOURCE_EXPR_PASS` hiện **chưa có output từ owner**. Nhận output rồi mới mở gate MJX tiếp theo; không coi preflight GPU hay JAX expression là PPO recovery.
 
+
+### Lệnh hợp nhất M4.70-K source-expression GPU — bản chuẩn (v1.2.4)
+
+**Phạm vi:** read-only local file inspection + `jax.jit` trên GPU mặc định, **không** MJX physical transition và **không** PPO training. Một lệnh đầy đủ copy/paste thay toàn bộ chuỗi vá lệnh rời rạc trước đây. Mẫu này **chỉ áp dụng cho ba SHA post-edit M4.70-K nêu trong script**, không tái dùng SHA cũ cho task mới; giữ nguyên `g1_m463` và đường dẫn sibling NVCC đã chứng minh. Nếu SHA mismatch thì **STOP** và yêu cầu source local, không tự cập nhật kỳ vọng. Nếu JAX compile hay assertions sai, **STOP** ở source-expression gate; không suy diễn lỗi policy; không tự đổi runtime/CPU. Mỗi case `PASS` là predicate/telemetry *biểu thức* được JIT, chưa xác thực contact MJX hoặc Brax PPO extras.
+
+```bash
+cd ~/nguyenbui/humanoid/G1_PAPER_REPRO
+g1_m463 - <<'PY'
+import ast
+import hashlib
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+
+root = Path.cwd()
+assert root.name == 'G1_PAPER_REPRO', root
+expected = {
+    'm463_coverage_env.py': 'aab0cd38ddbd4f9a4ee54f319429065dcf3924b81108f3a3417748f2182e23b1',
+    'm463_instrument_brax.py': 'e47c4318c9369f98bf9336bf2320e98d5d40da8f1515aa5839bb9cf2ff442866',
+    'm463_push_ppo_train.py': '3f569f3e149987defbe1d10f9a39c40f78b792501c1b21e82db44c4f6c4e006d',
+}
+for name, sha in expected.items():
+    path = root / name
+    assert path.is_file(), f'M470K_MISSING_SOURCE: {name}'
+    observed = hashlib.sha256(path.read_bytes()).hexdigest()
+    assert observed == sha, f'M470K_SOURCE_SHA_MISMATCH: {name} {observed}'
+    ast.parse(path.read_text())
+print('M470K_SOURCE_SHA_GATE_PASS')
+
+# NVCC compatibility MUST be applied before ANY JAX import.
+compat = root.parent / 'G1_M4_0_G1_PPO_ONE_UPDATE_SMOKE_V1'
+assert (compat / 'nvcc_compat.py').is_file(), f'M470K_NO_NVCC_MODULE: {compat}'
+sys.path.insert(0, str(compat))
+from nvcc_compat import apply
+apply()
+import jax
+import jax.numpy as jnp
+assert jax.__version__ == '0.4.35', jax.__version__
+assert jax.default_backend() == 'gpu', jax.default_backend()
+assert jax.devices(), 'M470K_NO_GPU_DEVICE'
+print('M470K_CUDA_BOOTSTRAP_PASS', jax.devices())
+
+source = ast.parse((root / 'm463_coverage_env.py').read_text())
+cls = next(n for n in source.body
+           if isinstance(n, ast.ClassDef) and n.name == 'CoverageJoystick')
+step = next(n for n in cls.body
+            if isinstance(n, ast.FunctionDef) and n.name == 'step')
+order = ('matched','side_target','side_gate','side_matched',
+         'effective_match','deadline','ready','event','repeat','side_event')
+assigned = {}
+for node in step.body:
+    if isinstance(node, ast.Assign):
+        for lhs in node.targets:
+            if isinstance(lhs, ast.Name) and lhs.id in order:
+                assert lhs.id not in assigned, f'M470K_DUPLICATE_{lhs.id}'
+                assigned[lhs.id] = node
+assert set(assigned) == set(order), ('M470K_MISSING', set(order)-set(assigned))
+
+updates = [n for n in ast.walk(step)
+           if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+           and n.func.attr == 'update'
+           and isinstance(n.func.value, ast.Name) and n.func.value.id == 'out']
+assert len(updates) == 1, ('M470K_OUT_UPDATE_COUNT', len(updates))
+vals = {kw.arg:kw.value for kw in updates[0].keywords}
+keys = ('m463_repeat_side_target','m463_repeat_side_matched',
+        'm463_repeat_side_fallback')
+assert all(k in vals for k in keys), ('M470K_TELEMETRY_MISSING', set(keys)-set(vals))
+body = '\n'.join('    '+ast.unparse(assigned[k]).replace('\n','\n    ')
+                 for k in order)
+code = ('def f(direction,count,phase_target,phase_actual,support_side,'
+        'age,next_step,disabled,max_count):\n'+body+
+        '\n    return (ready,event,repeat,side_event,side_target,'+
+        ','.join(ast.unparse(vals[k]) for k in keys)+')\n')
+
+def make(stage):
+    ns = {'jp':jnp,'self':SimpleNamespace(_m463_stage=stage)}
+    exec(code, ns)
+    return jax.jit(ns['f'])  # pinned GPU default; NO CPU override
+
+cases = [
+    ('first_original_phase','easy_repeat_support',3,0,1,1,1,18,17,0,True,0,0,0),
+    ('first_original_wait','easy_repeat_support',3,0,1,2,3,18,17,0,False,0,0,0),
+    ('right_target_hit','easy_repeat_support',3,1,1,1,2,18,17,0,True,2,1,0),
+    ('right_wait_wrong','easy_repeat_support',3,1,1,1,1,18,17,0,False,0,0,0),
+    ('right_timeout','easy_repeat_support',3,1,1,1,1,25,17,0,True,2,0,1),
+    ('left_target_hit','easy_repeat_support',2,1,1,1,1,18,17,0,True,1,1,0),
+    ('left_wait_wrong','easy_repeat_support',2,1,1,1,2,18,17,0,False,0,0,0),
+    ('nonlateral_original','easy_repeat_support',0,1,1,1,2,18,17,0,True,0,0,0),
+    ('old_stage_unchanged','easy_repeat',3,1,1,1,1,18,17,0,True,0,0,0),
+    ('no_push_unchanged','easy_repeat_support',3,1,1,1,2,18,17,1,False,0,0,0),
+    ('not_yet_eligible','easy_repeat_support',3,1,1,1,2,16,17,0,False,0,0,0),
+    ('third_push_disallowed','easy_repeat_support',3,2,1,1,2,18,17,0,False,0,0,0),
+]
+cached = {}
+for name,stage,d,c,pt,pa,side,age,nxt,disabled,ev,target,match,fb in cases:
+    if stage not in cached:
+        cached[stage] = make(stage)
+    args = (d,c,pt,pa,side,age,nxt,disabled,2)
+    result = cached[stage](*[jnp.asarray(v,dtype=jnp.int32) for v in args])
+    ready,event,repeat,side_event,side_target,t,m,f = result
+    got = (bool(event),int(t),int(m),int(f))
+    expected_case = (ev,target,match,fb)
+    assert got == expected_case, (name,got,expected_case)
+    assert int(m)+int(f) == int(t>0), (name,'bad side count')
+    assert int(t) == 0 or bool(repeat), (name,'target without repeat')
+    print('PASS',name)
+print('M470K_JAX_SOURCE_EXPR_PASS')
+PY
+```
+
+**Tiêu chí:** `M470K_SOURCE_SHA_GATE_PASS` → `M470K_CUDA_BOOTSTRAP_PASS` → 12 dòng `PASS <case>` → `M470K_JAX_SOURCE_EXPR_PASS`. Trước khi có stdout thật từ owner, trạng thái vẫn **PENDING**. Bước kế tiếp khi PASS là **một full pinned MJX transition** để kiểm tra geometry contact + side telemetry và đối chiếu Brax metric, không chạy PPO để xác nhận JAX setup. Lệnh đã được kiểm tra cú pháp và thử 12/12 trên nguồn dựng lại trong môi trường JAX tách biệt; **không được coi là owner CUDA PASS**.
+
+**M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-22)
 
@@ -396,6 +509,8 @@ PY
 
 | Ngày | Task | Bằng chứng | Quyết định | Rules |
 |---|---|---|---|---|
+| 2026-11-22 | M4.70-K full GPU one-shot JAX command + error prevention (Rules v1.2.4) | Added §7 canonical full 12-case heredoc, exact three source SHA checks, sibling NVCC pre-import, pinned GPU backend. Historical launch errors already detailed v1.2.1–v1.2.3. No user source-expression stdout yet. | DOCUMENTATION/COMMAND READY; owner JAX GPU 12-case PENDING / MJX PENDING / PPO NO-GO / B HOLD | 1.2.4 |
+|---|---|---|---|---|
 | 2026-11-22 | M4.70-K launcher regression prevention; user confirmed GPU-only runtime | `Default backend: gpu`, devices `CudaDevice(id=0)`, explicit CPU backend unavailable (`Unknown backend cpu`). Prior failures were assistant test-command issues: NVCC patch missing before JAX; sibling module path missing; CPU assumption wrong; direct device-param decorator example wrong. New v1.2.1 §7 preflight rules and full GPU JAX command drafted. Equivalent in-memory reconstructed AST 12/12 PASS, but user-local actual-source GPU JAX PENDING. | RULES ERROR PREVENTION UPDATED; no PPO, MJX or checkpoint; B HOLD | 1.2.1 |
 | 2026-11-22 | M4.70-K import now PASS, default-backend CPU assertion failure | Owner `NVCC_COMPAT metadata_attribute_patched=True`; `import jax` and JIT arithmetic42 executed successfully. Next assert `jax.default_backend() == cpu` fails at line20; CPU device assignment not verified. Proposed explicit `jax.devices('cpu')[0]`+`jax.jit(fn, device=cpu)` and CPU arrays; if unavailable stop. | IMPORT/JIT BASIC PASS; CPU device and 12 AST cases PENDING; PPO/GPU NO-GO; B HOLD | 1.2.0 |
 | 2026-11-22 | M4.70-K NVCC module path missing; resolved from successful evaluator source | User `ModuleNotFoundError: nvcc_compat` even after applying prior advice. Exact uploaded successful evaluator lines435–443 inserts sibling `BASE/'G1_M4_0_G1_PPO_ONE_UPDATE_SMOKE_V1'` into sys.path before `from nvcc_compat import apply; apply(); import jax`. Minimal preflight fix uses `Path.cwd().parent` and sibling file assert, no package change. | IMPORT NOT YET RE-RUN / gate PENDING; no GPU/PPO, source untouched, B HOLD | 1.2.0 |
@@ -448,6 +563,9 @@ PY
 | 2026-11-21 | Research governance | Khóa mục tiêu push → fall → get-up → resume; định nghĩa thước đo và cổng nghiệm thu | RULES ACTIVE; GET-UP NOT IMPLEMENTED | 1.0.0 |
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.4 — 2026-11-22:** Bổ sung vào §7 **một lệnh copy-paste hoàn chỉnh** kiểm tra nguồn local SHA → NVCC sibling-path pre-import → JAX0.4.35 GPU → AST/JIT đầy đủ 12 trường hợp M4.70-K, tránh yêu cầu owner ghép nhiều hướng dẫn. Lưu lại quy tắc phân biệt biểu thức JAX vs physical MJX vs PPO; không thay source/reward/PD/optimizer/checkpoints; chưa nhận stdout owner cho gate mới. Bảo toàn bảng lỗi v1.2.1–v1.2.3.
+
 
 - **v1.2.3 — 2026-11-22:** Theo yêu cầu owner, gom lại và cố định lệnh G1 CUDA preflight copy-paste trong §7 để tránh lỗi lặp: sibling NVCC path và `apply()` trước JAX, xác nhận đúng JAX0.4.35/GPU, không CPU hoặc `@jax.jit(device=...)` sai, kiểm tra SHA local/AST với 12 test trước MJX/PPO. Sửa quy trình cũ còn ghi `JAX/CPU probe` thành GPU backend đã xác minh, giữ nguyên source, checkpoint, physics và workstream A-only. Thực tế chưa nhận owner-run source-expression PASS.
 
