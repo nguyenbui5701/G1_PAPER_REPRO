@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.1  
+**Version:** 1.2.2  
 **Ngày cập nhật:** 2026-11-22 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -147,9 +147,24 @@ RULES_VERSION_USED:
 6. **Source và git được bảo vệ.** `git diff` rỗng đối với file *untracked* không chứng minh file chưa đổi. Sử dụng `sha256sum`, kiểm tra byte/diff trực tiếp các bản được upload; không tự ý `git add`, ghi đè local, sửa `main`, thay pinned source/reward/PD/physics. Lỗi M4.70-J: `audit_coverage` được phép cộng **event counts**, nhưng các **tỷ lệ** cần chuẩn hóa theo số rollout đã quan sát; không chỉnh lại lịch sử bất biến hoặc diễn giải tỷ lệ bị cộng dồn như giá trị thật.
 7. **Kiểm tra command trước khi giao.** Tái dùng đường dẫn compatibility/launcher từ evaluator thực sự PASS, xác nhận script có đủ import và device, đúng cú pháp Python cho pinned JAX; cung cấp **một lệnh đầy đủ copy-paste**, không bắt user ghép những mảnh sửa chồng chéo từ nhiều tin nhắn. Nếu dừng, cung cấp traceback và status, không đoán kết quả hay đề xuất reinstall.
 
+8. **Lệnh hoàn chỉnh và chốt SHA trước JAX/GPU — phòng tránh lỗi thực thi lặp.** Trước khi gửi bất kỳ heredoc JAX/MJX nào, phải (i) tái sử dụng pinned `g1_m463` đã chạy được; (ii) bảo đảm `cd ~/nguyenbui/humanoid/G1_PAPER_REPRO`; (iii) kiểm tra SHA-256 của **đúng file local** sẽ trích AST/test, không lấy SHA bản upload cũ làm bằng chứng hiện hành; (iv) tìm và `apply()` sibling NVCC patch trước JAX; (v) in và khẳng định backend CUDA/GPU có sẵn, không ép CPU; (vi) cung cấp **một lệnh tự đủ** gồm import, logic, assertions và sentinel PASS; (vii) không gọi kết quả PASS trước khi nhận stdout user. Nếu một bước trước JIT fail, chỉ sửa shell/test harness đúng bước đó, giữ nguyên thuật toán và không khởi chạy PPO để thử môi trường.
+
+**Nhật ký lỗi thao tác M4.70-K (tất cả đã biết từ stdout owner, KHÔNG phải lỗi policy):**
+
+| Lỗi đã gặp | Nguyên nhân trực tiếp | Quy tắc tránh tái diễn |
+|---|---|---|
+| `TypeError ... pathlib.Path(cuda_nvcc.__file__) ... NoneType` ngay khi `import jax` | Thiếu `nvcc_compat.apply()` trước import JAX | Bootstrap NVCC trước mọi import JAX hoặc import gián tiếp |
+| `ModuleNotFoundError: nvcc_compat` | Không thêm sibling `G1_M4_0_G1_PPO_ONE_UPDATE_SMOKE_V1` vào `sys.path` | Lấy đường dẫn từ evaluator C/P đã PASS, assert file tồn tại |
+| `AssertionError` khi `jax.default_backend() == 'cpu'` | Giả định CPU trong wrapper chỉ có CUDA | In `jax.default_backend()` và `jax.devices()`, dùng GPU thực tế |
+| `Unknown backend cpu. Available backends are ['cuda']` | Cố gọi `jax.devices('cpu')` trên backend CUDA-only | Cấm ép CPU không có gate; dùng `jax.jit(fn)` trên GPU |
+| `git diff` rỗng cho file untracked | Git không quản lý file đó | Xác minh byte bằng `sha256sum` và so sánh source upload, không kết luận diff=0 |
+
 **Áp dụng riêng M4.70-K:** dùng `g1_m463 - <<'PY'`, sibling `nvcc_compat.apply()` trước import JAX, **GPU mặc định**; trích AST 10 phép gán và 3 side telemetry expressions trực tiếp từ SHA local `aab0cd38...`, chạy 12 cases bằng `jax.jit`, cần `M470K_JAX_SOURCE_EXPR_PASS`. Source static đã được owner xác nhận; GPU expression test và MJX physical transition vẫn **PENDING**. PPO training NO-GO; B ON HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-22)
+
+**M4.70-K PREVENT-REPEAT RULES UPDATE v1.2.2 (2026-11-22):** Owner requested full rerunnable command plus permanent lessons from several JAX launcher errors. Updated §7 with explicit error→cause→prevention table, mandatory local SHA check and one complete GPU-only command. Previous owner output proves `nvcc_compat.apply()` successful, JAX basic JIT arithmetic passed, `jax.default_backend()=gpu`, `jax.devices()=[CudaDevice(id=0)]` and `jax.devices('cpu')` fails because only cuda backend exists. **M470K_JAX_SOURCE_EXPR_PASS remains PENDING** on exact local env SHA `aab0cd38ddbd4f9a4ee54f319429065dcf3924b81108f3a3417748f2182e23b1`; do not claim source/MJX behavior PASS until user supplies complete stdout. No PPO run, no branch B work.
+
 
 **M4.70-K OWNER GPU-ONLY JAX BACKEND CONFIRMED; FINAL FULL COMMAND REISSUED (2026-11-22; v1.2.1):** User printed `Default backend: gpu`, `Available devices: [CudaDevice(id=0)]`; forcing `jax.devices('cpu')` raised `Unknown backend cpu. Available backends are ['cuda']`. Thus assistant earlier CPU-default assumption, CPU-specific assertion, and CPU device workaround were incorrect for actual `g1_m463` environment. Prior errors (no `nvcc_compat.apply()` before JAX; sibling `nvcc_compat.py` missing from sys.path; wrong backend assertion) are **launcher/test harness mistakes**, not evidence of M4.70-K policy failure. Owner local NVCC compatibility did patch metadata and JAX basic JIT arithmetic42 succeeded. Reissue **single complete** full AST-source-expression 12-case script using GPU default and correct sibling NVCC import; no `JAX_PLATFORMS=cpu` or CPU device. Equivalent (not owner current source) in-memory reconstructed treatment AST was run and all 12 cases PASS on isolated JAX, but actual owner source SHA `aab0cd38...` GPU test is **not yet reported**. No PPO/MJX train; no new checkpoint; H not promoted; Branch B HOLD. Procedural errors incorporated into new §7 rules v1.2.1; historical ledger retained unchanged.
 
@@ -343,6 +358,8 @@ RULES_VERSION_USED:
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-22 | M4.70-K repeat-failure-prevention rules v1.2.2 | Owner requested one runnable GPU JAX command and permanent record of NVCC import order/path, wrong CPU backend, and untracked Git diff mistakes. Added §7 mandatory SHA/launcher GPU preflight and 5-error matrix; source-expression and physical MJX still pending. | RULES UPDATE COMMITTED / TEST NOT YET RERUN / PPO NO-GO / B HOLD | 1.2.2 |
+
 | Ngày | Task | Bằng chứng | Quyết định | Rules |
 |---|---|---|---|---|
 | 2026-11-22 | M4.70-K launcher regression prevention; user confirmed GPU-only runtime | `Default backend: gpu`, devices `CudaDevice(id=0)`, explicit CPU backend unavailable (`Unknown backend cpu`). Prior failures were assistant test-command issues: NVCC patch missing before JAX; sibling module path missing; CPU assumption wrong; direct device-param decorator example wrong. New v1.2.1 §7 preflight rules and full GPU JAX command drafted. Equivalent in-memory reconstructed AST 12/12 PASS, but user-local actual-source GPU JAX PENDING. | RULES ERROR PREVENTION UPDATED; no PPO, MJX or checkpoint; B HOLD | 1.2.1 |
@@ -397,6 +414,9 @@ RULES_VERSION_USED:
 | 2026-11-21 | Research governance | Khóa mục tiêu push → fall → get-up → resume; định nghĩa thước đo và cổng nghiệm thu | RULES ACTIVE; GET-UP NOT IMPLEMENTED | 1.0.0 |
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.2 — 2026-11-22:** Chuẩn hóa preflight một-lệnh-heredoc cho đúng backend GPU đã pin; SHA source local trước test, path sibling NVCC trước import JAX, assert CUDA backend, chỉ báo PASS sau stdout thực. Thêm bảng 5 lỗi tác nghiệp M4.70-K (NVCC import order, thiếu sys.path, ép CPU sai, CUDA-only, git untracked) và cách chặn. Không thay đổi mô hình, reward, physics, PPO, baseline, North Star hoặc ưu tiên nhánh A/B.
+
 
 - **v1.2.1 — 2026-11-22:** Bổ sung quy tắc chặn tái diễn lỗi command/JAX từ M4.70-K: pinned CUDA GPU-only, không ép CPU khi `g1_m463` không hỗ trợ; dùng đúng sibling `nvcc_compat` và chạy `apply()` trước mọi import JAX; kiểm tra backend/JAX decorator; phân tầng nguồn lỗi import vs algorithm vs MJX vs PPO; phát lại **một lệnh đầy đủ** có kiểm tra SHA và điều kiện dừng, không dùng `git diff` rỗng trên untracked như chứng cứ; giữ phân biệt additive counts và rates M4.70-J. Không đổi North Star, Branch A/B, baseline hay nguồn paper.
 
