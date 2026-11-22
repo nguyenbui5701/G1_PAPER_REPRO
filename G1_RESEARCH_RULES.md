@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.2  
+**Version:** 1.2.3  
 **Ngày cập nhật:** 2026-11-22 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -97,7 +97,7 @@ Các tư thế nghiên cứu get-up: ngã sấp, ngã ngửa, nằm nghiêng tr�
 
 **Trong task:**
 
-4. Theo thứ tự `static inspect → plan → JAX/CPU probe → GPU smoke → evaluation fixed seeds → pilot` và không bỏ qua các gate. Chỉ một GPU job nặng cùng lúc, theo dõi VRAM và lỗi/NaN. Bất cứ lỗi import / NVCC / state shape / Orbax nào phải sửa tại đúng tầng, ưu tiên mã cũ, không tạo chuỗi script workaround mới.
+4. Theo thứ tự `static inspect → plan → JAX read-only probe trên backend G1 đã xác minh (GPU/CUDA) → MJX full transition → GPU PPO smoke khi được duyệt riêng → evaluation fixed seeds → pilot` và không bỏ qua các gate. **Không tự ý áp dụng CPU probe** trên runtime `g1_m463` chỉ có CUDA; mọi bài kiểm tra nhỏ đều phải phân biệt với PPO training. Chỉ một GPU job nặng cùng lúc, theo dõi VRAM và lỗi/NaN. Bất cứ lỗi import / NVCC / state shape / Orbax nào phải sửa tại đúng tầng, ưu tiên mã cũ, không tạo chuỗi script workaround mới.
 5. Không train mới hay nâng difficulty chỉ để lấy reward tốt. Thống kê exposure phải đo trên dữ liệu PPO. Mọi checkpoint/output dùng timestamp và tạo mới, không overwrite artifacts nguyên gốc; log cả stderr/stdout.
 6. Nếu xuất hiện NO-GO (OOM, dữ liệu không đủ, SHA mismatch, nonfinite, suy giảm nominal rõ, phase/push không xuất hiện, sai pairing, get-up bằng reset), giữ file lỗi và báo cáo, **không diễn giải thành PASS**.
 
@@ -161,7 +161,38 @@ RULES_VERSION_USED:
 
 **Áp dụng riêng M4.70-K:** dùng `g1_m463 - <<'PY'`, sibling `nvcc_compat.apply()` trước import JAX, **GPU mặc định**; trích AST 10 phép gán và 3 side telemetry expressions trực tiếp từ SHA local `aab0cd38...`, chạy 12 cases bằng `jax.jit`, cần `M470K_JAX_SOURCE_EXPR_PASS`. Source static đã được owner xác nhận; GPU expression test và MJX physical transition vẫn **PENDING**. PPO training NO-GO; B ON HOLD.
 
+**Mẫu bootstrap dùng lại cho mọi heredoc JAX/MJX với `g1_m463` (v1.2.3).** Đặt đầu lệnh trước phần phép thử chuyên biệt; kiểm tra đúng SHA của các file đang dùng *trước* đoạn này. Không cần tạo script mới và tuyệt đối không ép CPU:
+
+```bash
+cd ~/nguyenbui/humanoid/G1_PAPER_REPRO
+g1_m463 - <<'PY'
+import sys
+from pathlib import Path
+root = Path.cwd()
+assert root.name == 'G1_PAPER_REPRO', root
+compat = root.parent / 'G1_M4_0_G1_PPO_ONE_UPDATE_SMOKE_V1'
+assert (compat / 'nvcc_compat.py').is_file(), compat
+sys.path.insert(0, str(compat))
+from nvcc_compat import apply
+apply()  # before any JAX import
+import jax
+import jax.numpy as jnp
+assert jax.__version__ == '0.4.35', jax.__version__
+assert jax.default_backend() == 'gpu', jax.default_backend()
+assert jax.devices(), 'NO_CUDA_DEVICE'
+assert int(jax.jit(lambda x: x * 2)(jnp.asarray(21))) == 42
+print('G1_PINNED_CUDA_PREIMPORT_PASS', jax.devices())
+PY
+```
+
+**Chú ý:** Đây là bootstrap/preflight, không thay bài kiểm thử 12 trường hợp M4.70-K. Task hiện tại phải đính kèm **toàn bộ** logic assertions và `M470K_JAX_SOURCE_EXPR_PASS` trong **một heredoc tự đủ**, đọc nguyên file local SHA `aab0cd38...` và các telemetry expression bằng AST. Không ghép chồng các đoạn từ các tin nhắn cũ. `M470K_JAX_SOURCE_EXPR_PASS` hiện **chưa có output từ owner**. Nhận output rồi mới mở gate MJX tiếp theo; không coi preflight GPU hay JAX expression là PPO recovery.
+
+
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-22)
+
+**M4.70-K OPERATIONAL RESUME / RULES v1.2.3 (2026-11-22, A ONLY):** Owner requested consolidated exact rerun instructions and permanent prevention notes in existing rules (EDIT-FIRST). Rules v1.2.2 already stored five launcher mistakes, but mandatory §7 task sequence still misleadingly said `JAX/CPU probe`; corrected to **verified G1 GPU/CUDA** and now includes a reusable complete `g1_m463` sibling-`nvcc_compat.apply()`-before-JAX heredoc. For M4.70-K run a **single complete GPU JAX 12-case AST-source-expression probe**, with exact local SHA pins: env `aab0cd38ddbd4f9a4ee54f319429065dcf3924b81108f3a3417748f2182e23b1`, instrument `e47c4318c9369f98bf9336bf2320e98d5d40da8f1515aa5839bb9cf2ff442866`, runner `3f569f3e149987defbe1d10f9a39c40f78b792501c1b21e82db44c4f6c4e006d`. Assert all SHAs before import, apply sibling NVCC patch before any JAX, assert JAX0.4.35 default GPU, run 12 JIT cases. **Status so far:** `M470K_STATIC_PASS` user-reported, NVCC import and JAX basic JIT PASS, default GPU/CudaDevice confirmed, CPU backend unavailable; owner has NOT yet reported 12-case `M470K_JAX_SOURCE_EXPR_PASS`. Assistant exercised 12/12 against a reconstructed source on isolated CPU JAX 0.9, which confirms only syntax/logic feasibility, NOT the user's exact local CUDA run. Next after actual local JAX PASS: full pinned MJX step with genuine foot-floor contact and Brax instrumented metrics reconciliation; do NOT start PPO just to test launcher. No source/optimizer/reward/PD/model changed, H checkpoint unpromoted, branch B ON HOLD.
+
+
 
 **M4.70-K PREVENT-REPEAT RULES UPDATE v1.2.2 (2026-11-22):** Owner requested full rerunnable command plus permanent lessons from several JAX launcher errors. Updated §7 with explicit error→cause→prevention table, mandatory local SHA check and one complete GPU-only command. Previous owner output proves `nvcc_compat.apply()` successful, JAX basic JIT arithmetic passed, `jax.default_backend()=gpu`, `jax.devices()=[CudaDevice(id=0)]` and `jax.devices('cpu')` fails because only cuda backend exists. **M470K_JAX_SOURCE_EXPR_PASS remains PENDING** on exact local env SHA `aab0cd38ddbd4f9a4ee54f319429065dcf3924b81108f3a3417748f2182e23b1`; do not claim source/MJX behavior PASS until user supplies complete stdout. No PPO run, no branch B work.
 
@@ -358,6 +389,9 @@ RULES_VERSION_USED:
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-22 | M4.70-K Rules v1.2.3 consolidated GPU rerun / correction | §7 corrected obsolete `JAX/CPU probe` to pinned GPU CUDA; inserted canonical sibling nvcc bootstrap heredoc, retained five-error matrix and added SHA/AST 12-case gate preconditions. Owner has static PASS, JAX import+basic JIT PASS, but exact-source 12-case stdout not received. | RULES REVISED / JAX SOURCE-EXPR PENDING / MJX PENDING / PPO NO-GO / B HOLD | 1.2.3 |
+
+
 | 2026-11-22 | M4.70-K repeat-failure-prevention rules v1.2.2 | Owner requested one runnable GPU JAX command and permanent record of NVCC import order/path, wrong CPU backend, and untracked Git diff mistakes. Added §7 mandatory SHA/launcher GPU preflight and 5-error matrix; source-expression and physical MJX still pending. | RULES UPDATE COMMITTED / TEST NOT YET RERUN / PPO NO-GO / B HOLD | 1.2.2 |
 
 | Ngày | Task | Bằng chứng | Quyết định | Rules |
@@ -414,6 +448,9 @@ RULES_VERSION_USED:
 | 2026-11-21 | Research governance | Khóa mục tiêu push → fall → get-up → resume; định nghĩa thước đo và cổng nghiệm thu | RULES ACTIVE; GET-UP NOT IMPLEMENTED | 1.0.0 |
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.3 — 2026-11-22:** Theo yêu cầu owner, gom lại và cố định lệnh G1 CUDA preflight copy-paste trong §7 để tránh lỗi lặp: sibling NVCC path và `apply()` trước JAX, xác nhận đúng JAX0.4.35/GPU, không CPU hoặc `@jax.jit(device=...)` sai, kiểm tra SHA local/AST với 12 test trước MJX/PPO. Sửa quy trình cũ còn ghi `JAX/CPU probe` thành GPU backend đã xác minh, giữ nguyên source, checkpoint, physics và workstream A-only. Thực tế chưa nhận owner-run source-expression PASS.
+
 
 - **v1.2.2 — 2026-11-22:** Chuẩn hóa preflight một-lệnh-heredoc cho đúng backend GPU đã pin; SHA source local trước test, path sibling NVCC trước import JAX, assert CUDA backend, chỉ báo PASS sau stdout thực. Thêm bảng 5 lỗi tác nghiệp M4.70-K (NVCC import order, thiếu sys.path, ép CPU sai, CUDA-only, git untracked) và cách chặn. Không thay đổi mô hình, reward, physics, PPO, baseline, North Star hoặc ưu tiên nhánh A/B.
 
