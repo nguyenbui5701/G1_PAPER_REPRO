@@ -119,7 +119,7 @@ def m470_fingerprint(scaled_config):
     ).encode('utf8')).hexdigest()
 
 
-def m470_resume_manifest(path: Path, fingerprint, instrument_sha):
+def m470_resume_manifest(path: Path, fingerprint, instrument_sha, batches_per_eval):
     if path.is_symlink() or not path.is_file() or path.suffix != '.msgpack':
         raise RuntimeError('M470_RESUME_PATH_INVALID')
     manifest_path = path.with_suffix('.json')
@@ -133,6 +133,7 @@ def m470_resume_manifest(path: Path, fingerprint, instrument_sha):
         'runner_sha256': digest(Path(__file__)),
         'config_fingerprint': fingerprint,
         'instrumented_brax_sha256': instrument_sha,
+        'rollouts_per_epoch': batches_per_eval,
     }
     for key, value in expected.items():
         if meta.get(key) != value:
@@ -213,7 +214,8 @@ def run(args):
             raise RuntimeError('M470_FULLSTATE_REQUIRES_ONE_GPU_PROCESS')
         if args.resume_state is not None:
             resume_meta = m470_resume_manifest(
-                args.resume_state, fp, instrument_meta['instrumented_sha256'])
+                args.resume_state, fp, instrument_meta['instrumented_sha256'],
+                batches // (scaled.num_evals - 1))
             prior_step = resume_meta['cumulative_steps']
             cfg['restore_checkpoint_path'] = None
             cfg['m470_resume_state_path'] = str(args.resume_state.resolve())
@@ -324,6 +326,7 @@ def run(args):
             'runner_sha256':digest(Path(__file__)),
             'config_fingerprint':fp,
             'instrumented_brax_sha256':instrument_meta['instrumented_sha256'],
+            'rollouts_per_epoch':batches // (scaled.num_evals - 1),
             'cumulative_steps':int(step),
             'fullstate_sha256':hashlib.sha256(raw).hexdigest(),
             'parent_resume_sha256':(resume_meta['fullstate_sha256']
