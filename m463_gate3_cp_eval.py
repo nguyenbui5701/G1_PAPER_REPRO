@@ -29,6 +29,7 @@ PIN = '9bcbe736177472ba35d60773e3030a36e37962b7'
 BASE_SHA = '1ccf579ea35d4518713b00ea20d77db8463bc469b7de903b8f10f457b3dc90b8'
 TRAIN_SHA = 'e20613d42bf0868a13003e0312998816cc8d3593bb5ccaf9f1d070fd09c44bd7'
 H_SHA = 'a3dd9f811364820197f73e29926c7f1565ba25fb6103d4e094703da7de6b6dcd'
+M470_10M_SHA = '0a011b6a3011f126a29832e4faa18972d7fbdddef77b63414219a15abab8314a'
 PROFILES = {
     'stand': (0.0,0.0,0.0),
     'straight': (0.4,0.0,0.0),
@@ -56,6 +57,88 @@ def read_m463_smoke_report(path, checkpoint):
     """Fail closed: only the verified M4.63 easy smoke checkpoint is accepted."""
     report=json.loads(Path(path).read_text(encoding='utf8'))
     mode = report.get('mode')
+
+    if mode == 'longtrain':
+        cfg = report.get('hardware_scaled_config') or {}
+        cov = report.get('coverage') or {}
+        counts = cov.get('counts') or {}
+        entries = report.get('checkpoints') or []
+
+        checks = {
+            'status': report.get('status') == 'M463_COVERAGE_LONGTRAIN_PASS',
+            'stage': report.get('stage') == 'easy_repeat_support',
+            'independent': (
+                report.get('independent_budget') == '10M'
+                and report.get('experiment_design')
+                    == 'INDEPENDENT_C401M_SINGLE_PROCESS'
+            ),
+            'source': (
+                report.get('source_commit') == PIN
+                and report.get('source_checkpoint_sha256') == BASE_SHA
+            ),
+            'warmstart': (
+                report.get('trained_from')
+                    == 'C401M_WEIGHTS_ONLY_ADAM_STARTED_ONCE'
+                and report.get('cumulative_steps_start') == 0
+                and report.get('resume_fullstate_sha256') is None
+            ),
+            'budget': (
+                report.get('steps_observed') == 10485760
+                and report.get('rollouts_target') == 40
+                and report.get('training_seed') == 1
+            ),
+            'ppo_config': all(
+                cfg.get(key) == value
+                for key, value in {
+                    'num_envs': 8192,
+                    'unroll_length': 32,
+                    'batch_size': 1024,
+                    'num_minibatches': 8,
+                    'num_updates_per_batch': 5,
+                    'num_evals': 6,
+                    'num_resets_per_eval': 1,
+                    'num_timesteps': 10485760,
+                }.items()
+            ),
+            'training': (
+                report.get('training_performed') is True
+                and report.get('source_push_disabled_in_custom_train_env') is True
+            ),
+            'health': (
+                report.get('weights_finite') is True
+                and report.get('memory_gate_pass') is True
+                and report.get('coverage_gate_pass') is True
+                and report.get('callback_vs_final_equal') is True
+                and report.get('final_tensor_count') == 25
+            ),
+            'exposure': (
+                cov.get('passed') is True
+                and cov.get('push_events_observed', 0) > 0
+                and counts.get(
+                    'training/m463_repeat_side_matched_per_rollout', 0
+                ) > 0
+            ),
+            'checkpoints': (
+                [x.get('steps') for x in entries]
+                == [2097152 * i for i in range(1, 6)]
+            ),
+        }
+
+        if not all(checks.values()):
+            raise RuntimeError(
+                'M470_10M_INVALID_REPORT '
+                + str([k for k, v in checks.items() if not v])
+            )
+
+        ck = entries[-1]
+        if (
+            ck.get('file') != Path(checkpoint).name
+            or ck.get('sha256') != M470_10M_SHA
+            or sha256(checkpoint) != M470_10M_SHA
+        ):
+            raise RuntimeError('M470_10M_CHECKPOINT_SHA_MISMATCH')
+
+        return report
 
     modes = {
         'smoke': ('M463_COVERAGE_SMOKE_PASS', 262144, 1),
@@ -791,6 +874,24 @@ def run(args):
                             'single_push_terminated_before_second_event'
                         )
                     else:
+                        before_second = pushed[
+                            args.second_push_step - args.push_step - 1
+                        ]                   
+
+                        second['pre_second_push_support'] = {
+                            'step': args.second_push_step - 1,
+                            **{
+                                key: before_second[key]
+                                for key in (
+                                    'lf_ground_contact',
+                                    'rf_ground_contact',
+                                    'phase_left_post_rad',
+                                    'phase_right_post_rad',
+                                    'height',
+                                    'tilt_deg',
+                                )
+                            },
+                        }
                         heading2 = yaw_from_root_quat(
                             np.asarray(
                                 jax.device_get(
@@ -899,7 +1000,9 @@ def run(args):
         'checkpoint_sha256':{'C':sha256(args.checkpoint_c),'P':sha256(args.checkpoint_p)},
         'train_steps_P': report_p['steps_observed'],
         'policy_P_is': (
-            'M470H_PROBE2'
+            'M470_INDEPENDENT_C401M_PLUS10M'
+            if report_p['mode'] == 'longtrain'
+            else 'M470H_PROBE2'
             if report_p['mode'] == 'probe2'
             else 'M463_PREVIOUS'
         ),
