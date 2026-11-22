@@ -163,7 +163,7 @@ def run(args):
             raise RuntimeError('M470_LONGTRAIN_STAGE_LOCKED')
         if (args.rollouts is None or args.rollouts < 1 or
                 args.num_evals is None or args.num_evals < 2 or
-                args.rollouts > 40 or
+                args.num_evals > 6 or args.rollouts > 40 or
                 args.rollouts % (args.num_evals - 1) != 0):
             raise RuntimeError('M470_LONGTRAIN_BUDGET_NOT_DIVISIBLE')
         batches = args.rollouts
@@ -383,7 +383,7 @@ def run(args):
         if batches_per_eval*(scaled.num_evals-1)!=batches:
             raise RuntimeError('M463_INVALID_EVAL_BATCH_COUNT')
         audit=audit_coverage(history,batches_per_eval)
-        if args.mode in ('smoke3', 'longtrain'):
+        if args.mode == 'smoke3' or (longtrain and batches >= 3):
             c = audit['counts']
 
             t = c.get(PREFIX+'repeat_side_targeted_per_rollout', 0.0)
@@ -407,12 +407,15 @@ def run(args):
         memory_ok=(gpu['peak_used_mib'] is not None and gpu['total_mib'] is not None
                    and gpu['peak_used_mib']<gpu['total_mib']*0.95)
         report.update(steps_observed=expected,run_steps_observed=scaled.num_timesteps,
+                      resume_proof_only=bool(longtrain and batches < 3),
                       final_tensor_count=n,weights_finite=True,
                       callback_vs_final_equal=True,coverage=audit,
                       coverage_gate_pass=audit['passed'],memory_gate_pass=memory_ok,
                       finished_at_unix=time.time())
         ok=audit['passed'] and memory_ok and not gpu['sampler_errors']
-        report['status']='M463_COVERAGE_'+args.mode.upper()+'_PASS' if ok else 'M463_COVERAGE_GATE_FAIL'
+        report['status'] = ('M470_FULLSTATE_RESUME_PROOF_ONLY' if longtrain and batches < 3 and ok
+                            else 'M463_COVERAGE_'+args.mode.upper()+'_PASS' if ok
+                            else 'M463_COVERAGE_GATE_FAIL')
         persist()
         print('M463_END',report['status'],'training_push_events',audit['push_events_observed'],
               'vram_peak_mib',gpu['peak_used_mib'],flush=True)
