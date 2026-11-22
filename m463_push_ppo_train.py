@@ -108,6 +108,43 @@ def audit_coverage(history, batches_by_eval):
             'notes':'Events counted from Brax PPO transition extras, before SGD; no inference from configured push interval.'}
 
 
+
+def m470_fingerprint(scaled_config):
+    """Hash all training semantics, excluding chunk size and eval cadence."""
+    fixed = copy.deepcopy(scaled_config)
+    fixed.pop('num_timesteps', None)
+    fixed.pop('num_evals', None)
+    return hashlib.sha256(json.dumps(
+        fixed, sort_keys=True, separators=(',', ':'), default=str
+    ).encode('utf8')).hexdigest()
+
+
+def m470_resume_manifest(path: Path, fingerprint, instrument_sha):
+    if path.is_symlink() or not path.is_file() or path.suffix != '.msgpack':
+        raise RuntimeError('M470_RESUME_PATH_INVALID')
+    manifest_path = path.with_suffix('.json')
+    if manifest_path.is_symlink() or not manifest_path.is_file():
+        raise RuntimeError('M470_RESUME_MANIFEST_MISSING')
+    meta = json.loads(manifest_path.read_text('utf8'))
+    expected = {
+        'format': 'M470_PPO_FULLSTATE_RESET_EDGE_V1',
+        'stage': 'easy_repeat_support',
+        'source_checkpoint_sha256': SEED1_SHA,
+        'runner_sha256': digest(Path(__file__)),
+        'config_fingerprint': fingerprint,
+        'instrumented_brax_sha256': instrument_sha,
+    }
+    for key, value in expected.items():
+        if meta.get(key) != value:
+            raise RuntimeError('M470_RESUME_MANIFEST_MISMATCH '+key)
+    if meta.get('fullstate_sha256') != digest(path):
+        raise RuntimeError('M470_RESUME_FULLSTATE_SHA_MISMATCH')
+    steps = meta.get('cumulative_steps')
+    if not isinstance(steps, int) or steps <= 0 or steps % TOTAL_STEPS_BATCH:
+        raise RuntimeError('M470_RESUME_STEPS_INVALID')
+    return meta
+
+
 def run(args):
     if args.output_dir.exists():
         raise FileExistsError('M463_REFUSE_TO_OVERWRITE_OUTPUT_DIRECTORY')
@@ -119,6 +156,19 @@ def run(args):
     report_gate,orbax_dir=read_restore_gate(args.restore_report,args.checkpoint)
     if args.mode in ('probe2', 'pilot'):
         ensure_smoke_gate(args.smoke_report,args.stage,report_gate['orbax_dir_sha256'])
+    longtrain = args.mode == 'longtrain'
+    if longtrain:
+        if args.stage != 'easy_repeat_support':
+            raise RuntimeError('M470_LONGTRAIN_STAGE_LOCKED')
+        if (args.rollouts is None or args.rollouts < 1 or
+                args.num_evals is None or args.num_evals < 2 or
+                args.rollouts % (args.num_evals - 1) != 0):
+            raise RuntimeError('M470_LONGTRAIN_BUDGET_NOT_DIVISIBLE')
+        batches = args.rollouts
+    else:
+        if args.rollouts is not None or args.num_evals is not None or args.resume_state is not None:
+            raise RuntimeError('M470_LONGTRAIN_FLAGS_REQUIRE_LONGTRAIN_MODE')
+        batches = BATCHES[args.mode]
     gpu_initial=sample_gpu()
     # This checks source pin, GPU, Brax source SHA, config, domain randomizer.
     api=check_source_and_config('A')
@@ -138,21 +188,34 @@ def run(args):
     # Original source-driven randomized evaluation; only 2 envs as previous.
     eval_env=api['locomotion'].load(api['env_name'],config=source_cfg)
     scaled=api['scaled']
-    scaled.num_timesteps=BATCHES[args.mode]*TOTAL_STEPS_BATCH
-    scaled.num_evals = 2 if args.mode in ('smoke', 'probe2', 'smoke3') else 6
+    scaled.num_timesteps=batches*TOTAL_STEPS_BATCH
+    scaled.num_evals = args.num_evals if longtrain else (2 if args.mode in ('smoke', 'probe2', 'smoke3') else 6)
     assert scaled.num_envs==8192 and scaled.num_minibatches==8
     assert scaled.unroll_length==32 and scaled.batch_size==1024
     assert scaled.num_updates_per_batch==5 and scaled.action_repeat==1
     cfg=scaled.to_dict()
-    if args.mode == 'smoke3' and cfg.get('num_resets_per_eval') != 1:
+    if args.mode in ('smoke3', 'longtrain') and cfg.get('num_resets_per_eval') != 1:
         raise RuntimeError('M470_SMOKE3_REQUIRES_CONTINUOUS_ENV_STATE')
+    fp = m470_fingerprint(scaled.to_dict()) if longtrain else None
     net_cfg=cfg.pop('network_factory')
     cfg.update(seed=1,randomization_fn=api['randomizer'],
                restore_checkpoint_path=str(orbax_dir.resolve()))
     out=args.output_dir
     out.mkdir(parents=True,exist_ok=False)
     instrumented_ppo,instrument_meta=build_instrumented_ppo(
-        api['ppo'],out/'m463_brax_ppo_instrumented.py')
+        api['ppo'],out/'m463_brax_ppo_instrumented.py',
+        enable_resume=longtrain)
+    prior_step = 0
+    resume_meta = None
+    if longtrain:
+        if jax.process_count() != 1 or jax.local_device_count() != 1:
+            raise RuntimeError('M470_FULLSTATE_REQUIRES_ONE_GPU_PROCESS')
+        if args.resume_state is not None:
+            resume_meta = m470_resume_manifest(
+                args.resume_state, fp, instrument_meta['instrumented_sha256'])
+            prior_step = resume_meta['cumulative_steps']
+            cfg['restore_checkpoint_path'] = None
+            cfg['m470_resume_state_path'] = str(args.resume_state.resolve())
     report_path=out/'report.json'
     history=[];checkpoints=[]
     report={
@@ -182,6 +245,18 @@ def run(args):
         'gpu_initial':gpu_initial,
         'training_performed':False,'report_history':history,'checkpoints':checkpoints,
     }
+    if longtrain:
+        report.update(
+            trained_from=('C401M_WEIGHTS_ONLY_ADAM_STARTED_ONCE'
+                          if resume_meta is None else 'FULL_OPTIMIZER_STATE_RESUME'),
+            config_fingerprint=fp,
+            cumulative_steps_start=prior_step,
+            cumulative_steps_target=prior_step + scaled.num_timesteps,
+            resume_fullstate_sha256=(resume_meta['fullstate_sha256']
+                                      if resume_meta is not None else None),
+            fullstate_checkpoints=[],
+            checkpoint_semantics='optimizer+model+normalizer+env_steps+training_rng+eval_rng; deterministic reset epoch boundary',
+        )
     def persist():
         tmp=report_path.with_suffix('.json.tmp')
         tmp.write_text(json.dumps(report,indent=2,ensure_ascii=False,allow_nan=False)+'\n',encoding='utf8')
@@ -217,6 +292,58 @@ def run(args):
         persist()
         print('M463_CHECKPOINT',int(step),name,flush=True)
 
+    def save_fullstate(step, bundle):
+        # Host callback is called only AFTER the epoch's reset and evaluation.
+        if not longtrain:
+            raise RuntimeError('M470_UNEXPECTED_FULLSTATE_CALLBACK')
+        if step <= prior_step or step > prior_step + scaled.num_timesteps:
+            raise RuntimeError('M470_FULLSTATE_STEP_OUT_OF_RANGE')
+        bundle = jax.device_get(bundle)
+        restored_step = int(bundle['training_state'].env_steps)
+        if restored_step != int(step):
+            raise RuntimeError('M470_FULLSTATE_STEP_MISMATCH')
+        for leaf in jax.tree_util.tree_leaves(bundle['training_state']):
+            if not np.all(np.isfinite(np.asarray(leaf))):
+                raise RuntimeError('M470_NONFINITE_FULLSTATE')
+        raw = serialization.to_bytes(bundle)
+        roundtrip = serialization.from_bytes(bundle, raw)
+        if jax.tree_util.tree_structure(roundtrip) != jax.tree_util.tree_structure(bundle):
+            raise RuntimeError('M470_FULLSTATE_ROUNDTRIP_STRUCTURE')
+        for original, decoded in zip(
+                jax.tree_util.tree_leaves(bundle),
+                jax.tree_util.tree_leaves(roundtrip)):
+            np.testing.assert_array_equal(np.asarray(original), np.asarray(decoded))
+        file = out / f'm470_fullstate_step_{step:09d}.msgpack'
+        meta_file = file.with_suffix('.json')
+        info = {
+            'format':'M470_PPO_FULLSTATE_RESET_EDGE_V1',
+            'stage':args.stage,
+            'source_checkpoint_sha256':SEED1_SHA,
+            'runner_sha256':digest(Path(__file__)),
+            'config_fingerprint':fp,
+            'instrumented_brax_sha256':instrument_meta['instrumented_sha256'],
+            'cumulative_steps':int(step),
+            'fullstate_sha256':hashlib.sha256(raw).hexdigest(),
+            'parent_resume_sha256':(resume_meta['fullstate_sha256']
+                                     if resume_meta is not None else None),
+            'reset_edge':True,
+            'optimizer_state_included':True,
+            'training_rng_included':True,
+            'evaluator_rng_included':True,
+        }
+        with file.open('xb') as stream:
+            stream.write(raw)
+        with meta_file.open('x', encoding='utf8') as stream:
+            json.dump(info, stream, indent=2, allow_nan=False)
+            stream.write('\n')
+        report['fullstate_checkpoints'].append({
+            'steps':int(step), 'file':file.name,
+            'sha256':info['fullstate_sha256'],
+            'manifest':meta_file.name})
+        persist()
+        print('M470_FULLSTATE_CHECKPOINT',int(step),file.name,
+              info['fullstate_sha256'],flush=True)
+
     monitor=GPUMonitor()
     try:
         with monitor:
@@ -226,11 +353,12 @@ def run(args):
                 wrap_env_fn=api['wrapper'].wrap_for_brax_training,
                 network_factory=functools.partial(api['networks'].make_ppo_networks,**net_cfg),
                 progress_fn=progress,policy_params_fn=save_policy,
+                **({'m470_state_checkpoint_fn': save_fullstate} if longtrain else {}),
                 **cfg)
         gpu=monitor.snapshot()
         report.update(gpu_peak_mib=gpu['peak_used_mib'],gpu_total_mib=gpu['total_mib'],
                       gpu_samples=gpu['samples'],gpu_monitor_errors=gpu['sampler_errors'])
-        expected=scaled.num_timesteps
+        expected=prior_step+scaled.num_timesteps if longtrain else scaled.num_timesteps
         if not history or history[-1]['additional_steps']!=expected:
             raise RuntimeError('M463_STEP_BUDGET_INCOMPLETE')
         if not checkpoints or checkpoints[-1]['steps']!=expected:
@@ -243,11 +371,14 @@ def run(args):
         for leaf in jax.tree_util.tree_leaves(params):
             if not np.all(np.isfinite(np.asarray(jax.device_get(leaf)))):
                 raise RuntimeError('M463_NONFINITE_PARAMETERS')
-        batches_per_eval=BATCHES[args.mode]//(scaled.num_evals-1)
-        if batches_per_eval*(scaled.num_evals-1)!=BATCHES[args.mode]:
+        if longtrain and (not report['fullstate_checkpoints'] or
+                report['fullstate_checkpoints'][-1]['steps'] != expected):
+            raise RuntimeError('M470_FINAL_FULLSTATE_CHECKPOINT_MISSING')
+        batches_per_eval=batches//(scaled.num_evals-1)
+        if batches_per_eval*(scaled.num_evals-1)!=batches:
             raise RuntimeError('M463_INVALID_EVAL_BATCH_COUNT')
         audit=audit_coverage(history,batches_per_eval)
-        if args.mode == 'smoke3':
+        if args.mode in ('smoke3', 'longtrain'):
             c = audit['counts']
 
             t = c.get(PREFIX+'repeat_side_targeted_per_rollout', 0.0)
@@ -270,7 +401,8 @@ def run(args):
             audit['passed'] = all(audit['checks'].values())
         memory_ok=(gpu['peak_used_mib'] is not None and gpu['total_mib'] is not None
                    and gpu['peak_used_mib']<gpu['total_mib']*0.95)
-        report.update(steps_observed=expected,final_tensor_count=n,weights_finite=True,
+        report.update(steps_observed=expected,run_steps_observed=scaled.num_timesteps,
+                      final_tensor_count=n,weights_finite=True,
                       callback_vs_final_equal=True,coverage=audit,
                       coverage_gate_pass=audit['passed'],memory_gate_pass=memory_ok,
                       finished_at_unix=time.time())
@@ -292,12 +424,15 @@ def run(args):
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--mode',choices=['plan','smoke','probe2','smoke3','pilot'],required=True)
+    p.add_argument('--mode',choices=['plan','smoke','probe2','smoke3','pilot','longtrain'],required=True)
     p.add_argument('--stage',choices=['easy','easy_repeat','easy_repeat_support','medium','hard'],default='easy')
     p.add_argument('--checkpoint',type=Path,required=True)
     p.add_argument('--restore-report',type=Path,required=True)
     p.add_argument('--output-dir',type=Path,required=True)
     p.add_argument('--smoke-report',type=Path)
+    p.add_argument('--rollouts',type=int)
+    p.add_argument('--num-evals',type=int)
+    p.add_argument('--resume-state',type=Path)
     a=p.parse_args()
     if a.mode=='plan':
         print('M463_COVERAGE_PLAN_NO_GPU',json.dumps({

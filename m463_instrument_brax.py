@@ -24,7 +24,100 @@ def sha256(data):
     return hashlib.sha256(data).hexdigest()
 
 
-def make_patched_source(raw, *, require_pin=True):
+
+def _add_m470_fullstate_hooks(s):
+    """Opt-in additions to the exact pinned Brax source, never site-packages."""
+    def one(old, new):
+        nonlocal s
+        if s.count(old) != 1:
+            raise RuntimeError('M470_FULLSTATE_ANCHOR_NOT_UNIQUE ' + old[:80])
+        s = s.replace(old, new, 1)
+
+    one(
+        '    augment_pixels: bool = False,\n):',
+        '    augment_pixels: bool = False,\n'
+        '    m470_resume_state_path: Optional[str] = None,\n'
+        '    m470_state_checkpoint_fn: Callable[..., None] = lambda *args: None,\n'
+        '):',
+    )
+    one(
+        '  if num_timesteps == 0:\n',
+        '''  # M4.70: resume only at host reset/evaluation boundaries.
+  m470_resumed = m470_resume_state_path is not None
+  if m470_resumed:
+    if restore_checkpoint_path is not None:
+      raise RuntimeError('M470_RESUME_AND_WEIGHT_RESTORE_CONFLICT')
+    from pathlib import Path as _m470_Path
+    from flax import serialization as _m470_serialization
+    m470_file = _m470_Path(m470_resume_state_path)
+    if not m470_file.is_file() or m470_file.is_symlink():
+      raise RuntimeError('M470_FULLSTATE_FILE_INVALID')
+    m470_template = {
+        'training_state': training_state,
+        'local_key': local_key,
+        'key_envs': key_envs,
+        'eval_key': eval_key,
+    }
+    m470_payload = _m470_serialization.from_bytes(
+        m470_template, m470_file.read_bytes())
+    restored = m470_payload['training_state']
+    if (jax.tree_util.tree_structure(restored) !=
+        jax.tree_util.tree_structure(training_state)):
+      raise RuntimeError('M470_FULLSTATE_TREE_CHANGED')
+    if int(jax.device_get(restored.env_steps)) <= 0:
+      raise RuntimeError('M470_INVALID_RESTORED_STEPS')
+    if int(jax.device_get(restored.env_steps)) % env_step_per_training_step:
+      raise RuntimeError('M470_RESTORED_STEPS_UNALIGNED')
+    if m470_payload['key_envs'].shape != key_envs.shape:
+      raise RuntimeError('M470_RESTORED_ENV_RNG_SHAPE_MISMATCH')
+    training_state = restored
+    local_key = m470_payload['local_key']
+    key_envs = m470_payload['key_envs']
+    m470_eval_rng = m470_payload['eval_key']
+    # Last checkpoint was taken AFTER reset_fn(key_envs) at the epoch edge.
+    # Replay that exact deterministic reset, not a fresh random reset.
+    env_state = reset_fn(key_envs)
+
+  if num_timesteps == 0:
+''',
+    )
+    one(
+        '  # Run initial eval\n',
+        '''  if m470_resumed:
+    # Retain original eval-env randomization from the training seed;
+    # restore only the evaluator's advancing PRNG state.
+    evaluator._key = m470_eval_rng
+
+  # Run initial eval
+''',
+    )
+    one(
+        '  if process_id == 0 and num_evals > 1:\n',
+        '  if process_id == 0 and num_evals > 1 and not m470_resumed:\n',
+    )
+    one(
+        '  current_step = 0\n',
+        '''  current_step = (
+      int(_unpmap(training_state.env_steps)) if m470_resumed else 0
+  )
+''',
+    )
+    one(
+        '      policy_params_fn(current_step, make_policy, params)\n',
+        '''      policy_params_fn(current_step, make_policy, params)
+      # Evaluator RNG and environment RNG have now advanced to the
+      # exact next-epoch boundary. Saved optimizer is NOT reinitialized.
+      m470_state_checkpoint_fn(current_step, {
+          'training_state': _unpmap(training_state),
+          'local_key': local_key,
+          'key_envs': key_envs,
+          'eval_key': evaluator._key,
+      })
+''',
+    )
+    return s
+
+def make_patched_source(raw, *, require_pin=True, enable_resume=False):
     if isinstance(raw, bytes):
         actual_sha=sha256(raw)
         s=raw.decode('utf8')
@@ -151,13 +244,16 @@ def make_patched_source(raw, *, require_pin=True):
     }
     metrics = {**metrics, **coverage, **m464_tail}
 '''
-    return s.replace(anchor,instrument+anchor,1),actual_sha
+    s = s.replace(anchor, instrument+anchor, 1)
+    if enable_resume:
+        s = _add_m470_fullstate_hooks(s)
+    return s, actual_sha
 
 
-def build_instrumented_ppo(pinned_ppo_module, output:Path):
+def build_instrumented_ppo(pinned_ppo_module, output:Path, *, enable_resume=False):
     import inspect
     p=Path(inspect.getfile(pinned_ppo_module.train))
-    patched,original_sha=make_patched_source(p.read_bytes())
+    patched,original_sha=make_patched_source(p.read_bytes(), enable_resume=enable_resume)
     if output.exists():
         if output.read_text('utf8')!=patched:
             raise RuntimeError('M463_REFUSE_TO_OVERWRITE_DIFFERENT_PATCH')
