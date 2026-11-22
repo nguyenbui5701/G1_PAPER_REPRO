@@ -229,7 +229,7 @@ def run(args):
         'checkpoint_path':str(args.checkpoint.resolve()),
         'orbax_path':str(orbax_dir.resolve()),
         'training_seed':1,'train_steps_target':scaled.num_timesteps,
-        'rollouts_target':BATCHES[args.mode],'hardware_scaled_config':scaled.to_dict(),
+        'rollouts_target':batches,'hardware_scaled_config':scaled.to_dict(),
         'source_push_disabled_in_custom_train_env':True,
         'source_random_push_enabled_in_eval':True,
         'reward_PD_termination_source_unchanged':True,
