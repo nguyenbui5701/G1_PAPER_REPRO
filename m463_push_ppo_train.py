@@ -30,7 +30,7 @@ import time
 PIN = '9bcbe736177472ba35d60773e3030a36e37962b7'
 SEED1_SHA = '1ccf579ea35d4518713b00ea20d77db8463bc469b7de903b8f10f457b3dc90b8'
 TOTAL_STEPS_BATCH = 8192*32
-BATCHES={'smoke':1,'probe2': 2,'pilot':20}
+BATCHES={'smoke':1,'probe2': 2,'smoke3':3,'pilot':20}
 PREFIX='training/m463_'
 
 
@@ -139,11 +139,13 @@ def run(args):
     eval_env=api['locomotion'].load(api['env_name'],config=source_cfg)
     scaled=api['scaled']
     scaled.num_timesteps=BATCHES[args.mode]*TOTAL_STEPS_BATCH
-    scaled.num_evals = 2 if args.mode in ('smoke', 'probe2') else 6
+    scaled.num_evals = 2 if args.mode in ('smoke', 'probe2', 'smoke3') else 6
     assert scaled.num_envs==8192 and scaled.num_minibatches==8
     assert scaled.unroll_length==32 and scaled.batch_size==1024
     assert scaled.num_updates_per_batch==5 and scaled.action_repeat==1
     cfg=scaled.to_dict()
+    if args.mode == 'smoke3' and cfg.get('num_resets_per_eval', 0) != 0:
+        raise RuntimeError('M470_SMOKE3_REQUIRES_CONTINUOUS_ENV_STATE')
     net_cfg=cfg.pop('network_factory')
     cfg.update(seed=1,randomization_fn=api['randomizer'],
                restore_checkpoint_path=str(orbax_dir.resolve()))
@@ -245,6 +247,27 @@ def run(args):
         if batches_per_eval*(scaled.num_evals-1)!=BATCHES[args.mode]:
             raise RuntimeError('M463_INVALID_EVAL_BATCH_COUNT')
         audit=audit_coverage(history,batches_per_eval)
+        if args.mode == 'smoke3':
+            c = audit['counts']
+        
+            t = c.get(PREFIX+'repeat_side_targeted_per_rollout', 0.0)
+            m = c.get(PREFIX+'repeat_side_matched_per_rollout', 0.0)
+            f = c.get(PREFIX+'repeat_side_fallback_per_rollout', 0.0)
+            left = c.get(PREFIX+'repeat_side_target_left_per_rollout', 0.0)
+            right = c.get(PREFIX+'repeat_side_target_right_per_rollout', 0.0)
+            repeat = c.get(PREFIX+'repeat_per_rollout', 0.0)
+        
+            audit['checks'].update({
+                'repeat_side_targeted_observed': t > 0,
+                'repeat_side_matched_observed': m > 0,
+                'repeat_side_both_directions_observed': left > 0 and right > 0,
+                'repeat_side_counts_reconcile':
+                    abs(t-m-f) < 0.1
+                    and abs(t-left-right) < 0.1
+                    and t <= repeat,
+            })
+        
+            audit['passed'] = all(audit['checks'].values())
         memory_ok=(gpu['peak_used_mib'] is not None and gpu['total_mib'] is not None
                    and gpu['peak_used_mib']<gpu['total_mib']*0.95)
         report.update(steps_observed=expected,final_tensor_count=n,weights_finite=True,
@@ -269,7 +292,7 @@ def run(args):
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--mode',choices=['plan','smoke','probe2','pilot'],required=True)
+    p.add_argument('--mode',choices=['plan','smoke','probe2','smoke3','pilot'],required=True)
     p.add_argument('--stage',choices=['easy','easy_repeat','easy_repeat_support','medium','hard'],default='easy')
     p.add_argument('--checkpoint',type=Path,required=True)
     p.add_argument('--restore-report',type=Path,required=True)
