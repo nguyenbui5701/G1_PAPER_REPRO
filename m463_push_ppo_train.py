@@ -158,12 +158,22 @@ def run(args):
     if args.mode in ('probe2', 'pilot'):
         ensure_smoke_gate(args.smoke_report,args.stage,report_gate['orbax_dir_sha256'])
     longtrain = args.mode == 'longtrain'
+    independent_budget = getattr(args, 'independent_budget', None)
+    independent = independent_budget is not None
+    if independent and (not longtrain or args.resume_state is not None):
+        raise RuntimeError('M470_INDEPENDENT_BUDGET_REQUIRES_FRESH_C401M')
     if longtrain:
+        if independent:
+            locked = {'10M': (40, 6), '50M': (192, 25),
+                      '100M': (384, 49)}
+            if (args.rollouts, args.num_evals) != locked[independent_budget]:
+                raise RuntimeError('M470_INDEPENDENT_BUDGET_CONFIG_MISMATCH')
         if args.stage != 'easy_repeat_support':
             raise RuntimeError('M470_LONGTRAIN_STAGE_LOCKED')
         if (args.rollouts is None or args.rollouts < 1 or
                 args.num_evals is None or args.num_evals < 2 or
-                args.num_evals > 6 or args.rollouts > 40 or
+                args.num_evals > (49 if independent else 6) or
+                args.rollouts > (384 if independent else 40) or
                 args.rollouts % (args.num_evals - 1) != 0):
             raise RuntimeError('M470_LONGTRAIN_BUDGET_NOT_DIVISIBLE')
         batches = args.rollouts
@@ -251,6 +261,10 @@ def run(args):
     }
     if longtrain:
         report.update(
+            independent_budget=independent_budget,
+            experiment_design=('INDEPENDENT_C401M_SINGLE_PROCESS'
+                               if independent else 'LEGACY_LONGTRAIN'),
+            rollouts_per_epoch=batches // (scaled.num_evals - 1),
             trained_from=('C401M_WEIGHTS_ONLY_ADAM_STARTED_ONCE'
                           if resume_meta is None else 'FULL_OPTIMIZER_STATE_RESUME'),
             config_fingerprint=fp,
@@ -441,7 +455,18 @@ def main():
     p.add_argument('--rollouts',type=int)
     p.add_argument('--num-evals',type=int)
     p.add_argument('--resume-state',type=Path)
+    p.add_argument('--independent-budget',choices=['10M','50M','100M'])
     a=p.parse_args()
+    if a.independent_budget is not None:
+        if (a.mode != 'longtrain' or a.resume_state is not None or
+                a.rollouts is not None or a.num_evals is not None):
+            p.error('--independent-budget requires longtrain without '
+                    '--resume-state/--rollouts/--num-evals')
+        a.rollouts, a.num_evals = {
+            '10M': (40, 6),
+            '50M': (192, 25),
+            '100M': (384, 49),
+        }[a.independent_budget]
     if a.mode=='plan':
         print('M463_COVERAGE_PLAN_NO_GPU',json.dumps({
             'stage':a.stage,'mode':a.mode,'smoke_steps':TOTAL_STEPS_BATCH,
