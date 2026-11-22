@@ -37,6 +37,7 @@ def _add_m470_fullstate_hooks(s):
         '    augment_pixels: bool = False,\n):',
         '    augment_pixels: bool = False,\n'
         '    m470_resume_state_path: Optional[str] = None,\n'
+        '    m470_resume_expected_steps: Optional[int] = None,\n'
         '    m470_state_checkpoint_fn: Callable[..., None] = lambda *args: None,\n'
         '):',
     )
@@ -66,6 +67,10 @@ def _add_m470_fullstate_hooks(s):
       raise RuntimeError('M470_FULLSTATE_TREE_CHANGED')
     if int(jax.device_get(restored.env_steps)) <= 0:
       raise RuntimeError('M470_INVALID_RESTORED_STEPS')
+    if (m470_resume_expected_steps is None or
+        int(jax.device_get(restored.env_steps)) !=
+        int(m470_resume_expected_steps)):
+      raise RuntimeError('M470_RESUME_EXPECTED_STEPS_MISMATCH')
     if int(jax.device_get(restored.env_steps)) % env_step_per_training_step:
       raise RuntimeError('M470_RESTORED_STEPS_UNALIGNED')
     if m470_payload['key_envs'].shape != key_envs.shape:

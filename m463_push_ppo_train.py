@@ -162,6 +162,7 @@ def run(args):
             raise RuntimeError('M470_LONGTRAIN_STAGE_LOCKED')
         if (args.rollouts is None or args.rollouts < 1 or
                 args.num_evals is None or args.num_evals < 2 or
+                args.rollouts > 40 or
                 args.rollouts % (args.num_evals - 1) != 0):
             raise RuntimeError('M470_LONGTRAIN_BUDGET_NOT_DIVISIBLE')
         batches = args.rollouts
@@ -216,6 +217,7 @@ def run(args):
             prior_step = resume_meta['cumulative_steps']
             cfg['restore_checkpoint_path'] = None
             cfg['m470_resume_state_path'] = str(args.resume_state.resolve())
+            cfg['m470_resume_expected_steps'] = prior_step
     report_path=out/'report.json'
     history=[];checkpoints=[]
     report={
