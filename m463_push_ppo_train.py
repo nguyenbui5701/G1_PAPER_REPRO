@@ -144,7 +144,7 @@ def run(args):
     assert scaled.unroll_length==32 and scaled.batch_size==1024
     assert scaled.num_updates_per_batch==5 and scaled.action_repeat==1
     cfg=scaled.to_dict()
-    if args.mode == 'smoke3' and cfg.get('num_resets_per_eval', 0) != 0:
+    if args.mode == 'smoke3' and cfg.get('num_resets_per_eval') != 1:
         raise RuntimeError('M470_SMOKE3_REQUIRES_CONTINUOUS_ENV_STATE')
     net_cfg=cfg.pop('network_factory')
     cfg.update(seed=1,randomization_fn=api['randomizer'],
@@ -249,14 +249,14 @@ def run(args):
         audit=audit_coverage(history,batches_per_eval)
         if args.mode == 'smoke3':
             c = audit['counts']
-        
+
             t = c.get(PREFIX+'repeat_side_targeted_per_rollout', 0.0)
             m = c.get(PREFIX+'repeat_side_matched_per_rollout', 0.0)
             f = c.get(PREFIX+'repeat_side_fallback_per_rollout', 0.0)
             left = c.get(PREFIX+'repeat_side_target_left_per_rollout', 0.0)
             right = c.get(PREFIX+'repeat_side_target_right_per_rollout', 0.0)
             repeat = c.get(PREFIX+'repeat_per_rollout', 0.0)
-        
+
             audit['checks'].update({
                 'repeat_side_targeted_observed': t > 0,
                 'repeat_side_matched_observed': m > 0,
@@ -266,7 +266,7 @@ def run(args):
                     and abs(t-left-right) < 0.1
                     and t <= repeat,
             })
-        
+
             audit['passed'] = all(audit['checks'].values())
         memory_ok=(gpu['peak_used_mib'] is not None and gpu['total_mib'] is not None
                    and gpu['peak_used_mib']<gpu['total_mib']*0.95)
