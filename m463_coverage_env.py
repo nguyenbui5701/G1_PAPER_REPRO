@@ -12,6 +12,7 @@ from __future__ import annotations
 import jax
 import jax.numpy as jp
 from mujoco_playground._src.collision import geoms_colliding
+from mujoco_playground._src import gait
 from mujoco_playground._src.locomotion.g1 import joystick
 
 
@@ -80,13 +81,16 @@ class CoverageJoystick(joystick.Joystick):
     boundary for re-sampling push targets and counters.  Tracking `age` also
     supports a direct/unwrapped one-env diagnostic.
     """
-    def __init__(self, *, stage: str, config, task='flat_terrain', h1_m1=False):
+    def __init__(self, *, stage: str, config, task='flat_terrain', h1_m1=False, h1_m2=False):
         if stage not in STAGES:
             raise ValueError('M463_BAD_STAGE')
         if bool(config.push_config.enable):
             raise ValueError('M463_SOURCE_PUSH_MUST_BE_OFF_TO_PREVENT_DOUBLE_PUSH')
         # Experimental reward must be opt-in; baseline is source-exact.
         self._h1_m1 = bool(h1_m1)
+        self._h1_m2 = bool(h1_m2)
+        if self._h1_m1 and self._h1_m2:
+            raise ValueError('M470_H1_M1_M2_MUTUALLY_EXCLUSIVE')
         self._m463_stage = stage
         self._m463_min_mag, self._m463_max_mag, self._m463_repeat_probability = STAGES[stage]
         super().__init__(task=task, config=config)
@@ -96,8 +100,52 @@ class CoverageJoystick(joystick.Joystick):
         idx = jax.random.randint(rng, (), 0, int(COMMANDS.shape[0]))
         return COMMANDS[idx]
 
+    def _cost_h1_m2_phase_foot_crossing(self, data, info, contact):
+        """One-step risk proxy: approaching left/right foot lateral crossing.
+
+        Only one-foot support plus desired swing; no global site-gap threshold,
+        no contact-specific collision term, no mutation to the pinned source.
+        JAX-safe scalar with bounded [0,1] magnitude.
+        """
+        feet = data.site_xpos[self._feet_site_id]  # left, right
+        feet_world_vel = data.sensordata[self._foot_linvel_sensor_adr]
+        rotation = data.site_xmat[self._pelvis_imu_site_id]
+        delta_local = rotation.T @ (feet[0] - feet[1])
+        omega_local = rotation.T @ self.get_global_angvel(data, "pelvis")
+        relative_vel_local = (
+            rotation.T @ (feet_world_vel[0] - feet_world_vel[1])
+            - jp.cross(omega_local, delta_local)
+        )
+        tau = 0.12  # seconds, predeclared short crossing prediction horizon
+        predicted = delta_local + tau * jp.clip(
+            relative_vel_local, -1.5, 1.5
+        )
+        # lateral ordering: left foot should remain on left side of right foot.
+        lateral_risk = jp.clip((0.09 - predicted[1]) / 0.09, 0.0, 1.0)
+        # Longitudinal adjacency is needed: staggered feet can pass safely.
+        adjacent = jp.clip((0.22 - jp.abs(predicted[0])) / 0.12, 0.0, 1.0)
+        approaching = jp.clip(
+            (-relative_vel_local[1] - 0.05) / 0.25, 0.0, 1.0
+        )
+        # The pinned phase reward uses the same desired-foot-height function.
+        expected_height = gait.get_rz(
+            info["phase"],
+            swing_height=self._config.reward_config.max_foot_height,
+        )
+        swing_weight = jp.clip(
+            (expected_height - 0.02) / 0.08, 0.0, 1.0
+        )
+        swing_weight = jp.max(
+            swing_weight * (~contact).astype(jp.float32)
+        )
+        single_support = jp.logical_xor(contact[0], contact[1])
+        return (
+            single_support.astype(jp.float32)
+            * swing_weight * approaching * adjacent * jp.square(lateral_risk)
+        )
+
     def _get_reward(self, data, action, info, metrics, done, first_contact, contact):
-        """Replace only the inactive lin_vel_z cost in opt-in H1-M1 training."""
+        """Opt-in M1 OR M2: replace exactly one otherwise inactive source key."""
         rewards = super()._get_reward(
             data, action, info, metrics, done, first_contact, contact
         )
@@ -106,6 +154,10 @@ class CoverageJoystick(joystick.Joystick):
             height_risk = jp.clip((0.75 - data.qpos[2]) / 0.15, 0.0, 1.0)
             downward_risk = jp.clip((-pelvis_vz - 0.25) / 0.75, 0.0, 1.0)
             rewards["lin_vel_z"] = height_risk * jp.square(downward_risk)
+        if self._h1_m2:
+            rewards["feet_clearance"] = self._cost_h1_m2_phase_foot_crossing(
+                data, info, contact
+            )
         return rewards
 
     def reset(self, rng):
@@ -137,6 +189,7 @@ class CoverageJoystick(joystick.Joystick):
             m463_magnitude=jp.asarray(0.0, dtype=jp.float32),
             m463_term_recent=zeros,
             m470_m1_weighted=jp.asarray(0.0, dtype=jp.float32),
+            m470_m2_weighted=jp.asarray(0.0, dtype=jp.float32),
         )
         return state.replace(info=info)
 
@@ -284,5 +337,6 @@ class CoverageJoystick(joystick.Joystick):
             m463_last_event_age=jp.where(event, age, last_event_age),
             # This is source-scaled but pre-dt, from actual training steps.
             m470_m1_weighted=after.metrics['reward/lin_vel_z'],
+            m470_m2_weighted=after.metrics['reward/feet_clearance'],
         )
         return after.replace(info=out)

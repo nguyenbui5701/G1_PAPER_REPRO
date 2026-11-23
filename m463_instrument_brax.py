@@ -18,6 +18,7 @@ EXT_FIELDS = (
     'm463_repeat_side_matched',
     'm463_repeat_side_fallback',
     'm470_m1_weighted',
+    'm470_m2_weighted',
 )
 
 
@@ -255,6 +256,13 @@ def make_patched_source(raw, *, require_pin=True, enable_resume=False):
     coverage['m463_m1_weighted_sum_per_rollout'] = jnp.sum(m1w)
     coverage['m463_m1_nonfinite_per_rollout'] = jnp.sum(
         (~jnp.isfinite(m1w)).astype(jnp.float32))
+    # H1-M2: one-factor signed crossing risk, same live PPO transitions.
+    m2w = extras['m470_m2_weighted'].astype(jnp.float32)
+    coverage['m463_m2_active_per_rollout'] = jnp.sum(
+        (m2w < -1e-8).astype(jnp.float32))
+    coverage['m463_m2_weighted_sum_per_rollout'] = jnp.sum(m2w)
+    coverage['m463_m2_nonfinite_per_rollout'] = jnp.sum(
+        (~jnp.isfinite(m2w)).astype(jnp.float32))
     metrics = {**metrics, **coverage, **m464_tail}
 '''
     s = s.replace(anchor, instrument+anchor, 1)
