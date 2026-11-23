@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.27  
+**Version:** 1.2.28  
 **Ngày cập nhật:** 2026-11-23 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -293,6 +293,14 @@ Các tư thế nghiên cứu get-up: ngã sấp, ngã ngửa, nằm nghiêng tr�
 
 **Decision:** `RC1_SOURCE_REVIEW_FIX_REQUIRED`, not `RC1_TECH_PASS`. Following owner fix and SA exact remote review, run only frozen 20 read-only C401M/OLD10M ON/OFF development rollouts from v1.2.26. No PPO training, no new reward edits, no M2 smoke or +10M without separate explicit owner GO; M1 NO-PROMOTE, +100M NO-PROMOTE, +400M HOLD, Branch B HOLD.
 
+### M4.70-H1 RC1 OWNER METADATA ORDER FIX REVIEW PASS; ONE FROZEN 20-ROLLOUT READ-ONLY EVALUATION (v1.2.28; 2026-11-24)
+
+**Verified SOURCE-ON-GIT:** Remote branch HEAD `c50a9a5c61634491857c05898cb245f7a5749c8f` matches owner provided SHA; parent `965f2635d6a67699d670b15f474dba4c8d1e59f2` Rules v1.2.27; only `m435_push_ab_stability.py` updated (+10/-9), new blob `f6fbdc3f9d2bb3f12f07b83dc68d3957ea06bf32`. Exact diff only moves `rc1_telemetry_enabled`, `rc1_reward_keys`, `rc1_notes` data block BEFORE `with outfile.open('x', ...): json.dump(data)`; bug fixed. New indent is extra but syntactically consistent (still in if suite); do not create style-only commit. Earlier default OFF, 24-key reconstruction/finite test, pre-step phase, post-step reward/contact, SHA preflight, single-process NVCC bootstrap and source-push ON/OFF all preserved on static review. **Static GitHub code review PASS, NOT executed CUDA/MJX or numerical telemetry PASS.**
+
+**Allowed next one-shot diagnostic (NO PPO/training):** Owner safe fast-forward pull Rules commit onto clean branch and assert new HEAD and evaluator Git blob, then for each `(5186,stand),(5112,yaw_right),(5149,stand),(5889,forward),(5593,yaw_right)` and each `C401M,OLD10M`, invoke existing `m435_push_ab_stability.py --mode run --m470-policy $policy --seed $seed --cases $case --max-steps 1000 --rc1-telemetry` in fresh verified `g1_m463` Python interpreter, one at a time. This produces exactly **10 JSON files × 2 ON/OFF = 20 rollouts**, retain originals. One timestamped combined stdout/stderr log and nonzero exit-code propagation. Read-only; source push retained, do not change policy, code, reward or checkpoint. Validate each file SHA/checkpoint, 24 keys, `rc1_telemetry_enabled=true` persisted, exact seed/case/policy/ON+OFF once each, per-step reward reconstructed and finite, terminal reasons and ON/OFF prepush mismatch flags, `strict_on_off_counterfactual_proven=false`. Follow all push events and terminal-centered periods, not first push only. `rc1_source_truncation_signal` may be null for source-only env, which is a valid reported absence, not fabricated PPO truncation state. Push magnitude unavailable; never claim strict force-matched causality.
+
+**Required evidence:** Owner supplies one complete combined log with `EXIT_CODE=0` and a tar.gz of exactly 10 per-evaluation JSONs. Only after reading raw evidence may SA decide `RC1_CONFLICT_OBSERVED` / `RC1_INCONCLUSIVE` and select RC2 next action. On failed run keep log/partial JSONs, STOP and report exact layer; no blind repeat, extra probes, PPO smoke or +10M. M2 still GPU/PPO UNTESTED, separate explicit owner GO; +100M NO-PROMOTE, +400M HOLD, B HOLD.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -554,6 +562,9 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-23)
+
+**M470-H1 RC1 TELEMETRY METADATA FIX SOURCE REVIEW PASS (v1.2.28; 2026-11-24):** Owner remote HEAD `c50a9a5c61634491857c05898cb245f7a5749c8f` parent Rules v1.2.27; exact single-file +10/-9 diff moves telemetry metadata assignment before `json.dump`; source blob `f6fbdc3f9d2bb3f12f07b83dc68d3957ea06bf32`. Static SOURCE-ON-GIT review PASS, no GPU/MJX or numerical run yet. **NEXT one frozen 20-rollout RC1 source-push read-only evaluation**: 5 development seed-command cases × C401M+OLD10M × push ON/OFF, separate fresh Python interpreter per policy×case, timestamped log+10 JSONs, all SHA and reward metadata/finite invariants; analyze once then RC1 decision. No PPO training or source modifications. M2 smoke requires separate GO, M1 NO-PROMOTE, +100M NO-PROMOTE, +400M HOLD, B HOLD.
+
 
 **M470-H1 RC1 TELEMETRY SOURCE REVIEW (v1.2.27; 2026-11-24):** Owner pushed `1d428ca691f5fd30b7d4880c3da098a95c366b38` after safe local reconciliation (parent Rules v1.2.26), only `m435_push_ab_stability.py` +130 LOC; remote code checked. **RC1_SOURCE_REVIEW_FIX_REQUIRED:** `data['rc1_telemetry_enabled'/'rc1_reward_keys'/'rc1_notes']` attached AFTER `json.dump`, so not persisted in JSON. Owner manually moves this existing block before `with outfile.open`, performs AST/static inspection and pushes source on same branch after safely pulling Rules v1.2.27; SA re-reviews SHA, then 20 predeclared read-only evals; NO GPU/PPO yet, no M2 GO, +10M HOLD. Source default-off and phase pre-step/poststep reward logic otherwise look consistent on static inspection, not runtime verified. M1 NO-PROMOTE, +100M NO-PROMOTE, +400M HOLD, B HOLD.
 
@@ -887,6 +898,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-24 | RC1 owner evaluator metadata persistence fix remote review PASS | commit c50a9a5 parent Rules965f2635 only m435 +10/-9; data rc1 keys moved before json.dump, no reward/source behavior edits; static review not GPU validation | v1.2.28 allow ONE frozen 20-rollout read-only C401M/OLD10M 5-case telemetry comparison, 10 JSON+combined log, no PPO; M2 +10M HOLD | 1.2.28 |
+
 | 2026-11-24 | RC1 owner telemetry commit exact remote source review | Owner source HEAD 1d428ca parent Rules5014fe, only m435 +130 LOC default-off read-only; identified rc1 top-level JSON metadata assigned after json.dump | v1.2.27 `RC1_SOURCE_REVIEW_FIX_REQUIRED`; owner manual move metadata before JSON dump and safe pull first, commit/push only evaluator; SA review then frozen 20-rollout diagnostic; no GPU/PPO | 1.2.27 |
 
 | 2026-11-23 | M470 H1 RC0+RC1 audit existing reward/trajectory records, no PPO or code edits | Existing H1R 24-term 14-window scaled reward checksum exact to 1e-6, C401M seed5667 ON terminal single -2 env penalty, 180-rollout M435 no per-step reward/action/foot; H1S seed5889 support-collapse failure contrast; source v0.12.1 truncation/loss semantics reviewed but owner's installed byte parity unverified | v1.2.26 RC0 source+return accounting PASS, RC1 PARTIAL/causal conflict unidentifiable; at most ONE owner-edited M435 telemetry 20-rollout dev diagnostic before RC2 decision; no gating/M2 PPO without separate GO, M1 NO-PROMOTE | 1.2.26 |
@@ -1004,6 +1017,8 @@ PY
 | 2026-11-21 | Research governance | Khóa mục tiêu push → fall → get-up → resume; định nghĩa thước đo và cổng nghiệm thu | RULES ACTIVE; GET-UP NOT IMPLEMENTED | 1.0.0 |
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.28 — 2026-11-24:** Verified owner commit c50a9a5 single evaluator fix (metadata now persisted before JSON dump), static source review PASS only; fixed exactly one 20-rollout RC1 read-only evaluation on predeclared 5 development cases × 2 policies × ON/OFF, fresh interpreter per case/policy, one log and 10 raw JSONs, without new PPO or reward change. M2 smoke/+10M remain separate owner GO. Assistant only modified Rules.
 
 - **v1.2.27 — 2026-11-24:** SA verified owner RC1 telemetry source-on-Git commit 1d428ca with exact parent Rules v1.2.26 and single-file +130 LOC. Static review identified bug: `rc1_telemetry_enabled`, `rc1_reward_keys`, `rc1_notes` populated after `json.dump`, absent from emitted JSON. Owner-only one-block move required before any RC1 GPU evaluator, original default OFF and 24-key reward consistency checks retained. Assistant modified only Rules; no source edit, GPU, PPO or training. M2 smoke requires separate GO.
 
