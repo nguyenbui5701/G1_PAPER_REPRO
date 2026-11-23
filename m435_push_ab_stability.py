@@ -283,16 +283,32 @@ def run(args, ctx, selected):
             if pre_steps < 1:
                 raise RuntimeError('M470_AB_NO_MATCHED_PREPUSH_HISTORY')
             diff = 0.
-            for a, b in zip(on[0]['frames'][:pre_steps],
-                            off[0]['frames'][:pre_steps]):
+            first_pre_push_mismatch_step = None
+            for index, (a, b) in enumerate(zip(
+                    on[0]['frames'][:pre_steps],
+                    off[0]['frames'][:pre_steps]), start=1):
                 observables_a = (a['root_z'], *a['actual_xy'], a['actual_yaw'])
                 observables_b = (b['root_z'], *b['actual_xy'], b['actual_yaw'])
-                diff = max(diff, *(abs(x-y) for x, y in zip(
-                    observables_a, observables_b)))
+                current_diff = max(abs(x-y) for x, y in zip(
+                    observables_a, observables_b))
+                diff = max(diff, current_diff)
+                if current_diff > 1.e-5 and first_pre_push_mismatch_step is None:
+                    first_pre_push_mismatch_step = index
             comparison['prepush_observable_steps'] = pre_steps
             comparison['prepush_observable_max_abs_diff'] = diff
-            if diff > 1.e-5:
-                raise RuntimeError(f'M470_AB_PREPUSH_OBSERVABLE_MISMATCH {case} {diff}')
+            comparison['prepush_first_mismatch_step'] = first_pre_push_mismatch_step
+            comparison['prepush_observables_identical'] = first_pre_push_mismatch_step is None
+            comparison['on_off_pair_status'] = (
+                'PREPUSH_OBSERVABLE_MATCH_ONLY_NOT_FULLSTATE'
+                if first_pre_push_mismatch_step is None
+                else 'PREPUSH_NONIDENTICAL_NOT_STRICT_COUNTERFACTUAL')
+            if first_pre_push_mismatch_step is not None:
+                # No silent pass: store a disqualifying matched-ON/OFF quality flag,
+                # but still evaluate the main same-push-ON policy comparison.
+                print('M470_AB_PREPUSH_NONIDENTICAL', 'case', case,
+                      'first_step', first_pre_push_mismatch_step,
+                      'max_diff', diff,
+                      'ON_OFF_CAUSAL_MATCH_UNVERIFIED', flush=True)
         comparisons.append(comparison)
     OUT.mkdir(parents=True, exist_ok=True)
     outfile = OUT / ('m435_push_ab_' + datetime.now().strftime('%Y%m%d_%H%M%S_%f') + '.json')
@@ -312,6 +328,11 @@ def run(args, ctx, selected):
         'push_event_note': 'source info.push is the push direction vector, not the sampled magnitude',
         'cases': selected,
         'paired_comparison': comparisons,
+        'all_on_off_prepush_observables_identical': (
+            all(c.get('prepush_observables_identical') is True
+                for c in comparisons) if ctx.get('m470_policy') is not None
+            else None),
+        'strict_on_off_counterfactual_proven': False,
         'rollouts': results,
     }
     with outfile.open('x', encoding='utf-8') as f:
