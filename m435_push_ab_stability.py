@@ -36,6 +36,77 @@ def mean(xs):
     return sum(xs) / len(xs) if xs else None
 
 
+def rc1_collect_step(env, state, action, previous_action,
+                     phase_for_reward, reward_keys, jax):
+    """Read-only RC1 telemetry; reward terms are weighted, pre-dt."""
+    weighted = {
+        key: float(value)
+        for key, value in jax.device_get({
+            key: state.metrics[f"reward/{key}"]
+            for key in reward_keys
+        }).items()
+    }
+
+    dt = float(env.dt)
+    actual_reward = float(state.reward)
+    reconstructed = dt * sum(weighted.values())
+
+    if not all(math.isfinite(v) for v in
+               [actual_reward, reconstructed, *weighted.values()]):
+        raise RuntimeError("RC1_NONFINITE_REWARD")
+
+    error = abs(actual_reward - reconstructed)
+    if error > max(2e-5, 1e-5 * abs(actual_reward)):
+        raise RuntimeError(f"RC1_REWARD_SUM_MISMATCH {error}")
+
+    act = jax.device_get(action).tolist()
+    prev = jax.device_get(previous_action).tolist()
+    if len(act) != len(prev):
+        raise RuntimeError("RC1_ACTION_SHAPE_CHANGED")
+
+    delta = [float(x-y) for x, y in zip(act, prev)]
+
+    feet = state.data.site_xpos[env._feet_site_id]
+    pelvis_r = state.data.site_xmat[env._pelvis_imu_site_id]
+    relative_foot = jax.device_get(
+        pelvis_r.T @ (feet[0] - feet[1])
+    ).tolist()
+
+    contacts = jax.device_get(
+        state.info["last_contact"]
+    ).tolist()
+
+    if len(contacts) != 2 or len(relative_foot) != 3:
+        raise RuntimeError("RC1_FOOT_LAYOUT_CHANGED")
+
+    return {
+        "timing": "poststep_state_reward__prestep_phase",
+        "weighted_reward_pre_dt": weighted,
+        "reward_step": actual_reward,
+        "reward_reconstructed": reconstructed,
+        "reward_sum_error": error,
+        "dt": dt,
+        "action": act,
+        "action_norm": math.sqrt(sum(float(x*x) for x in act)),
+        "action_delta_norm": math.sqrt(sum(x*x for x in delta)),
+        "contact_left_right": [bool(x) for x in contacts],
+        "foot_left_minus_right_pelvis_xyz": relative_foot,
+        "phase_for_reward": jax.device_get(
+            phase_for_reward
+        ).tolist(),
+        "root_z_poststep": float(state.data.qpos[2]),
+        "torso_gravity_z_poststep": float(
+            env.get_gravity(state.data, "torso")[-1]
+        ),
+        "pelvis_local_xy_poststep": jax.device_get(
+            env.get_local_linvel(state.data, "pelvis")[:2]
+        ).tolist(),
+        "pelvis_gyro_yaw_poststep": float(
+            env.get_gyro(state.data, "pelvis")[2]
+        ),
+    }
+
+
 def m470_ab_preflight(which):
     """Frozen C401M / original +10M / H1-M1 +10M; no JAX, no training."""
     from m431_seed1_matched_eval import validate, report_final, SEED1
@@ -155,6 +226,15 @@ def run(args, ctx, selected):
     probe_cfg = locomotion.get_default_config(ENV)
     if bool(probe_cfg.push_config.enable) is not True:
         raise RuntimeError('PINNED_SOURCE_DEFAULT_PUSH_NOT_ENABLED; refusing A/B')
+
+    reward_keys = None
+    if args.rc1_telemetry:
+        reward_keys = tuple(
+            probe_cfg.reward_config.scales.keys()
+        )
+        if len(reward_keys) != 24:
+            raise RuntimeError("RC1_REWARD_KEYS_CHANGED")
+
     probe_env = locomotion.load(ENV, config=probe_cfg)
     test_state = jax.jit(probe_env.reset)(jax.random.PRNGKey(999))
     validate_initial_observation(test_state, jnp)
@@ -188,6 +268,11 @@ def run(args, ctx, selected):
             print(f'M435_START case={case} push_enabled={push_enabled} seed={args.seed}', flush=True)
             for step_index in range(1, args.max_steps + 1):
                 state = patch_obs_and_info(state, command, jnp)
+
+                if args.rc1_telemetry:
+                    rc1_previous_action = state.info["last_act"]
+                    rc1_phase = state.info["phase"]
+
                 body_velocity = jax.device_get(env.get_local_linvel(state.data, 'pelvis'))
                 gyro = jax.device_get(env.get_gyro(state.data, 'pelvis'))
                 root_height = float(state.data.qpos[2])
@@ -213,6 +298,14 @@ def run(args, ctx, selected):
                     raise RuntimeError('NONFINITE_TELEMETRY')
                 if ctx.get('m470_policy') is not None:
                     frame['root_z_poststep'] = float(state.data.qpos[2])
+                
+                if args.rc1_telemetry:
+                    frame["rc1"] = rc1_collect_step(
+                        env, state, action,
+                        rc1_previous_action, rc1_phase,
+                        reward_keys, jax
+                    )
+
                 frames.append(frame)
                 if step_index % 200 == 0 or done:
                     print(f'M435_PROGRESS case={case} push={push_enabled} step={step_index} root_z={root_height:.3f} done={done}', flush=True)
@@ -241,6 +334,17 @@ def run(args, ctx, selected):
                 'frames': frames,
                 'terminal_source_cause': terminal_cause,
             }
+
+            if args.rc1_telemetry:
+                diag["rc1_end_category"] = (
+                    "source_failure"
+                    if done else "evaluation_horizon_censored"
+                )
+                diag["rc1_source_truncation_signal"] = (
+                    float(state.info["truncation"])
+                    if "truncation" in state.info else None
+                )
+
             if ctx.get('m470_policy') is not None and push_enabled and push_events:
                 pstep = push_events[0]['step']
                 diag['first_push_recovery'] = {}
@@ -338,6 +442,16 @@ def run(args, ctx, selected):
     with outfile.open('x', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
         f.write('\n')
+    
+    if args.rc1_telemetry:
+        data["rc1_telemetry_enabled"] = True
+        data["rc1_reward_keys"] = list(reward_keys)
+        data["rc1_notes"] = (
+            "24 weighted pre-dt reward terms; original source push; "
+            "evaluation horizon is not PPO time-limit truncation; "
+            "push magnitude not available"
+        )
+
     print('M435_PUSH_AB_COMPLETED',flush=True)
     print('OUTPUT:',outfile,flush=True)
 
@@ -346,11 +460,27 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--mode', required=True, choices=('inspect','run'))
     parser.add_argument('--m470-policy', choices=('C401M','OLD10M','M1_10M'))
+
+    parser.add_argument(
+        "--rc1-telemetry",
+        action="store_true",
+        help="Read-only reward/action/foot telemetry for RC1"
+    )
+
     parser.add_argument('--train-seed', type=int, choices=(0,1), default=1)
     parser.add_argument('--seed', type=int, default=5186)
     parser.add_argument('--cases', default='stand,backward,yaw_right')
     parser.add_argument('--max-steps', type=int, default=1000)
     args = parser.parse_args()
+
+    if args.rc1_telemetry and (
+        args.mode != "run"
+        or args.m470_policy not in ("C401M", "OLD10M")
+    ):
+        parser.error(
+            "RC1_REQUIRES_RUN_WITH_C401M_OR_OLD10M"
+        )
+
     cases = args.cases.split(',')
     if not cases or len(set(cases)) != len(cases) or any(x not in CMD for x in cases):
         parser.error('cases must be unique, comma-separated names: ' + ','.join(CMD))
