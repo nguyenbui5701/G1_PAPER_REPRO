@@ -17,6 +17,7 @@ EXT_FIELDS = (
     'm463_repeat_side_target',
     'm463_repeat_side_matched',
     'm463_repeat_side_fallback',
+    'm470_m1_weighted',
 )
 
 
@@ -247,6 +248,13 @@ def make_patched_source(raw, *, require_pin=True, enable_resume=False):
         'm463_events_with_99_post_actions_per_rollout': jnp.sum(
             (recent == 1).astype(jnp.float32)),
     }
+    # H1-M1: the transitions consumed by PPO, not the two-env eval reward.
+    m1w = extras['m470_m1_weighted'].astype(jnp.float32)
+    coverage['m463_m1_active_per_rollout'] = jnp.sum(
+        (m1w < -1e-8).astype(jnp.float32))
+    coverage['m463_m1_weighted_sum_per_rollout'] = jnp.sum(m1w)
+    coverage['m463_m1_nonfinite_per_rollout'] = jnp.sum(
+        (~jnp.isfinite(m1w)).astype(jnp.float32))
     metrics = {**metrics, **coverage, **m464_tail}
 '''
     s = s.replace(anchor, instrument+anchor, 1)

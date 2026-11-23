@@ -80,11 +80,13 @@ class CoverageJoystick(joystick.Joystick):
     boundary for re-sampling push targets and counters.  Tracking `age` also
     supports a direct/unwrapped one-env diagnostic.
     """
-    def __init__(self, *, stage: str, config, task='flat_terrain'):
+    def __init__(self, *, stage: str, config, task='flat_terrain', h1_m1=False):
         if stage not in STAGES:
             raise ValueError('M463_BAD_STAGE')
         if bool(config.push_config.enable):
             raise ValueError('M463_SOURCE_PUSH_MUST_BE_OFF_TO_PREVENT_DOUBLE_PUSH')
+        # Experimental reward must be opt-in; baseline is source-exact.
+        self._h1_m1 = bool(h1_m1)
         self._m463_stage = stage
         self._m463_min_mag, self._m463_max_mag, self._m463_repeat_probability = STAGES[stage]
         super().__init__(task=task, config=config)
@@ -93,6 +95,18 @@ class CoverageJoystick(joystick.Joystick):
         # Source calls this method in reset and after its regular command refresh.
         idx = jax.random.randint(rng, (), 0, int(COMMANDS.shape[0]))
         return COMMANDS[idx]
+
+    def _get_reward(self, data, action, info, metrics, done, first_contact, contact):
+        """Replace only the inactive lin_vel_z cost in opt-in H1-M1 training."""
+        rewards = super()._get_reward(
+            data, action, info, metrics, done, first_contact, contact
+        )
+        if self._h1_m1:
+            pelvis_vz = self.get_global_linvel(data, "pelvis")[2]
+            height_risk = jp.clip((0.75 - data.qpos[2]) / 0.15, 0.0, 1.0)
+            downward_risk = jp.clip((-pelvis_vz - 0.25) / 0.75, 0.0, 1.0)
+            rewards["lin_vel_z"] = height_risk * jp.square(downward_risk)
+        return rewards
 
     def reset(self, rng):
         state = super().reset(rng)
@@ -122,6 +136,7 @@ class CoverageJoystick(joystick.Joystick):
             m463_last_event_age=jp.asarray(-1, dtype=jp.int32),
             m463_magnitude=jp.asarray(0.0, dtype=jp.float32),
             m463_term_recent=zeros,
+            m470_m1_weighted=jp.asarray(0.0, dtype=jp.float32),
         )
         return state.replace(info=info)
 
@@ -267,5 +282,7 @@ class CoverageJoystick(joystick.Joystick):
                 side_event & (~side_matched)
             ).astype(jp.int32),
             m463_last_event_age=jp.where(event, age, last_event_age),
+            # This is source-scaled but pre-dt, from actual training steps.
+            m470_m1_weighted=after.metrics['reward/lin_vel_z'],
         )
         return after.replace(info=out)

@@ -160,6 +160,14 @@ def run(args):
     longtrain = args.mode == 'longtrain'
     independent_budget = getattr(args, 'independent_budget', None)
     independent = independent_budget is not None
+    h1_m1 = bool(args.h1_m1)
+    if h1_m1 and (
+        args.stage != 'easy_repeat_support'
+        or args.mode not in ('smoke3', 'longtrain')
+        or (args.mode == 'longtrain' and independent_budget != '10M')
+        or args.resume_state is not None
+    ):
+        raise RuntimeError('M470_H1M1_MODE_NOT_APPROVED')
     if independent and (not longtrain or args.resume_state is not None):
         raise RuntimeError('M470_INDEPENDENT_BUDGET_REQUIRES_FRESH_C401M')
     if longtrain:
@@ -194,9 +202,18 @@ def run(args):
     train_cfg.push_config.enable=False  # avoid source push + explicit push stacking
     if not bool(source_cfg.push_config.enable):
         raise RuntimeError('M463_ORIGINAL_SOURCE_PUSH_WAS_NOT_ENABLED')
-    if source_cfg.to_dict()['reward_config']!=train_cfg.to_dict()['reward_config']:
+    original_reward = source_cfg.to_dict()['reward_config']
+    if h1_m1:
+        if float(original_reward['scales']['lin_vel_z']) != 0.0:
+            raise RuntimeError('M470_H1M1_SOURCE_LIN_VEL_Z_NONZERO')
+        expected_reward = copy.deepcopy(original_reward)
+        expected_reward['scales']['lin_vel_z'] = -0.25
+        train_cfg.reward_config.scales.lin_vel_z = -0.25
+        if train_cfg.to_dict()['reward_config'] != expected_reward:
+            raise RuntimeError('M470_H1M1_REWARD_DIFF_NOT_ISOLATED')
+    elif original_reward != train_cfg.to_dict()['reward_config']:
         raise RuntimeError('M463_REWARD_CHANGED')
-    train_env=CoverageJoystick(config=train_cfg,stage=args.stage)
+    train_env=CoverageJoystick(config=train_cfg,stage=args.stage,h1_m1=h1_m1)
     # Original source-driven randomized evaluation; only 2 envs as previous.
     eval_env=api['locomotion'].load(api['env_name'],config=source_cfg)
     scaled=api['scaled']
@@ -244,7 +261,15 @@ def run(args):
         'rollouts_target':batches,'hardware_scaled_config':scaled.to_dict(),
         'source_push_disabled_in_custom_train_env':True,
         'source_random_push_enabled_in_eval':True,
-        'reward_PD_termination_source_unchanged':True,
+        'reward_PD_termination_source_unchanged':not h1_m1,
+        'PD_termination_source_unchanged':True,
+        'h1_m1_enabled':h1_m1,
+        'h1_m1_reward_slot':('lin_vel_z' if h1_m1 else None),
+        'h1_m1_reward_scale':(-0.25 if h1_m1 else 0.0),
+        'h1_m1_formula':('clip((0.75-z)/0.15,0,1)*clip((-vz-0.25)/0.75,0,1)^2'
+                          if h1_m1 else None),
+        'train_reward_config':train_cfg.to_dict()['reward_config'],
+        'eval_source_reward_unchanged':True,
         'commands_per_episode':['stand','forward_slow','forward_fast','turn_left','turn_right','strafe'],
         'directions_per_episode':['forward','back','left','right','diag_forward_left','diag_forward_right'],
         'phase_target':['any','single','double'],
@@ -418,6 +443,22 @@ def run(args):
             })
 
             audit['passed'] = all(audit['checks'].values())
+        if h1_m1:
+            c = audit['counts']
+            active = float(c.get(PREFIX+'m1_active_per_rollout',0.0))
+            penalty = float(c.get(PREFIX+'m1_weighted_sum_per_rollout',0.0))
+            nonfinite = float(c.get(PREFIX+'m1_nonfinite_per_rollout',0.0))
+            report['h1_m1_training_transition_audit'] = {
+                'active_steps':active,
+                'sum_weighted_pre_dt':penalty,
+                'nonfinite_steps':nonfinite,
+            }
+            audit['checks'].update({
+                'm1_actually_active_in_training_transitions':active>0,
+                'm1_negative_weighted_contribution':penalty<0,
+                'm1_finite_training_transitions':nonfinite==0,
+            })
+            audit['passed']=all(audit['checks'].values())
         memory_ok=(gpu['peak_used_mib'] is not None and gpu['total_mib'] is not None
                    and gpu['peak_used_mib']<gpu['total_mib']*0.95)
         report.update(steps_observed=expected,run_steps_observed=scaled.num_timesteps,
@@ -456,6 +497,7 @@ def main():
     p.add_argument('--num-evals',type=int)
     p.add_argument('--resume-state',type=Path)
     p.add_argument('--independent-budget',choices=['10M','50M','100M'])
+    p.add_argument('--h1-m1',action='store_true',help='H1-M1 experimental reward: smoke3 or independent 10M only')
     a=p.parse_args()
     if a.independent_budget is not None:
         if (a.mode != 'longtrain' or a.resume_state is not None or
