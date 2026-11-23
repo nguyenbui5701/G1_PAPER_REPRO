@@ -439,18 +439,19 @@ def run(args, ctx, selected):
         'strict_on_off_counterfactual_proven': False,
         'rollouts': results,
     }
+
+    if args.rc1_telemetry:
+            data["rc1_telemetry_enabled"] = True
+            data["rc1_reward_keys"] = list(reward_keys)
+            data["rc1_notes"] = (
+                "24 weighted pre-dt reward terms; original source push; "
+                "evaluation horizon is not PPO time-limit truncation; "
+                "push magnitude not available"
+            )
+    
     with outfile.open('x', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
         f.write('\n')
-    
-    if args.rc1_telemetry:
-        data["rc1_telemetry_enabled"] = True
-        data["rc1_reward_keys"] = list(reward_keys)
-        data["rc1_notes"] = (
-            "24 weighted pre-dt reward terms; original source push; "
-            "evaluation horizon is not PPO time-limit truncation; "
-            "push magnitude not available"
-        )
 
     print('M435_PUSH_AB_COMPLETED',flush=True)
     print('OUTPUT:',outfile,flush=True)
