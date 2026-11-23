@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.28  
+**Version:** 1.2.29  
 **Ngày cập nhật:** 2026-11-23 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -301,6 +301,14 @@ Các tư thế nghiên cứu get-up: ngã sấp, ngã ngửa, nằm nghiêng tr�
 
 **Required evidence:** Owner supplies one complete combined log with `EXIT_CODE=0` and a tar.gz of exactly 10 per-evaluation JSONs. Only after reading raw evidence may SA decide `RC1_CONFLICT_OBSERVED` / `RC1_INCONCLUSIVE` and select RC2 next action. On failed run keep log/partial JSONs, STOP and report exact layer; no blind repeat, extra probes, PPO smoke or +10M. M2 still GPU/PPO UNTESTED, separate explicit owner GO; +100M NO-PROMOTE, +400M HOLD, B HOLD.
 
+### M4.70-H1 RC1 OWNER LAUNCHER PREFLIGHT STOP BEFORE GPU: DIAGNOSE SILENT GUARD (v1.2.29; 2026-11-24)
+
+**New owner evidence:** uploaded `m470_rc1_eval_20261124_004424.log` is exactly 11 lines and reports safe `git fetch` plus successful `git pull --ff-only`, local `c50a9a5..eb48a7e` with only `G1_RESEARCH_RULES.md` updated, then `EXIT_CODE=1` / `TEE_EXIT_CODE=0`. **No `RC1_SOURCE_GATE_PASS`, `RC1_START`, checkpoint preflight, NVCC/CUDA/MJX, JSON results or PPO evidence.** Therefore `RC1_EVALUATION_NOT_STARTED`, no behavior/reward inference or reason to retrain. GitHub fetched remote HEAD `eb48a7ed95e93ae8d5dec078e158eaa0ff4a495d`, evaluator blob `f6fbdc3f9d2bb3f12f07b83dc68d3957ea06bf32`, matching launcher expectations. Remaining silent guards after pull are local HEAD, local git blob, and `command -v g1_m463`; the last **is the most likely** source of the silent exit (possible shell alias/function visibility), but the 11-line log has no trace so exact failing guard **UNCONFIRMED**.
+
+**Correct launcher/one-shot continuation only, NOT source patch or additional experimental gate:** First perform read-only local `git rev-parse HEAD`, `git hash-object m435_push_ab_stability.py`, `type -a g1_m463` diagnostics with printed results; do not silently abort or assert an unknown command exists. `g1_m463` is a historically working user-local launcher; if not visible in current shell, use the user's **verified same venv Python executable** instead of changing CUDA/Python packages, and preserve evaluator NVCC compatibility pre-JAX inside its own `run()`. Replace only the silent `command -v` check with an explicit actionable failure and `ERR` trap; print `RC1_SOURCE_GATE_PASS` before the 10 fresh interpreter evaluations. Do NOT rerun any already completed old A/B, and do NOT run PPO. Exact frozen cases/policies and 20-rollout/10-JSON validation remain v1.2.28. A new Rules commit requires owner safe ff-only pull while local tracked worktree clean before retrying; no force/reset/rebase. No new source edit or candidate approval. On future failure, log failing shell command/line; preserve partial JSONs and avoid uncontrolled retry.
+
+**DECISION:** `RC1_PREFLIGHT_HARNESS_STOP`, `RC1_EVALUATION_PENDING`. M1 NO-PROMOTE; M2 GPU/MJX/PPO PENDING separate explicit GO; +10M HOLD, +100M NO-PROMOTE, +400M HOLD, Branch B HOLD.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -562,6 +570,9 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-23)
+
+**M470-H1 RC1 EVALUATION PREFLIGHT STOP (v1.2.29; 2026-11-24):** Owner `m470_rc1_eval_20261124_004424.log` 11 lines: fetch and ff-only pull `c50a9a5..eb48a7e` PASS, then `EXIT_CODE=1`, `TEE_EXIT_CODE=0` and **no** `RC1_SOURCE_GATE_PASS` or `RC1_START`; 20-rollout evaluation NEVER STARTED in this log. GitHub source blob and remote HEAD exactly match prior expectations. Silent guard most likely `command -v g1_m463` after pull but **not proven** without `type -a`/trace, do not assert CUDA/reward failure. NEXT diagnostic launcher echo local SHA/HEAD/launcher resolution, remove silent `command -v` failure with explicit trap, then ONE original read-only 20-rollout evaluation; no source editing or PPO. M2 smoke/10M HOLD, M1 NO-PROMOTE, +100M NO-PROMOTE, +400M HOLD, B HOLD.
+
 
 **M470-H1 RC1 TELEMETRY METADATA FIX SOURCE REVIEW PASS (v1.2.28; 2026-11-24):** Owner remote HEAD `c50a9a5c61634491857c05898cb245f7a5749c8f` parent Rules v1.2.27; exact single-file +10/-9 diff moves telemetry metadata assignment before `json.dump`; source blob `f6fbdc3f9d2bb3f12f07b83dc68d3957ea06bf32`. Static SOURCE-ON-GIT review PASS, no GPU/MJX or numerical run yet. **NEXT one frozen 20-rollout RC1 source-push read-only evaluation**: 5 development seed-command cases × C401M+OLD10M × push ON/OFF, separate fresh Python interpreter per policy×case, timestamped log+10 JSONs, all SHA and reward metadata/finite invariants; analyze once then RC1 decision. No PPO training or source modifications. M2 smoke requires separate GO, M1 NO-PROMOTE, +100M NO-PROMOTE, +400M HOLD, B HOLD.
 
@@ -898,6 +909,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-24 | M470 RC1 owner evaluation attempt stopped in shell preflight before any GPU | Uploaded 11-line m470_rc1_eval_20261124_004424.log: ff-only pull c50a9a5..eb48a7e PASS then EXIT_CODE1/TEE0, no SOURCE_GATE_PASS or RC1_START; remote source blob agrees | v1.2.29 `RC1_PREFLIGHT_HARNESS_STOP`; probable launcher command visibility not proven, explicit diagnostics/ERR trap then single fixed 20-rollout read-only run, no source/PPO edits | 1.2.29 |
+
 | 2026-11-24 | RC1 owner evaluator metadata persistence fix remote review PASS | commit c50a9a5 parent Rules965f2635 only m435 +10/-9; data rc1 keys moved before json.dump, no reward/source behavior edits; static review not GPU validation | v1.2.28 allow ONE frozen 20-rollout read-only C401M/OLD10M 5-case telemetry comparison, 10 JSON+combined log, no PPO; M2 +10M HOLD | 1.2.28 |
 
 | 2026-11-24 | RC1 owner telemetry commit exact remote source review | Owner source HEAD 1d428ca parent Rules5014fe, only m435 +130 LOC default-off read-only; identified rc1 top-level JSON metadata assigned after json.dump | v1.2.27 `RC1_SOURCE_REVIEW_FIX_REQUIRED`; owner manual move metadata before JSON dump and safe pull first, commit/push only evaluator; SA review then frozen 20-rollout diagnostic; no GPU/PPO | 1.2.27 |
@@ -1017,6 +1030,8 @@ PY
 | 2026-11-21 | Research governance | Khóa mục tiêu push → fall → get-up → resume; định nghĩa thước đo và cổng nghiệm thu | RULES ACTIVE; GET-UP NOT IMPLEMENTED | 1.0.0 |
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.29 — 2026-11-24:** Recorded owner RC1 11-line log, safe Rules pull PASS but EXIT_CODE1 before source-gate and any GPU/MJX/JSON; identified silent launcher guard as most likely but unconfirmed due to lack of trace; bounded recovery through explicit local HEAD/blob/launcher diagnostics, actionable ERR trap and unchanged predeclared 20-rollout read-only evaluation. No code, reward, PPO, baseline or model changes. Assistant only committed Rules.
 
 - **v1.2.28 — 2026-11-24:** Verified owner commit c50a9a5 single evaluator fix (metadata now persisted before JSON dump), static source review PASS only; fixed exactly one 20-rollout RC1 read-only evaluation on predeclared 5 development cases × 2 policies × ON/OFF, fresh interpreter per case/policy, one log and 10 raw JSONs, without new PPO or reward change. M2 smoke/+10M remain separate owner GO. Assistant only modified Rules.
 
