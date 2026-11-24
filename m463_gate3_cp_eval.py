@@ -2924,10 +2924,14 @@ def run(args):
 H4_TECH_SPEC={'lanes':4,'ticks':640,'unroll':32,'arms':['control','candidate'],
               'reset_seed':913811,'dr_seed':913812,'actor_seed':913813,
               'fixture_physical':4,'max_physical':5124,
-              'synthetic_boundary_keys':32,'synthetic_step_max':160,
-              'synthetic_scan_steps':40}
+              'synthetic_boundary_keys':32,'synthetic_step_max':119,
+              'synthetic_scan_steps':40,'key_only_scan_steps':1280}
 H4_TECH_REWARD_SHA='84c285315e109ca8716476b0f527873046b441d35e3fe963570e5f2019fe3530'
 H4_TECH_ACTING_BLOB='ec6f81d3e3c48e96a22f7df292fb1a98b63f938d'
+H4_TECH_SOURCE_SHA={
+    'm463_coverage_env.py':'5a995942b87ba9514d9187fc7b864f33ee6eafa4d4994662f1faeb5c96e74e27',
+    'm463_instrument_brax.py':'565465e7a5d73d68e1073322496d163015006d9ac78e16a45315dc255215c5e7',
+    'm463_push_ppo_train.py':'6775ea45912d9ab98d273232fcfc86011759427ef905ea61e836159590df2887'}
 
 
 def h4t_require(ok,label):
@@ -2943,6 +2947,9 @@ def h4t_inputs(args):
         h4t_require(p is not None and p.is_file() and not p.is_symlink(),'INPUT_'+name)
         pins[name]=sha256(p)
         h4t_require(pins[name]==expected,'SHA_'+name)
+    for name,expected in H4_TECH_SOURCE_SHA.items():
+        pins[name]=sha256(Path(__file__).with_name(name))
+        h4t_require(pins[name]==expected,'SOURCE_SHA_'+name)
     return pins
 
 
@@ -3072,7 +3079,7 @@ def h4t_scheduler_fixtures(jax,jp,np):
         labels=[]
         def check(label,st,**expected):
             nonlocal calls
-            h4t_require(calls<160,'FIXTURE_BUDGET')
+            h4t_require(calls<H4_TECH_SPEC['synthetic_step_max'],'FIXTURE_BUDGET')
             out=fn(st);calls+=1
             expect(out,h4_bad=0,**expected)
             labels.append(label)
@@ -3080,6 +3087,10 @@ def h4t_scheduler_fixtures(jax,jp,np):
         single=check('mature_single_first',state(cls=2),m463_event=1,m463_repeat=0,
                      h4_repeat_assigned=0,h4_tail_kind=1,h4_tick_age=0)
         h4t_require(.45<=float(single.info['m463_magnitude'])<=.55,'FIXTURE_FIRST_MAG')
+        check('single_no_repeat',state(age=300,cls=2,m463_push_count=2,
+              m463_next=2**30,h4_first_pending=0),m463_event=0,m463_repeat=0)
+        check('nominal_no_push',state(cls=0,m463_no_push=1,h4_first_pending=0),
+              m463_event=0,m463_repeat=0)
         first=check('mature_double_first',state(age=300),m463_event=1,h4_repeat_assigned=1,
                     h4_repeat_pending=1,h4_tail_kind=1,h4_tick_age=0)
         h4t_require(330<=scalar(first,'m463_next')<=332,'FIXTURE_REPEAT_TARGET')
@@ -3100,6 +3111,10 @@ def h4t_scheduler_fixtures(jax,jp,np):
               h4_repeat_closed=1,h4_tail_kind=0)
         check('unreached_first_terminal',state(terminal=1,m463_next=300),
               m463_event=0,h4_first_closed=1,h4_first_pending=0)
+        check('unreached_repeat_terminal',state(age=320,terminal=1,m463_push_count=1,
+              m463_last_event_age=300,m463_next=330,h4_first_pending=0,h4_repeat_pending=1,
+              h4_tail_kind=1,h4_tail_age=19,h4_tail_same=1,h4_tail_motion=0),
+              m463_event=0,h4_repeat_closed=1,h4_repeat_pending=0,h4_close_terminal=1)
         for w in (10,25,50,100,250):
             common=dict(m463_push_count=2,m463_next=2**30,h4_first_pending=0,
                         h4_tail_kind=2,h4_tail_cell=1,h4_tail_age=w-1,
@@ -3139,7 +3154,7 @@ def h4t_scheduler_fixtures(jax,jp,np):
                      and int(again.info['h4_age'][0])==0 and int(again.info['h4_boundary'][0])==1
                      and int(again.info['h4_close_boundary'][0])==0
                      and int(again.info['m463_event'][0])==0,'WRAP_FIXTURE_NEXT_BOUNDARY')
-        h4t_require(calls<=H4_TECH_SPEC['synthetic_step_max'],'FIXTURE_BUDGET')
+        h4t_require(calls==H4_TECH_SPEC['synthetic_step_max'],'FIXTURE_BUDGET')
         labels.append('actual_wrapper_synthetic_terminal_reset')
     return {'synthetic_calls':calls,'boundary_class_counts':counts,
             'control_legacy_exact_on_shared_synthetic_inputs':True,'case_labels':labels,
@@ -3186,7 +3201,8 @@ def h4t_actual(args,r,monitor,persist):
     exec(compile(ast.fix_missing_locations(mod),str(acting),'exec'),ns)
     actor_step=ns['actor_step']
     r['actor_step_blob']=blob
-    r['actor_step_module_imported']=False
+    r['actor_step_module_imported']='brax.training.acting' in sys.modules
+    h4t_require(not r['actor_step_module_imported'] and 'brax.training.agents.ppo.train' not in sys.modules,'TRAIN_IMPORT')
     r['carry']=h4t_carry(jax,jp,np)
     r['scheduler_fixtures']=h4t_scheduler_fixtures(jax,jp,np)
     h3_gpu_check(monitor)
@@ -3263,6 +3279,7 @@ def h4t_actual(args,r,monitor,persist):
         h4t_require(np.all(data['h4_tick_survived'][data['done']>0]==0),'TERMINAL_NOT_SURVIVED')
         return data
     def charge(n):
+        h3_gpu_check(monitor)
         h4t_require(r['physical_attempted']+n<=H4_TECH_SPEC['max_physical'],'BUDGET')
         r['physical_attempted']+=n
         persist()
@@ -3338,6 +3355,7 @@ def h4t_actual(args,r,monitor,persist):
             r['physical_recorded']+=4
             persist()
     h4t_require(r['physical_attempted']==r['physical_recorded']==5124,'FINAL_BUDGET')
+    h4t_require('brax.training.agents.ppo.train' not in sys.modules,'TRAIN_IMPORT_FINAL')
 
 
 def h4t_natural_audit(record,cols):
