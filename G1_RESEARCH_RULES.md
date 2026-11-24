@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.54  
+**Version:** 1.2.55  
 **Ngày cập nhật:** 2026-11-24 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -615,6 +615,22 @@ Owner explicitly approved new roadmap: H2C HOLD, H3 PPO reward engineering ACTIV
 
 Decision H3_R0_DESIGN_COMPLETE / H3_M1_0_DETAILED_SOURCE_DESIGN_READY / ALL_EXECUTION_HOLD. Zero SA executable source edits/GPU/PPO. Rules-only commit.
 
+### M4.70-H3-M1-0 — DETAILED OWNER SOURCE HANDOFF, STATIC DESIGN SNIPPETS PASS (v1.2.55; 2026-11-24)
+
+Owner explicitly requested detailed source design, not GPU/PPO execution. Read AGENTS, v1.2.54 and pinned source; initial HEAD defe4268ee96a39064b41fa72c8f0b2597f6e1a1. H3-M1-0 handoff Markdown H3_M1_0_SOURCE_DESIGN.md SHA256 bdfa53ca326a217a8de87be4d1b7b4ddd4dff19d97702528d4245a21f7fd5812, 41623 bytes/560 lines (delivered to owner, not new repository runner). Justified one stable multi-file handoff with exact anchors, code replacements, pure static gate, rollback. SA ran extracted proposed countdown/factor, NumPy synthetic eight-transition reducer with injected invalid cases, aggregate runner audit and CLI guard snippets: PASS; not actual edited repo AST or runtime proof. Zero JAX/GPU/PPO and executable source modifications. Owner manual edit/push only.
+
+**Exact source allowlist:** m463_coverage_env.py base blob b90919df7b4c5cd38b3bfe69f165cee91a442780; m463_instrument_brax.py 79273b6c967d2b29c7d77e9a6e323732a1e89597; m463_push_ppo_train.py 3a66a8a6a0dfccda40e04fab8b503c0464c07545. m463_gate3_cp_eval.py blob65f0b46cc0b61561e8f75864ed9348be60a7919c MUST remain unchanged at this step; evaluator contract frozen below, candidate-specific code later when actual SHA/report exist. Keep pinned Playground/Brax, C401M, all H1/H2 evidence and baseline unchanged.
+
+**Implementation contract:** coverage env opt-in h3_m1 mutually exclusive with H1, default OFF. Pure h3_countdown(event, prior_recent,boundary), h3_stand_factor(n,done): current actual event resets n=100, otherwise max(boundary-corrected prior-1,0); g=1-.5*n/100, original source done g=1. Before qvel injection/super().step set H3 countdown and capture exact pre-refresh command; after source transition independently reconstruct baseline weighted stand cost from postphysics qpos before outer AutoReset, actual source weighted metric, dt-scaled sum of all 24 weighted terms. Eight H3 scalar extras only when enabled (n, raw prior, boundary, stand, source done, base, weighted, reward_sum), no actor/critic context, no new RNG/sensor/model/physics/action/command/termination changes. Existing recent_after unchanged and independently compared. No-push, prepush, nonstand, terminal exact zero delta; wrapper truncation separately audited (overlap relief invalid). No new reward key or static scale change, 23 other terms unchanged. Source step reward signed sum*dt retained.
+
+Instrumenter uses conditional H3_EXT_FIELDS and H3_METRICS_SOURCE only with enable_h3=True; disabled emission must byte-match old generator on same pinned Brax source (including fullstate hooks). Actual transition extras and data.reward, not eval reward or configured push, reduce counts per rollout: stand events, active and subsequent actions, stand post steps, nominal/nonstand/terminal, timing/formula/forbidden/truncation/reward_sum/nonfinite violation counts, signed baseline/modified sums and dt delta. All violations zero, formula tolerance2e-6*(1+abs(base)), actual reward sum abs error<=1e-5, exact forbidden equality; report aggregated counts via existing epoch mean x actual rollout count not SGD count, aggregate delta reconciliation max(.01,1e-4*abs(predicted)). Verify data.reward/extra shape and meaning at future technical gate; no silent broadcast. H3 only runner --h3-m1 plan/smoke3/independent10M easy_repeat_support, no resume/pilot/50M/100M, no simultaneous H1 flags; no GPU plan. Exact normalized PPO fingerprint420ecb3798789b0f90f3ed249572ad8298fad03a5ce56a83a7a83e59ebe90fef, source scale -1/termination -100/24 keys, H3_SPEC, three source SHA256s, report status/activation/invariants, truthful reward_changed and source PD/termination unchanged. Longtrain requires same-source H3 smoke3 report (not its weights), immutable C401M/Orbax, original OLD10M comparator provenance gate and separate explicit GO. H3 fullstate marked not resumable; preserve legacy digest guards. Violation stop at existing host progress boundary AFTER completed PPO epoch (not pre-SGD promise); retain history, no retries. Existing finite/coverage/VRAM<95% and sampler error gates unchanged.
+
+**Owner next:** sync Rules, exact pre-edit blobs, manually apply handoff §2 only; run combined §3 AST + pure NumPy/mock reward + synthetic generated-source legacy equality + reducer invalid cases + audit + offline plan/CLI guard, log SHA and exit/tee status, no JAX imports/GPU/PPO. Stage exactly three files, diff/check and push branch, provide exact HEAD/log/SHA/status. SA review before any technical runtime GO. Later one integrated pinned CUDA technical gate checks actual generated legacy bytes (resume False/True), JAX state/paired full source step identity (physical data, obs, RNG, 23 terms, source done, exact reward delta), wrapped extras and boundary/terminal cases then one smoke3 786432 steps/120 updates only with explicit owner GO. +10M 10485760/40rollouts/1600 updates/6eval fresh C401M separately approved; no smoke-weight continuation. No source edits by SA.
+
+**Deferred evaluation contract:** no loosening legacy OLD10M SHA guard; later opt-in --h3-m1-eval with separate H3 validated report+checkpoint SHA, C/OLD/H3 same original deterministic evaluator, full same-policy forks, fixed R0 4 seeds7331/7357/7601/7613 x stand/fast/turn left x left/right, 300/.50 and335/.35, 1000 ticks, 180 logical max134424 physical. Reuse scalar safety instrumentation and raw frames/progress H3-only, do not add array h2a_action to scalar legacy serialization. Preserve R0 stand +2/8 survival AND recovery5s, no lost single, no lost moving double, moving recovery nonworse by profile, nominal12/12 and per-case tracking5%/.0005, actual exposures/censoring, no new critical terminal flags/nonfinite; joint/ctrl/force limits tolerance .001/.001/.1 on common paired prefix, report full observed maxima too. Standing preservation predeclared: stand nominal steps101–1000, common full surviving single400–1000, double435–1000 (after latest 100-tick window); compare per case raw pose L1 mean increase<=5% or abs<=.0005 if OLD<.01, swing fraction mean((2-Lground-Rground)/2) increase<=.02 absolute, XY/yaw RMSE same 5%/.0005; require four nominal pairs and at least one common full pair per pushed type, otherwise INCONCLUSIVE if no hard NO-GO. Proxies not literal unnecessary steps, report contact transitions and movement. Nonexposed/early termination fail recovery and report missing windows, no favorable censoring. Independent heldout separate GO, no seed/parameter changes. H2C and B HOLD, +400M HOLD.
+
+Decision H3_M1_0_DETAILED_DESIGN_COMPLETE / OWNER_EDIT_AND_STATIC_PENDING / ALL_EXECUTION_HOLD. No technical runtime or efficacy PASS.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -876,6 +892,9 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-24)
+
+**M470-H3-M1-0 DETAILED OWNER SOURCE HANDOFF (v1.2.55; 2026-11-24):** H3_M1_0_SOURCE_DESIGN.md SHA bdfa53ca326a217a8de87be4d1b7b4ddd4dff19d97702528d4245a21f7fd5812; proposed pure helper/reducer/audit/CLI snippets PASS NumPy, no actual edited source/runtime test. Owner manually edits only coverage env/instrumenter/runner, H3 flag and eight opt-in scalar extras, strict legacy isolation, static log then source review. Evaluator unchanged now, standing preservation contract locked, candidate-specific code later. All GPU/PPO execution HOLD separate GO, H2C/B HOLD.
+
 
 **M470-H3-R0 OWNER APPROVED PPO REWARD-FIRST (v1.2.54; 2026-11-24):** H2C HOLD. Selected H3-M1 one-factor event-conditioned stand_still relaxation g=1-.5*n/100, 100 actual postpush ticks incl event, repeat resets, terminal/no-push unchanged, train-only context, all safety/actor/PD/physics fixed. OLD10M report SHA04f7c71b verified fingerprint420ecb37, final SHA0a011b6a, 46948 events/4955MiB; full provenance gate before reuse. H3-M1-0 detailed source design READY; smoke3/+10M/evaluation separate GO, 4-seed paired screen locked, no tuning/exec now. H1/H2A/B CLOSED, +400M and B HOLD.
 
@@ -1290,6 +1309,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-24 | H3-M1-0 detailed source handoff | Pinned three source blobs, handoff SHA bdfa53ca, proposed helper/reducer/audit/CLI NumPy synthetic PASS, evaluator unchanged | v1.2.55 design complete, owner edit/static pending; no JAX/GPU/PPO/source changes by SA | 1.2.55 |
+
 | 2026-11-24 | H3-R0 owner approved paper-first reward design | Paper/source and recorded RC1 audit, OLD10M report SHA04f7c71b and exact fingerprint420ecb37, scheduler reward timing and evaluator hard pin reviewed | v1.2.54 select one H3-M1 50%/100-tick train-only stand penalty relaxation, H3-M1-0 ready, all execution HOLD, H2C HOLD | 1.2.54 |
 
 | 2026-11-24 | Paper-first roadmap reassessment | RSS2025 pp4,18–21,39–40; Table XX vs 12GB scaled PPO; H1/RC1 evidence and source reward timing | v1.2.53 H3 reward-first proposal pending owner selection, H2C0 paused; no code/GPU/PPO | 1.2.53 |
@@ -1462,6 +1483,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.55 — 2026-11-24:** Locked H3-M1-0 detailed owner source handoff and opt-in actual PPO telemetry/static gates, evaluator implementation deferred pending candidate SHA with predeclared standing preservation contract. No runtime/efficacy PASS or execution GO, Rules-only.
 
 - **v1.2.54 — 2026-11-24:** Owner approved PPO-first roadmap; H3-R0 selected one bounded event-conditioned stand-still reward relaxation and frozen comparator/technical/evaluation design, H2C HOLD, no executable source changes or GPU/PPO authorization.
 
