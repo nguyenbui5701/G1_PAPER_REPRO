@@ -197,6 +197,172 @@ def m470_resume_manifest(path: Path, fingerprint, instrument_sha, batches_per_ev
     return meta
 
 
+def h3_technical_gate(api, train_cfg, stage, instrument_meta):
+    """Bounded diagnostic only; no optimizer, policy weights or training RNG."""
+    import inspect
+    import subprocess
+    import textwrap
+    from types import SimpleNamespace
+    from brax.training import acting
+    import jax.numpy as jp
+    from m463_coverage_env import CoverageJoystick
+    from m463_instrument_brax import (
+        EXT_FIELDS, H3_EXT_FIELDS, H3_METRICS_SOURCE, make_patched_source,
+    )
+    jax, np = api['jax'], api['numpy']
+
+    def require(ok, label):
+        if not bool(ok):
+            raise RuntimeError('M470_H3_TECH_' + label)
+
+    require(jax.default_backend() == 'gpu' and jax.process_count() == 1
+            and jax.local_device_count() == 1, 'GPU_SINGLE_PROCESS')
+    raw = Path(inspect.getfile(api['ppo'].train)).read_bytes()
+    old = {'__name__': 'h3_legacy_instrumenter'}
+    exec(compile(subprocess.check_output([
+        'git', 'show', 'defe4268ee96a39064b41fa72c8f0b2597f6e1a1:m463_instrument_brax.py'
+    ]), '<legacy instrumenter>', 'exec'), old)
+    for resume in (False, True):
+        legacy, sha = old['make_patched_source'](raw, enable_resume=resume)
+        current, sha2 = make_patched_source(raw, enable_resume=resume, enable_h3=False)
+        require(legacy == current and sha == sha2, 'LEGACY_BYTES')
+        generated, _ = make_patched_source(raw, enable_resume=resume, enable_h3=True)
+        compile(generated, '<actual H3 Brax source>', 'exec')
+        require(generated.count("'m463_h3_active_per_rollout'") == 1, 'GENERATED_METRICS')
+        if not resume:
+            require(Path(instrument_meta['instrumented_file']).read_text('utf8') == generated,
+                    'ACTUAL_INSTRUMENTED_FILE')
+    print('M470_H3_TECH_LEGACY_BYTES_PASS', flush=True)
+
+    # All cases are synthetic starting states; no training distribution or RNG is altered.
+    labels = ('prepush', 'first', 'post', 'repeat', 'moving', 'terminal',
+              'boundary', 'nominal', 'truncation')
+    expected_n = np.array([0,100,99,100,100,100,0,0,0])
+    expected_event = np.array([0,1,0,1,1,1,0,0,0])
+    expected_stand = np.array([1,1,1,1,0,1,1,1,1])
+    expected_done = np.array([0,0,0,0,0,1,0,0,0])
+    ncase = len(labels)
+    keys = jax.random.split(jax.random.PRNGKey(913701), ncase)
+    action = jp.zeros((ncase,29), dtype=jp.float32)
+
+    def prepare(state):
+        info = dict(state.info)
+        values = {
+            'steps': [10,24,25,40,24,24,0,10,999],
+            'm463_age': [10,24,25,40,24,24,0,10,999],
+            'm463_next': [24,0,9999,0,0,0,0,0,9999],
+            'm463_push_count': [0,0,2,1,0,0,1,0,2],
+            'm463_recent': [0,0,100,65,0,0,88,0,0],
+            'm463_no_push': [0,0,0,0,0,0,0,1,0],
+            'm463_direction': [0]*ncase,
+            'm463_phase_target': [0]*ncase,
+            'm463_last_event_age': [-1,-1,24,24,-1,-1,5,-1,24],
+            'step': [10,24,25,40,24,24,0,10,499],
+        }
+        for k, v in values.items():
+            dtype = info[k].dtype if k in info else jp.int32
+            info[k] = jp.asarray(v, dtype=dtype)
+        command = jp.zeros((ncase,3), dtype=jp.float32).at[4,0].set(.6)
+        info['command'] = command
+        obs = dict(state.obs)
+        for k in ('state','privileged_state'):
+            obs[k] = obs[k].at[:,9:12].set(command)
+        # Finite, inverted root at elevated height to exercise real source done.
+        data = state.data.replace(
+            qpos=state.data.qpos.at[5,2].set(1.5).at[5,3:7].set(
+                jp.array([0.,1.,0.,0.], dtype=jp.float32)),
+            qvel=state.data.qvel.at[5].set(0.))
+        return state.replace(info=info, obs=obs, data=data)
+
+    def exact(a, b, name):
+        require(jax.tree_util.tree_structure(a) == jax.tree_util.tree_structure(b),
+                name+'_TREE')
+        for x,y in zip(jax.tree_util.tree_leaves(a), jax.tree_util.tree_leaves(b)):
+            np.testing.assert_array_equal(np.asarray(jax.device_get(x)),
+                                          np.asarray(jax.device_get(y)),
+                                          err_msg=name)
+
+    def host(x):
+        return np.asarray(jax.device_get(x))
+
+    def make(enabled):
+        return CoverageJoystick(stage=stage, config=copy.deepcopy(train_cfg),
+                                h3_m1=enabled)
+
+    off, on = make(False), make(True)
+    a = prepare(jax.jit(jax.vmap(off.reset))(keys))
+    b = prepare(jax.jit(jax.vmap(on.reset))(keys))
+    exact(a.data,b.data,'INITIAL_DATA')
+    exact(a.obs,b.obs,'INITIAL_OBS')
+    exact(a.info,{k:b.info[k] for k in a.info},'INITIAL_INFO')
+    a1 = jax.jit(jax.vmap(off.step))(a, action)
+    b1 = jax.jit(jax.vmap(on.step))(b, action)
+    exact(a1.data,b1.data,'PHYSICS')
+    exact(a1.obs,b1.obs,'OBS')
+    exact(a1.done,b1.done,'DONE')
+    exact(a1.info,{k:b1.info[k] for k in a1.info},'COMMON_INFO')
+    require(set(a1.metrics) == set(b1.metrics), 'METRIC_KEYS')
+    require(sum(k.startswith('reward/') for k in a1.metrics) == 24, 'REWARD_COUNT')
+    for k in a1.metrics:
+        if k != 'reward/stand_still':
+            exact(a1.metrics[k],b1.metrics[k],k)
+    base = host(a1.metrics['reward/stand_still'])
+    weighted = host(b1.metrics['reward/stand_still'])
+    info = b1.info
+    for k, expected in [('m470_h3_n',expected_n),('m463_event',expected_event),
+                        ('m470_h3_stand',expected_stand),('m470_h3_done',expected_done)]:
+        np.testing.assert_array_equal(host(info[k]),expected,err_msg=k)
+    require(host(info['m463_repeat'])[3] == 1, 'REPEAT_EVENT')
+    np.testing.assert_array_equal(host(a1.done),expected_done)
+    np.testing.assert_allclose(host(info['m470_h3_base']),base,rtol=2e-6,atol=2e-6)
+    g = np.where(expected_done,1.,1.-.5*expected_n/100)
+    np.testing.assert_allclose(weighted,g*base,rtol=2e-6,atol=2e-6)
+    np.testing.assert_allclose(host(b1.reward)-host(a1.reward),
+                               .02*(weighted-base),rtol=2e-6,atol=1e-5)
+    np.testing.assert_array_equal(weighted[[0,4,5,6,7,8]],base[[0,4,5,6,7,8]])
+    require(np.all(weighted[[1,2,3]] > base[[1,2,3]]), 'POSITIVE_ACTIVATION')
+    print('M470_H3_TECH_PAIRED_PHYSICS_PASS', flush=True)
+
+    # Actual training wrapper + domain randomization + Brax actor_step;
+    # fixed actions and independent diagnostic keys, no optimizer.
+    wrapped = api['wrapper'].wrap_for_brax_training(
+        make(True), episode_length=1000, action_repeat=1,
+        randomization_fn=functools.partial(
+            api['randomizer'], rng=jax.random.split(jax.random.PRNGKey(913702),ncase)))
+    ws = prepare(jax.jit(wrapped.reset)(keys))
+    def policy(obs,key):
+        return action, {}
+    def collect(state):
+        return acting.actor_step(wrapped,state,policy,jax.random.PRNGKey(913703),
+            extra_fields=('truncation',)+EXT_FIELDS+H3_EXT_FIELDS)
+    wn, transition = jax.jit(collect)(ws)
+    extras = transition.extras['state_extras']
+    require(transition.reward.shape == (ncase,), 'WRAPPED_REWARD_SHAPE')
+    for k in ('truncation',)+EXT_FIELDS+H3_EXT_FIELDS:
+        require(extras[k].shape == transition.reward.shape, 'EXTRA_SHAPE_'+k)
+        exact(extras[k],wn.info[k],'WRAPPED_EXTRA_'+k)
+    for k, expected in [('m470_h3_n',expected_n),('m463_event',expected_event),
+                        ('m470_h3_stand',expected_stand),('m470_h3_done',expected_done)]:
+        np.testing.assert_array_equal(host(extras[k]),expected,err_msg=k)
+    np.testing.assert_array_equal(host(extras['truncation']),[0,0,0,0,0,0,0,0,1])
+    np.testing.assert_array_equal(host(wn.done),[0,0,0,0,0,1,0,0,1])
+    np.testing.assert_allclose(host(transition.reward),
+        host(extras['m470_h3_reward_sum']),rtol=0,atol=1e-5)
+    coverage = {}
+    exec(compile(textwrap.dedent(H3_METRICS_SOURCE),'<actual H3 reducer>','exec'),{
+        'extras':extras,'data':transition,'jnp':jp,'coverage':coverage,
+        'recent':extras['m463_recent']})
+    counts = {'training/'+k:float(host(v)) for k,v in coverage.items()}
+    audit = h3_audit_counts(counts)
+    require(audit['passed'], 'WRAPPED_AUDIT')
+    result = {'passed':True,'cases':list(labels),'direct_pairs':ncase,
+              'wrapped_transitions':ncase,'legacy_resume_modes':[False,True],
+              'wrapped_audit':audit,'jax_version':jax.__version__,
+              'training_performed':False}
+    print('M470_H3_TECH_GATE_PASS',json.dumps(result,allow_nan=False),flush=True)
+    return result
+
+
 def run(args):
     validate_h3_cli(args)
     h3_m1 = bool(getattr(args, 'h3_m1', False))
@@ -208,6 +374,10 @@ def run(args):
     from m463_instrument_brax import build_instrumented_ppo
 
     report_gate,orbax_dir=read_restore_gate(args.restore_report,args.checkpoint)
+    if h3_m1 and (digest(args.checkpoint) != SEED1_SHA or
+            report_gate['orbax_dir_sha256'] !=
+            '5acfabc1376e91a2a9a52b47ac821e296f0e84f5545b646b07c9482ddc462bf3'):
+        raise RuntimeError('M470_H3_FROZEN_RESTORE_MISMATCH')
     if args.mode in ('probe2', 'pilot'):
         ensure_smoke_gate(args.smoke_report,args.stage,report_gate['orbax_dir_sha256'])
     longtrain = args.mode == 'longtrain'
@@ -325,6 +495,7 @@ def run(args):
                 and sr.get('coverage_gate_pass') is True
                 and sr.get('memory_gate_pass') is True
                 and not sr.get('gpu_monitor_errors')
+                and sr.get('h3_m1_technical_gate', {}).get('passed') is True
                 and sr.get('h3_m1_training_transition_audit', {}).get('passed') is True):
             raise RuntimeError('M470_H3_SMOKE3_PROVENANCE_MISMATCH')
     net_cfg=cfg.pop('network_factory')
@@ -514,7 +685,24 @@ def run(args):
     monitor=GPUMonitor()
     try:
         with monitor:
+            if h3_m1 and args.mode == 'smoke3':
+                import gc
+                report['h3_m1_technical_gate'] = {'passed':False}
+                persist()
+                report['h3_m1_technical_gate'] = h3_technical_gate(
+                    api, train_cfg, args.stage, instrument_meta)
+                persist()
+                jax.clear_caches()
+                gc.collect()
+                tech_gpu = monitor.snapshot()
+                if (tech_gpu['peak_used_mib'] is None or tech_gpu['total_mib'] is None
+                        or tech_gpu['peak_used_mib'] >= .95*tech_gpu['total_mib']
+                        or tech_gpu['sampler_errors']):
+                    raise RuntimeError('M470_H3_TECH_VRAM_GATE')
+                print('M470_H3_TECH_READY_FOR_SMOKE3',flush=True)
             report['training_performed']=True
+            if h3_m1:
+                persist()
             _,params,_=instrumented_ppo.train(
                 environment=train_env,eval_env=eval_env,
                 wrap_env_fn=api['wrapper'].wrap_for_brax_training,
