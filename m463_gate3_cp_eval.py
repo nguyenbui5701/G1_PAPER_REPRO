@@ -2982,7 +2982,7 @@ def h4t_scheduler_fixtures(jax,jp,np):
     """
     from unittest.mock import patch
     from flax import struct
-    from mujoco_playground._src import mjx_env
+    from mujoco_playground._src import mjx_env,wrapper
     import m463_coverage_env as ce
 
     @struct.dataclass
@@ -3116,6 +3116,31 @@ def h4t_scheduler_fixtures(jax,jp,np):
         # The synthetic base step does not implement EpisodeWrapper's steps.
         fresh=fresh.replace(info=dict(fresh.info,steps=jp.asarray(501,jp.int32)))
         check('command_mismatch_next',fresh,h4_command_mismatch=1,h4_tick_same=0)
+        # Real EpisodeWrapper and BraxAutoResetWrapper over synthetic
+        # dynamics. Force one source terminal then inspect the next boundary.
+        w=wrapper.wrap_for_brax_training(candidate,episode_length=1000,action_repeat=1)
+        st=jax.jit(w.reset)(jax.random.split(jax.random.PRNGKey(913816),1))
+        info=dict(st.info)
+        for k,v in {'steps':240,'m463_age':240,'m463_next':240,
+                    'h4_class':3,'h4_first_pending':1,'m463_phase_target':0,
+                    'm463_direction':2}.items():
+            info[k]=jp.full_like(info[k],v)
+        st=st.replace(info=info,data=st.data.replace(terminal=jp.ones((1,),jp.int32)))
+        wf=jax.jit(w.step)
+        act=jp.zeros((1,29),jp.float32)
+        terminal=wf(st,act);calls+=1
+        h4t_require(float(terminal.done[0])==1 and int(terminal.info['h4_event_terminal'][0])==1
+                     and int(terminal.info['h4_repeat_closed'][0])==1
+                     and int(terminal.info['h4_tail_kind'][0])==0,'WRAP_FIXTURE_TERMINAL')
+        exact(terminal.data,terminal.info['first_state'])
+        exact(terminal.obs,terminal.info['first_obs'])
+        again=wf(terminal,act);calls+=1
+        h4t_require(float(again.done[0])==0 and int(again.info['steps'][0])==1
+                     and int(again.info['h4_age'][0])==0 and int(again.info['h4_boundary'][0])==1
+                     and int(again.info['h4_close_boundary'][0])==0
+                     and int(again.info['m463_event'][0])==0,'WRAP_FIXTURE_NEXT_BOUNDARY')
+        h4t_require(calls<=H4_TECH_SPEC['synthetic_step_max'],'FIXTURE_BUDGET')
+        labels.append('actual_wrapper_synthetic_terminal_reset')
     return {'synthetic_calls':calls,'boundary_class_counts':counts,
             'control_legacy_exact_on_shared_synthetic_inputs':True,'case_labels':labels,
             'physics_performed':False}
@@ -3247,6 +3272,8 @@ def h4t_actual(args,r,monitor,persist):
         carry=(initial,jax.random.PRNGKey(H4_TECH_SPEC['actor_seed']))
         unroll=jax.jit(lambda c:jax.lax.scan(lambda c,x:step(env,c,x),c,(),length=32))
         record={'arm':arm,'rows':[],'rollout_counts':[],'chunk_keys':[]}
+        expected_key=carry[1]
+        key_advance=jax.jit(lambda k:jax.lax.scan(lambda c,_:(jax.random.split(c)[0],None),k,(),length=160)[0])
         r['natural'].append(record)
         for i in range(20):
             charge(128)
@@ -3263,6 +3290,8 @@ def h4t_actual(args,r,monitor,persist):
             record['rollout_counts'].append(counts)
             r['physical_recorded']+=128
             if (i+1)%5==0:
+                expected_key=key_advance(expected_key)
+                h4t_require(np.array_equal(host(carry[1]),host(expected_key)),'NATURAL_CHUNK_RNG')
                 record['chunk_keys'].append(host(carry[1]).tolist())
                 h3_gpu_check(monitor)
                 persist()
@@ -3302,6 +3331,9 @@ def h4t_actual(args,r,monitor,persist):
                          and np.all((d['m463_magnitude'][0,2:]>=.30)&(d['m463_magnitude'][0,2:]<=.40)),
                          'REAL_FIXTURE_MAG')
             h4t_require(np.all(d['m463_repeat_gap'][0,2:]==38),'REAL_FIXTURE_GAP')
+            mag=np.hypot(d['h4_actual_dx'],d['h4_actual_dy'])
+            h4t_require(np.all(np.abs(mag-d['m463_magnitude'])<=3e-6),'REAL_FIXTURE_ACTUAL_MAG')
+            h4t_require(np.all(d['m463_repeat_side_matched'][0,2:]+d['m463_repeat_side_fallback'][0,2:]==1),'REAL_FIXTURE_SIDE')
             r['real_fixture_rows']=np.stack([d[k] for k in cols],axis=-1).tolist()
             r['physical_recorded']+=4
             persist()
@@ -3356,7 +3388,42 @@ def h4t_natural_audit(record,cols):
         h4t_require(not np.any(cls>=2),'CONTROL_CLASS')
     mature=event&(cls>=2)&~repeat
     h4t_require(np.all((col('h4_age')[mature]>=240)&(col('h4_age')[mature]<=308)),'MATURE_AGE')
-    return {'first':first,'repeat':second,'natural_terminals':count('h4_source_terminal'),
+    # Run the exact production ledger on the collected metrics. The
+    # training-budget/exposure floors are not applicable to this diagnostic;
+    # every conservation and bounds check remains required. Never use this
+    # filtered result as a production training gate.
+    from m463_push_ppo_train import h4_epoch_audit
+    combined={}
+    h4t_require(len(record['rollout_counts'])==20,'ROLLOUT_COUNT')
+    for row in record['rollout_counts']:
+        for k,v in row.items():
+            if k.endswith('_per_rollout'):
+                h4t_require(np.isfinite(v) and 0<=v<=128 and v==int(v),'ROLLOUT_INTEGER')
+                combined[k]=combined.get(k,0)+int(v)
+    q={'first_pending':sum(p['h4_first_pending']),
+       'repeat_pending':sum(p['h4_repeat_pending']),
+       'tail_pending':sum(v>0 for v in p['h4_tail_kind'])}
+    for ci in range(4):
+        for k in ('first_pending','repeat_pending'):
+            q[f'class_{ci}_{k}']=sum(int(v>0 and c==ci)
+                for v,c in zip(p['h4_'+k],p['h4_class']))
+    for m in (0,3,4):
+        for side in (1,2):
+            q[f'target_{m}_{side}_pending']=sum(int(v>0 and c==3 and o==m and d==side+1)
+                for v,c,o,d in zip(p['h4_repeat_pending'],p['h4_class'],
+                        p['h4_repeat_origin_motion'],p['m463_direction']))
+    excluded={'step_partition','nominal_fraction'}
+    if record['arm']=='candidate':
+        excluded.update(f'stand_{side}_{k}' for side in (1,2) for k in ('exposure','tail100'))
+        excluded.update(f'turn_{m}_{side}' for m in (3,4) for side in (1,2))
+    audited=h4_epoch_audit(combined,q,record['arm'])['checks']
+    h4t_require(excluded.issubset(audited),'TECH_LEDGER_EXCLUSION_SCHEMA')
+    selected={k:v for k,v in audited.items() if k not in excluded}
+    h4t_require(all(selected.values()),'PRODUCTION_CONSERVATION '+str([k for k,v in selected.items() if not v]))
+    h4t_require(sum(combined[f'm463_h4_class_{c}_steps_per_rollout'] for c in range(4))==2560,'TECH_PARTITION')
+    return {'production_conservation_checks':selected,
+            'training_only_gates_not_applicable':sorted(excluded),
+            'first':first,'repeat':second,'natural_terminals':count('h4_source_terminal'),
             'natural_boundaries':count('h4_boundary'),'refresh':count('h4_refresh'),
             'mature_first':int(mature.sum()),'mature_repeat':count('h4_mature_repeat'),
             'qualified_stand_repeats':int((col('h4_event_qual')>0).sum()),
