@@ -1780,7 +1780,7 @@ def h3_read_inputs(args):
                and r['coverage_gate_pass'] is True and r['memory_gate_pass'] is True
                and r['eval_source_reward_unchanged'] is True
                and r['PD_termination_source_unchanged'] is True
-               and r['train_reward_config']==old['train_reward_config']
+               and old['reward_PD_termination_source_unchanged'] is True
                and r['gpu_total_mib']==12288 and 0<r['gpu_peak_mib']<.95*12288
                and r['gpu_monitor_errors']==[], 'H3_REPORT_CONTRACT')
     a=r['h3_independent_acceptance_basis']
@@ -1908,7 +1908,9 @@ def h3_group(args,env,step_fn,jax,jnp,np,session,name,seed,profile):
             second,item['second']=kick(second_snapshot,direction,.35,335)
             advance(second,335,1000,item['double_suffix'])
     group['physical_transitions']=session['physical_transitions_attempted']-start
-    h3_require(group['physical_transitions']<=3734,'GROUP_BUDGET')
+    h3_require(group['physical_transitions']==len(group['nominal_frames'])+sum(
+        len(v['single_suffix'])+len(v['double_suffix']) for v in group['directions'].values())
+        and group['physical_transitions']<=3734,'GROUP_BUDGET')
     group['complete']=True
     session['logical_trajectories_completed']+=5
     return group
@@ -1927,8 +1929,10 @@ def h3_decode(group,columns):
         e=bool(item['second']['exposed'])
         single=nom[:299]+rows(item['single_suffix']) if f else nom
         double=single[:334]+rows(item['double_suffix']) if e else single
-        h3_require((not e or f) and (not f or len(nom)>=299)
-                   and (not e or len(single)>=334),'FORK_LENGTH')
+        h3_require((not e or f) and (not f or (len(nom)>=299 and not nom[298]['done']))
+                   and (not e or (len(single)>=334 and not single[333]['done']))
+                   and bool(item['single_suffix'])==f and bool(item['double_suffix'])==e,
+                   'FORK_LENGTH')
         for trace in (single,double):
             h3_require(0<len(trace)<=1000 and
                        (len(trace)==1000 or bool(trace[-1]['done'])) and
@@ -1951,7 +1955,10 @@ def h3_recovery(control,trace,step,window,exposed):
 
 def h3_summary(trace,exposed,kind,control):
     step={'nominal':None,'single':300,'double':335}[kind]
-    out=aggregate_frames(trace,bool(trace[-1]['done']),len(trace),1000,step)
+    out=aggregate_frames(trace,bool(trace[-1]['done']),len(trace),1000,step if exposed else None)
+    if step is not None and not exposed:
+        out['termination_within_2s']=None
+        out['termination_within_5s']=None
     out['exposed']=exposed
     out['survived']=bool(exposed and out['completed'])
     out['full_observed_safety_max']={k:max(f[k] for f in trace) for k in H3_EVAL_LIMITS}
@@ -2130,12 +2137,16 @@ def h3_run(args):
         report['status']='M470_H3_EVAL_FAILED'
         report['error']=type(e).__name__+': '+str(e)
         report['gpu']=monitor.snapshot()
-        h3_write(args.output,report)
+        try:
+            h3_write(args.output,report)
+        except BaseException as write_error:
+            print('M470_H3_EVAL_PARTIAL_WRITE_FAILED',repr(write_error),flush=True)
         raise
 
 
 def run(args):
-    if args.output.exists():raise FileExistsError('Refuse to overwrite output: '+str(args.output))
+    if args.output.exists() and not (args.h3_m1_eval and getattr(args,'h3_session',None) is not None):
+        raise FileExistsError('Refuse to overwrite output: '+str(args.output))
     # Use the same pinned runner environment; apply compatibility BEFORE JAX import.
     from train import check_source, build_paper_config
     from paper_config import BASE, ENV, PIN as SOURCE_PIN
@@ -2181,8 +2192,8 @@ def run(args):
     if float(cfg.reward_config.scales.base_height)!=0.:
         raise RuntimeError('M462_EVAL_SOURCE_REWARD_CONFIG_CHANGED')
     if args.h3_m1_eval:
-        old_reward=json.loads(args.report_p.read_bytes())['train_reward_config']
-        h3_require(cfg.reward_config.to_dict()==old_reward,'ORIGINAL_REWARD_CONFIG')
+        original_reward=json.loads(args.report_h3.read_bytes())['train_reward_config']
+        h3_require(cfg.reward_config.to_dict()==original_reward,'ORIGINAL_REWARD_CONFIG')
     cfg.push_config.enable=False
     env=locomotion.load(ENV,config=cfg)
     if env.action_size!=29:raise RuntimeError('M462_ACTION_DIM_CHANGED')
