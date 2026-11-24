@@ -585,12 +585,11 @@ H4R_EXIT = '''  # No evaluator, normal training loop, checkpoint or parameter re
 '''
 
 
-def make_h4_readiness_source(raw, *, authorize=False):
+def make_h4_readiness_source(raw):
     """Generate an isolated, hard-held diagnostic from exact production H4.
 
     The only callable entry is readiness_train; no path to evaluation or
-    production training survives. Default is held; only explicit readiness
-    authorization permits the fixed diagnostic.
+    production training survives. This source revision cannot execute PPO.
     """
     s, original_sha = make_patched_source(raw, enable_resume=True, enable_h4=True)
     def one(old,new):
@@ -624,21 +623,13 @@ def make_h4_readiness_source(raw, *, authorize=False):
     if s.count(marker)!=1:
         raise RuntimeError('M470_H4R_EVAL_ANCHOR')
     s=s[:s.index(marker)]+H4R_EXIT
-    if sha256(s.encode('utf8'))!='32ee163079334c965bc12ff517f00adbf232c92722fb5f43ac582c4ef3cec538':
-        raise RuntimeError('M470_H4R_ACCEPTED_SOURCE_DRIFT')
-    if authorize is True:
-        one("  raise RuntimeError('M470_H4_READINESS_EXECUTION_HOLD')\n",
-            "  if h4r_audit_fn is None:\n"
-            "    raise RuntimeError('M470_H4_READINESS_AUDIT_REQUIRED')\n")
-    elif authorize is not False:
-        raise RuntimeError('M470_H4R_AUTHORIZATION_TYPE')
     return s, original_sha
 
 
-def build_h4_readiness_ppo(pinned_ppo_module, output, *, authorize=False):
+def build_h4_readiness_ppo(pinned_ppo_module, output):
     import inspect
     raw=Path(inspect.getfile(pinned_ppo_module.train)).read_bytes()
-    s, original_sha=make_h4_readiness_source(raw,authorize=authorize)
+    s, original_sha=make_h4_readiness_source(raw)
     compile(s,str(output),'exec')
     with Path(output).open('x',encoding='utf8') as f:
         f.write(s)
