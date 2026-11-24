@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.32  
+**Version:** 1.2.33  
 **Ngày cập nhật:** 2026-11-23 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -359,6 +359,14 @@ Five selected ON cases: C401M 0/5 survive, OLD10M 3/5 survive; push-OFF 5/5 each
 
 **One-run gate:** Expected success `status=M463_COVERAGE_SMOKE3_PASS`, `steps_observed=786432`, `rollouts_target=3`, `h1_m2_enabled=true`, `h1_m1_enabled=false`, exactly one baseline scale change `feet_clearance=-0.25`, source eval reward unchanged, actual PPO-transition `h1_m2_training_transition_audit.active_steps>0`, `sum_weighted_pre_dt<0`, `nonfinite_steps=0`, push coverage checks all true, memory gate true (peak under 95% total), no sampler errors, final policy checkpoint exactly step786432 with verified bytes SHA, finite model params and callback-final equality; stdout/stderr timestamped combined log, `EXIT_CODE=0`, `TEE_EXIT_CODE=0`, fresh output directory with report and checkpoint. If any gate fails, **STOP/NO-GO** on exact failure, retain all artifacts; do not rerun, tweak thresholds or continue longtrain. Mark `SMOKE3_TECH_PASS` **only after user returns the log and report/checkpoint metadata for evidence review**; output success does not mean recovery efficacy. An independent +10485760 step C401M fresh-Adam M2 A/B remains **HOLD until a SECOND explicit owner GO**; freeze true unseen seeds before independent A/B. M1 NO-PROMOTE; original +100M NO-PROMOTE; +400M HOLD, B HOLD.
 
+### M4.70-H1M2 RC3B PREFLIGHT FALSE POSITIVE ADJUDICATED; ORIGINAL SMOKE3 GO REMAINS UNUSED (v1.2.33; 2026-11-24)
+
+**Owner evidence:** `m470_h1m2_smoke3_20261124_101006_787579301.log`, 136 lines, SHA256 `32e778cde9c31ad180ee75fd6a93653c3505317079ee7f38295c003c34e5c731`. Safe fast-forward to `e8ee05a367c651e9969afb9ab806ec7af5d76f87` and `M2_SOURCE_STATIC_PASS`; local audit reports 755 inspected text artifacts/members, 4 archives, 1 hit, 0 read errors. The sole reported hit is `m432_det_stoch.log` line28: `M426_EVAL mode=deterministic step=401080320 seed=5112 survived=377 xy_rmse=0.8209 yaw_rmse=0.3168`. Exact seed field is 5112, not 8209. The assistant-supplied broad integer regex matched the decimal RMSE suffix 8209 because the line also contained "seed". Independently verified against complete uploaded log: exactly one PRIOR_SEED_REFERENCE, explicit seed field 5112, no runner input PASS. `EXIT_CODE=1`, `TEE_EXIT_CODE=0`, stopped before launcher/restore/GPU/PPO. This is **harness false positive**, not observed contamination, M2 activation failure, or a failed PPO run.
+
+**Adjudication:** `M2_HELDOUT_LOCAL_AUDIT_SCOPED_PASS_AFTER_SINGLE_FALSE_POSITIVE_REVIEW`. Preserve proposed [8107,8209,8303,8407]. This resolves the sole recorded hit within the scanned scope; does NOT certify all historical branches, excluded large files, unscanned local/external artifacts or indirect seed generation. Future seed audits must compare actual seed fields or explicit seed-list arguments, not arbitrary numeric tokens on seed-containing lines. Do not rerun the entire same scan, evaluate heldout seeds, or change seed set solely for this RMSE value. Retain original failed preflight log; owner continuation should verify its SHA and exact local line28 against the adjudicated record, safe ff-only Rules sync and unchanged three M2 source blobs, then use original C401M/typed-Orbax/launcher/VRAM and report gates. GitHub frozen training report confirms exact C401M checkpoint path and SHA in v1.2.32.
+
+**Decision:** `RC3B_PREFLIGHT_FALSE_POSITIVE_RESOLVED / PPO_NOT_STARTED`. Original explicit owner GO still permits ONE actual M2 smoke3 of 786432 steps; no run budget consumed by this shell stop. No source/algorithm modification, no new RC1/RC3A tests, no PPO rerun after an actual training failure. Independent +10M remains HOLD pending full technical evidence and separate GO; M1 NO-PROMOTE; +100M NO-PROMOTE; +400M and B HOLD.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -620,6 +628,9 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-23)
+
+**M470-H1M2 RC3B PREFLIGHT FALSE POSITIVE RESOLVED (v1.2.33; 2026-11-24):** Owner log `m470_h1m2_smoke3_20261124_101006_787579301.log` SHA in §4; 755 inspected artifacts/4 archives/1 hit/0 read errors; sole hit `m432_det_stoch.log:28` actual seed5112 with `xy_rmse=0.8209` falsely matched seed8209. Scoped audit accepted after exact field review, no global provenance claim. EXIT1 before launcher/restore/GPU/PPO; original GO unused. Next one original bounded smoke3 after safe Rules sync, log+line evidence verification and original source/restore guards; no repeat broad scan, no source edits, no change to heldout, +10M HOLD. M1 NO-PROMOTE, +100M NO-PROMOTE, +400M HOLD, B HOLD.
+
 
 **M470-H1M2 RC3B OWNER GO FOR EXACTLY ONE 786432-STEP PPO SMOKE3 (v1.2.32; 2026-11-24):** Owner explicitly approved `GO M2 smoke3`; source M2 SHA unchanged and RC3A read-only pass. One normal `smoke3` stage `easy_repeat_support` `--h1-m2` C401M fresh Adam with 3×8192×32 steps, new output dir, original typed Orbax restore gate, real PPO-transition activation/finite/coverage/VRAM/report/step786432 checkpoint evidence, STOP on any fail. Owner-local pre-PPO contamination audit for proposed heldout [8107,8209,8303,8407] mandatory; prior mounted artifact and selected GitHub audit negative but incomplete. **EXECUTION PENDING; no GPU run or source code edits by SA.** Separate +10M GO still NOT granted. M1 NO-PROMOTE, +100M NO-PROMOTE, +400M HOLD, B HOLD.
 
@@ -968,6 +979,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-24 | RC3B pre-PPO local seed audit false positive reviewed | Owner log 136 lines SHA in §4; 755/4/1/0 audit; seed5112, RMSE0.8209 not seed8209; EXIT1 before PPO | v1.2.33 scoped audit adjudicated PASS, original one smoke3 GO unused; verify local evidence and continue once; no source change or +10M | 1.2.33 |
+
 | 2026-11-24 | Owner explicit GO RC3B H1M2 bounded PPO Smoke3 | RC3A pass evidence Rules1.2.31; owner statement GO M2 smoke3; source blobs immutable and C401M+typed Orbax provenance from prior owner reports; selected GitHub and mounted-files seed check negative but owner's full history not audited | v1.2.32 authorize one smoke3 786432 env steps only after local heldout audit and SHA/restore preflight; check M2 actual-training activation and VRAM, independent +10M HOLD (separate GO), no source edits by SA | 1.2.32 |
 
 | 2026-11-24 | M470 H1 M2 RC3A bounded read-only gate complete | Owner log/JSON hashes §4 v1.2.31; 6 rollouts, 4712 frames, single OFF/ON transition identical qpos/qvel, sensor/finite/bounds PASS; preterminal active both failures, zero 3000 nominal steps, one small successful recovery activation | RC3A PASS only; prior heldout leakage audit and explicit GO for single 786432-step smoke3; no threshold change, no PPO run, +10M HOLD | 1.2.31 |
@@ -1095,6 +1108,8 @@ PY
 | 2026-11-21 | Research governance | Khóa mục tiêu push → fall → get-up → resume; định nghĩa thước đo và cổng nghiệm thu | RULES ACTIVE; GET-UP NOT IMPLEMENTED | 1.0.0 |
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.33 — 2026-11-24:** Reviewed complete owner preflight log; sole heldout audit hit was RMSE decimal suffix, actual seed5112. Resolved false positive within available scanned scope, preserve proposed heldout, no additional broad scan or GPU/algorithm inference. Original bounded owner Smoke3 GO remains unused; safe continuation with original source/restore/coverage/activation/VRAM gates, +10M HOLD. Rules-only change.
 
 - **v1.2.32 — 2026-11-24:** Recorded explicit owner GO for exactly one bounded H1-M2 PPO smoke3 786432 env steps, with M2 source blob/checkpoint/typed-Orbax input pins, owner-local prospective heldout leakage screen before PPO, single output/log/evidence and strict live-transition M2 activation/coverage/finite/VRAM/parameter/checkpoint gates. No assistant source modifications or GPU runs; M2 +10M remains HOLD pending future separate GO.
 
