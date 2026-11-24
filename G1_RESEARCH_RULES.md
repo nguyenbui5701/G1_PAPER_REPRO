@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.58  
+**Version:** 1.2.59  
 **Ngày cập nhật:** 2026-11-24 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -655,6 +655,16 @@ H3-M1-1 READY PENDING SEPARATE EXPLICIT OWNER GO, not authorized by log upload. 
 
 Decision H3_M1_0_CLOSED_PASS / H3_M1_1_READY_PENDING_EXPLICIT_OWNER_GO / H3_M1_2_HOLD.
 
+### M4.70-H3-M1-1 — EXPLICIT OWNER GO, ONE INTEGRATED TECHNICAL GATE + SMOKE3 (v1.2.59; 2026-11-24)
+
+Owner explicitly approved "GO H3-M1-1 — đọc Rules v1.2.58 và triển khai một lần Integrated Technical Gate + PPO Smoke3, 786432 steps từ frozen C401M, Recovery-Aware Stand-Still Reward, GPU 12GB. Bạn chuẩn bị source và lệnh chạy, tôi pull và thực thi." H3-M1-0 CLOSED/PASS. A only, one integrated job, separate +10M GO still required. SA reviewed AGENTS, latest Rules and runner/env/instrumenter, actual pinned Playground wrapper and G1 termination/observation, Brax v0.12.1 actor_step/EpisodeWrapper API. Source-only commit 635d962aaca9b377e6bd257c6fc7c15c963ea6bd parent fc0f1973d89a26cd79c560e58c434a6f1fba32ec, runner blob72fc065150928d8e568db87a4f2b4e6edf0eb523 +188/-0; unchanged env b83ec0a031ea4184c48a1a189da9f87fcfb104d4, instrumenter 05d6349fc4cbe7f1ce92e14ec95438d79dcb4bda, evaluator65f0b46cc0b61561e8f75864ed9348be60a7919c. No reward/scheduler/PD/physics/obs/action/network/optimizer/DR changes. SA source reviewed via exact Git diff; no local Python AST/JAX/GPU/PPO execution by SA, new runner syntax checked in owner integrated preflight, not a new standalone static campaign. Revert only via reviewed commit, no reset/force push.
+
+Runner adds H3-only h3_technical_gate before PPO inside existing GPUMonitor and report lifecycle, exact C401M and typed Orbax SHA5acfabc1376e91a2a9a52b47ac821e296f0e84f5545b646b07c9482ddc462bf3 guard, +10M smoke report requires technical PASS. One GPU process; pinned Brax bytes generated OFF match original instrumenter at defe4268 both resume modes; generated H3 compiles and actual file matches. Fixed synthetic initial states with diagnostic seeds913701/913702/913703, zero actions, nine cases prepush/first/post/repeat/moving/terminal/boundary/nominal/truncation; 9 direct OFF/ON pairs (18 control transitions) and 9 H3 wrapped DR actor_step transitions, max27 diagnostic control transitions (270 physics substeps), no optimizer and no training RNG use. Synthetic diagnostic state overrides are not training curriculum or robustness evidence. Exact paired physics/obs/common info/source done/23 other weighted rewards, expected event/countdown/repeat/stand/terminal, formula/delta, no forbidden relief and positive activation. Wrapped real DR/episode/autoreset + actual Brax actor_step extras shape/reward and reducer, truncation/source done separately checked; all invariants and coverage audit pass before training. Diagnostic comparison can fail closed on numerical mismatch or unexpected terminal; no tolerance widening or retry. Gate results persisted, release diagnostic compilation caches before PPO, existing memory monitor covers gate and training; stop if missing peak/total, sampler error or peak>=95%. Actual runtime still UNTESTED. No policy-efficacy claim.
+
+Run safe ff-only sync, exact HEAD and four source blobs, clean tracked tree (preserve untracked files), log exact hashes, python3 AST of newly edited runner and actual launcher resolution. Existing pinned g1_m463 launcher and runner check_source_and_config('A') validates NVCC-before-JAX, source/Brax/GPU/config, read_restore_gate verifies existing typed report m462_runs/typed_restore_20261120_162901.json and stage. Frozen C401M m430_seed1/checkpoint_pilot_20261114_120515_1722937_step_401080320.msgpack SHA1ccf579ea35d4518713b00ea20d77db8463bc469b7de903b8f10f457b3dc90b8. Invoke exactly once m463_push_ppo_train.py --mode smoke3 --stage easy_repeat_support --h3-m1 --checkpoint <C401M> --restore-report <typed report> --output-dir <new timestamp>. No resume, no independent flag, no H1. Smoke3 seed1, fresh Adam, 8192 env/unroll32/batch1024/minibatches8/updates5, 3 rollouts=786432 additional steps/120 optimizer updates, 2 evals, fingerprint420ecb3798789b0f90f3ed249572ad8298fad03a5ce56a83a7a83e59ebe90fef. Existing report records actual H3 activation, all invariants zero, coverage/finite/VRAM and final checkpoint roundtrip; violation stop at host progress boundary. No automatic retry or +10M, smoke weights never used for independent candidate. Preserve combined stdout/stderr and report/checkpoint hashes even on failure, fail-closed shell outside OR-list with PIPESTATUS exact, verify source and baseline unchanged after run. Completion marker alone not final SA approval; owner returns log/report.json (if generated) and final checkpoint SHA (not checkpoint bytes required for smoke review). H2C/B and larger budgets HOLD.
+
+Decision H3_M1_1_OWNER_GO_ONE_INTEGRATED_JOB_EXECUTION_PENDING / H3_M1_2_HOLD. Zero SA runtime or PPO performed.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -916,6 +926,9 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-24)
+
+**M470-H3-M1-1 EXPLICIT GO (v1.2.59; 2026-11-24):** One integrated technical gate + smoke3 authorized; source commit 635d962aaca9b377e6bd257c6fc7c15c963ea6bd runner only, 9 OFF/ON pairs +9 wrapped transitions, exact source/legacy and typed Orbax pins, fail before PPO if any gate fails. 786432 PPO steps/120 updates from C401M fresh Adam, H3 only, GPU12GB, no retry or promotion. Owner local execution pending; +10M/H2C/B HOLD.
+
 
 **M470-H3-M1-0 CORRECTED STATIC PASS (v1.2.58; 2026-11-24):** log SHA3b7f69b1, exact tested HEAD d3a35c85, four source hashes unchanged; all actual AST/pure/mock/reducer/audit/CLI tests PASS, 2 positive exit0, 4 negative exit2 exact rejection, overall exit0/tee0, no JAX/GPU/PPO. H3-M1-0 CLOSED/PASS; H3-M1-1 integrated pinned CUDA technical gate + smoke3 786432 steps ready pending separate explicit owner GO, no redundant static tests. +10M and H2C/B HOLD.
 
@@ -1342,6 +1355,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-24 | H3-M1-1 owner GO and integrated runtime gate source | 635d962aaca9b377e6bd257c6fc7c15c963ea6bd runner only, actual pinned API/diff review, fixed 27 diagnostic transitions, 786432 PPO budget | v1.2.59 one execution pending, no SA runtime, +10M HOLD | 1.2.59 |
+
 | 2026-11-24 | H3-M1-0 corrected static evidence | m470_h3_m1_0_static_fixed_20261124_172222_275498471.log SHA3b7f69b1; actual AST/pure/mock/reducer/audit/CLI PASS, exact source pins, exit0/tee0 | v1.2.58 H3-M1-0 CLOSED/PASS; H3-M1-1 ready pending explicit GO; no GPU/PPO | 1.2.58 |
 
 | 2026-11-24 | H3-M1-0 static launcher audit | owner log d5a465a3, source preflight PASS, missing python and false PASS | v1.2.57 invalid evidence, corrected static pending, no source edit/GPU/PPO | 1.2.57 |
@@ -1522,6 +1537,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.59 — 2026-11-24:** Record owner H3-M1-1 GO, integrate bounded pre-PPO CUDA technical gate in existing runner, exact frozen restore/source pins, one smoke3 job only. No SA runtime or efficacy PASS; independent10M remains HOLD.
 
 - **v1.2.58 — 2026-11-24:** Accept corrected H3-M1-0 static evidence, close static gate, mark integrated technical gate + smoke3 ready pending separate owner GO. No redundant rerun, executable source change or GPU/PPO execution.
 
