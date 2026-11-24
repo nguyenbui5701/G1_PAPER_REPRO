@@ -1366,6 +1366,423 @@ def h4r_static_regression(brax_train_path,technical_report):
     print('M470_H4R_STATIC_PASS NO_SIMULATION NO_PPO',flush=True)
 
 
+
+# H4-M1-1C isolated causal diagnostic, separate from both prior entries.
+H4C_EXECUTION_AUTHORIZED = False
+H4C_SPEC = {'paths':['A0','A1','B0','B1'], 'num_envs':16,'batch_size':2,
+            'unroll_length':32,'num_minibatches':8,'num_updates_per_batch':5,
+            'seed':1,'max_physical_transitions':1024,'max_optimizer_updates':80,
+            'eval_transitions':0,'float_cap':1e-5}
+H4C_FAILURE_SHA = 'c2d07bb0f270329b27ad6927d367027731ea0ecbd985070d8d8fea03934fd5ff'
+H4C_BRAX_BLOBS = {
+    'brax.training.acting':'ec6f81d3e3c48e96a22f7df292fb1a98b63f938d',
+    'brax.training.agents.ppo.losses':'93d0b1e39a610d55a5a8ed5d5027fc8684945417',
+    'brax.training.gradients':'185419fb4ea35d232be50ebf3561e850f74ea692',
+    'brax.training.acme.running_statistics':'4361e185b49917543dfa759feb521be14aeaa487',
+    'brax.training.agents.ppo.networks':'1922bad3499988bc664c3024f9640332d66982d5'}
+
+
+def h4c_require(ok,label):
+    if not bool(ok):
+        raise RuntimeError('M470_H4C_'+label)
+
+
+def validate_h4c_cli(a):
+    requested=getattr(a,'h4_causal',False)
+    if not requested:
+        h4c_require(a.mode!='causal' and getattr(a,'h4_causal_failure_report',None) is None,
+                     'FLAG_REQUIRED')
+        return
+    h4c_require(a.mode in ('plan','causal') and a.stage=='easy_repeat_support','MODE_STAGE')
+    h4c_require(not any(getattr(a,k,False) for k in
+        ('h1_m1','h1_m2','h3_m1','h3_diagnostic_only','h4_readiness')) and
+        all(getattr(a,k,None) is None for k in
+            ('h4_arm','h4_control_report','h3_causal_report','h3_old10m_report',
+             'smoke_report','resume_state','independent_budget','rollouts','num_evals')),
+        'CONFLICT')
+    h4c_require(getattr(a,'h4_causal_failure_report',None) is not None and
+                getattr(a,'h4_readiness_reward_report',None) is not None,'REFERENCE_REQUIRED')
+    if a.mode!='plan':
+        h4c_require(H4C_EXECUTION_AUTHORIZED is True and H4R_EXECUTION_AUTHORIZED is False
+                    and H4_EXECUTION_AUTHORIZED is False,'EXECUTION_HOLD')
+
+
+class H4CBudget:
+    """Host-only strict sequence and pre-dispatch accounting."""
+    schedule=('initial','A0_before','A0','A1_before','A1',
+              'B0_before','B0','B1_before','B1')
+
+    def __init__(self,report):
+        self.report=report
+        self.index=0
+
+    def advance(self,label):
+        h4c_require(self.index<len(self.schedule) and self.schedule[self.index]==label,'SEQUENCE')
+        self.index+=1
+        r=self.report
+        if label.endswith('_before'):
+            phys,updates=(512,0) if label.startswith('A') else (0,40)
+            h4c_require(r['attempted_physical_transitions']+phys<=1024 and
+                        r['attempted_optimizer_updates']+updates<=80,'BUDGET')
+            r['attempted_physical_transitions']+=phys
+            r['attempted_optimizer_updates']+=updates
+            r['dispatches'].append(label[:-7])
+        elif label!='initial':
+            r['recorded_physical_transitions']+=512 if label.startswith('A') else 0
+            r['recorded_optimizer_updates']+=40 if label.startswith('B') else 0
+            r['completed'].append(label)
+
+    def complete(self):
+        r=self.report
+        h4c_require(self.index==len(self.schedule) and
+            r['dispatches']==r['completed']==list(H4C_SPEC['paths']) and
+            r['attempted_physical_transitions']==r['recorded_physical_transitions']==1024 and
+            r['attempted_optimizer_updates']==r['recorded_optimizer_updates']==80,'FINAL_BUDGET')
+
+
+def h4c_report():
+    return {'status':'M470_H4C_IN_PROGRESS','spec':copy.deepcopy(H4C_SPEC),
+            'attempted_physical_transitions':0,'recorded_physical_transitions':0,
+            'attempted_optimizer_updates':0,'recorded_optimizer_updates':0,
+            'evaluation_transitions':0,'dispatches':[],'completed':[],
+            'phase_verdicts':{'A':'NOT_RUN','B':'NOT_RUN'},'comparisons':{},
+            'boundaries':{},'production_authorized':False,'promotion_authorized':False,
+            'weights_retained':False,'batch_retained':False,
+            'post_terminal_physics':'wrapped reset pose, not pre-reset fall pose'}
+
+
+def h4c_ledger(np,counts,env_info):
+    # Preserve old h4r_ledger and production thresholds byte-for-byte.
+    pending=h4r_pending(np,env_info)
+    checks=h4_epoch_audit(counts,pending,'control')['checks']
+    excluded=('step_partition','nominal_fraction')
+    h4c_require(all(k in checks for k in excluded),'LEDGER_SCHEMA')
+    checks={k:v for k,v in checks.items() if k not in excluded}
+    checks['readiness_step_partition']=sum(counts[f'm463_h4_class_{c}_steps_per_rollout']
+                                           for c in range(4))==512
+    checks['legacy_event_reconcile']=(counts['m463_events_per_rollout']==
+        counts['m463_h4_first_events_per_rollout']+counts['m463_h4_repeat_events_per_rollout'])
+    checks['legacy_repeat_reconcile']=(counts['m463_repeat_per_rollout']==
+                                      counts['m463_h4_repeat_events_per_rollout'])
+    h4c_require(len(checks)==67,'LEDGER_LENGTH')
+    return {'checks':checks,'pending':pending,'passed':all(checks.values()),
+            'excluded_training_scale_gates':list(excluded)}
+
+
+def h4c_snapshot(jax,np,tree,*,finite=True):
+    paths,structure=jax.tree_util.tree_flatten_with_path(tree)
+    values={}
+    for p,v in paths:
+        name=jax.tree_util.keystr(p)
+        h4c_require(name not in values,'DUPLICATE_PATH')
+        a=np.array(jax.device_get(v),copy=True)
+        h4c_require(a.dtype.kind in 'biuf','LEAF_DTYPE '+name)
+        if finite:
+            h4c_require(np.isfinite(a).all(),'NONFINITE '+name)
+        a.setflags(write=False)
+        values[name]=a
+    return values,str(structure)
+
+
+def h4c_digest(snapshot):
+    values,structure=snapshot
+    h=hashlib.sha256(structure.encode())
+    for name,v in sorted(values.items()):
+        h.update(json.dumps([name,str(v.dtype),list(v.shape)]).encode()+b'\0')
+        h.update(v.tobytes())
+    return h.hexdigest()
+
+
+def h4c_exact_path(name):
+    # Floating-coded flags and command vectors require exact equality.
+    return (name.endswith(('.done','.discount','.count',"['done']","['discount']",
+              "['command']","['truncation']","['episode_done']")) or
+            "['h4c_finite']" in name)
+
+
+def h4c_compare(np,left,right,phase):
+    """Record all differing paths, first bit/cap violation, and max residual."""
+    a,sa=left
+    b,sb=right
+    h4c_require(sa==sb and set(a)==set(b),'COMPARE_SCHEMA')
+    rows={}
+    first_bits=None
+    first_fail=None
+    def event(name,idx,kind):
+        # A trace [device,outer,time,lane,...]; batch [device,lane,time,...].
+        # B metric [device,pass,minibatch,...] or [device,pass,...].
+        stage='final'
+        tick=lane=sgd_pass=minibatch=None
+        if phase=='A':
+            if name.startswith("['trace']") and len(idx)>=3:
+                tick=idx[2]
+                if "['pre']" in name:
+                    stage='pre'
+                elif "['post']" in name:
+                    stage='post'
+                else:
+                    stage='key'
+                lane=idx[3] if stage in ('pre','post') and len(idx)>=4 else None
+            elif name.startswith("['batch']") and len(idx)>=3:
+                lane,tick=idx[1:3]
+                stage=('action' if ('.action' in name or "['policy_extras']" in name)
+                       else 'pre' if '.observation' in name else 'post')
+        elif name.startswith("['metrics']") and len(idx)>=2:
+            sgd_pass=idx[1]
+            if any(k in name for k in ("['h4c_perm_key']","['h4c_grad_key']",
+                         "['h4c_sgd_key']","['h4c_minibatch_final_key']")):
+                stage='sgd_key'
+            else:
+                stage='minibatch'
+                minibatch=idx[2] if len(idx)>=3 else None
+        return {'path':name,'index':list(idx),'tick':tick,'lane':lane,
+                'sgd_pass':sgd_pass,'minibatch':minibatch,'stage':stage,'kind':kind}
+    def rank(e):
+        order={'key':0,'pre':1,'action':2,'post':3,'sgd_key':0,'minibatch':1,'final':9}
+        if phase=='A':
+            return (e['tick'] if e['tick'] is not None else 999,order[e['stage']],
+                    e['lane'] if e['lane'] is not None else -1,e['path'],e['index'])
+        return (e['sgd_pass'] if e['sgd_pass'] is not None else 999,order[e['stage']],
+                e['minibatch'] if e['minibatch'] is not None else -1,e['path'],e['index'])
+    for name,x in a.items():
+        y=b[name]
+        d,eps=h4r_distance(np,x,y,h4c_exact_path(name))
+        limit=0. if eps==0 else H4C_SPEC['float_cap']
+        # Compare each element's actual bytes, including signed zero.
+        raw_x=np.ascontiguousarray(x).reshape(-1).view(np.uint8).reshape(x.size,x.dtype.itemsize)
+        raw_y=np.ascontiguousarray(y).reshape(-1).view(np.uint8).reshape(y.size,y.dtype.itemsize)
+        bits=np.any(raw_x!=raw_y,axis=1).reshape(x.shape)
+        if not bits.any():
+            continue
+        u,v=x.astype(np.float64),y.astype(np.float64)
+        residual=np.abs(u-v)/np.maximum(1.,np.maximum(np.abs(u),np.abs(v)))
+        failures=(x!=y) if eps==0 else residual>limit
+        def first(mask,kind):
+            if not mask.any():
+                return None
+            idx=tuple(int(i) for i in np.unravel_index(int(np.flatnonzero(mask)[0]),x.shape))
+            result=event(name,idx,kind)
+            result.update(left=x[idx].item(),right=y[idx].item())
+            return result
+        bit=first(bits,'BITWISE')
+        fail=first(failures,'ACCEPTANCE')
+        if first_bits is None or rank(bit)<rank(first_bits):
+            first_bits=bit
+        if fail is not None and (first_fail is None or rank(fail)<rank(first_fail)):
+            first_fail=fail
+        rows[name]={'distance':d,'limit':limit,'passed':d<=limit,
+                    'max_abs':float(np.max(np.abs(u-v),initial=0.)),
+                    'bitwise_mismatch_count':int(bits.sum()),
+                    'first_bitwise':bit,'first_acceptance':fail}
+    return {'passed':all(r['passed'] for r in rows.values()),'bitwise_equal':not rows,
+            'compared_leaves':len(a),'different_leaves':len(rows),'paths':rows,
+            'first_observed_bitwise':first_bits,'first_observed_acceptance':first_fail}
+
+
+def h4c_audit_callback(api,args,report,persist,gpu_check):
+    jax,np=api['jax'],api['numpy']
+    from flax import serialization
+    import optax
+    from m462_typed_orbax_stage import checkpoint_parts,compare_exact
+    expected_parts=checkpoint_parts(serialization.msgpack_restore(args.checkpoint.read_bytes()))
+    budget=H4CBudget(report)
+    initial_hash=dr_hash=initial_count=None
+    fixed_hash=None
+    a_ref=b_ref=None
+    a0_batch_hash=a0_sgd_hash=None
+    expected_sgd=expected_new=expected_outer=expected_inner=None
+    expected_actor_keys=expected_next_keys=None
+    expected_sgd_metrics=None
+    expected_sgd_final=None
+    def snap(tree,finite=True):
+        return h4c_snapshot(jax,np,tree,finite=finite)
+    def digest_tree(tree,finite=True):
+        return h4c_digest(snap(tree,finite))
+    def model_digest(model,axes):
+        # Model constants are provenance, not dynamic/learned tensor validity.
+        # Hash all numeric leaves and treedef including static metadata exactly.
+        return digest_tree((model,axes),False)
+    def same(x,y,label):
+        h4c_require(np.array_equal(np.asarray(x),np.asarray(y)),'KEY_OR_VALUE '+label)
+    def state_check(ts,updates):
+        h4c_require(np.asarray(ts.env_steps).shape==(1,) and
+                     int(ts.env_steps[0])==(512 if updates else 0),'LOGICAL_ENV_STEPS')
+        adam=jax.tree_util.tree_leaves(ts.optimizer_state,
+            is_leaf=lambda x:isinstance(x,optax.ScaleByAdamState))
+        adam=[v for v in adam if isinstance(v,optax.ScaleByAdamState)]
+        h4c_require(len(adam)==1 and np.asarray(adam[0].count).shape==(1,) and
+                     int(adam[0].count[0])==updates,'ADAM_COUNT')
+        if not updates:
+            h4c_require(all(not np.any(np.asarray(x)) for x in
+                jax.tree_util.tree_leaves((adam[0].mu,adam[0].nu))),'ADAM_FRESH')
+        count=np.asarray(ts.normalizer_params.count)
+        h4c_require(count.shape==(1,),'NORMALIZER_SHAPE')
+        target=np.add(initial_count,np.asarray(512 if updates else 0,dtype=initial_count.dtype),
+                      dtype=initial_count.dtype)
+        same(count,target,'NORMALIZER_COUNT')
+        return {'logical_env_steps':int(ts.env_steps[0]),'adam_count':updates,
+                'normalizer_count':count.item()}
+    def prepare_keys(initial):
+        key=initial[2][0]
+        ks,kg,kn=jax.random.split(key,3)
+        current,outer=jax.random.split(kg)
+        actor_keys=[]; next_keys=[]
+        for _ in range(32):
+            actor,current=jax.random.split(current)
+            actor_keys.append(np.asarray(actor))
+            next_keys.append(np.asarray(current))
+        expected={'h4c_perm_key':[],'h4c_grad_key':[],'h4c_sgd_key':[],
+                  'h4c_minibatch_final_key':[],'h4c_loss_key':[],
+                  'h4c_next_minibatch_key':[]}
+        sk=ks
+        for _ in range(5):
+            sk,perm,grad=jax.random.split(sk,3)
+            expected['h4c_perm_key'].append(np.asarray(perm))
+            expected['h4c_grad_key'].append(np.asarray(grad))
+            expected['h4c_sgd_key'].append(np.asarray(sk))
+            mk=grad; loss_keys=[]; minibatch_keys=[]
+            for _ in range(8):
+                mk,loss=jax.random.split(mk)
+                loss_keys.append(np.asarray(loss)); minibatch_keys.append(np.asarray(mk))
+            expected['h4c_loss_key'].append(loss_keys)
+            expected['h4c_next_minibatch_key'].append(minibatch_keys)
+            expected['h4c_minibatch_final_key'].append(np.asarray(mk))
+        return (np.asarray(ks)[None,:],np.asarray(kn)[None,:],
+                np.asarray(outer)[None,:],np.asarray(current)[None,None,:],
+                np.asarray(actor_keys)[None,None,:,:],np.asarray(next_keys)[None,None,:,:],
+                {k:np.asarray(v)[None,...] for k,v in expected.items()},np.asarray(sk)[None,:])
+    def callback(label,value,aux):
+        nonlocal initial_hash,dr_hash,initial_count,fixed_hash,a_ref,b_ref
+        nonlocal a0_batch_hash,a0_sgd_hash
+        nonlocal expected_sgd,expected_new,expected_outer,expected_inner
+        nonlocal expected_actor_keys,expected_next_keys,expected_sgd_metrics,expected_sgd_final
+        gpu_check()
+        h4c_require(budget.index<len(budget.schedule) and budget.schedule[budget.index]==label,'SEQUENCE')
+        if label=='initial':
+            initial_hash=digest_tree(value)
+            dr_hash=model_digest(*aux)
+            ts=value[0]
+            initial_count=np.array(ts.normalizer_params.count,copy=True)
+            restored=tuple(serialization.to_state_dict(jax.tree_util.tree_map(lambda x:x[0],v))
+                           for v in (ts.normalizer_params,ts.params.policy,ts.params.value))
+            h4c_require(compare_exact(expected_parts,restored,jax,np,'H4C_RESTORE')==25,'RESTORE')
+            report['initial']={'carry_sha256':initial_hash,'dr_sha256':dr_hash,
+                               'restored_weights_exact':True,**state_check(ts,0)}
+            (expected_sgd,expected_new,expected_outer,expected_inner,expected_actor_keys,
+             expected_next_keys,expected_sgd_metrics,expected_sgd_final)=prepare_keys(value)
+        elif label.startswith('A') and label.endswith('_before'):
+            h4c_require(digest_tree(value)==initial_hash and model_digest(*aux)==dr_hash,'A_INPUT')
+            state_check(value[0],0)
+        elif label in ('A0','A1'):
+            env,batch,ks,kn,trace,inner,outer,metrics=value
+            h4c_require(digest_tree(aux[0])==initial_hash and model_digest(aux[1],aux[2])==dr_hash,
+                         'A_INPUT_MUTATED')
+            same(ks,expected_sgd,'SGD');same(kn,expected_new,'NEW')
+            same(inner,expected_inner,'INNER');same(outer,expected_outer,'OUTER')
+            same(trace['actor_key'],expected_actor_keys,'ACTOR')
+            same(trace['next_key'],expected_next_keys,'NEXT_ACTOR')
+            b=snap(batch)
+            h4c_require(all(x.shape[:3]==(1,16,32) for x in b[0].values()),'BATCH_LAYOUT')
+            for side in ('pre','post'):
+                h4c_require(all(x.shape[:4]==(1,1,32,16)
+                                 for x in snap(trace[side])[0].values()),'TRACE_LAYOUT')
+            h4c_require(np.isin(np.asarray(batch.discount),(0,1)).all(),'DISCOUNT')
+            ex=batch.extras['state_extras']
+            h4c_require(np.isin(np.asarray(ex['truncation']),(0,1)).all() and
+                         np.isin(np.asarray(ex['h4_source_terminal']),(0,1)).all(),'TERMINAL_SCHEMA')
+            for side in ('pre','post'):
+                h4c_require(np.isin(np.asarray(trace[side]['done']),(0,1)).all(),'DONE_SCHEMA')
+            m={k:np.asarray(v) for k,v in metrics.items()}
+            h4c_require(all(v.shape==(1,) and np.isfinite(v).all() for v in m.values()),'METRICS')
+            counts=h4r_counts({k:v[0] for k,v in m.items()},1)
+            ledger=h4c_ledger(np,counts,env.info)
+            h4c_require(ledger['passed'],'LEDGER')
+            observed=snap({'env':env,'batch':batch,'trace':trace,'metrics':metrics,
+                           'key_sgd':ks,'new_key':kn,'inner_key':inner,'outer_key':outer})
+            row={'batch_sha256':h4c_digest(b),'output_sha256':h4c_digest(observed),
+                 'input_sha256':initial_hash,'ledger':ledger,'counts':counts,
+                 'metrics':{k:v.item() for k,v in m.items()},'physical_transitions':512,
+                 'optimizer_updates':0}
+            report['boundaries'][label]=row
+            if label=='A0':
+                a_ref=observed
+                a0_batch_hash=h4c_digest(b);a0_sgd_hash=digest_tree(ks)
+            else:
+                result=h4c_compare(np,a_ref,observed,'A')
+                report['comparisons']['A']=result
+                report['phase_verdicts']['A']='PASS' if result['passed'] else 'DIVERGENT'
+                a_ref=None
+        elif label.startswith('B') and label.endswith('_before'):
+            ts,batch,ks=value
+            state_check(ts,0)
+            h4c_require(digest_tree(batch)==a0_batch_hash and digest_tree(ks)==a0_sgd_hash,
+                         'FIXED_BATCH')
+            # A source carry digest includes the original environment/key; B
+            # must also match the exact initial training state recorded below.
+            h4c_require(digest_tree(ts)==report['initial']['training_state_sha256'],'B_INITIAL_STATE')
+            d=digest_tree(value)
+            if label=='B0_before':
+                fixed_hash=d
+            h4c_require(d==fixed_hash,'B_INPUT')
+        elif label in ('B0','B1'):
+            ts,key,metrics=value
+            h4c_require(digest_tree(aux)==fixed_hash,'B_INPUT_MUTATED')
+            checks=state_check(ts,40)
+            same(key,expected_sgd_final,'SGD_FINAL')
+            h4c_require(set(expected_sgd_metrics)<=set(metrics),'SGD_KEY_SCHEMA')
+            for k,expected in expected_sgd_metrics.items():
+                same(metrics[k],expected,k)
+            finite=np.asarray(metrics['h4c_finite'])
+            h4c_require(finite.shape==(1,5,8) and finite.dtype.kind=='b' and finite.all(),'MINIBATCH_FINITE')
+            for k in ('total_loss','policy_loss','v_loss','entropy_loss'):
+                h4c_require(np.asarray(metrics[k]).shape==(1,5,8),'LOSS_LAYOUT')
+            observed=snap({'training_state':ts,'key':key,'metrics':metrics})
+            report['boundaries'][label]={'input_sha256':fixed_hash,'output_sha256':h4c_digest(observed),
+                'physical_transitions':0,'optimizer_updates':40,**checks,
+                'minibatch_metrics':{k:np.asarray(v).tolist() for k,v in metrics.items()}}
+            if label=='B0':
+                b_ref=observed
+            else:
+                result=h4c_compare(np,b_ref,observed,'B')
+                report['comparisons']['B']=result
+                report['phase_verdicts']['B']='PASS' if result['passed'] else 'DIVERGENT'
+                b_ref=None
+        else:
+            raise RuntimeError('M470_H4C_CALLBACK_LABEL')
+        if label=='initial':
+            report['initial']['training_state_sha256']=digest_tree(value[0])
+        budget.advance(label)
+        persist()
+    return callback,budget
+
+
+def h4c_dependency_pins(api):
+    import inspect
+    import importlib
+    from m463_instrument_brax import h4c_git_blob
+    ppo_path=Path(inspect.getfile(api['ppo'].train)).resolve()
+    # .../brax/training/agents/ppo/train.py -> .../brax
+    root=ppo_path.parents[3]
+    paths={}
+    for name,blob in H4C_BRAX_BLOBS.items():
+        mod=importlib.import_module(name)
+        actual=Path(inspect.getfile(mod)).resolve()
+        intended=root.joinpath(*name.split('.')[1:]).with_suffix('.py')
+        h4c_require(actual==intended and h4c_git_blob(actual.read_bytes())==blob,
+                     'DEPENDENCY_PIN '+name)
+        paths[name]={'path':str(actual),'blob':blob}
+    return paths
+
+
+def h4c_run(args):
+    validate_h4c_cli(args)
+    h4c_require(args.mode=='causal' and H4C_EXECUTION_AUTHORIZED is True and
+                not H4_EXECUTION_AUTHORIZED and not H4R_EXECUTION_AUTHORIZED,'EXECUTION_HOLD')
+    # A subsequent owner GO must add a fixed exclusive output pin before
+    # replacing either hold. This implementation cannot execute a diagnostic.
+    raise RuntimeError('M470_H4C_AUTHORIZATION_OUTPUT_HOLD')
+
+
 def validate_h4_cli(a):
     arm=getattr(a,'h4_arm',None)
     if arm is None:
@@ -2102,6 +2519,9 @@ def h3_technical_gate(api, train_cfg, stage, instrument_meta, result, persist):
 
 
 def run(args):
+    validate_h4c_cli(args)
+    if getattr(args,'h4_causal',False):
+        return h4c_run(args)
     validate_h4r_cli(args)
     if getattr(args,'h4_readiness',False):
         return h4r_run(args)
@@ -2641,7 +3061,7 @@ def run(args):
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--mode',choices=['plan','smoke','probe2','smoke3','pilot','longtrain','readiness'],required=True)
+    p.add_argument('--mode',choices=['plan','smoke','probe2','smoke3','pilot','longtrain','readiness','causal'],required=True)
     p.add_argument('--stage',choices=['easy','easy_repeat','easy_repeat_support','medium','hard'],default='easy')
     p.add_argument('--checkpoint',type=Path,required=True)
     p.add_argument('--restore-report',type=Path,required=True)
@@ -2664,12 +3084,22 @@ def main():
     p.add_argument('--h4-control-report',type=Path,help='Future pinned matched control; execution HOLD')
     p.add_argument('--h4-readiness',action='store_true',help='Isolated readiness plan; execution HOLD')
     p.add_argument('--h4-readiness-reward-report',type=Path)
+    p.add_argument('--h4-causal',action='store_true',help='Isolated causal plan; execution HOLD')
+    p.add_argument('--h4-causal-failure-report',type=Path)
     a=p.parse_args()
     try:
-        validate_h4r_cli(a)
+        validate_h4c_cli(a)
+        if not a.h4_causal:
+            validate_h4r_cli(a)
         validate_h4_cli(a)
     except RuntimeError as exc:
         p.error(str(exc))
+    if a.h4_causal:
+        if a.mode=='plan':
+            print('M470_H4C_PLAN_NO_GPU',json.dumps({'spec':H4C_SPEC,'execution_authorized':False,
+                'production_authorized':False},sort_keys=True))
+            return
+        return h4c_run(a)
     if a.h4_readiness:
         if a.mode=='plan':
             print('M470_H4R_PLAN_NO_GPU',json.dumps({'spec':H4R_SPEC,'execution_authorized':False,
