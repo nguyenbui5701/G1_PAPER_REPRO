@@ -1498,7 +1498,9 @@ def h4c_exact_path(name):
     # Floating-coded flags and command vectors require exact equality.
     return (name.endswith(('.done','.discount','.count',"['done']","['discount']",
               "['command']","['truncation']","['episode_done']")) or
-            "['h4c_finite']" in name)
+            "['h4c_finite']" in name or
+            (name.startswith("['metrics']") and name.endswith("_per_rollout']")
+             and not name.endswith("_weighted_sum_per_rollout']")))
 
 
 def h4c_compare(np,left,right,phase):
@@ -1661,6 +1663,7 @@ def h4c_audit_callback(api,args,report,persist,gpu_check):
         nonlocal a0_batch_hash,a0_sgd_hash
         nonlocal expected_sgd,expected_new,expected_outer,expected_inner
         nonlocal expected_actor_keys,expected_next_keys,expected_sgd_metrics,expected_sgd_final
+        report['active_boundary']=label
         gpu_check()
         h4c_require(budget.index<len(budget.schedule) and budget.schedule[budget.index]==label,'SEQUENCE')
         if label=='initial':
@@ -1724,6 +1727,7 @@ def h4c_audit_callback(api,args,report,persist,gpu_check):
             h4c_require(all(v.shape==(1,) and np.isfinite(v).all() for v in m.values()),'METRICS')
             counts=h4r_counts({k:v[0] for k,v in m.items()},1)
             ledger=h4c_ledger(np,counts,env.info)
+            report['boundaries'][label]={'ledger':ledger,'counts':counts}
             h4c_require(ledger['passed'],'LEDGER')
             observed=snap({'env':env,'batch':batch,'trace':trace,'metrics':metrics,
                            'key_sgd':ks,'new_key':kn,'inner_key':inner,'outer_key':outer})
@@ -1912,6 +1916,9 @@ def h4c_run(args):
         persist()
     except BaseException as exc:
         report['status']='M470_H4C_STOPPED'
+        active=report.get('active_boundary','')
+        if active[:1] in ('A','B') and report['phase_verdicts'][active[0]]=='NOT_RUN':
+            report['phase_verdicts'][active[0]]='INVALID'
         report['error']=type(exc).__name__+': '+str(exc)
         report['traceback']=traceback.format_exc()
         if monitor is not None:
@@ -1919,6 +1926,219 @@ def h4c_run(args):
         persist()
         raise
 
+
+
+
+def h4c_static_regression(brax_train_path,acting_path,failure_report):
+    """Focused exact-checkout static validation; no runtime imports or steps."""
+    import ast
+    import subprocess
+    import types
+    import numpy as np
+    from types import SimpleNamespace
+    import m463_instrument_brax as gen
+    root=Path(__file__).resolve().parent
+    names=('m463_push_ppo_train.py','m463_instrument_brax.py')
+    for name in names:
+        data=(root/name).read_bytes()
+        compile(data,name,'exec')
+        ast.parse(data)
+    h4c_require(not any((H4_EXECUTION_AUTHORIZED,H4R_EXECUTION_AUTHORIZED,
+                        H4C_EXECUTION_AUTHORIZED)) and H4C_AUTHORIZED_RUN is None,'STATIC_HOLDS')
+    raw=Path(brax_train_path).read_bytes()
+    acting_raw=Path(acting_path).read_bytes()
+    h4c_require(gen.sha256(raw)==gen.PINNED_SHA and gen.h4c_git_blob(acting_raw)==gen.H4C_ACTING_BLOB,
+                 'STATIC_SOURCE_PIN')
+    previous='87364f9d23ef09b305a0d39c8c7be25b5c39680a'
+    old_raw=subprocess.check_output(['git','show',previous+':m463_instrument_brax.py'],cwd=root)
+    h4c_require((root/names[1]).read_bytes().startswith(old_raw),'GENERATOR_PREFIX')
+    old=types.ModuleType('_h4c_previous_generator')
+    exec(compile(old_raw,'<previous generator>','exec'),old.__dict__)
+    held,sha=gen.make_h4_readiness_source(raw)
+    h4c_require((held,sha)==old.make_h4_readiness_source(raw) and
+                 gen.sha256(held.encode())==gen.H4C_HELD_SHA,'PREVIOUS_READINESS')
+    h4c_require(gen.make_patched_source(raw,enable_resume=True,enable_h4=True)==
+                 old.make_patched_source(raw,enable_resume=True,enable_h4=True),'PRODUCTION')
+    causal,sha=gen.make_h4_causal_source(raw,acting_raw)
+    compile(causal,'<causal generated>','exec')
+    tree=ast.parse(causal)
+    entry=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='causal_train')
+    h4c_require(isinstance(entry.body[1],ast.Raise) and
+                'M470_H4C_EXECUTION_HOLD' in ast.unparse(entry.body[1]),'GENERATED_HOLD')
+    h4c_require(not any(isinstance(n,ast.FunctionDef) and n.name in ('train','readiness_train')
+                        for n in tree.body),'ISOLATED_ENTRY')
+    nested={n.name:n for n in entry.body if isinstance(n,ast.FunctionDef)}
+    h4c_require('h4c_collect' in nested and 'h4c_optimize' in nested and
+                not {'training_step','h4_chunk','training_epoch_with_timing'}&set(nested),
+                'NO_LEGACY_DISPATCH')
+    h4c_require('acting.Evaluator(' not in causal and 'policy_params_fn(current_step' not in causal
+                and 'm470_state_checkpoint_fn(current_step' not in causal
+                and 'for it in range(num_evals_after_init)' not in causal,'NO_EVAL_SAVE')
+    collect,opt,reducer,construct=gen.h4c_regions(held)
+    collection=causal[causal.index('  def h4c_collect('):causal.index('  def h4c_optimize(')]
+    normalized=collection.replace('next_state, data, trace, inner_key = h4c_generate_unroll(',
+                                  'next_state, data = acting.generate_unroll(',1)
+    normalized=normalized.replace('(next_state, next_key), (data, trace, inner_key)',
+                                  '(next_state, next_key), data',1)
+    normalized=normalized.replace('(state, outer_key), (data, trace, inner_key) = jax.lax.scan(',
+                                  '(state, _), data = jax.lax.scan(',1)
+    h4c_require(collect in normalized and reducer in collection,'COLLECTION_REDUCER_DRIFT')
+    optimizer=ast.get_source_segment(causal,nested['h4c_optimize'])
+    h4c_require(opt in optimizer.replace('(optimizer_state, params, sgd_final_key), metrics =',
+                        '(optimizer_state, params, _), metrics =',1) and construct in optimizer,
+                'OPTIMIZER_DRIFT')
+    h4c_require(not any(isinstance(n,ast.Name) and n.id in ('env','state','acting','h4c_collect')
+                        for n in ast.walk(nested['h4c_optimize'])),'OPTIMIZER_ENV_DEPENDENCY')
+    lo=causal.index('  def minibatch_step(')
+    hi=causal.index('  def h4c_collect(',lo)
+    norm=causal[lo:hi].replace(gen.H4C_MINIBATCH_TRACE,'',1)
+    norm=norm.replace('(optimizer_state, params, minibatch_final_key), metrics =',
+                      '(optimizer_state, params, _), metrics =',1)
+    trace=("    metrics = {**metrics, 'h4c_perm_key': key_perm,\n"
+           "               'h4c_grad_key': key_grad, 'h4c_sgd_key': key,\n"
+           "               'h4c_minibatch_final_key': minibatch_final_key}\n")
+    h4c_require(norm.count(trace)==1,'SGD_TRACE')
+    norm=norm.replace(trace,'',1)
+    h4c_require(norm==held[held.index('  def minibatch_step('):held.index('  def training_step(')],
+                'SGD_MINIBATCH_DRIFT')
+    trace_fn=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and
+                  n.name=='h4c_generate_unroll')
+    trace_src=ast.get_source_segment(causal,trace_fn)
+    old_act=acting_raw.decode()
+    old_fn=next(n for n in ast.parse(old_act).body if isinstance(n,ast.FunctionDef)
+                and n.name=='generate_unroll')
+    old_unroll=ast.get_source_segment(old_act,old_fn)
+    body=trace_src[trace_src.index('  @jax.jit\n'):]
+    body=body.replace('    pre = h4c_trace_state(state)\n','',1)
+    body=body.replace('nstate, transition = acting.actor_step(','nstate, transition = actor_step(',1)
+    body=body.replace("    trace = {'pre': pre, 'post': h4c_trace_state(nstate),\n"
+                      "             'actor_key': current_key, 'next_key': next_key}\n",'',1)
+    body=body.replace('return (nstate, next_key), (transition, trace)',
+                      'return (nstate, next_key), transition',1)
+    body=body.replace('(final_state, final_key), (data, trace) =',
+                      '(final_state, _), data =',1)
+    body=body.replace('return final_state, data, trace, final_key','return final_state, data',1)
+    h4c_require(body==old_unroll[old_unroll.index('  @jax.jit\n'):],
+                'ACTING_BODY_DRIFT')
+    h4c_require(trace_src.count('acting.actor_step(')==1 and
+                'env.step(' not in trace_src,'EXTRA_PHYSICS')
+    print('M470_H4C_GENERATED_SOURCE_SCOPE_PASS',gen.sha256(causal.encode()),flush=True)
+    def reject(fn,marker=None):
+        try:
+            fn()
+        except RuntimeError as exc:
+            h4c_require(marker is None or marker in str(exc),'STATIC_WRONG_EXCEPTION')
+        else:
+            raise RuntimeError('M470_H4C_STATIC_ACCEPTED_INVALID')
+    base=[sys.executable,'-B',str(root/names[0]),'--checkpoint','unused',
+          '--restore-report','unused','--output-dir','unused','--stage','easy_repeat_support']
+    flags=['--h4-causal','--h4-causal-failure-report','unused',
+           '--h4-readiness-reward-report','unused']
+    cases=[(['--mode','plan']+flags,0),
+           (['--mode','causal']+flags,2),
+           (['--mode','causal'],2),
+           (['--mode','plan','--h4-causal'],2),
+           (['--mode','plan','--h4-causal-failure-report','unused'],2)]
+    for mode in ('readiness','smoke','probe2','smoke3','pilot','longtrain'):
+        cases.append((['--mode',mode]+flags,2))
+    for flag in (['--h4-arm','control'],['--h4-control-report','unused'],
+                 ['--h4-readiness'],['--h1-m1'],['--h1-m2'],['--h3-m1'],
+                 ['--h3-diagnostic-only'],['--h3-causal-report','unused'],
+                 ['--h3-old10m-report','unused'],['--smoke-report','unused'],
+                 ['--resume-state','unused'],['--independent-budget','10M'],
+                 ['--rollouts','1'],['--num-evals','1']):
+        cases.append((['--mode','plan']+flags+flag,2))
+    for extra,code in cases:
+        p=subprocess.run(base+extra,capture_output=True,text=True,cwd=root)
+        h4c_require(p.returncode==code and (code!=0 or 'M470_H4C_PLAN_NO_GPU' in p.stdout),
+                    'STATIC_CLI '+repr(extra)+' '+p.stderr)
+    args=SimpleNamespace(mode='causal',stage='easy_repeat_support',h4_causal=True,
+                h4_causal_failure_report=Path('unused'),h4_readiness_reward_report=Path('unused'))
+    for fn in (run,h4c_run):
+        reject(lambda:fn(args),'M470_H4C_EXECUTION_HOLD')
+    print('M470_H4C_CLI_HOLD_PASS',len(cases),'plus two direct guards',flush=True)
+    # Actual generated host dispatch loop with pure Python mocks.
+    suffix=gen.H4C_EXIT[gen.H4C_EXIT.index("  h4c_audit_fn('initial'"):]
+    ns={}
+    exec(compile('def dispatch(initial,model,model_axes,dr,collect,optimize,h4c_audit_fn):\n'+suffix,
+                 '<causal host dispatch fixture>','exec'),ns)
+    initial=(object(),object(),object())
+    model,axes=object(),object()
+    dr=SimpleNamespace(_mjx_model_v=model,_in_axes=axes)
+    for fail_label in (None,'A0','A1','B0'):
+        report=h4c_report();budget=H4CBudget(report)
+        calls=[];batches=[];keys=[]
+        def collect(value):
+            h4c_require(value is initial,'FIXTURE_A_INPUT')
+            calls.append('A');batches.append(object());keys.append(object())
+            return (object(),batches[-1],keys[-1])
+        def optimize(ts,batch,key):
+            h4c_require(ts is initial[0] and batch is batches[0] and key is keys[0],
+                         'FIXTURE_FIXED_BATCH')
+            calls.append('B')
+            return object()
+        def audit(label,value,aux):
+            if label==fail_label:
+                raise RuntimeError('FIXTURE_STOP')
+            budget.advance(label)
+        if fail_label is None:
+            h4c_require(ns['dispatch'](initial,model,axes,dr,collect,optimize,audit) is None,
+                        'FIXTURE_RETURN')
+            budget.complete()
+            h4c_require(calls==['A','A','B','B'],'FIXTURE_CALLS')
+            reject(lambda:budget.advance('B1_before'),'SEQUENCE')
+        else:
+            reject(lambda:ns['dispatch'](initial,model,axes,dr,collect,optimize,audit),'FIXTURE_STOP')
+            expected={'A0':['A'],'A1':['A','A'],'B0':['A','A','B']}[fail_label]
+            h4c_require(calls==expected,'FIXTURE_STOP_SEQUENCE')
+    r=h4c_report();budget=H4CBudget(r);budget.advance('initial')
+    r['attempted_physical_transitions']=1024
+    reject(lambda:budget.advance('A0_before'),'BUDGET')
+    r=h4c_report();budget=H4CBudget(r)
+    for label in budget.schedule[:5]:
+        budget.advance(label)
+    r['attempted_optimizer_updates']=80
+    reject(lambda:budget.advance('B0_before'),'BUDGET')
+    print('M470_H4C_DISPATCH_BUDGET_FIXTURE_PASS',flush=True)
+    name="['batch'].action"
+    x=np.zeros((1,16,32,29),np.float32);y=x.copy()
+    y[0,0,30,0]=1.;y[0,1,2,1]=2.
+    compare=lambda x,y,phase='A':h4c_compare(np,(x,'fixture'),(y,'fixture'),phase)
+    c=compare({name:x},{name:y})
+    h4c_require(not c['passed'] and c['first_observed_acceptance']['tick']==2 and
+                c['first_observed_acceptance']['lane']==1,'CHRONOLOGY')
+    y=x.copy();y[0,0,30,0]=1e-6
+    c=compare({name:x},{name:y})
+    h4c_require(c['passed'] and not c['bitwise_equal'] and
+                c['first_observed_acceptance'] is None,'SMALL_FLOAT')
+    z=np.array(0.,np.float32);w=np.array(-0.,np.float32)
+    h4c_require(not compare({'scalar':z},{'scalar':w})['bitwise_equal'],'SIGNED_ZERO')
+    flag="['trace']['post']['done']"
+    x=np.zeros((1,1,32,16),np.float32);y=x.copy();y[0,0,2,5]=1e-8
+    h4c_require(not compare({flag:x},{flag:y})['passed'],'DISCRETE_FLOAT')
+    name="['metrics']['policy_loss']"
+    x=np.zeros((1,5,8),np.float32);y=x.copy();y[0,1,2]=.01
+    c=compare({name:x},{name:y},'B')
+    h4c_require(c['first_observed_acceptance']['sgd_pass']==1 and
+                c['first_observed_acceptance']['minibatch']==2,'MINIBATCH')
+    for bad in (np.array([np.nan],np.float32),np.array([np.inf],np.float32),
+                np.array([1.],np.float64),np.array([1.,2.],np.float32)):
+        reject(lambda:compare({'x':np.array([1.],np.float32)},{'x':bad}))
+    f=Path(failure_report)
+    h4c_failure_pin(f)
+    prior=json.loads(f.read_bytes())
+    counts={k:0 for k in prior['boundaries'][0]['counts']}
+    counts['m463_h4_class_0_steps_per_rollout']=512
+    info={k:np.zeros((1,16),np.int32) for k in ('h4_first_pending','h4_repeat_pending',
+        'h4_tail_kind','h4_class','h4_repeat_origin_motion','m463_direction')}
+    ledger=h4c_ledger(np,counts,info)
+    h4c_require(ledger['passed'] and len(ledger['checks'])==67,'LEDGER_FIXTURE')
+    bad=dict(counts);bad['m463_h4_first_events_per_rollout']=1
+    h4c_require(not h4c_ledger(np,bad,info)['passed'],'LEDGER_BAD_FIXTURE')
+    h4c_require('jax' not in sys.modules and 'brax' not in sys.modules and
+                'mujoco' not in sys.modules,'STATIC_RUNTIME_IMPORTED')
+    print('M470_H4C_COMPARE_LEDGER_FIXTURE_PASS 67',flush=True)
+    print('M470_H4C_STATIC_PASS NO_SIMULATION NO_PPO',flush=True)
 
 
 def validate_h4_cli(a):
