@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.50  
+**Version:** 1.2.51  
 **Ngày cập nhật:** 2026-11-24 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -569,6 +569,16 @@ Owner explicitly approved "GO H2B1 — triển khai một lần Integrated Contr
 
 Decision H2B1_OWNER_GO_ONE_INTEGRATED_EVAL_EXECUTION_PENDING. Owner returns log, VRAM CSV, raw JSON and reference JSON if produced. No SA GPU/PPO execution or source changes.
 
+### M4.70-H2B1 — NOMINAL NONINTERFERENCE NO-GO, BOUNDED H2B-P1 CLOSED (v1.2.51; 2026-11-24)
+
+Owner returned all four files from m463_runs/m470_h2b1_20261124_163153_927042963. Independent SA full-byte audit: run.log SHA256 85890a92525c18f0ff7233f682d31aed0cb15846e74f426f28bd773bceded6b2 (11072 bytes); h2b_eval.json 7f6df94799aeb624c6b07f6f4b7b051d615a5cab27d5fc6a077ea07e16730337 (37201988 bytes); vram.csv 108ce042c92d1140e6791ec0ec74b1e2fb956e18db1071501a8368528b13b41d (17288 bytes); h2b_eval.reference.json 6620d41dc8789063a95f3a0a2d053cb3005f6e237e313406863ef1b6e83e1cd5 (17988 bytes). Preflight/immutability PASS, exact evaluator blob65f0b46cc0b61561e8f75864ed9348be60a7919c and SHA256 81d1a0bec04749e649ed252fabb7b77b3a5ea2d9758e5e96d711fccafa91d627, frozen source/Brax/C401M pins, JAX0.4.35, no PPO. Evaluator/outer exit1, tee0, expected M470_H2B_BOUNDED_STOP not unexpected CUDA crash; XLA warnings observed but did not prevent calibration or cause stop. GPU 305 samples, peak728/12288MiB, max53C; disk preflight 16GB available/95% used, preserve evidence.
+
+**OBSERVED calibration and independent reconciliation:** six complete 1000-step nominal supervisor-OFF groups seeds7301/7303 x stand/forward_fast/turn_left, 6000 samples, no terminal flags, nonfinite or intervention. Independent refit from raw samples yields 128 buckets (87 count>=8), exact canonical JSON bytes and SHA; no evidence reference mutated. Recomputed all 6002 cached samples (6000 calibration + evaluation ages0/1) relative COM, finite difference, velocity, support, phase/yaw, omega, DCM; max DCM absolute discrepancy5.55e-17m, other checked terms exact. All numeric JSON values finite; calibration RMSE recomputed matches summaries to floating precision. Calibration max joint/force excess0; ctrl excess baseline nonzero (max0.1858287156); cannot claim comparative safety PASS. Contact counts (BOTH,LEFT,RIGHT,NO_SUPPORT_PROXY) stand(1864,69,67,0), forward_fast(890,531,579,0), turn_left(734,607,657,2). NO_SUPPORT_PROXY insufficient for every profile, potential later reference block, NOT observed stopping cause.
+
+**OBSERVED stop:** first eval seed7331/stand, one completed nominal transition, no arms created, 0/60 completed logical trajectories, 6001 actual physics transitions including calibration, zero pushes. Both age0/1 samples select stand|BOTH|0|2, count19, no fallback; lower[-0.03170793927310659,-0.014465355316577097], upper[0.10465296408783356,0.10603931448967988]. DCM age0=(.0503935105,-.0872125633), age1=(.0413060619,-.0587196491); rho=.0727472080,.0442542938m exceed .04 twice; mode RECOVERY before action2, proposed effective (0,-.05,0), blocked PREPUSH_INTERVENTION. No modified command applied, step1 root_z .75622487m, tilt3.74836deg, BOTH contacts, no cause flags; no assertion robot would have survived or that correction causes fall. Heading-frame position Y terms .00132842/.00272623m, velocity/omega Y terms -.08854099/-.06144588m; reset derivative zero, age1 local IMU velocity contribution -.05007663m and relative COM derivative contribution -.01136925m. At age1 actor local xy(-.11946,-.19191)m/s vs poststep source diagnostic(-.10092,-.22911)m/s: cannot attribute excursion solely to observation noise. Two-seed fixed min/max startup envelope fails nominal generalization on this observed evaluation prefix. No evidence of actual push recovery efficacy, correction sign, neural architecture incapability, or hardware deployability. This is a valid bounded nominal-interference NO-GO, not proof all dynamics-based control fails.
+
+**Decision:** H2B1 CLOSED / H2B-P1 NO-GO / H2B2 NOT ELIGIBLE. Original owner GO consumed. No retry, no threshold/gain widening, startup masking, calibration expansion/refitting, H2A replay, source edits or PPO. H2B0 technical implementation remains PASS. H1/H2A1 CLOSED, M1/M2/+100M NO-PROMOTE, +400M HOLD, Branch B HOLD. Next proposed design-only discussion requires owner approval: a different hypothesis for causal nominal-state/transition prediction and uncertainty-aware disturbance estimation (rather than absolute error/min-max envelope), first evaluate identifiability using existing evidence and pinned source; if not supported, consider direct physics-guided foot-placement/action residual only with new explicit hypothesis, finite protocol and appropriate nominal controls. No automatic H2C execution or neural architecture change. Existing H2B evidence insufficient to infer recovery action efficacy or establish a need for new neural architecture.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -830,6 +840,9 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-24)
+
+**M470-H2B1 FINAL NO-GO (v1.2.51; 2026-11-24):** All four owner artifacts independently audited, 6/6 calibration, exact refit SHA, estimator math reconciled, peak728MiB, immutability PASS. First evaluation7331/stand blocked before action2 by rho .072747/.044254m on 19-sample nominal bucket, no push, no modified action, 6001 physical transitions, 0/60 logical complete, expected EXIT1/TEE0. H2B-P1 CLOSED/NO-GO; H2B2 not eligible; recovery efficacy UNTESTED. No retry/retune/PPO. New hypothesis/design requires separate owner approval. H1/H2A CLOSED, Branch B HOLD.
+
 
 **M470-H2B1 EXPLICIT OWNER GO (v1.2.50; 2026-11-24):** One integrated pinned CUDA/MJX job on frozen C401M, exact evaluator65f0b46c, 6 calibration then frozen reference +60 logical eval, max49014 physical transitions, original-goal metrics, no PPO. Owner local execution pending, logs/VRAM/raw+reference required; predefined block stops, no retry/tune. H2B2 conditional, H1/H2A CLOSED, Branch B HOLD.
 
@@ -1232,6 +1245,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-24 | H2B1 integrated evaluation evidence and final decision | Four owner artifacts hashes §4; 6 calibration/6000 samples exact reference, 6001 physical, 0/60 logical, seed7331 stand PREPUSH_INTERVENTION step2, no pushes, peak728MiB, immutability PASS | v1.2.51 H2B-P1 CLOSED/NO-GO, H2B2 not eligible, efficacy untested, no retry/PPO, new design pending approval | 1.2.51 |
+
 | 2026-11-24 | H2B1 explicit owner GO | H2B0 PASS v1.2.49, exact evaluator65f0b46c and pinned runtime reviewed, owner approval one integrated frozen protocol | v1.2.50 execution pending; 6 calibration +60 logical, max49014 physical, no PPO, no retry | 1.2.50 |
 
 | 2026-11-24 | H2B0 final owner static gate | m470_h2b_static_20261124_161827_120641727.log pure/plan/final PASS, +0/-11 matches reviewed F01, remote evaluator65f0b46c | v1.2.49 H2B0 CLOSED/PASS; H2B1 ready pending separate owner GO; no GPU/PPO | 1.2.49 |
@@ -1395,6 +1410,8 @@ PY
 | 2026-11-21 | Research governance | Khóa mục tiêu push → fall → get-up → resume; định nghĩa thước đo và cổng nghiệm thu | RULES ACTIVE; GET-UP NOT IMPLEMENTED | 1.0.0 |
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.51 — 2026-11-24:** Accepted full H2B1 bounded stop evidence, independently verified calibration/reference and estimator calculations; nominal startup interference before first push, H2B-P1 closed NO-GO, H2B2 not eligible, no retuning/retry/PPO. New hypothesis requires owner approval. Rules-only.
 
 - **v1.2.50 — 2026-11-24:** Recorded explicit owner GO for one integrated H2B1 calibration and controlled evaluation on frozen C401M, exact source/runtime pins, fixed gates and evidence/stop contract; execution pending. Rules-only, no source edits or PPO.
 
