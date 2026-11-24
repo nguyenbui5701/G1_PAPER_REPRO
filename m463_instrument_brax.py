@@ -501,11 +501,16 @@ def make_patched_source(raw, *, require_pin=True, enable_resume=False, enable_h3
     return s, actual_sha
 
 
-def build_instrumented_ppo(pinned_ppo_module, output:Path, *, enable_resume=False, enable_h3=False, enable_h4=False):
+def build_instrumented_ppo(pinned_ppo_module, output:Path, *, enable_resume=False, enable_h3=False, enable_h4=False, enable_h4x=False):
     import inspect
     p=Path(inspect.getfile(pinned_ppo_module.train))
-    patched,original_sha=make_patched_source(p.read_bytes(),
-        enable_resume=enable_resume, enable_h3=enable_h3, enable_h4=enable_h4)
+    if enable_h4x:
+        if not enable_resume or not enable_h4 or enable_h3:
+            raise RuntimeError('M470_H4X_BUILDER_CONTRACT')
+        patched,original_sha=make_h4_exploratory_source(p.read_bytes())
+    else:
+        patched,original_sha=make_patched_source(p.read_bytes(),
+            enable_resume=enable_resume, enable_h3=enable_h3, enable_h4=enable_h4)
     if output.exists():
         if output.read_text('utf8')!=patched:
             raise RuntimeError('M463_REFUSE_TO_OVERWRITE_DIFFERENT_PATCH')
@@ -825,3 +830,119 @@ def build_h4_causal_ppo(pinned_ppo_module, output):
     return mod,{'original_brax_sha256':original,'acting_blob':H4C_ACTING_BLOB,
                 'generated_sha256':sha256(s.encode()),
                 'generated_file':str(Path(output).resolve())}
+
+
+# H4-M1-2R: prospective matched exploratory contract, opt-in only.
+# The default H4/H4R/H4C generated variants remain byte identical.
+H4X_FINITE_SOURCE = '''    h4x_finite = jnp.asarray(True)
+    # Raw SGD/minibatch metrics are still present, before host chunk means.
+    for h4x_leaf in jax.tree_util.tree_leaves((data,new_training_state,state,metrics)):
+      h4x_finite = h4x_finite & jnp.all(jnp.isfinite(h4x_leaf))
+    metrics['h4x_finite'] = h4x_finite.astype(jnp.float32)
+'''
+
+H4X_CONFIG_SOURCE = '''  if (num_timesteps != 10485760 or num_evals != 3
+      or num_training_steps_per_epoch != 20 or num_resets_per_eval != 1
+      or num_envs != 8192 or num_eval_envs != 2 or batch_size != 1024
+      or num_minibatches != 8 or num_updates_per_batch != 5
+      or unroll_length != 32 or episode_length != 1000 or action_repeat != 1
+      or process_count != 1 or local_device_count != 1 or local_devices_to_use != 1
+      or seed != 1 or m470_resume_state_path is not None
+      or restore_checkpoint_path is None or randomization_fn is None
+      or not wrap_env or h4_chunk_fn is None):
+    raise RuntimeError('M470_H4X_CONFIG')
+'''
+
+H4X_RESET_HELPER = '''  @jax.jit
+  def h4x_dynamic_finite(tree):
+    finite = jnp.asarray(True)
+    for leaf in jax.tree_util.tree_leaves(tree):
+      finite = finite & jnp.all(jnp.isfinite(leaf))
+    return finite
+
+'''
+
+# Unique source anchors, reversible for the focused source-equivalence test.
+H4X_PATCHES = (
+    ('    h4_chunk_fn: Optional[Callable[..., None]] = None,\n',
+     '    h4x_audit_fn: Optional[Callable[..., None]] = None,\n'
+     '    h4_chunk_fn: Optional[Callable[..., None]] = None,\n'),
+    ("  raise RuntimeError('M470_H4_EXECUTION_HOLD')\n",
+     "  from m463_push_ppo_train import h4x_generated_guard\n"
+     "  h4x_generated_guard(h4x_audit_fn, __file__)\n"),
+    ('  key = jax.random.PRNGKey(seed)\n',
+     H4X_CONFIG_SOURCE+'  key = jax.random.PRNGKey(seed)\n'),
+    ('  env_state = reset_fn(key_envs)\n  # Discard',
+     H4X_RESET_HELPER+
+     "  dr = env.env.env\n"
+     "  if type(dr).__name__ != 'BraxDomainRandomizationVmapWrapper':\n"
+     "    raise RuntimeError('M470_H4X_DR_WRAPPER')\n"
+     "  h4x_audit_fn('reset_before', keys=key_envs, local_key=local_key,\n"
+     "                eval_key=eval_key, model=dr._mjx_model_v, axes=dr._in_axes)\n"
+     "  env_state = reset_fn(key_envs)\n"
+     "  h4x_audit_fn('reset_after', env_state=env_state, finite=h4x_dynamic_finite(env_state))\n"
+     '  # Discard'),
+    ('    return (new_training_state, state, new_key), metrics\n',
+     H4X_FINITE_SOURCE+'    return (new_training_state, state, new_key), metrics\n'),
+    ('      carry, metrics = h4_chunk(*carry)\n',
+     "      h4x_audit_fn('chunk_before', index=idx+1, carry=carry)\n"
+     '      carry, metrics = h4_chunk(*carry)\n'),
+    ('      h4_chunk_fn(idx+1, _unpmap(carry[0]), carry[1], metrics)\n',
+     "      h4x_audit_fn('chunk_after', index=idx+1, carry=carry, metrics=metrics)\n"
+     '      h4_chunk_fn(idx+1, _unpmap(carry[0]), carry[1], metrics)\n'
+     "      h4x_audit_fn('chunk_ledger', index=idx+1)\n"),
+    ('  if not eval_env:\n',
+     "  h4x_audit_fn('initial', training_state=training_state, env_state=env_state,\n"
+     "                finite=h4x_dynamic_finite(training_state))\n"
+     '  if not eval_env:\n'),
+    ('    metrics = evaluator.run_evaluation(\n',
+     "    h4x_audit_fn('eval_before', step=0, key=evaluator._key)\n"
+     '    metrics = evaluator.run_evaluation(\n'),
+    ('    progress_fn(0, metrics)\n',
+     "    h4x_audit_fn('eval_after', step=0, key=evaluator._key, metrics=metrics)\n"
+     '    progress_fn(0, metrics)\n'),
+    ('      epoch_key, local_key = jax.random.split(local_key)\n'
+     '      epoch_keys = jax.random.split(epoch_key, local_devices_to_use)\n',
+     '      epoch_key, local_key = jax.random.split(local_key)\n'
+     '      epoch_keys = jax.random.split(epoch_key, local_devices_to_use)\n'
+     "      h4x_audit_fn('epoch', keys=epoch_keys, local_key=local_key,\n"
+     "                    training_state=training_state, env_state=env_state)\n"),
+    ('      env_state = reset_fn(key_envs) if num_resets_per_eval > 0 else env_state\n',
+     "      h4x_audit_fn('reset_before', keys=key_envs, local_key=local_key,\n"
+     "                    eval_key=evaluator._key, model=dr._mjx_model_v, axes=dr._in_axes)\n"
+     '      env_state = reset_fn(key_envs) if num_resets_per_eval > 0 else env_state\n'
+     "      h4x_audit_fn('reset_after', env_state=env_state, finite=h4x_dynamic_finite(env_state))\n"),
+    ('      metrics = evaluator.run_evaluation(\n',
+     "      h4x_audit_fn('eval_before', step=current_step, key=evaluator._key)\n"
+     '      metrics = evaluator.run_evaluation(\n'),
+    ('      progress_fn(current_step, metrics)\n',
+     "      h4x_audit_fn('eval_after', step=current_step, key=evaluator._key, metrics=metrics)\n"
+     '      progress_fn(current_step, metrics)\n'),
+    ('  total_steps = current_step\n',
+     "  h4x_audit_fn('finish', training_state=training_state, env_state=env_state)\n"
+     '  total_steps = current_step\n'),
+)
+
+
+def make_h4_exploratory_source(raw):
+    """Same held H4 base; only read-only instrumentation and dispatch guards."""
+    held, original = make_patched_source(raw, enable_resume=True, enable_h4=True)
+    s = held
+    # Initial and epoch evaluation anchors differ by indentation; match
+    # complete lines, not substrings of longer indentation.
+    for old,new in H4X_PATCHES:
+        if old.startswith('    metrics = evaluator.run_evaluation('):
+            old = '\n'+old
+            new = '\n'+new
+        s = h4c_once(s,old,new)
+    compile(s,'<H4 exploratory generated>','exec')
+    return s,original
+
+
+def normalize_h4_exploratory_source(s):
+    for old,new in reversed(H4X_PATCHES):
+        if old.startswith('    metrics = evaluator.run_evaluation('):
+            old = '\n'+old
+            new = '\n'+new
+        s = h4c_once(s,new,old)
+    return s
