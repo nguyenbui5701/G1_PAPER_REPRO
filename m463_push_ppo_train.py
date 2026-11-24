@@ -1022,7 +1022,8 @@ def h4r_audit_callback(api,args,report,persist,gpu_check):
                     key=jax.vmap(lambda k:jax.random.split(k,3)[2])(key)
             restored=tuple(serialization.to_state_dict(jax.tree_util.tree_map(lambda x:x[0],v))
                            for v in (ts.normalizer_params,ts.params.policy,ts.params.value))
-            compare_exact(expected_parts,restored,jax,np,'H4R_INITIAL_RESTORE')
+            h4r_require(compare_exact(expected_parts,restored,jax,np,'H4R_INITIAL_RESTORE')==25,
+                         'RESTORED_TENSOR_COUNT')
             report['initial']={'carry_sha256':initial_hash,'restored_weights_exact':True,
                                **state_checks(carry,0)}
             persist()
@@ -1105,6 +1106,16 @@ def h4r_bootstrap_pins(args):
         actual_blob=hashlib.sha1(('blob '+str(len(raw))+'\0').encode()+raw).hexdigest()
         h4r_require(actual==root/(name+'.py') and actual_blob==blob,'MODULE_PIN '+name)
         paths[name]=str(actual)
+    import subprocess
+    for name in ('m463_instrument_brax','m463_push_ppo_train'):
+        spec=PathFinder.find_spec(name,sys.path)
+        h4r_require(spec is not None and spec.origin is not None,'MODULE_MISSING '+name)
+        actual=Path(spec.origin).resolve()
+        h4r_require(actual==root/(name+'.py'),'MODULE_ORIGIN '+name)
+        tracked=subprocess.check_output(['git','show','HEAD:'+name+'.py'],cwd=root)
+        h4r_require(actual.read_bytes()==tracked,'TRACKED_SOURCE '+name)
+        if name=='m463_instrument_brax':
+            paths[name]=str(actual)
     h4r_require(digest(root/'paper_config_preflight.json')==H4R_CONFIG_SHA,'PAPER_CONFIG_PIN')
     for path,sha in ((args.checkpoint,SEED1_SHA),(args.restore_report,H3_CAUSAL_RESTORE_SHA),
                      (args.h4_readiness_reward_report,H4R_REWARD_SHA)):
@@ -1144,6 +1155,7 @@ def h4r_run(args):
                                 'orbax_sha256':H4_ORBAX_SHA,'reward_reference_sha256':H4R_REWARD_SHA}
         monitor=GPUMonitor()
         def gpu_check():
+            h4r_require(shutil.disk_usage(args.output_dir).free>=2*1024**3,'DISK')
             g=sample_gpu()
             snap=monitor.snapshot()
             h4r_require(g['total_mib']==12288 and 0<=g['used_mib']<.95*12288 and
@@ -1210,6 +1222,147 @@ def h4r_run(args):
             report['gpu']=monitor.snapshot()
         persist()
         raise
+
+
+
+def h4r_static_regression(brax_train_path,technical_report):
+    """Exact checkout compile and focused non-runtime readiness regression."""
+    import ast
+    import subprocess
+    import types
+    import numpy as np
+    root=Path(__file__).resolve().parent
+    names=('m463_push_ppo_train.py','m463_instrument_brax.py')
+    for name in names:
+        raw=(root/name).read_bytes()
+        compile(raw,name,'exec')
+        ast.parse(raw)
+    import m463_instrument_brax as gen
+    raw=Path(brax_train_path).read_bytes()
+    h4r_require(gen.sha256(raw)==gen.PINNED_SHA==H3_CAUSAL_ORIGINAL_BRAX_SHA,'STATIC_BRAX')
+    base='7ae983b6b2ce4f889b0e1d5a7eb4ef1b4d70d212'
+    old_source=subprocess.check_output(['git','show',base+':m463_instrument_brax.py'],cwd=root)
+    old=types.ModuleType('_h4r_old_generator')
+    exec(compile(old_source,'<old generator>','exec'),old.__dict__)
+    for resume,h3,h4 in [(False,False,False),(False,True,False),(True,False,False),
+                          (True,True,False),(True,False,True)]:
+        flags=dict(enable_resume=resume,enable_h3=h3,enable_h4=h4)
+        before=old.make_patched_source(raw,**flags)
+        after=gen.make_patched_source(raw,**flags)
+        h4r_require(before==after,'LEGACY_GENERATED_DRIFT')
+        compile(after[0],'<unchanged generated>','exec')
+    print('M470_H4R_LEGACY_GENERATED_BYTE_EQUAL_PASS 5/5',flush=True)
+    production,_=gen.make_patched_source(raw,enable_resume=True,enable_h4=True)
+    diagnostic,sha=gen.make_h4_readiness_source(raw)
+    compile(diagnostic,'<readiness generated>','exec')
+    def function(source,name):
+        return next(x for x in ast.parse(source).body if isinstance(x,ast.FunctionDef) and x.name==name)
+    train=function(diagnostic,'readiness_train')
+    prod=function(production,'train')
+    h4r_require(isinstance(train.body[1],ast.Raise) and
+                 'M470_H4_READINESS_EXECUTION_HOLD' in ast.unparse(train.body[1]),'GENERATED_HOLD')
+    h4r_require(isinstance(prod.body[1],ast.Raise) and
+                 'M470_H4_EXECUTION_HOLD' in ast.unparse(prod.body[1]),'PRODUCTION_HOLD')
+    h4r_require(not any(isinstance(x,ast.FunctionDef) and x.name=='train'
+                    for x in ast.parse(diagnostic).body),'NO_PRODUCTION_ENTRY')
+    h4r_require('acting.Evaluator(' not in diagnostic and 'policy_params_fn(current_step' not in diagnostic
+                 and 'm470_state_checkpoint_fn(current_step' not in diagnostic
+                 and 'for it in range(num_evals_after_init)' not in diagnostic,'NO_EVAL_OR_SAVE')
+    normalized=diagnostic.replace(gen.H4R_FINITE_SOURCE,'',1)
+    for name in ('training_step','h4_chunk','sgd_step','minibatch_step'):
+        def nested(s,entry):
+            f=function(s,entry)
+            return ast.dump(next(x for x in f.body if isinstance(x,ast.FunctionDef) and x.name==name))
+        h4r_require(nested(normalized,'readiness_train')==nested(production,'train'),'PPO_DRIFT '+name)
+    h4r_require(sha==gen.PINNED_SHA and diagnostic.count(gen.H4R_FINITE_SOURCE)==1 and
+                diagnostic.count(gen.H4R_CONTRACT)==1 and diagnostic.endswith(gen.H4R_EXIT),'GENERATOR_SCOPE')
+    # The diagnostic is a separate entry with one fixed dispatch schedule.
+    h4r_require(diagnostic.count('h4r_reference(*initial)')==1 and
+                diagnostic.count('h4_chunk(*carry)')==1 and
+                "for label in ('R0', 'R1'):" in diagnostic and
+                'for idx in range(4):' in gen.H4R_EXIT and
+                'length=20)' in gen.H4R_EXIT,'DISPATCH_SCOPE')
+    print('M470_H4R_GENERATED_COMPILE_SCOPE_PASS',gen.sha256(diagnostic.encode()),flush=True)
+    h4r_require(not H4_EXECUTION_AUTHORIZED and not H4R_EXECUTION_AUTHORIZED,'HOLD')
+    base_cli=[sys.executable,'-B',str(root/names[0]),'--checkpoint','unused',
+        '--restore-report','unused','--output-dir','unused','--stage','easy_repeat_support']
+    valid=['--h4-readiness','--h4-readiness-reward-report','unused']
+    cases=[(['--mode','plan']+valid,0),
+           (['--mode','plan','--h4-readiness'],2),
+           (['--mode','plan','--h4-readiness-reward-report','unused'],2),
+           (['--mode','readiness'],2)]
+    for mode in ('readiness','smoke','probe2','smoke3','pilot','longtrain'):
+        cases.append((['--mode',mode]+valid,2))
+    for flag in (['--h4-arm','control'],['--h4-control-report','unused'],['--h1-m1'],
+                 ['--h1-m2'],['--h3-m1'],['--h3-diagnostic-only'],
+                 ['--h3-causal-report','unused'],['--h3-old10m-report','unused'],
+                 ['--smoke-report','unused'],['--resume-state','unused'],
+                 ['--independent-budget','10M'],['--rollouts','20'],['--num-evals','1']):
+        cases.append((['--mode','plan']+valid+flag,2))
+    for flags,code in cases:
+        p=subprocess.run(base_cli+flags,capture_output=True,text=True,cwd=root)
+        h4r_require(p.returncode==code and (code!=0 or 'M470_H4R_PLAN_NO_GPU' in p.stdout),
+                    'STATIC_CLI '+repr(flags)+' '+p.stderr)
+    args=types.SimpleNamespace(mode='readiness',stage='easy_repeat_support',
+                h4_readiness=True,h4_readiness_reward_report=Path('unused'))
+    for fn in (run,h4r_run):
+        try:
+            fn(args)
+        except RuntimeError as exc:
+            h4r_require(str(exc)=='M470_H4R_EXECUTION_HOLD','DIRECT_HOLD')
+        else:
+            raise RuntimeError('M470_H4R_DIRECT_ENTRY_NOT_BLOCKED')
+    print('M470_H4R_CLI_HOLD_PASS',len(cases),'plus two direct entry guards',flush=True)
+    def reject(fn):
+        try:
+            fn()
+        except RuntimeError:
+            return
+        raise RuntimeError('M470_H4R_FIXTURE_ACCEPTED_INVALID')
+    # Comparison and count arithmetic, actual helper functions, no JAX.
+    a={'weights':np.array([1.],np.float32),'key':np.array([1,2],np.uint32)}
+    same=h4r_compare(np,a,a)
+    h4r_require(same['passed'],'FIXTURE_EQUAL')
+    other=dict(a,weights=np.array([1.+2e-6],np.float32))
+    h4r_require(h4r_compare(np,a,other)['passed'] and
+                 not h4r_compare(np,a,other,same['paths'])['passed'],'FIXTURE_EPS')
+    h4r_require(h4r_compare(np,a,other,h4r_compare(np,a,other)['paths'])['passed'],'FIXTURE_REPEAT')
+    h4r_require(not h4r_compare(np,a,dict(a,weights=np.array([1.0001],np.float32)))['passed'],'FIXTURE_CAP')
+    h4r_require(not h4r_compare(np,a,dict(a,key=np.array([1,3],np.uint32)))['passed'],'FIXTURE_DISCRETE')
+    reject(lambda:h4r_compare(np,a,dict(a,weights=np.array([np.nan],np.float32))))
+    reject(lambda:h4r_compare(np,a,dict(a,weights=np.array([1.,2.],np.float32))))
+    reject(lambda:h4r_compare(np,a,dict(a,weights=np.array([1.],np.float64))))
+    for n in (5,20):
+        for count in range(512*n+1):
+            v=np.float32(count/n)
+            h4r_require(abs(float(v)*n-count)<=.125,'COUNT_ARITHMETIC')
+    # Previously accepted natural control report is ONLY a synthetic fixture:
+    # tile its four lanes fourfold, not a new physical experiment.
+    path=Path(technical_report)
+    h4r_require(digest(path)=='b355a69d0e8d11e4f72c5242e7c7f2c5ef982e30acb1bdd493ed122cd58e1f9a',
+                 'FIXTURE_REPORT_PIN')
+    r=json.loads(path.read_bytes())
+    control=next(v for v in r['natural'] if v['arm']=='control')
+    m={}
+    for row in control['rollout_counts']:
+        for k,v in row.items():
+            if k.endswith('_per_rollout'):
+                m[k]=m.get(k,0.)+4*float(v)/20
+    m['h4r_nonfinite_per_rollout']=0.
+    m['m463_events_per_rollout']=m['m463_h4_first_events_per_rollout']+m['m463_h4_repeat_events_per_rollout']
+    m['m463_repeat_per_rollout']=m['m463_h4_repeat_events_per_rollout']
+    counts=h4r_counts(m,20)
+    info={k:np.tile(v,4) for k,v in control['pending_at_end'].items()}
+    ledger=h4r_ledger(np,counts,info)
+    h4r_require(ledger['passed'],'FIXTURE_LEDGER')
+    bad=dict(counts)
+    bad['m463_h4_first_events_per_rollout']+=1
+    h4r_require(not h4r_ledger(np,bad,info)['passed'],'FIXTURE_BAD_LEDGER')
+    reject(lambda:h4r_counts(dict(m,h4r_nonfinite_per_rollout=.05),20))
+    h4r_require('jax' not in sys.modules and 'brax' not in sys.modules and 'mujoco' not in sys.modules,
+                 'STATIC_RUNTIME_IMPORTED')
+    print('M470_H4R_NUMERICAL_LEDGER_FIXTURE_PASS',len(ledger['checks']),flush=True)
+    print('M470_H4R_STATIC_PASS NO_SIMULATION NO_PPO',flush=True)
 
 
 def validate_h4_cli(a):
