@@ -87,7 +87,6 @@ H4_SPEC = {'arms': ['control','candidate'], 'control_episode_mix': [.20,.80,0.,0
 # Deliberately locked for this source revision. Opening H4 requires a
 # separately reviewed source change and explicit owner execution GO.
 H4_EXECUTION_AUTHORIZED = False
-H4_APPROVED_CONTROL_REPORT_SHA = None
 H4_ORBAX_SHA = '5acfabc1376e91a2a9a52b47ac821e296f0e84f5545b646b07c9482ddc462bf3'
 H4_EDGES = (5242880,10485760)
 H4_FILES = ('m463_coverage_env.py','m463_instrument_brax.py',
@@ -98,7 +97,7 @@ def h4_integer_count(mean, rollouts=5):
     # Each integer rollout count <= 262144; five-count sum <= 1310720
     # is exactly representable in float32. Division rounding < .125 counts.
     x = float(mean)*rollouts
-    if not math.isfinite(x) or not 0 <= x <= 2*rollouts*TOTAL_STEPS_BATCH or abs(x-round(x)) > .125:
+    if not math.isfinite(x) or not 0 <= x <= rollouts*TOTAL_STEPS_BATCH or abs(x-round(x)) > .125:
         raise RuntimeError('M470_H4_NONINTEGER_COUNT')
     return int(round(x))
 
@@ -153,6 +152,9 @@ def h4_epoch_audit(counts, pending, arm, final=False):
                 and n<=c(prefix+'repeat_due')<=c(prefix+'repeat_assigned')
                 and n==c(prefix+'matched')+c(prefix+'fallback'))
     for kind,total in ((1,c('first_events')),(2,c('repeat_events'))):
+        checks[f'age_{kind}_partition'] = sum(c(f'age_{kind}_{lo}_{hi}') for lo,hi in
+            ((0,32),(33,239),(240,308),(309,348),(349,639)))==total
+        checks[f'support_{kind}_partition'] = sum(c(f'support_{kind}_{side}') for side in range(4))==total
         for w in H4_SPEC['tail_windows']:
             executed=c(f'tail_{kind}_{w}_executed')
             checks[f'tail_{kind}_{w}_bounds'] = (
@@ -160,6 +162,8 @@ def h4_epoch_audit(counts, pending, arm, final=False):
                 c(f'tail_{kind}_{w}_same_command')<=executed and
                 c(f'tail_{kind}_{w}_same_unroll')<=executed)
             total=executed
+    checks['repeat_gap_partition']=sum(c(f'gap_{lo}_{hi}') for lo,hi in ((0,29),(30,40),(41,639)))==c('repeat_events')
+    checks['repeat_side_bound']=c('repeat_matched')+c('repeat_fallback')<=c('repeat_events')
     for side in (1,2):
         n=c(f'stand_{side}_events')
         checks[f'qual_{side}_matched_bound'] = n<=c(f'target_0_{side}_matched')
@@ -246,6 +250,8 @@ def h4_chunk_callback(jax,np,monitor,report,persist,arm):
         required.update(f'broad_{k}_{j}' for j in range(6) for k in ('motion','direction'))
         if any('m463_h4_'+k+'_per_rollout' not in row['counts'] for k in required):
             raise RuntimeError('M470_H4_CHUNK_MISSING_METRICS')
+        if sum(row['counts'][f'm463_h4_class_{j}_steps_per_rollout'] for j in range(4))!=5*TOTAL_STEPS_BATCH:
+            raise RuntimeError('M470_H4_CHUNK_STEP_PARTITION')
         if row['counts']['m463_h4_bad_per_rollout']!=0:
             raise RuntimeError('M470_H4_CHUNK_INVARIANT')
         # Read only scalar device arrays, not full MJX state. Validate at
@@ -321,7 +327,8 @@ def h4_common_contract(config,reward,instrument):
         raise RuntimeError('M470_H4_BRAX_PIN')
     return {'source_commit':PIN,'checkpoint_sha256':SEED1_SHA,
             'restore_report_sha256':H3_CAUSAL_RESTORE_SHA,'orbax_sha256':H4_ORBAX_SHA,
-            'seed':1,'config':copy.deepcopy(config),'reward':copy.deepcopy(reward),
+            'seed':1,'config':json.loads(json.dumps(config,allow_nan=False)),
+            'reward':json.loads(json.dumps(reward,allow_nan=False)),
             'source_digests':{name:digest(Path(__file__).with_name(name)) for name in H4_FILES},
             'generated_brax_sha256':instrument['instrumented_sha256'],
             'original_brax_sha256':instrument['original_brax_sha256']}
@@ -402,6 +409,16 @@ def h4_final_checks(report,audit,control):
             raise RuntimeError('M470_H4_MATCHED_NOMINAL')
         report['h4_matched_nominal_pass']=True
     report['h4_legacy_reconciled']=True
+
+
+def h4_approved_control_sha():
+    """A later Rules-only review may pin the control without source drift."""
+    import re
+    rules=Path(__file__).with_name('G1_RESEARCH_RULES.md')
+    hits=re.findall(r'^H4_APPROVED_CONTROL_REPORT_SHA256: ([0-9a-f]{64})$',rules.read_text('utf8'),re.M)
+    if len(hits)!=1:
+        raise RuntimeError('M470_H4_CONTROL_NOT_APPROVED')
+    return hits[0]
 
 
 def h4_read_control(path,expected_sha,contract):
@@ -1220,6 +1237,14 @@ def run(args):
         # Operational reserve, not a reward/physics criterion.
         if shutil.disk_usage(args.output_dir.parent).free < 2*1024**3:
             raise RuntimeError('M470_H3_SMOKE_DISK_RESERVE')
+    if h4_arm is not None:
+        import shutil
+        if shutil.disk_usage(args.output_dir.parent).free<2*1024**3:
+            raise RuntimeError('M470_H4_DISK_RESERVE')
+    if h4_arm=='candidate':
+        approved_sha=h4_approved_control_sha()
+        if args.h4_control_report.is_symlink() or not args.h4_control_report.is_file() or digest(args.h4_control_report)!=approved_sha:
+            raise RuntimeError('M470_H4_CONTROL_SHA')
     if args.output_dir.exists():
         raise FileExistsError('M463_REFUSE_TO_OVERWRITE_OUTPUT_DIRECTORY')
     # Import from PRIOR, already proven checkpoint validator and GPU monitor.
@@ -1362,7 +1387,7 @@ def run(args):
     if h4_arm is not None:
         h4_contract=h4_common_contract(scaled.to_dict(),original_reward,instrument_meta)
         if h4_arm=='candidate':
-            h4_control=h4_read_control(args.h4_control_report,H4_APPROVED_CONTROL_REPORT_SHA,h4_contract)
+            h4_control=h4_read_control(args.h4_control_report,h4_approved_control_sha(),h4_contract)
     if h3_acceptance is not None:
         h3_acceptance['longtrain_brax_comparison']=verify_h3_longtrain_brax(api,instrument_meta)
         print('M470_H3_OLD10M_GENERATED_SOURCE_PASS',flush=True)

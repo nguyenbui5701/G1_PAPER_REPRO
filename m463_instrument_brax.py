@@ -193,12 +193,12 @@ H4_METRICS_SOURCE = '''    # H4: only PPO-consumed scalar extras, not configured
     hs = extras['h4_tick_survived'] > 0
     # H4 collection cap 640 < wrapper episode_length 1000; any truncation
     # signals a contract violation. The technical gate must verify this.
-    coverage['m463_h4_bad_per_rollout'] = h4_count(
-        (extras['h4_bad'] != 0) | (extras['truncation'] != 0))
     ha = extras['h4_age']
     hm = jnp.sqrt(extras['h4_actual_dx']**2 + extras['h4_actual_dy']**2)
-    coverage['m463_h4_bad_per_rollout'] += h4_count(
-        (~jnp.isfinite(hm)) | (jnp.abs(hm - extras['m463_magnitude']) > 3e-6))
+    coverage['m463_h4_bad_per_rollout'] = h4_count(
+        (extras['h4_bad'] != 0) | (extras['truncation'] != 0) |
+        (~jnp.isfinite(hm)) | (jnp.abs(hm - extras['m463_magnitude']) > 3e-6) |
+        (ha < 0) | (ha >= 640) | (hc < 0) | (hc > 3))
     coverage['m463_h4_magnitude_sum'] = jnp.sum(hm)
     for kind in (1,2):
         mask = he & (hr if kind == 2 else ~hr)
@@ -296,9 +296,9 @@ def _add_h4_chunk_hooks(s):
 ''')
     # Source revision is explicitly offline-only. Even an imported
     # generated module must fail before the first runtime operation.
-    one('  if madrona_backend:\\n',
-        "  raise RuntimeError('M470_H4_EXECUTION_HOLD')\\n"
-        '  if madrona_backend:\\n')
+    one('  if madrona_backend:\n',
+        "  raise RuntimeError('M470_H4_EXECUTION_HOLD')\n"
+        '  if madrona_backend:\n')
     start=s.index('  def training_epoch(')
     end=s.index('  # Initialize model params and training state.',start)
     # Keep the contract above outside the replacement.
