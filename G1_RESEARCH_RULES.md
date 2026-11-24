@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.48  
+**Version:** 1.2.49  
 **Ngày cập nhật:** 2026-11-24 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -551,6 +551,14 @@ Owner pushed 47c2ec0cd216d095ecd51d2c6ad13cf0e0572666, parent 94c672e955f4c0848f
 
 Decision H2B0_CORRECTED_SOURCE_REVIEW_PASS / OWNER_STATIC_EVIDENCE_PENDING / H2B1_HOLD.
 
+### M4.70-H2B0 — OWNER STATIC GATE PASS, H2B1 READY PENDING EXPLICIT GO (v1.2.49; 2026-11-24)
+
+Owner supplied m470_h2b_static_20261124_161827_120641727.log, SHA256 e124c8e0d707e600c99bb5e66033b93cea481431ecb29d82c82ffc255cc41818. Observed exact markers H2B_ESTIMATOR_SYNTHETIC_PASS, H2B_REFERENCE_AND_FALLBACK_PASS, H2B_SUPERVISOR_BOUNDS_TIMEOUT_PASS, H2B_CAUSAL_CACHE_MOCK_PASS, H2B_PURE_LOGIC_PASS NO_JAX_NO_GPU_NO_PPO, M470_H2B_PLAN and M470_H2B0_OWNER_STATIC_GATE_PASS. Plan matches frozen configuration: calibration7301/7303, evaluation7331/7357, 6 calibration + 60 logical trajectories, max49014 physical transitions, training false; dt .02, g9.81, height .35–1.0, mincount8, age10/30/75, phase4, entry .04/2 ticks, exit .015/10 ticks, gain2, bias .25, slew .05, active100/return10. Log shows evaluator-only 11 deletions consistent with F01 cleanup. Log does not independently print source SHA or shell exit code; accept as owner static gate evidence combined with reviewed correction, verify exact local source and runtime pins at next integrated preflight, do not rerun solely for redundant evidence. Remote HEAD e0882e809ef7e4b6e180c6f9b4926cfa06d848f5, evaluator blob 65f0b46cc0b61561e8f75864ed9348be60a7919c unchanged. H2B0 CLOSED/PASS; actual MJX sensor fields, calibration/reference adequacy and scientific efficacy remain UNTESTED.
+
+H2B1 READY PENDING SEPARATE EXPLICIT OWNER GO, not execution authorization from log upload. After explicit GO only, one integrated pinned CUDA/MJX calibration+evaluation job under v1.2.45–46 frozen protocol, source/checkpoint/Brax/runtime preflight within same job, no extra probe campaign, timestamped combined stdout/stderr and VRAM log, raw progress JSON and frozen reference JSON, preserve partial evidence and stop on predefined block; no retry, retune, PPO or new source change. Compare nominal 6/6 each, zero nominal intervention, original-goal tracking safety thresholds, double survival AND recovery5s gain >=2/12 each, no lost single survival, exact safety gates, no unsupported-reference extrapolation. Complete evidence is not efficacy PASS. H2B2 only conditional on full H2B1 PASS and fresh holdout approval. H1/H2A1 CLOSED, H2A2 not eligible, +400M HOLD, Branch B HOLD.
+
+Decision H2B0_COMPLETE / H2B1_READY_PENDING_EXPLICIT_OWNER_GO / PPO0.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -812,6 +820,9 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-24)
+
+**M470-H2B0 FINAL STATIC GATE PASS (v1.2.49; 2026-11-24):** Owner log m470_h2b_static_20261124_161827_120641727.log all pure/plan/final PASS, +0/-11 matches F01 correction, exact remote evaluator65f0b46c unchanged. Log lacks explicit source SHA/exit code; verify source pin at integrated preflight, no redundant rerun. H2B0 CLOSED/PASS, H2B1 READY PENDING SEPARATE EXPLICIT OWNER GO for one frozen 6 calibration +60 logical evaluation, max49014 physical, no PPO. Runtime/efficacy untested. H1/H2A CLOSED, Branch B HOLD.
+
 
 **M470-H2B0 CORRECTED SOURCE REVIEW PASS (v1.2.48; 2026-11-24):** Owner 47c2ec0, evaluator 65f0b46c, only M463 +0/-11; F01 CLOSED, outer finalization retained, frozen design unchanged. No further source edits required. Owner corrected-source static/pure/plan log pending; no duplicate gate if existing evidence available. H2B1 HOLD pending evidence and separate explicit owner GO, no GPU/PPO, H1/H2A CLOSED, Branch B HOLD.
 
@@ -1208,6 +1219,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-24 | H2B0 final owner static gate | m470_h2b_static_20261124_161827_120641727.log pure/plan/final PASS, +0/-11 matches reviewed F01, remote evaluator65f0b46c | v1.2.49 H2B0 CLOSED/PASS; H2B1 ready pending separate owner GO; no GPU/PPO | 1.2.49 |
+
 | 2026-11-24 | H2B0 corrected source review | 47c2ec0 parent94c672e, evaluator65f0b46c, one file +0/-11 exact F01 cleanup, correct outer finalization retained | v1.2.48 source review PASS, static evidence pending, H2B1 HOLD, no GPU/PPO | 1.2.48 |
 
 | 2026-11-24 | H2B0 owner integration review | abacb3b, e7f358d8, one evaluator +613/-5; source logic consistent, duplicate unreachable inner finalization F01 LOW; owner gate log missing | v1.2.47 owner cleanup and static evidence pending, H2B1 HOLD, no GPU/PPO | 1.2.47 |
@@ -1367,6 +1380,8 @@ PY
 | 2026-11-21 | Research governance | Khóa mục tiêu push → fall → get-up → resume; định nghĩa thước đo và cổng nghiệm thu | RULES ACTIVE; GET-UP NOT IMPLEMENTED | 1.0.0 |
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.49 — 2026-11-24:** Accepted owner H2B0 static/pure/plan evidence against reviewed source; H2B0 closed/PASS, H2B1 ready pending separate explicit owner GO, same frozen protocol. Rules-only; no executable source changes, GPU or PPO.
 
 - **v1.2.48 — 2026-11-24:** Recorded exact owner F01 cleanup at 47c2ec0; corrected source review PASS, static/pure/plan evidence pending, H2B1 HOLD and separate owner GO required. Rules-only; no executable source changes, no GPU/PPO.
 
