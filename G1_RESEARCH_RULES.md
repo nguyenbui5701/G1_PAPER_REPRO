@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.42  
+**Version:** 1.2.43  
 **Ngày cập nhật:** 2026-11-23 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -487,6 +487,16 @@ Owner supplied remote HEAD `b2b07febc6817adc1effb0d5b0a9aafa27628b31`, parent `7
 
 Decision `H2A0_SOURCE_REVIEW_PASS / H2A1_READY_PENDING_EXPLICIT_OWNER_GO`. No GPU/JAX/MJX run or PPO by SA; H2A1 remains HOLD until explicit owner execution GO. On GO, one integrated pinned CUDA/MJX read-only-in-weights runtime/controlled evaluation job: verify exact evaluator blob, frozen C401M SHA, source pin/Brax/NVCC/launcher/VRAM and source configuration, same frozen 6 groups/60 logical trajectories from v1.2.39–1.2.40, original goal and governor/push/termination/limit telemetry; no extra probe campaign, no source edits, no new training. Preserve partial output/log on failure; prefix intervention is a scientific NO-GO, not a reason to retune/retry. Verify actual nominal identity/nonintervention and paired snapshot/perturbation semantics; post-step model-limit telemetry is not continuous substep/hardware safety certification. Timeout evidence reported separately. Apply predeclared H2A1 survival/recovery/nominal gates; H2A2 conditional only, H2B separate design only, Branch B HOLD. H1 CLOSED, M1/M2/+100M NO-PROMOTE, +400M HOLD; PPO budget0. Owner source ownership remains in force.
 
+### M4.70-H2A1 — EXPLICIT OWNER GO, ONE INTEGRATED CONTROLLED EVALUATION (v1.2.43; 2026-11-24)
+
+Owner explicitly approved `GO H2A1 — triển khai Runtime và Controlled Recovery Evaluation 60 trajectories theo rules`. H2A0 source review PASS v1.2.42. This authorizes exactly ONE integrated pinned CUDA/MJX H2A1 job, not PPO, H2A2, H2B, Branch B, or source/reward/threshold changes. Prior HEAD `4b49a11a0a36cb53b1936ee4e3c0c87465b744a4`, exact reviewed evaluator blob `e26043088bee558015b8592b6ef86dd85bf546b1`. Re-read evaluator run/CLI/output and train.py/paper_config.py: check_source validates pinned upstream HEAD and clean source tree, NVCC compatibility precedes JAX, GPU backend and original Brax SHA checked, paper config verified, C401M byte SHA and finite 25-leaf weights checked; H2A never loads P or calls PPO trainer. Existing runtime guards and first actual transition serve technical gate within same job, not separate probe campaign.
+
+**Execution contract:** safe ff-only sync to this Rules commit with clean tracked tree, verify evaluator blob and C401M SHA `1ccf579ea35d4518713b00ea20d77db8463bc469b7de903b8f10f457b3dc90b8`, pinned launcher/runtime from prior M463, upstream PIN `9bcbe736177472ba35d60773e3030a36e37962b7`, Brax `e20613d42bf0868a13003e0312998816cc8d3593bb5ccaf9f1d070fd09c44bd7`. One fresh evaluator invocation `--mode run --h2a --checkpoint-c ... --seeds 7331,7357 --profiles stand,forward_fast,turn_left --directions left,right --push-step 300 --push-magnitude 0.50 --second-push-step 335 --second-push-magnitude 0.35 --max-steps 1000 --output <fresh timestamp.json>`. Six seed/profile groups, 60 logical trajectories (max43014 actual transition executions if all reach horizon; shared299 prefix and per-arm single-to-double branch reused). One heavy GPU job at a time, log nvidia-smi/VRAM sampling and stderr/stdout, unique output/log/sampler paths under existing m463_runs. No heldout evaluation. Keep all output and logs even if unsuccessful; prefix-blocked JSON is written by existing evaluator, arbitrary runtime failure may yield only log (do not claim unflushed trajectories persisted). No auto retry, retune, or rerun after nominal interference. Verify frozen checkpoint/source unchanged afterward.
+
+**Evidence gate vs scientific gate:** On complete report verify exact status/provenance/config and all 6 unique groups/60 reconstructible trajectories, prefix steps1..299, each OFF/ON nominal, single branches and double forks, consecutive frame steps, done/completion/terminal flags, finite telemetry/action29, identical declared first/second world delta vectors across arms and expected norms, command original-goal tracking, supervisor mode/effective command bounds and rate limits, no-exposure double counted in fixed denominator. Report exact intended kick vectors; applied float32 qvel increment not independently measured from frame telemetry. Shared state identity is by reviewed construction, not independently hashed snapshot. Evaluate nominal noninterference, survival, 2s/5s recovery, fixed/common tracking windows, timeout events, model limit excess, paired gains/losses in SA review against v1.2.39–1.2.40 thresholds. Nominal or performance failure is valid scientific evidence; not a reason to rerun. A complete JSON and zero exit are EVIDENCE, not efficacy PASS. Prefix activation/termination yields blocked NO-GO under frozen stopping rule; do not insist 60 trajectories after that stop. H2A2 only on H2A1 PASS and separate protocol/GO; H2B separate design if H2A1 fails. No GPU/PPO/source edits by SA. H1 CLOSED; M1/M2/+100M NO-PROMOTE; +400M/B HOLD.
+
+Current `H2A1_OWNER_GO_ONE_CONTROLLED_EVAL_EXECUTION_PENDING`. Owner returns combined log, raw JSON if produced, VRAM sampling evidence. No performance result claimed.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -748,6 +758,9 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-23)
+
+**M470-H2A1 EXPLICIT OWNER GO (v1.2.43; 2026-11-24):** Exactly one integrated pinned CUDA/MJX H2A1 evaluation on frozen C401M, reviewed evaluator e2604308, six groups/60 logical trajectories, fixed world kicks300/.50 and335/.35, supervisor OFF/ON, zero PPO. Runtime checks integrated, raw evidence and VRAM/log required; prefix interference stops with blocked evidence, no retuning/retry. **EXECUTION PENDING**, H2A2/H2B conditional, Branch B HOLD; H1 CLOSED.
+
 
 **M470-H2A0 SOURCE REVIEW PASS (v1.2.42; 2026-11-24):** Owner correction b2b07fe parent722e42e, only M463 evaluator −2 lines, blob e26043088bee558015b8592b6ef86dd85bf546b1. Duplicate unguarded report-P check removed, legacy guard intact, entire governor and protocol unchanged; residual whitespace nonblocking. **H2A1_READY_PENDING_EXPLICIT_OWNER_GO** for one integrated frozen 60-logical-trajectory CUDA/MJX evaluation, zero PPO. No runtime result yet. H1 CLOSED; H2A2/H2B conditional; Branch B HOLD.
 
@@ -1126,6 +1139,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-24 | H2A1 explicit owner GO | Reviewed v1.2.42 evaluator and pinned launcher/config, fixed six-group protocol | v1.2.43 one integrated 60-logical-trajectory CUDA/MJX job; no PPO, execution pending, stop on failure | 1.2.43 |
+
 | 2026-11-24 | H2A0 owner correction review PASS | b2b07fe parent722e42e, M463 −2 only, e2604308 blob, duplicate guard removed, governor unchanged | v1.2.42 source review PASS; H2A1 ready pending separate explicit owner GO, no GPU/PPO | 1.2.42 |
 
 | 2026-11-24 | H2A0 owner source review | Owner reported pure logic/plan PASS; 8d349ee evaluator5ea5a1d..., duplicate unguarded report-P check | v1.2.41 changes required, owner minimal correction then review; no GPU/PPO | 1.2.41 |
@@ -1273,6 +1288,8 @@ PY
 | 2026-11-21 | Research governance | Khóa mục tiêu push → fall → get-up → resume; định nghĩa thước đo và cổng nghiệm thu | RULES ACTIVE; GET-UP NOT IMPLEMENTED | 1.0.0 |
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.43 — 2026-11-24:** Record explicit H2A1 GO, one integrated runtime/controlled evaluation on exact reviewed evaluator and frozen C401M, raw evidence/VRAM checks and stopping rule, no protocol changes, GPU/PPO not executed by SA. Rules only.
 
 - **v1.2.42 — 2026-11-24:** Verified exact owner correction b2b07fe removes duplicate report-P check only; legacy guard and governor/protocol unchanged. H2A0 source review PASS, H2A1 separate explicit execution GO pending, residual whitespace nonblocking. Rules-only, no runtime/training.
 
