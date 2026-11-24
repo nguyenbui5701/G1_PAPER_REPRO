@@ -540,6 +540,676 @@ def fixed_window_tracking(off_post,pushed,window_steps=100):
             'on_yaw_rmse_radps':rmse(pushed,'yaw_err'),
             'off_yaw_rmse_radps':rmse(off_post,'yaw_err')}
 
+
+# M470-H2A: Recovery Command Governor
+H2A_CONFIG = {
+    'entry_velocity': 0.45,
+    'entry_tilt': 20.0,
+    'exit_velocity': 0.20,
+    'exit_tilt': 10.0,
+    'entry_ticks': 2,
+    'exit_ticks': 10,
+    'velocity_gain': 0.5,
+    'max_bias': 0.25,
+    'yaw_multiplier': 0.5,
+    'xy_slew': 0.05,
+    'yaw_slew': 0.10,
+    'max_active_ticks': 100,
+    'max_return_ticks': 10,
+}
+
+
+def h2a_clip(value, lower, upper):
+    return max(lower, min(upper, value))
+
+
+def h2a_clip_norm(x, y, limit):
+    norm = math.hypot(x, y)
+    if norm > limit:
+        scale = limit / norm
+        return x * scale, y * scale
+    return x, y
+
+
+def h2a_initial_state(goal):
+    return {
+        'mode': 'NORMAL',
+        'high': 0,
+        'low': 0,
+        'age': 0,
+        'forced': False,
+        'return_ticks': 0,
+        'effective': tuple(goal),
+    }
+
+
+def h2a_tick(obs, goal, previous, enabled):
+    cfg = H2A_CONFIG
+    goal = tuple(float(x) for x in goal)
+
+    vx, vy = float(obs[0]), float(obs[1])
+    gx, gy, gz = map(float, obs[6:9])
+
+    if not all(math.isfinite(x) for x in (
+        vx, vy, gx, gy, gz, *goal
+    )):
+        raise RuntimeError('H2A_NONFINITE_INPUT')
+
+    gravity_norm = math.sqrt(gx*gx + gy*gy + gz*gz)
+
+    if gravity_norm <= 1e-6:
+        raise RuntimeError('H2A_INVALID_GRAVITY')
+
+    # Actor observation: upright is negative Z.
+    tilt = math.degrees(math.acos(
+        h2a_clip(-gz / gravity_norm, -1.0, 1.0)
+    ))
+
+    ex = vx - goal[0]
+    ey = vy - goal[1]
+
+    error = math.hypot(ex, ey)
+
+    risky = (
+        error >= cfg['entry_velocity']
+        or tilt >= cfg['entry_tilt']
+    )
+
+    clear = (
+        error <= cfg['exit_velocity']
+        and tilt <= cfg['exit_tilt']
+    )
+
+    metrics = {
+        'sensor_velocity_error': error,
+        'sensor_tilt_deg': tilt,
+        'risk_high': risky,
+        'risk_clear': clear,
+        'timeout_event': False,
+        'intervention': False,
+    }
+
+    if not enabled:
+        return h2a_initial_state(goal), metrics
+
+    g = dict(previous)
+    old_mode = g['mode']
+
+    g['high'] = (
+        min(g['high'] + 1, cfg['entry_ticks'])
+        if risky else 0
+    )
+
+    g['low'] = (
+        min(g['low'] + 1, cfg['exit_ticks'])
+        if clear else 0
+    )
+
+    if g['mode'] == 'LOCKOUT':
+        if g['low'] >= cfg['exit_ticks']:
+            g = h2a_initial_state(goal)
+
+        metrics['intervention'] = True
+        return g, metrics
+
+    if g['mode'] == 'NORMAL':
+        if g['high'] >= cfg['entry_ticks']:
+            g['mode'] = 'RECOVERY'
+            g['age'] = 0
+            g['low'] = 0
+            g['forced'] = False
+
+    if g['mode'] in ('RECOVERY', 'RETURN'):
+
+        # Timeout persists across RECOVERY/RETURN reentry.
+        if (
+            g['age'] >= cfg['max_active_ticks']
+            and not g['forced']
+        ):
+            g['forced'] = True
+            g['mode'] = 'RETURN'
+            g['return_ticks'] = 0
+            metrics['timeout_event'] = True
+
+        if not g['forced']:
+            if (
+                g['mode'] == 'RECOVERY'
+                and g['low'] >= cfg['exit_ticks']
+            ):
+                g['mode'] = 'RETURN'
+
+            elif (
+                g['mode'] == 'RETURN'
+                and g['high'] >= cfg['entry_ticks']
+            ):
+                g['mode'] = 'RECOVERY'
+
+    if g['mode'] == 'RECOVERY':
+        bx, by = h2a_clip_norm(
+            cfg['velocity_gain'] * ex,
+            cfg['velocity_gain'] * ey,
+            cfg['max_bias'],
+        )
+
+        target = (
+            h2a_clip(goal[0] + bx, -1.0, 1.0),
+            h2a_clip(goal[1] + by, -0.5, 0.5),
+            h2a_clip(
+                cfg['yaw_multiplier'] * goal[2],
+                -1.0, 1.0
+            ),
+        )
+    else:
+        target = goal
+
+    px, py, pw = g['effective']
+
+    dx = target[0] - px
+    dy = target[1] - py
+    dw = target[2] - pw
+
+    if math.hypot(dx, dy) <= cfg['xy_slew']:
+        nx, ny = target[:2]
+    else:
+        dx, dy = h2a_clip_norm(
+            dx, dy, cfg['xy_slew']
+        )
+        nx, ny = px + dx, py + dy
+
+    if abs(dw) <= cfg['yaw_slew']:
+        nw = target[2]
+    else:
+        nw = pw + h2a_clip(
+            dw,
+            -cfg['yaw_slew'],
+            cfg['yaw_slew']
+        )
+
+    g['effective'] = (nx, ny, nw)
+
+    metrics['intervention'] = (
+        old_mode != 'NORMAL'
+        or g['mode'] != 'NORMAL'
+    )
+
+    if g['mode'] in ('RECOVERY', 'RETURN'):
+        if g['forced']:
+            g['return_ticks'] += 1
+
+            if g['return_ticks'] > cfg['max_return_ticks']:
+                raise RuntimeError('H2A_RETURN_BOUND_EXCEEDED')
+        else:
+            g['age'] += 1
+
+    if g['mode'] == 'RETURN':
+        if g['effective'] == goal:
+            if g['forced']:
+                g['mode'] = 'LOCKOUT'
+                g['high'] = 0
+                g['low'] = 0
+            else:
+                g = h2a_initial_state(goal)
+
+    return g, metrics
+
+
+def h2a_recovery(nominal, pushed, event_step, window):
+    start = event_step - 1
+    end = start + window
+
+    # Full recovery requires survival through the window.
+    if len(nominal) < end or len(pushed) < end:
+        return {
+            'success': False,
+            'recovery_s': None,
+            'reason': 'insufficient_survival',
+        }
+
+    off = nominal[start:end]
+    on = pushed[start:end]
+
+    if any(r['done'] for r in off + on):
+        return {
+            'success': False,
+            'recovery_s': None,
+            'reason': 'terminated_in_window',
+        }
+
+    bands = {
+        'vx': 0.10,
+        'vy': 0.10,
+        'yaw_rate': 0.10,
+        'height': 0.05,
+        'tilt_deg': 5.0,
+    }
+
+    count = 0
+
+    for i, (a, b) in enumerate(zip(off, on)):
+        matched = all(
+            abs(a[k] - b[k]) <= tolerance
+            for k, tolerance in bands.items()
+        )
+
+        goal_error_ok = (
+            b['xy_err'] <= 0.20
+            and b['yaw_err'] <= 0.30
+        )
+
+        returned = (
+            b['governor_mode'] == 'NORMAL'
+            and b['effective_command'] == b['goal_command']
+        )
+
+        if matched and goal_error_ok and returned:
+            count += 1
+
+            if count >= 10:
+                return {
+                    'success': True,
+                    'recovery_s': (i + 1) * 0.02,
+                    'reason': 'matched_goal_recovery',
+                }
+        else:
+            count = 0
+
+    return {
+        'success': False,
+        'recovery_s': None,
+        'reason': 'recovery_band_not_reached',
+    }
+
+
+def h2a_evaluate_group(
+    args, env, step_fn, command, seed, profile,
+    jax, jnp, np
+):
+    goal = tuple(
+        float(x) for x in jax.device_get(command)
+    )
+
+    def clone(state):
+        return jax.tree_util.tree_map(lambda x: x, state)
+
+    def kick(state, delta):
+        return state.replace(
+            data=state.data.replace(
+                qvel=state.data.qvel.at[:2].add(
+                    jnp.asarray(
+                        delta,
+                        dtype=state.data.qvel.dtype,
+                    )
+                )
+            )
+        )
+
+    def advance(
+        state, governor, first, last,
+        enabled, quiet=False, capture_step=None
+    ):
+        frames = []
+        snapshot = None
+
+        for i in range(first, last + 1):
+            obs = np.asarray(
+                jax.device_get(state.obs['state'])
+            )
+
+            if obs.shape != (103,):
+                raise RuntimeError('H2A_BAD_OBS_SHAPE')
+
+            governor, risk = h2a_tick(
+                obs, goal, governor, enabled
+            )
+
+            effective = governor['effective']
+
+            if quiet and (
+                risk['intervention']
+                or effective != goal
+            ):
+                return {
+                    'frames': frames,
+                    'state': state,
+                    'governor': governor,
+                    'snapshot': snapshot,
+                    'blocked': {
+                        'step': i,
+                        'reason': 'PREPUSH_INTERVENTION',
+                        'risk': risk,
+                        'governor': governor,
+                    },
+                }
+
+            state, diag = step_fn(
+                state,
+                jnp.asarray(
+                    effective,
+                    dtype=command.dtype,
+                )
+            )
+
+            data = jax.device_get(diag)
+
+            if not bool(data['h2a_state_finite']):
+                raise RuntimeError(
+                    'H2A_NONFINITE_TRANSITION'
+                )
+
+            row = {}
+
+            for key, value in data.items():
+                arr = np.asarray(value)
+
+                if not np.isfinite(arr).all():
+                    raise RuntimeError(
+                        'H2A_NONFINITE_DIAG ' + key
+                    )
+
+                row[key] = (
+                    float(arr)
+                    if arr.ndim == 0
+                    else arr.tolist()
+                )
+
+            row.update({
+                'step': i,
+                'done': bool(data['done']),
+                'goal_command': list(goal),
+                'effective_command': list(effective),
+                'governor_mode': governor['mode'],
+                'governor_age': governor['age'],
+                **risk,
+            })
+
+            frames.append(row)
+
+            if row['done']:
+                break
+
+            if i == capture_step:
+                snapshot = (
+                    clone(state),
+                    dict(governor),
+                )
+
+        return {
+            'frames': frames,
+            'state': state,
+            'governor': governor,
+            'snapshot': snapshot,
+            'blocked': None,
+        }
+
+    def summarize(frames):
+        terminated = bool(
+            frames and frames[-1]['done']
+        )
+
+        stats = aggregate_frames(
+            frames,
+            terminated,
+            len(frames),
+            args.max_steps,
+        )
+
+        stats.update({
+            'intervention_steps': sum(
+                bool(r['intervention']) for r in frames
+            ),
+            'timeout_events': sum(
+                bool(r['timeout_event']) for r in frames
+            ),
+            'joint_limit_excess_max': max(
+                r['h2a_joint_limit_excess']
+                for r in frames
+            ),
+            'ctrl_limit_excess_max': max(
+                r['h2a_ctrl_limit_excess']
+                for r in frames
+            ),
+            'force_limit_excess_max': max(
+                r['h2a_force_limit_excess']
+                for r in frames
+            ),
+        })
+
+        return stats
+
+    initial = env.reset(jax.random.PRNGKey(seed))
+
+    # Run one genuine shared prefix.
+    # Governor ON is evaluated without any push knowledge.
+    prefix = advance(
+        initial,
+        h2a_initial_state(goal),
+        1,
+        args.push_step - 1,
+        enabled=True,
+        quiet=True,
+    )
+
+    record = {
+        'seed': seed,
+        'profile': profile,
+        'goal_command': list(goal),
+        'shared_prefix': prefix['frames'],
+        'blocked': prefix['blocked'],
+        'arms': {},
+    }
+
+    if prefix['blocked'] is not None:
+        return record
+
+    if (
+        len(prefix['frames']) != args.push_step - 1
+        or prefix['frames'][-1]['done']
+    ):
+        record['blocked'] = {
+            'reason': 'NOMINAL_TERMINATED_BEFORE_PUSH',
+        }
+        return record
+
+    heading = yaw_from_root_quat(
+        np.asarray(
+            jax.device_get(
+                prefix['state'].data.qpos[3:7]
+            )
+        )
+    )
+
+    record['first_heading_rad'] = heading
+
+    for enabled in (False, True):
+        arm_name = 'ON' if enabled else 'OFF'
+
+        def initial_branch():
+            return (
+                clone(prefix['state']),
+                dict(prefix['governor'])
+                if enabled
+                else h2a_initial_state(goal),
+            )
+
+        state, governor = initial_branch()
+
+        nominal = advance(
+            state, governor,
+            args.push_step, args.max_steps,
+            enabled,
+        )
+
+        nominal_full = (
+            prefix['frames'] + nominal['frames']
+        )
+
+        arm = {
+            'nominal_frames': nominal['frames'],
+            'nominal_summary': summarize(nominal_full),
+            'directions': {},
+        }
+
+        for direction in args.directions:
+
+            # Both controllers receive identical world delta-v.
+            delta1 = new_body_delta(
+                direction,
+                heading,
+                args.push_magnitude,
+            )
+
+            # Second direction is also based on FIRST heading.
+            delta2 = new_body_delta(
+                direction,
+                heading,
+                args.second_push_magnitude,
+            )
+
+            state, governor = initial_branch()
+
+            single = advance(
+                kick(state, delta1),
+                governor,
+                args.push_step,
+                args.max_steps,
+                enabled,
+                capture_step=args.second_push_step - 1,
+            )
+
+            single_full = (
+                prefix['frames'] + single['frames']
+            )
+
+            item = {
+                'first_delta_world_mps': list(delta1),
+                'second_delta_world_mps': list(delta2),
+                'single_frames': single['frames'],
+                'single_summary': summarize(single_full),
+                'single_recovery_2s': h2a_recovery(
+                    nominal_full,
+                    single_full,
+                    args.push_step, 100,
+                ),
+                'single_recovery_5s': h2a_recovery(
+                    nominal_full,
+                    single_full,
+                    args.push_step, 250,
+                ),
+                'second_push_exposed': False,
+            }
+
+            if single['snapshot'] is None:
+                # Failure before second event:
+                # retain it in the double-push denominator.
+                item.update({
+                    'double_frames_after_second': [],
+                    'double_summary': summarize(single_full),
+                    'double_recovery_2s': {
+                        'success': False,
+                        'reason': 'terminated_before_second',
+                    },
+                    'double_recovery_5s': {
+                        'success': False,
+                        'reason': 'terminated_before_second',
+                    },
+                })
+
+            else:
+                state2, governor2 = single['snapshot']
+
+                double = advance(
+                    kick(clone(state2), delta2),
+                    dict(governor2),
+                    args.second_push_step,
+                    args.max_steps,
+                    enabled,
+                )
+
+                n = args.second_push_step - 1
+
+                double_full = (
+                    single_full[:n] + double['frames']
+                )
+
+                item.update({
+                    'second_push_exposed': True,
+                    'double_frames_after_second':
+                        double['frames'],
+                    'double_summary': summarize(double_full),
+                    'double_recovery_2s': h2a_recovery(
+                        nominal_full,
+                        double_full,
+                        args.second_push_step, 100,
+                    ),
+                    'double_recovery_5s': h2a_recovery(
+                        nominal_full,
+                        double_full,
+                        args.second_push_step, 250,
+                    ),
+                })
+
+            arm['directions'][direction] = item
+
+        record['arms'][arm_name] = arm
+
+    return record
+
+
+def h2a_write(args, results, jax_version, blocked=False):
+    status = (
+        'M470_H2A_EVALUATION_BLOCKED'
+        if blocked
+        else 'M470_H2A_EVALUATION_COMPLETED'
+    )
+
+    outcome = {
+        'status': status,
+        'source_commit': PIN,
+        'brax_train_sha256': TRAIN_SHA,
+        'checkpoint_sha256': sha256(args.checkpoint_c),
+        'jax_version': jax_version,
+        'training_performed': False,
+        'deterministic_actor': True,
+        'random_source_push_enabled': False,
+        'domain_randomization_enabled': False,
+        'governor_config': H2A_CONFIG,
+        'seeds': args.seeds,
+        'profiles': args.profiles,
+        'directions': args.directions,
+        'push_step': args.push_step,
+        'push_magnitude_mps': args.push_magnitude,
+        'second_push_step': args.second_push_step,
+        'second_push_magnitude_mps':
+            args.second_push_magnitude,
+        'max_steps': args.max_steps,
+        'dt_s': 0.02,
+        'expected_logical_trajectories': 60,
+        'completed_groups': sum(
+            r['blocked'] is None for r in results
+        ),
+        'results': results,
+    }
+
+    args.output.parent.mkdir(
+        parents=True, exist_ok=True
+    )
+
+    with args.output.open('x', encoding='utf8') as f:
+        json.dump(
+            outcome,
+            f,
+            ensure_ascii=False,
+            allow_nan=False,
+            indent=2,
+        )
+        f.write('\n')
+
+    print(status, args.output, flush=True)
+
+    if blocked:
+        raise RuntimeError('M470_H2A_PREFIX_GATE_NO_GO')
+
+
 def run(args):
     if args.output.exists():raise FileExistsError('Refuse to overwrite output: '+str(args.output))
     # Use the same pinned runner environment; apply compatibility BEFORE JAX import.
@@ -562,7 +1232,20 @@ def run(args):
     if sha256(inspect.getfile(ppo.train))!=TRAIN_SHA:raise RuntimeError('M462_PINNED_BRAX_SOURCE_MISMATCH')
     paper=build_paper_config()
     if sha256(args.checkpoint_c)!=BASE_SHA:raise RuntimeError('M462_FROZEN_401M_SHA_MISMATCH')
-    report_p=read_m463_smoke_report(args.report_p,args.checkpoint_p)
+    report_p = None
+
+    if not args.h2a:
+        report_p = read_m463_smoke_report(
+            args.report_p,
+            args.checkpoint_p,
+        )
+
+        if report_p.get(
+            'instrumented_brax', {}
+        ).get('original_brax_sha256') != TRAIN_SHA:
+            raise RuntimeError(
+                'M463_GATE3_TRAIN_BRAX_MISMATCH'
+            )
     if report_p.get('instrumented_brax',{}).get('original_brax_sha256')!=TRAIN_SHA:
         raise RuntimeError('M463_GATE3_TRAIN_BRAX_MISMATCH')
 
@@ -594,21 +1277,37 @@ def run(args):
             raise RuntimeError('M462_NONFINITE_POLICY')
         inf=networks.make_inference_fn(ppo_nets)((norm,actor),deterministic=True)
         return inf
-    policies={name:load_policy(path) for name,path in (
-        ('C',args.checkpoint_c),('P',args.checkpoint_p))}
+    policies = {
+        'C': load_policy(args.checkpoint_c)
+    }
 
+    if not args.h2a:
+        policies['P'] = load_policy(
+            args.checkpoint_p
+        )
     results=[]
     for seed in args.seeds:
       for profile in args.profiles:
         command=jnp.asarray(PROFILES[profile],dtype=jnp.float32)
         for name,policy in policies.items():
             # JIT step/diagnostics; a single MJX state (no vectorized envs) is active at a time.
-            def one_step(state):
-                info=dict(state.info);info['command']=command
-                obs=dict(state.obs)
-                # Pinned G1 actor state: local v(3), gyro(3), projected g(3), command(3).
-                obs['state']=obs['state'].at[9:12].set(command)
-                obs['privileged_state']=obs['privileged_state'].at[9:12].set(command)
+            def one_step(state, effective_command=None):
+                cmd = (
+                    command
+                    if effective_command is None
+                    else effective_command
+                )
+
+                info = dict(state.info)
+                info['command'] = cmd
+
+                obs = dict(state.obs)           
+
+                obs['state'] = obs['state'].at[9:12].set(cmd)
+
+                obs['privileged_state'] = (
+                    obs['privileged_state'].at[9:12].set(cmd)
+                )
                 state=state.replace(info=info,obs=obs)
                 action,_=policy(state.obs,jax.random.PRNGKey(0))
                 next_state=env.step(state,action)
@@ -797,8 +1496,91 @@ def run(args):
                             0.0
                         ),
                 })
+
+                if args.h2a:
+                    model = env.mj_model
+
+                    def limit_excess(values, limits, mask):
+                        limits = jnp.asarray(limits)
+                        mask = jnp.asarray(mask, dtype=bool)
+
+                        excess = jnp.maximum(
+                            limits[:, 0] - values,
+                            values - limits[:, 1],
+                        )
+
+                        return jnp.max(
+                            jnp.where(
+                                mask,
+                                jnp.maximum(excess, 0.0),
+                                0.0,
+                            )
+                        )
+
+                    diag.update({
+                        'h2a_action': action,
+
+                        'h2a_joint_limit_excess': limit_excess(
+                            d.qpos[7:],
+                            model.jnt_range[1:],
+                            model.jnt_limited[1:],
+                        ),
+
+                        'h2a_ctrl_limit_excess': limit_excess(
+                            d.ctrl,
+                            model.actuator_ctrlrange,
+                            model.actuator_ctrllimited,
+                        ),
+
+                        'h2a_force_limit_excess': limit_excess(
+                            d.actuator_force,
+                            model.actuator_forcerange,
+                            model.actuator_forcelimited,
+                        ),
+
+                        'h2a_state_finite': (
+                            jnp.isfinite(d.qpos).all()
+                            & jnp.isfinite(d.qvel).all()
+                            & jnp.isfinite(action).all()
+                            & jnp.isfinite(d.ctrl).all()
+                            & jnp.isfinite(d.actuator_force).all()
+                        ),
+                    })
+
                 return next_state,diag
             step_fn=jax.jit(one_step)
+            if args.h2a:
+                result = h2a_evaluate_group(
+                    args,
+                    env,
+                    step_fn,
+                    command,
+                    seed,
+                    profile,
+                    jax,
+                    jnp,
+                    np,
+                )
+
+                results.append(result)
+
+                print(
+                    'M470_H2A_GROUP',
+                    seed,
+                    profile,
+                    'blocked', result['blocked'],
+                    flush=True,
+                )
+
+                if result['blocked'] is not None:
+                    return h2a_write(
+                        args,
+                        results,
+                        jax.__version__,
+                        blocked=True,
+                    )
+
+                continue
             st=env.reset(jax.random.PRNGKey(seed))
             frames=[]
             snapshot=None
@@ -994,6 +1776,17 @@ def run(args):
                 print('M463_GATE3_RESULT',name,seed,profile,direction,
                     'nominal',off['steps'],'pushed',last,'terminated',terminated,
                     'recovered',recovery['recovered'],flush=True)
+    if args.h2a:
+        if len(results) != 6:
+            raise RuntimeError(
+                'M470_H2A_EXPECTED_SIX_GROUPS'
+            )
+
+        return h2a_write(
+            args,
+            results,
+            jax.__version__,
+        )
     outcome={'status':'M463_GATE3_CP_FIXED_EVALUATION_COMPLETED',
         'class':'EXPLORATORY_MJX_GPU_ONLY_NOT_PAPER_EXACT_NOT_SIM_TO_SIM',
         'source_commit':PIN,'brax_train_sha256':TRAIN_SHA,
@@ -1045,8 +1838,14 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--mode',choices=('plan','run'),required=True)
     p.add_argument('--checkpoint-c',type=Path,required=True)
-    p.add_argument('--checkpoint-p',type=Path,required=True)
-    p.add_argument('--report-p',type=Path,required=True)
+    p.add_argument('--checkpoint-p', type=Path)
+    p.add_argument('--report-p', type=Path)
+
+    p.add_argument(
+        '--h2a',
+        action='store_true',
+        help='Frozen C401M recovery governor comparison',
+    )
     p.add_argument('--output',type=Path,required=True)
     p.add_argument('--seeds',type=str,default='7301,7331,7357')
     p.add_argument('--profiles',type=str,default='stand,forward_fast,turn_left,turn_right,strafe')
@@ -1083,7 +1882,55 @@ def main():
             p.error('invalid second push magnitude')
     if args.max_steps>5000 or args.max_steps<350:p.error('max steps must be in [350,5000]')
     count=len(args.seeds)*len(args.profiles)*len(args.directions)*2
-    if count>args.max_cases or args.max_cases>300:p.error(f'{count} cases requested, max-cases={args.max_cases}')
+    if count>args.max_cases or args.max_cases>300:p.error(f'{count} cases requested, max-cases={args.max_cases}')    
+    if args.h2a:
+        if (
+            args.seeds != [7331, 7357]
+            or args.profiles != [
+                'stand',
+                'forward_fast',
+                'turn_left',
+            ]
+            or args.directions != ['left', 'right']
+            or args.push_step != 300
+            or args.push_magnitude != 0.50
+            or args.second_push_step != 335
+            or args.second_push_magnitude != 0.35
+            or args.max_steps != 1000
+        ):
+            p.error('M470_H2A_FROZEN_PROTOCOL_MISMATCH')
+
+        if (
+            args.checkpoint_p is not None
+            or args.report_p is not None
+        ):
+            p.error('H2A uses frozen C401M only')
+
+        if args.mode == 'plan':
+            print(
+                'M470_H2A_PLAN',
+                json.dumps({
+                    'groups': 6,
+                    'logical_trajectories': 60,
+                    'training': False,
+                    'governor_config': H2A_CONFIG,
+                    'output': str(args.output),
+                }),
+            )
+            return
+
+        if not args.checkpoint_c.is_file():
+            p.error('Missing frozen C401M checkpoint')
+
+        run(args)
+        return
+
+    if args.checkpoint_p is None or args.report_p is None:
+        p.error(
+            'Legacy evaluation requires '
+            '--checkpoint-p and --report-p'
+        )
+
     if args.mode=='plan':
         print('M463_GATE3_PLAN',json.dumps({'cases':count,'seeds':args.seeds,'profiles':args.profiles,
             'directions':args.directions,'max_steps':args.max_steps,'push_step':args.push_step,
