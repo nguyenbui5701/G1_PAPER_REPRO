@@ -2460,7 +2460,8 @@ def h4x_verify_operational(report):
     dtype=initial['normalizer_dtype']
     def counters(row,n):
         h4x_require(row['steps']==n*1310720 and row['adam']==n*200 and
-                    row['normalizer_dtype']==dtype and
+                    row['normalizer_dtype']==dtype and row['training_schema']==initial['training_schema'] and
+                    row['environment_schema']==initial['environment_schema'] and
                     row['normalizer']==h4x_normalizer_expected(np,initial['normalizer'],dtype,n*5).item(),
                     'REPORT_COUNTER')
     for row in r['events']:
@@ -2470,7 +2471,8 @@ def h4x_verify_operational(report):
             h4x_require(row['dr_sha256']==initial['dr_sha256'] and len(row['keys_sha256'])==64,'REPORT_RESET')
             resets.append(row['keys_sha256'])
         if event=='reset_after':
-            h4x_require(row['finite'] is True,'REPORT_RESET_FINITE')
+            h4x_require(row['finite'] is True and row['environment_schema']==initial['environment_schema'],
+                        'REPORT_RESET_FINITE')
         if event=='epoch':
             counters(row,chunk)
             epochs.append(row['key'])
@@ -2516,6 +2518,21 @@ def h4x_verify_operational(report):
     return initial['dr_sha256']
 
 
+def h4x_tree_schema(jax,np,tree):
+    # Read only pytree structure/array metadata, not dynamic state values.
+    leaves,structure=jax.tree_util.tree_flatten(tree)
+    fields=[]
+    for leaf in leaves:
+        if hasattr(leaf,'shape') and hasattr(leaf,'dtype'):
+            shape,dtype=list(leaf.shape),np.dtype(leaf.dtype)
+        else:
+            a=np.asarray(leaf)
+            shape,dtype=list(a.shape),a.dtype
+        h4x_require(dtype.kind in 'biuf','TREE_DTYPE')
+        fields.append([shape,str(dtype)])
+    return hashlib.sha256(json.dumps([str(structure),fields],separators=(',',':')).encode()).hexdigest()
+
+
 def h4x_model_digest(jax,np,model,axes):
     # Hash actual randomized model, not just the seed. Transfer small slices
     # of static model leaves, never the full batched dynamic environment.
@@ -2554,6 +2571,7 @@ def h4x_audit_callback(jax,np,monitor,report,persist,args,auth,control_dr):
     last_carry=None
     model_ref=axes_ref=dr_sha=None
     initial_count=None
+    training_schema=environment_schema=None
     pending=None
     def array(v):
         return np.asarray(jax.device_get(v))
@@ -2568,7 +2586,12 @@ def h4x_audit_callback(jax,np,monitor,report,persist,args,auth,control_dr):
         a=array(v)
         h4x_require(a.dtype==np.dtype('uint32'),'KEY_DTYPE')
         return hashlib.sha256(a.tobytes()).hexdigest()
+    def env_schema(state):
+        value=h4x_tree_schema(jax,np,state)
+        h4x_require(value==environment_schema,'ENV_SCHEMA')
+        return value
     def state_check(ts,chunk):
+        h4x_require(h4x_tree_schema(jax,np,ts)==training_schema,'TRAINING_SCHEMA')
         steps=array(ts.env_steps)
         count=array(ts.normalizer_params.count)
         adam=[x for x in jax.tree_util.tree_leaves(ts.optimizer_state,
@@ -2584,7 +2607,7 @@ def h4x_audit_callback(jax,np,monitor,report,persist,args,auth,control_dr):
             h4x_require(all(not np.any(array(v)) for v in
                      jax.tree_util.tree_leaves((adam[0].mu,adam[0].nu))),'ADAM_FRESH')
         return {'steps':int(steps[0]),'adam':int(ac[0]),'normalizer':count.item(),
-                'normalizer_dtype':str(count.dtype)}
+                'normalizer_dtype':str(count.dtype),'training_schema':training_schema}
     def safe():
         h4x_storage(args.output_dir)
         g=sample_gpu()
@@ -2594,7 +2617,7 @@ def h4x_audit_callback(jax,np,monitor,report,persist,args,auth,control_dr):
                     snap['peak_used_mib']<.95*12288),'GPU')
     def callback(event,**v):
         nonlocal local,eval_key,env_keys,epoch_keys,last_reset,last_carry,model_ref,axes_ref,dr_sha
-        nonlocal initial_count,pending
+        nonlocal initial_count,pending,training_schema,environment_schema
         budget.check(event)
         if event.endswith('_before'):
             h4x_require(h4x_parse_marker(Path(__file__).with_name('G1_RESEARCH_RULES.md').read_text('utf8'))==auth,
@@ -2617,18 +2640,25 @@ def h4x_audit_callback(jax,np,monitor,report,persist,args,auth,control_dr):
                  'eval_key':key_list(eval_key),'dr_sha256':dr_sha}
             last_carry=None
         elif event=='reset_after':
-            h4x_require(array(v['finite']).shape==() and bool(array(v['finite'])),'RESET_NONFINITE')
+            finite=array(v['finite'])
+            h4x_require(finite.shape==() and finite.dtype.kind=='b' and bool(finite),'RESET_NONFINITE')
             last_reset=v['env_state']
             h4x_require(array(last_reset.done).shape==(1,8192),'RESET_LAYOUT')
-            row={'finite':True}
+            if environment_schema is None:
+                environment_schema=h4x_tree_schema(jax,np,last_reset)
+            row={'finite':True,'environment_schema':env_schema(last_reset)}
         elif event=='initial':
             ts=v['training_state']
-            h4x_require(v['env_state'] is last_reset and bool(array(v['finite'])),'INITIAL_CARRY')
+            finite=array(v['finite'])
+            h4x_require(v['env_state'] is last_reset and finite.shape==() and
+                        finite.dtype.kind=='b' and bool(finite),'INITIAL_CARRY')
+            training_schema=h4x_tree_schema(jax,np,ts)
             initial_count=array(ts.normalizer_params.count).copy()
             restored=tuple(serialization.to_state_dict(jax.tree_util.tree_map(lambda x:x[0],p))
                        for p in (ts.normalizer_params,ts.params.policy,ts.params.value))
             h4x_require(compare_exact(expected_parts,restored,jax,np,'H4X_RESTORE')==25,'RESTORE')
-            row={**state_check(ts,0),'restored_leaves':25,'dr_sha256':dr_sha}
+            row={**state_check(ts,0),'restored_leaves':25,'dr_sha256':dr_sha,
+                 'environment_schema':env_schema(v['env_state'])}
         elif event=='epoch':
             h4x_require(v['env_state'] is last_reset,'EPOCH_RESET_STATE')
             epoch,local=jax.random.split(local)
@@ -2636,7 +2666,7 @@ def h4x_audit_callback(jax,np,monitor,report,persist,args,auth,control_dr):
             same(v['keys'],epoch_keys,'EPOCH_KEY')
             same(v['local_key'],local,'EPOCH_LOCAL')
             row={**state_check(v['training_state'],chunk),'key':key_list(epoch_keys),
-                 'local_key':key_list(local)}
+                 'local_key':key_list(local),'environment_schema':env_schema(v['env_state'])}
             last_reset=None
         elif event=='chunk_before':
             carry=v['carry']
@@ -2653,15 +2683,17 @@ def h4x_audit_callback(jax,np,monitor,report,persist,args,auth,control_dr):
             pending={'key':key[None,:],'normalizer':target}
             row={**state_check(carry[0],chunk),'chunk':chunk+1,'key':key_list(carry[2]),
                  'expected_next_key':key_list(pending['key']),
-                 'expected_normalizer':target.item(),'same_carry':same_carry}
+                 'expected_normalizer':target.item(),'same_carry':same_carry,
+                 'environment_schema':env_schema(carry[1])}
         elif event=='chunk_after':
             carry=v['carry']
             h4x_require(v['index']==chunk%4+1 and pending is not None,'CHUNK_COMPLETION')
             same(carry[2],pending['key'],'CHUNK_NEXT')
             finite=array(v['metrics']['h4x_finite'])
-            h4x_require(finite.shape==() and finite.item()==1.0,'ROLLOUT_NONFINITE')
+            h4x_require(finite.shape==() and finite.dtype==np.dtype('float32') and
+                        finite.item()==1.0,'ROLLOUT_NONFINITE')
             row={**state_check(carry[0],chunk+1),'chunk':chunk+1,
-                 'key':key_list(carry[2]),'finite':True}
+                 'key':key_list(carry[2]),'finite':True,'environment_schema':env_schema(carry[1])}
             last_carry=carry
             pending=None
         elif event=='chunk_ledger':
@@ -2680,7 +2712,7 @@ def h4x_audit_callback(jax,np,monitor,report,persist,args,auth,control_dr):
             row={'step':v['step'],'key':key_list(eval_key),'finite_metrics':True}
         elif event=='finish':
             h4x_require(v['env_state'] is last_reset and chunk==8,'FINAL_CARRY')
-            row=state_check(v['training_state'],8)
+            row={**state_check(v['training_state'],8),'environment_schema':env_schema(v['env_state'])}
         else:
             raise RuntimeError('M470_H4X_EVENT')
         if event.startswith('eval_'):
@@ -2869,12 +2901,24 @@ def h4x_static_regression(brax_train_path,acting_path,causal_report):
         if isinstance(v,SimpleNamespace):
             return leaves(vars(v),is_leaf)
         return [v]
+    def flatten(v):
+        if isinstance(v,Adam):
+            return [v.count,v.mu,v.nu],'Adam'
+        if isinstance(v,SimpleNamespace):
+            v=vars(v)
+        if isinstance(v,dict):
+            pairs=[(k,flatten(a)) for k,a in sorted(v.items())]
+            return [leaf for _,(ls,_) in pairs for leaf in ls],str([(k,t) for k,(_,t) in pairs])
+        if isinstance(v,(tuple,list)):
+            pairs=[flatten(a) for a in v]
+            return [leaf for ls,_ in pairs for leaf in ls],str([t for _,t in pairs])
+        return [v],'leaf'
     def tree_map(fn,v):
         if isinstance(v,SimpleNamespace):
             return SimpleNamespace(**{k:tree_map(fn,a) for k,a in vars(v).items()})
         return fn(v)
     fake_jax=SimpleNamespace(random=Random(),device_get=lambda x:x,
-        tree_util=SimpleNamespace(tree_leaves=leaves,tree_map=tree_map))
+        tree_util=SimpleNamespace(tree_leaves=leaves,tree_map=tree_map,tree_flatten=flatten))
     gpu={'total_mib':12288,'used_mib':100,'peak_used_mib':100,'sampler_errors':[]}
     fake_modules={
         'optax':SimpleNamespace(ScaleByAdamState=Adam),
@@ -2933,7 +2977,10 @@ def h4x_static_regression(brax_train_path,acting_path,causal_report):
                         key=Random.split(key,3)[2]
                     n+=1
                     training=ts(n,int(failure=='adam'),64*int(failure=='normalizer'))
-                    carry=(training,SimpleNamespace(),key[None,:] if failure!='key' else np.zeros((1,2),np.uint32))
+                    if failure=='training_schema':
+                        training.params.policy=np.zeros((1,2),np.float32)
+                    env=SimpleNamespace(done=np.zeros((1,8191 if failure=='env_schema' else 8192),np.float32))
+                    carry=(training,env,key[None,:] if failure!='key' else np.zeros((1,2),np.uint32))
                     cb('chunk_after',index=index,carry=carry,metrics={
                        'h4x_finite':np.array(0. if failure=='finite' else 1.,np.float32)})
                     report['h4_chunks'].append({'passed':failure!='ledger'})
@@ -2948,7 +2995,8 @@ def h4x_static_regression(brax_train_path,acting_path,causal_report):
     for failure,marker in (('dr','MATCHED_DR'),('reset_finite','RESET_NONFINITE'),
                            ('eval_key','KEY EVAL_AFTER'),('carry','CARRY_REPLACED'),
                            ('adam','ADAM_COUNT'),('normalizer','KEY NORMALIZER_COUNT'),
-                           ('key','KEY CHUNK_NEXT'),('finite','ROLLOUT_NONFINITE'),('ledger','CHUNK_LEDGER')):
+                           ('key','KEY CHUNK_NEXT'),('finite','ROLLOUT_NONFINITE'),('ledger','CHUNK_LEDGER'),
+                           ('training_schema','TRAINING_SCHEMA'),('env_schema','ENV_SCHEMA')):
         reject(lambda:execute(failure),marker)
     bad=copy.deepcopy(report)
     next(r for r in bad['h4x_operational']['events'] if r['event']=='chunk_after')['adam']+=1
@@ -2962,7 +3010,7 @@ def h4x_static_regression(brax_train_path,acting_path,causal_report):
     reject(lambda:budget.advance('reset_before',{}),'BUDGET')
     h4x_require('jax' not in sys.modules and 'brax' not in sys.modules and 'mujoco' not in sys.modules,
                 'STATIC_RUNTIME_IMPORTED')
-    print('M470_H4X_OPERATIONAL_FIXTURE_PASS 1 positive 9 negative',flush=True)
+    print('M470_H4X_OPERATIONAL_FIXTURE_PASS 1 positive 11 negative',flush=True)
     print('M470_H4X_STATIC_PASS NO_SIMULATION NO_PPO',flush=True)
 
 
