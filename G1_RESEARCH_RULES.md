@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.82  
+**Version:** 1.2.83  
 **Ngày cập nhật:** 2026-11-24 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -913,6 +913,14 @@ Owner requested continue H4-M1-18 PPO Readliness, interpreted from immediately p
 
 **Capacity next, not authorized:** reduced-scale equivalence does not establish 8192-env memory or efficacy. After readiness PASS and separate production source review/owner GO, first H4-Control 5-rollout chunk is first in-budget capacity gate (1310720 PPO transitions, 200 minibatch updates, includes initial 2x1000 eval transitions separately if configured; no extra capacity campaign). Full proposed arm40 rollouts=10485760 training transitions/1600 updates and three original 2-env 1000-tick evals max6000 separate physical transitions (max10491760 total per arm), same 640 horizon and source/config for matched Candidate. Retain all prior safety, exposure, preservation and provenance gates, no post hoc relaxation. H3 NO-GO/H2C/B HOLD.
  
+### M4.70-H4-M1-1B — LOCAL HELPER PROVENANCE ACCEPTED / BOOTSTRAP SOURCE REVIEW PENDING (v1.2.83; 2026-11-24)
+
+Owner supplied m470_h4_m1_1b_provenance_20261124_221810.log (2379 bytes, SHA256 8e5a5badfc73748935af5bdbaed9268e49c899de8f88aa4e72458b3f047bc259) and requested continue. Reviewed actual log and current AGENTS/Rules v1.2.82, runner and generator at 807cbf07a83239c8661bc6f3b79ba4b631115823, train.py and paper_config.py. Recovered previously uploaded complete helper sources from owner file library, materialized and independently rehashed exact bytes: m462_ppo_warmstart_run.py 16965 bytes SHA256 2b8846723287b6999db3cc27fbf50e556ce6b6bfd19822ff2bfd7a84a53d5328; m462_typed_orbax_stage.py 11092 bytes SHA256 2dc81e3c3f515745954d189eeaec53bc014fe0e399b98dbe9a3219586dfb85cc. Both exactly match owner log, read actual full source. Both resolved at owner repo root alongside runner and compile PASS in owner log. Prior missing-remote-source concern is resolved for these two helpers, not a missing local dependency. h4_common_contract sibling-path hashing is consistent with observed module resolution on this launcher; do not change mechanism solely due to Git tree absence. Before execution still require actual imported module origins/digests match pins, same between both matched arms. No need to resend these two helpers or repeat accepted provenance scan.
+
+Reviewed read_restore_gate: exact frozen msgpack SHA and Playground commit, PASS zero-step restore report, bitwise restored tensors and deterministic action evidence, no training/rollout, rehash staged Orbax directory/file count. H4 runner additionally pins exact restore report and Orbax SHA. Typed helper checkpoint_parts validates expected callback/normalizer/actor-critic schema, rebuilds types and verifies bitwise typed restore in historical stage; don't repeat historical staging or zero-step PPO restore just to test imports. compare_exact checks pytree structure, leaf count, shapes, dtypes and array equality. GPUMonitor samples every 2 seconds, records errors and aggregate GPU memory; sampled peak is not a continuous guarantee. check_source_and_config('A') checks Playground pin and clean tree, prepends existing compatibility directory, applies nvcc_compat before JAX import, imports original PPO trainer/networks and wrappers, checks GPU backend, original train.py SHA and restore parameter, builds source/paper config and checks randomizer and reward. It does not call ppo.train itself. Actual trainer import and full dependency graph still unverified in current process.
+
+Owner log: Python3.10.12, JAX/JAXLIB0.4.35, Brax0.12.1, Flax0.10.4, Optax0.2.4, Orbax0.11.0, MuJoCo3.2.7; dm-env1.6 found at G1_M3_11C_PPO_MANIFEST_REPAIR_V1/overlays/wheels_20261107_110316_3940764/dm_env/__init__.py, overlay search order cloudpickle, gym isolated repair, manifest repair, pinned Playground, repo, stdlib, site-packages. Finding spec/package metadata does not establish successful actual trainer import. No installation indicated. nvcc_compat.py resolved at sibling G1_M4_0_G1_PPO_ONE_UPDATE_SMOKE_V1, compile PASS, SHA256 c92cd0f79e04acc409c4d0d52c7b1cc2c5b71822aafbd1e4d957a949f5044e8f; paper_config_preflight.json repo root SHA256 36ab984a162e053a58d6f4313369a95dde77fd84a4db61b54d42ab856fadd19b. Their actual bytes and exact g1_m463 launcher definition not yet available. train.build_paper_config requires CONFIG_PREFLIGHT_OK and full normalized candidate_ppo_config equality; paper_config source sets paper overrides including 400M, 32768 envs, unroll32, batch1024, updates5, gamma.98, lr1e-4, reward scaling.1, entropy0 and clipping.2, specified policy/value network. Do not regenerate report or modify compatibility layer. Next collect only remaining two source/config files and launcher definition for review, no runtime import or GPU work. After review design focused bootstrap check, separate explicit permission for JAX/CUDA as required; no PPO execution without separate authorized numerical protocol. Existing v1.2.82 30720 transitions/2400 updates design and thresholds unchanged. Owner log NO_RUNTIME_IMPORT_PASS, simulation0/PPO0; SA did no runtime. This is Rules-only evidence acceptance, not final readiness PASS. All three H4 production holds remain. H3 NO-GO/H2C/B HOLD.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -1174,6 +1182,9 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-24)
+
+**H4-M1-1B LOCAL HELPER PROVENANCE ACCEPTED (v1.2.83; 2026-11-24):** log8e5a5bad reviewed; exact previously uploaded M462 source hashes match current owner-resolved files, both reviewed, sibling-path contract consistent. dm_env1.6 present in existing overlay (not import proof). Remaining nvcc_compat.py/paper_config_preflight.json actual contents and launcher definition pending; no repeat provenance scan or package install. Actual PPO bootstrap/numerical readiness HOLD, v1.2.82 budget unchanged/unapproved, zero simulation/PPO; production holds retained.
+
 
 **H4-M1-1B PPO READINESS DESIGN (v1.2.82; 2026-11-24):** reviewed exact runner/generator/upstream training and restore wiring, structural carry unchanged; current M462 helper files absent from remote tree, resolved local source/provenance and actual trainer bootstrap pending. Proposed isolated control-only 16 env/batch2/8 minibatches/32 ticks/5 updates, R0 scan20/R1 repeat scan20/S 4x5, max30720 actual PPO transitions/2400 minibatch updates, no eval, outputs discarded, frozen repeatability-based acceptance and strict discrete/ledger gates. Design only, no execution authorization or source edit; all three production training holds retained. Owner local helper source review then separate implementation/GO. H3 NO-GO/H2C/B HOLD.
 
@@ -1672,6 +1683,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-24 | H4-M1-1B local provenance evidence review | log8e5a5bad, exact M462 helper SHA matches and full source review, dependency metadata/overlay resolution | v1.2.83 local helper blocker closed; remaining bootstrap inputs and actual import pending, no PPO | 1.2.83 |
+
 | 2026-11-24 | H4-M1-1B PPO readiness source review/design | HEAD dcb8299f, actual upstream training_step/chunk/restore wiring, remote helper404/tree evidence, proposed matched carry protocol | v1.2.82 design proposed 30720 max PPO transitions/2400 updates subject to source review and separate GO; local provenance pending, zero execution | 1.2.82 |
 
 | 2026-11-24 | H4-M1-1 nontraining technical evidence review | log864fcf04/reportb355a69d, 5124 physical, 119 synthetic, 128/128 checks, independent 8640/8640 counts, GPU699, exit0 | v1.2.81 NONTRAINING_TECH_PASS, owner GO consumed; real optimizer/bootstrap/capacity design next, zero PPO; training HOLD | 1.2.81 |
@@ -1901,6 +1914,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.83 — 2026-11-24:** Accept actual local provenance log and exact recovered helper source review; close missing M462 source blocker, distinguish dm_env discovery from actual import, request remaining compatibility/config/launcher evidence only. All training holds and readiness budget unchanged.
 
 - **v1.2.82 — 2026-11-24:** Record H4-M1-1B PPO readiness source review, actual import-source provenance blocker and bounded three-path numerical protocol with proposed fixed acceptance and explicit separate authorization. No executable changes or runtime, retain H4 training holds.
 
