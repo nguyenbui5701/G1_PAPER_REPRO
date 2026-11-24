@@ -277,10 +277,11 @@ def h3_technical_gate(api, train_cfg, stage, instrument_meta):
     def exact(a, b, name):
         require(jax.tree_util.tree_structure(a) == jax.tree_util.tree_structure(b),
                 name+'_TREE')
-        for x,y in zip(jax.tree_util.tree_leaves(a), jax.tree_util.tree_leaves(b)):
+        for (path,x),(_,y) in zip(jax.tree_util.tree_flatten_with_path(a)[0],
+                                  jax.tree_util.tree_flatten_with_path(b)[0]):
             np.testing.assert_array_equal(np.asarray(jax.device_get(x)),
                                           np.asarray(jax.device_get(y)),
-                                          err_msg=name)
+                                          err_msg=name+' '+jax.tree_util.keystr(path))
 
     def host(x):
         return np.asarray(jax.device_get(x))
@@ -290,11 +291,23 @@ def h3_technical_gate(api, train_cfg, stage, instrument_meta):
                                 h3_m1=enabled)
 
     off, on = make(False), make(True)
-    a = prepare(jax.jit(jax.vmap(off.reset))(keys))
-    b = prepare(jax.jit(jax.vmap(on.reset))(keys))
+    # One actual reset/prepare, then fork the same immutable array leaves.
+    # Separate reset compilations are not an identical-state A/B test.
+    shared = prepare(jax.jit(jax.vmap(on.reset))(keys))
+    require(set(H3_EXT_FIELDS).issubset(shared.info), 'H3_RESET_SCHEMA')
+    a = shared.replace(info={k:v for k,v in shared.info.items()
+                             if k not in H3_EXT_FIELDS},
+                       metrics=dict(shared.metrics), obs=dict(shared.obs))
+    b = shared.replace(info=dict(shared.info),
+                       metrics=dict(shared.metrics), obs=dict(shared.obs))
+    require(set(b.info) - set(a.info) == set(H3_EXT_FIELDS), 'FORK_SCHEMA')
     exact(a.data,b.data,'INITIAL_DATA')
     exact(a.obs,b.obs,'INITIAL_OBS')
+    exact(a.reward,b.reward,'INITIAL_REWARD')
+    exact(a.done,b.done,'INITIAL_DONE')
+    exact(a.metrics,b.metrics,'INITIAL_METRICS')
     exact(a.info,{k:b.info[k] for k in a.info},'INITIAL_INFO')
+    print('M470_H3_TECH_SHARED_SNAPSHOT_PASS', flush=True)
     a1 = jax.jit(jax.vmap(off.step))(a, action)
     b1 = jax.jit(jax.vmap(on.step))(b, action)
     exact(a1.data,b1.data,'PHYSICS')
@@ -357,6 +370,7 @@ def h3_technical_gate(api, train_cfg, stage, instrument_meta):
     require(audit['passed'], 'WRAPPED_AUDIT')
     result = {'passed':True,'cases':list(labels),'direct_pairs':ncase,
               'wrapped_transitions':ncase,'legacy_resume_modes':[False,True],
+              'paired_initialization':'single_reset_shared_snapshot',
               'wrapped_audit':audit,'jax_version':jax.__version__,
               'training_performed':False}
     print('M470_H3_TECH_GATE_PASS',json.dumps(result,allow_nan=False),flush=True)
