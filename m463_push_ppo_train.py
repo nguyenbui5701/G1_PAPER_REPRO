@@ -2596,6 +2596,9 @@ def h4x_audit_callback(jax,np,monitor,report,persist,args,auth,control_dr):
         nonlocal local,eval_key,env_keys,epoch_keys,last_reset,last_carry,model_ref,axes_ref,dr_sha
         nonlocal initial_count,pending
         budget.check(event)
+        if event.endswith('_before'):
+            h4x_require(h4x_parse_marker(Path(__file__).with_name('G1_RESEARCH_RULES.md').read_text('utf8'))==auth,
+                        'AUTHORIZATION_CHANGED')
         safe()
         chunk=op['recorded']['optimizer']//200
         row={}
@@ -2708,6 +2711,259 @@ def h4x_run(args):
         except Exception as write_error:
             print('M470_H4X_PARTIAL_WRITE_FAILED',repr(write_error),flush=True)
         raise
+
+
+
+
+def h4x_static_regression(brax_train_path,acting_path,causal_report):
+    """Exact checkout, focused on the new exploratory variant. No runtime."""
+    import ast
+    import subprocess
+    import tempfile
+    import types
+    import numpy as np
+    from unittest.mock import patch
+    from types import SimpleNamespace
+    import m463_instrument_brax as gen
+    root=Path(__file__).resolve().parent
+    module=sys.modules[__name__]
+    def reject(fn,marker=None):
+        try:
+            fn()
+        except (RuntimeError,FileExistsError) as exc:
+            h4x_require(marker is None or marker in str(exc),'STATIC_WRONG_ERROR '+str(exc))
+        else:
+            raise RuntimeError('M470_H4X_STATIC_ACCEPTED_INVALID')
+    for name in ('m463_push_ppo_train.py','m463_instrument_brax.py'):
+        raw=(root/name).read_bytes()
+        compile(raw,name,'exec')
+        ast.parse(raw)
+    h4x_require(not any((H4_EXECUTION_AUTHORIZED,H4R_EXECUTION_AUTHORIZED,H4C_EXECUTION_AUTHORIZED)),
+                'STATIC_LEGACY_HOLDS')
+    reject(h4x_authorization,'EXECUTION_HOLD')
+    reject(lambda:h4x_generated_guard(None,'unused'),'EXECUTION_HOLD')
+    h4x_file_pin(Path(causal_report),H4X_CAUSAL_SHA)
+    raw=Path(brax_train_path).read_bytes()
+    acting_raw=Path(acting_path).read_bytes()
+    old=types.ModuleType('_h4x_previous_generator')
+    old_raw=subprocess.check_output(['git','show','239a6749325bc79ec9924958593112ea644c4019:m463_instrument_brax.py'],cwd=root)
+    exec(compile(old_raw,'<previous generator>','exec'),old.__dict__)
+    # Only compare outputs of variants affected by the builder/generator change.
+    held,original=gen.make_patched_source(raw,enable_resume=True,enable_h4=True)
+    h4x_require((held,original)==old.make_patched_source(raw,enable_resume=True,enable_h4=True),'OLD_H4')
+    h4x_require(gen.make_patched_source(raw)==old.make_patched_source(raw),'OLD_LEGACY')
+    h4x_require(gen.make_h4_readiness_source(raw)==old.make_h4_readiness_source(raw),'OLD_H4R')
+    h4x_require(gen.make_h4_causal_source(raw,acting_raw)==old.make_h4_causal_source(raw,acting_raw),'OLD_H4C')
+    generated,sha=gen.make_h4_exploratory_source(raw)
+    h4x_require(sha==original==gen.PINNED_SHA and gen.normalize_h4_exploratory_source(generated)==held,
+                'GENERATED_SCOPE')
+    compile(generated,'<exploratory generated>','exec')
+    entry=next(n for n in ast.parse(generated).body if isinstance(n,ast.FunctionDef) and n.name=='train')
+    h4x_require(isinstance(entry.body[1],ast.ImportFrom) and isinstance(entry.body[2],ast.Expr)
+                and 'h4x_generated_guard' in ast.unparse(entry.body[2]),'EARLY_GENERATED_GUARD')
+    h4x_require(generated.count("h4x_audit_fn('chunk_before'")==1 and
+                generated.count("h4x_audit_fn('chunk_after'")==1 and
+                generated.count("h4x_audit_fn('eval_before'")==2 and
+                generated.count("h4x_audit_fn('reset_before'")==2 and
+                gen.H4X_FINITE_SOURCE in generated,'GENERATED_HOOKS')
+    print('M470_H4X_GENERATED_SCOPE_PASS',gen.sha256(generated.encode()),flush=True)
+    # Exact CLI on current checkout, with no real execution.
+    cli=[sys.executable,'-B',str(root/'m463_push_ppo_train.py'),
+         '--stage','easy_repeat_support','--checkpoint','unused','--restore-report','unused',
+         '--output-dir','unused']
+    cases=[]
+    for arm in ('control','candidate'):
+        flags=['--h4-exploratory','--h4-arm',arm]
+        cases.extend([(['--mode','plan']+flags,0),(['--mode','longtrain']+flags,2)])
+        for extra in (['--h4-readiness'],['--h4-causal'],['--h3-m1'],['--resume-state','unused'],
+                      ['--rollouts','40'],['--num-evals','3'],['--independent-budget','10M'],
+                      ['--h4-control-report','unused']):
+            cases.append((['--mode','plan']+flags+extra,2))
+    cases.extend([(['--mode','plan','--h4-exploratory'],2),
+                  (['--mode','plan','--h4-exploratory-causal-report','unused'],2),
+                  (['--mode','longtrain','--h4-arm','control'],2)])
+    for extra,rc in cases:
+        proc=subprocess.run(cli+extra,capture_output=True,text=True,cwd=root)
+        h4x_require(proc.returncode==rc and (rc!=0 or 'M470_H4X_PLAN_NO_GPU' in proc.stdout),
+                    'STATIC_CLI '+repr(extra)+' '+proc.stderr)
+    args=SimpleNamespace(h4_exploratory=True,mode='longtrain',stage='easy_repeat_support',h4_arm='control')
+    reject(lambda:run(args),'EXECUTION_HOLD')
+    reject(lambda:_run_impl(args),'RUN_RESERVATION')
+    print('M470_H4X_CLI_HOLD_PASS',len(cases),flush=True)
+    # Marker parser and one-use generated entry fixture, no actual Rules edit.
+    marker='H4X_ACTIVE_GO: '+H4X_ID+' control '+H4X_PATHS['control']+' '+'a'*64+' '+'b'*64+' '+H4X_CAUSAL_SHA
+    auth=h4x_parse_marker(marker)
+    for bad in ('',marker+'\n'+marker,marker.replace(H4X_PATHS['control'],H4X_PATHS['candidate']),
+                marker.replace('a'*64,'a'*63)):
+        reject(lambda:h4x_parse_marker(bad))
+    for arm,path in (('candidate',H4X_PATHS['control']),('control',H4X_PATHS['candidate'])):
+        bad=SimpleNamespace(h4_exploratory=True,mode='longtrain',stage='easy_repeat_support',
+                            h4_arm=arm,output_dir=root/path)
+        with patch.object(module,'h4x_authorization',return_value=auth):
+            reject(lambda:h4x_validate_cli(bad),'ARM_OR_OUTPUT')
+    with tempfile.TemporaryDirectory(prefix='h4x-static-') as temp:
+        temp=Path(temp)
+        out=temp/H4X_PATHS['control']
+        out.mkdir(parents=True)
+        artifact=out/'m463_brax_ppo_instrumented.py'
+        artifact.write_text('offline fixture',encoding='utf8')
+        authorization={**auth,'generated_sha256':digest(artifact)}
+        def audit(*a,**kw):
+            raise AssertionError('fixture should not invoke training')
+        audit.h4x_authorization=authorization
+        with patch.object(module,'__file__',str(temp/'runner.py')), \
+             patch.object(module,'h4x_authorization',return_value=authorization), \
+             patch.object(module,'h4x_storage',return_value=None):
+            reject(lambda:h4x_generated_guard(audit,artifact),'RESERVATION')
+            h4x_write_json(out/'attempt.json',{'authorization':authorization,'reserved':True},exclusive=True)
+            reject(lambda:h4x_generated_guard(None,artifact),'AUDIT_REQUIRED')
+            h4x_generated_guard(audit,artifact)
+            reject(lambda:h4x_generated_guard(audit,artifact))
+            artifact.write_text('changed',encoding='utf8')
+            reject(lambda:h4x_generated_guard(audit,artifact),'GENERATED_PIN')
+        with patch.object(module,'h4x_validate_cli',return_value=auth):
+            reject(lambda:h4x_run(SimpleNamespace(output_dir=out)),'OUTPUT_CONSUMED')
+    print('M470_H4X_AUTHORIZATION_FIXTURE_PASS',flush=True)
+    # Storage fixture uses sparse files, not real checkpoint data.
+    with tempfile.TemporaryDirectory(prefix='h4x-storage-') as temp:
+        out=Path(temp)
+        import shutil
+        disk=SimpleNamespace(free=8*1024**3)
+        with patch.object(shutil,'disk_usage',return_value=disk):
+            h4x_storage(out)
+            reject(lambda:h4x_storage(out,H4X_SPEC['policy_cap']+1,'policy'),'STORAGE_CAP')
+            p=out/'m470_fullstate_step_005242880.msgpack'
+            with p.open('wb') as f:
+                f.truncate(H4X_SPEC['fullstate_cap']+1)
+            reject(lambda:h4x_storage(out),'ARTIFACT_SIZE')
+            p.unlink()
+            reject(lambda:h4x_storage(out,H4X_SPEC['other_cap']),'STORAGE_CAP')
+            disk.free=H4X_SPEC['disk_reserve']
+            reject(lambda:h4x_storage(out,1),'DISK_RESERVE')
+    print('M470_H4X_STORAGE_FIXTURE_PASS',flush=True)
+    # Actual callback with pure NumPy/mock JAX and fake restore/monitor modules.
+    # The mock validates host logic only, not real JAX PRNG or simulator.
+    class Adam:
+        def __init__(self,n):
+            self.count=np.array([n],np.int32)
+            self.mu=self.nu=np.zeros((1,1),np.float32)
+    class Random:
+        @staticmethod
+        def PRNGKey(seed):
+            return np.array([0,seed],np.uint32)
+        @staticmethod
+        def split(key,n=2):
+            a,b=map(int,key)
+            i=np.arange(1,n+1,dtype=np.uint64)
+            return np.stack(((a*7+i)%2**32,(b*3+i)%2**32),axis=-1).astype(np.uint32)
+        @staticmethod
+        def fold_in(key,i):
+            return Random.split(key,i+1)[-1]
+    def leaves(v,is_leaf=None):
+        if is_leaf and is_leaf(v):
+            return [v]
+        if isinstance(v,(tuple,list)):
+            return [x for a in v for x in leaves(a,is_leaf)]
+        if isinstance(v,dict):
+            return [x for a in v.values() for x in leaves(a,is_leaf)]
+        if isinstance(v,SimpleNamespace):
+            return leaves(vars(v),is_leaf)
+        return [v]
+    def tree_map(fn,v):
+        if isinstance(v,SimpleNamespace):
+            return SimpleNamespace(**{k:tree_map(fn,a) for k,a in vars(v).items()})
+        return fn(v)
+    fake_jax=SimpleNamespace(random=Random(),device_get=lambda x:x,
+        tree_util=SimpleNamespace(tree_leaves=leaves,tree_map=tree_map))
+    gpu={'total_mib':12288,'used_mib':100,'peak_used_mib':100,'sampler_errors':[]}
+    fake_modules={
+        'optax':SimpleNamespace(ScaleByAdamState=Adam),
+        'flax':SimpleNamespace(serialization=SimpleNamespace(msgpack_restore=lambda b:None,to_state_dict=lambda x:x)),
+        'm462_typed_orbax_stage':SimpleNamespace(checkpoint_parts=lambda x:None,compare_exact=lambda *a:25),
+        'm462_ppo_warmstart_run':SimpleNamespace(sample_gpu=lambda:gpu)}
+    def ts(n,adam_delta=0,count_delta=0):
+        count=h4x_normalizer_expected(np,401080320,'float32',n*5).item()+count_delta
+        return SimpleNamespace(env_steps=np.array([n*1310720],np.int32),
+            normalizer_params=SimpleNamespace(count=np.array([count],np.float32)),
+            optimizer_state=(Adam(n*200+adam_delta),),
+            params=SimpleNamespace(policy=np.zeros((1,1),np.float32),value=np.zeros((1,1),np.float32)))
+    def execute(failure=None):
+        report={'h4_chunks':[],'h4x_exploratory':True,'h4x_authorization':auth,'h4_arm':'control',
+                'h4_common_contract':{'generated_brax_sha256':auth['generated_sha256']}}
+        model,axes=object(),object()
+        monitor=SimpleNamespace(snapshot=lambda:gpu)
+        args=SimpleNamespace(checkpoint=Path(causal_report),output_dir=Path('unused'))
+        with patch.dict(sys.modules,fake_modules), \
+             patch.object(module,'h4x_model_digest',return_value='d'*64), \
+             patch.object(module,'h4x_storage',return_value=None), \
+             patch.object(module,'h4x_parse_marker',return_value=auth):
+            cb=h4x_audit_callback(fake_jax,np,monitor,report,lambda:None,args,auth,
+                                 'e'*64 if failure=='dr' else None)
+            _,local=Random.split(Random.PRNGKey(1))
+            local=Random.fold_in(local,0)
+            local,key_env,eval_key=Random.split(local,3)
+            env_keys=Random.split(key_env,8192).reshape(1,8192,2)
+            def reset():
+                cb('reset_before',keys=env_keys,local_key=local,eval_key=eval_key,model=model,axes=axes)
+                state=SimpleNamespace(done=np.zeros((1,8192),np.float32))
+                cb('reset_after',env_state=state,finite=np.array(failure!='reset_finite'))
+                return state
+            def evaluate(step):
+                nonlocal eval_key
+                cb('eval_before',step=step,key=eval_key)
+                eval_key=Random.split(eval_key)[0]
+                cb('eval_after',step=step,key=eval_key if failure!='eval_key' else np.zeros((2,),np.uint32),
+                   metrics={'reward':np.array(1.)})
+            state=reset()
+            training=ts(0)
+            cb('initial',training_state=training,env_state=state,finite=np.array(True))
+            evaluate(0)
+            n=0
+            for _ in range(2):
+                epoch,local=Random.split(local)
+                keys=Random.split(epoch,1)
+                cb('epoch',keys=keys,local_key=local,training_state=training,env_state=state)
+                carry=(training,state,keys)
+                for index in range(1,5):
+                    if failure=='carry' and index==2:
+                        carry=tuple(list(carry))
+                    cb('chunk_before',index=index,carry=carry)
+                    key=carry[2][0]
+                    for _ in range(5):
+                        key=Random.split(key,3)[2]
+                    n+=1
+                    training=ts(n,int(failure=='adam'),64*int(failure=='normalizer'))
+                    carry=(training,SimpleNamespace(),key[None,:] if failure!='key' else np.zeros((1,2),np.uint32))
+                    cb('chunk_after',index=index,carry=carry,metrics={
+                       'h4x_finite':np.array(0. if failure=='finite' else 1.,np.float32)})
+                    report['h4_chunks'].append({'passed':failure!='ledger'})
+                    cb('chunk_ledger',index=index)
+                env_keys=Random.split(env_keys[0,0],8192).reshape(1,8192,2)
+                state=reset()
+                evaluate(n*1310720)
+            cb('finish',training_state=training,env_state=state)
+        return report
+    report=execute()
+    h4x_require(h4x_verify_operational(report)=='d'*64,'MOCK_OPERATIONAL')
+    for failure,marker in (('dr','MATCHED_DR'),('reset_finite','RESET_NONFINITE'),
+                           ('eval_key','KEY EVAL_AFTER'),('carry','CARRY_REPLACED'),
+                           ('adam','ADAM_COUNT'),('normalizer','KEY NORMALIZER_COUNT'),
+                           ('key','KEY CHUNK_NEXT'),('finite','ROLLOUT_NONFINITE'),('ledger','CHUNK_LEDGER')):
+        reject(lambda:execute(failure),marker)
+    bad=copy.deepcopy(report)
+    next(r for r in bad['h4x_operational']['events'] if r['event']=='chunk_after')['adam']+=1
+    reject(lambda:h4x_verify_operational(bad),'REPORT_COUNTER')
+    bad=copy.deepcopy(report)
+    bad['h4x_operational']['recorded']['evaluation']-=2000
+    reject(lambda:h4x_verify_operational(bad),'REPORT_OPERATIONAL_REPLAY')
+    budget=H4XBudget({})
+    reject(lambda:budget.advance('chunk_before',{}),'SEQUENCE')
+    budget.report['attempted']['train_reset_lanes']=24576
+    reject(lambda:budget.advance('reset_before',{}),'BUDGET')
+    h4x_require('jax' not in sys.modules and 'brax' not in sys.modules and 'mujoco' not in sys.modules,
+                'STATIC_RUNTIME_IMPORTED')
+    print('M470_H4X_OPERATIONAL_FIXTURE_PASS 1 positive 9 negative',flush=True)
+    print('M470_H4X_STATIC_PASS NO_SIMULATION NO_PPO',flush=True)
 
 
 def validate_h4_cli(a):
