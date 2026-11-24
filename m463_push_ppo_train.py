@@ -1369,6 +1369,7 @@ def h4r_static_regression(brax_train_path,technical_report):
 
 # H4-M1-1C isolated causal diagnostic, separate from both prior entries.
 H4C_EXECUTION_AUTHORIZED = False
+H4C_AUTHORIZED_RUN = None
 H4C_SPEC = {'paths':['A0','A1','B0','B1'], 'num_envs':16,'batch_size':2,
             'unroll_length':32,'num_minibatches':8,'num_updates_per_batch':5,
             'seed':1,'max_physical_transitions':1024,'max_optimizer_updates':80,
@@ -1774,13 +1775,123 @@ def h4c_dependency_pins(api):
     return paths
 
 
+def h4c_failure_pin(path):
+    h4c_require(path is not None and path.is_file() and not path.is_symlink(),'FAILURE_REPORT_PATH')
+    h4c_require(digest(path)==H4C_FAILURE_SHA,'FAILURE_REPORT_SHA')
+    r=json.loads(path.read_bytes())
+    h4c_require(r['status']=='M470_H4R_STOPPED' and
+                r['attempted_transitions']==r['recorded_transitions']==20480 and
+                r['attempted_optimizer_updates']==r['recorded_optimizer_updates']==1600 and
+                len(r['dispatches'])==len(r['boundaries'])==2 and
+                r['error'].endswith('M470_H4R_REFERENCE_DISCRETE_METRICS') and
+                r['comparisons']=={} and r['production_authorized'] is False,'PRIOR_FAILURE_CONTRACT')
+    return H4C_FAILURE_SHA
+
+
 def h4c_run(args):
     validate_h4c_cli(args)
     h4c_require(args.mode=='causal' and H4C_EXECUTION_AUTHORIZED is True and
-                not H4_EXECUTION_AUTHORIZED and not H4R_EXECUTION_AUTHORIZED,'EXECUTION_HOLD')
-    # A subsequent owner GO must add a fixed exclusive output pin before
-    # replacing either hold. This implementation cannot execute a diagnostic.
-    raise RuntimeError('M470_H4C_AUTHORIZATION_OUTPUT_HOLD')
+                H4R_EXECUTION_AUTHORIZED is False and H4_EXECUTION_AUTHORIZED is False,'EXECUTION_HOLD')
+    h4c_require(isinstance(H4C_AUTHORIZED_RUN,str),'AUTHORIZATION_OUTPUT_HOLD')
+    h4c_require(args.output_dir.resolve()==(Path(__file__).resolve().parent/H4C_AUTHORIZED_RUN).resolve()
+                and not args.output_dir.is_symlink(),'ONE_RUN_PATH')
+    import shutil
+    import traceback
+    h4c_require(not args.output_dir.exists() and args.output_dir.parent.is_dir(),'OUTPUT')
+    h4c_require(shutil.disk_usage(args.output_dir.parent).free>=2*1024**3,'DISK')
+    args.output_dir.mkdir(exist_ok=False)
+    report=h4c_report()
+    report['runner_sha256']=digest(Path(__file__))
+    def persist():
+        path=args.output_dir/'report.json'
+        tmp=path.with_suffix('.json.tmp')
+        tmp.write_text(json.dumps(report,allow_nan=False,indent=2)+'\n',encoding='utf8')
+        tmp.replace(path)
+    persist()
+    monitor=None
+    try:
+        failure_pin=h4c_failure_pin(args.h4_causal_failure_report)
+        report['prior_failure_sha256']=failure_pin
+        pins=h4r_bootstrap_pins(args)
+        report['resolved_modules']=pins
+        from m462_ppo_warmstart_run import read_restore_gate,check_source_and_config,GPUMonitor,sample_gpu
+        from m463_instrument_brax import build_h4_causal_ppo
+        gate,orbax_dir=read_restore_gate(args.restore_report,args.checkpoint)
+        h4c_require(gate['orbax_dir_sha256']==H4_ORBAX_SHA,'ORBAX_PIN')
+        report['frozen_inputs']={'checkpoint_sha256':SEED1_SHA,'restore_report_sha256':H3_CAUSAL_RESTORE_SHA,
+                                'orbax_sha256':H4_ORBAX_SHA,'reward_reference_sha256':H4R_REWARD_SHA}
+        monitor=GPUMonitor()
+        def gpu_check():
+            h4c_require(shutil.disk_usage(args.output_dir).free>=2*1024**3,'DISK')
+            g=sample_gpu()
+            snap=monitor.snapshot()
+            h4c_require(g['total_mib']==12288 and 0<=g['used_mib']<.95*12288 and
+                not snap['sampler_errors'] and (snap['peak_used_mib'] is None or
+                snap['peak_used_mib']<.95*12288),'GPU')
+            report['gpu']=snap
+        with monitor:
+            gpu_check()
+            # Sole bootstrap invocation; it applies NVCC before importing JAX.
+            api=check_source_and_config('A')
+            jax=api['jax']
+            h4c_require(jax.__version__=='0.4.35' and jax.default_backend()=='gpu' and
+                         jax.process_count()==jax.local_device_count()==1,'JAX_RUNTIME')
+            from m463_coverage_env import CoverageJoystick
+            for name,path in pins.items():
+                mod=sys.modules.get(name)
+                h4c_require(mod is not None and Path(mod.__file__).resolve()==Path(path),'IMPORTED_ORIGIN '+name)
+            h4c_require(h4r_bootstrap_pins(args)==pins,'BOOTSTRAP_IMMUTABILITY')
+            report['brax_dependencies']=h4c_dependency_pins(api)
+            scaled=copy.deepcopy(api['scaled'])
+            h4c_require(m470_fingerprint(scaled.to_dict())==H3_FP,'PRODUCTION_CONFIG')
+            scaled.num_envs=16
+            scaled.batch_size=2
+            scaled.num_timesteps=512
+            scaled.num_evals=1
+            cfg=scaled.to_dict()
+            report['scaled_config']=copy.deepcopy(cfg)
+            source_cfg=api['source_cfg']
+            env_cfg=copy.deepcopy(source_cfg)
+            reward=json.loads(args.h4_readiness_reward_report.read_bytes())['train_reward_config']
+            h4c_require(source_cfg.to_dict()['reward_config']==reward and
+                        bool(source_cfg.push_config.enable),'ORIGINAL_REWARD')
+            env_cfg.push_config.enable=False
+            h4c_require(env_cfg.to_dict()['reward_config']==reward,'REWARD_UNCHANGED')
+            env=CoverageJoystick(config=env_cfg,stage='easy_repeat_support',h4_arm='control')
+            h4c_require(env.action_size==29 and float(env.dt)==.02,'ENV_CONFIG')
+            mod,meta=build_h4_causal_ppo(api['ppo'],args.output_dir/'h4_causal_generated.py')
+            report['generated']=meta
+            factory=functools.partial(api['networks'].make_ppo_networks,**cfg.pop('network_factory'))
+            audit,budget=h4c_audit_callback(api,args,report,persist,gpu_check)
+            report['bootstrap_pass']=True
+            persist()
+            print('M470_H4C_BOOTSTRAP_PASS',flush=True)
+            result=mod.causal_train(environment=env,wrap_env_fn=api['wrapper'].wrap_for_brax_training,
+                 network_factory=factory,seed=1,randomization_fn=api['randomizer'],
+                 restore_checkpoint_path=str(orbax_dir.resolve()),h4c_audit_fn=audit,**cfg)
+            h4c_require(result is None,'NO_PARAMETER_RETURN')
+            budget.complete()
+            h4c_require(all(report['phase_verdicts'][k] in ('PASS','DIVERGENT') for k in ('A','B')),
+                         'VERDICTS')
+            h4c_require(h4c_failure_pin(args.h4_causal_failure_report)==failure_pin and
+                        h4c_dependency_pins(api)==report['brax_dependencies'],'EVIDENCE_IMMUTABILITY')
+            h4c_require(h4r_bootstrap_pins(args)==pins,'INPUT_IMMUTABILITY')
+            read_restore_gate(args.restore_report,args.checkpoint)
+            gpu_check()
+        report['gpu']=monitor.snapshot()
+        h4c_require(report['gpu']['samples']>0 and not report['gpu']['sampler_errors'] and
+                     0<report['gpu']['peak_used_mib']<.95*12288,'FINAL_GPU')
+        report['status']='M470_H4C_DIAGNOSTIC_COMPLETE'
+        persist()
+    except BaseException as exc:
+        report['status']='M470_H4C_STOPPED'
+        report['error']=type(exc).__name__+': '+str(exc)
+        report['traceback']=traceback.format_exc()
+        if monitor is not None:
+            report['gpu']=monitor.snapshot()
+        persist()
+        raise
+
 
 
 def validate_h4_cli(a):
