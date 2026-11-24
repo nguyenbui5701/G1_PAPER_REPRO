@@ -117,16 +117,25 @@ def m470_ab_preflight(which):
         'C401M': c_sha,
         'OLD10M': '0a011b6a3011f126a29832e4faa18972d7fbdddef77b63414219a15abab8314a',
         'M1_10M': 'd8775da6962ddf43ec509e8734220b32f8719763a5a334963886ea61ecafb5aa',
+        'M2_10M': 'd3d5d0e7c8b7d8cd53d072d94b9efd604ed934716304f2d2ecda65562426fae7',
     }
     old_dir = ROOT / 'm463_runs' / 'm470_c401m_independent_10M_20261122_095207_043793917'
     m1_dir = ROOT / 'm463_runs' / 'm470_h1m1_independent_10M_20261123_144920_302107870'
+    m2_dir = (
+        ROOT / 'm463_runs'
+        / 'm470_h1m2_independent_10M_20261124_104054_091938368'
+    )
     if which == 'C401M':
         report = json.loads(frozen['report'].read_text(encoding='utf8'))
         entry, checkpoint_path = report_final(report, SEED1)
         if entry['sha256'] != c_sha:
             raise RuntimeError('M470_AB_C401M_SHA_MISMATCH')
     else:
-        root = old_dir if which == 'OLD10M' else m1_dir
+        root = {
+            'OLD10M': old_dir,
+            'M1_10M': m1_dir,
+            'M2_10M': m2_dir,
+        }[which]
         report_path = root / 'report.json'
         if report_path.is_symlink() or not report_path.is_file():
             raise RuntimeError('M470_AB_REPORT_MISSING ' + str(report_path))
@@ -165,6 +174,70 @@ def m470_ab_preflight(which):
                 raise RuntimeError('M470_AB_M1_REPORT_GATE_INVALID')
         if which == 'OLD10M' and report.get('reward_PD_termination_source_unchanged') is not True:
             raise RuntimeError('M470_AB_OLD10M_REWARD_CHANGED')
+        if bool(report.get('h1_m2_enabled', False)) != (
+            which == 'M2_10M'
+        ):
+            raise RuntimeError('M470_AB_M2_FLAG_MISMATCH')
+
+        if which == 'M2_10M':
+            expected_report_sha = (
+                '06a87b939b4b36f112808e56992606aaa'
+                '441f721f913149dd4d75b0222e42c7b'
+            )
+
+            actual_report_sha = hashlib.sha256(
+                report_path.read_bytes()
+            ).hexdigest()
+
+            if actual_report_sha != expected_report_sha:
+                raise RuntimeError(
+                    'M470_AB_M2_REPORT_SHA_MISMATCH'
+                )
+
+            scales = report.get(
+                'train_reward_config', {}
+            ).get('scales', {})
+
+            if (
+                report.get('h1_m1_enabled') is not False
+                or report.get('h1_m2_enabled') is not True
+                or report.get('h1_m2_reward_slot') != 'feet_clearance'
+                or report.get('h1_m2_reward_scale') != -0.25
+                or len(scales) != 24
+                or scales.get('feet_clearance') != -0.25
+                or scales.get('lin_vel_z') != 0.0
+                or report.get('cumulative_steps_start') != 0
+                or report.get('resume_fullstate_sha256') is not None
+                or report.get('coverage_gate_pass') is not True
+                or report.get('memory_gate_pass') is not True
+                or report.get('weights_finite') is not True
+                or report.get('callback_vs_final_equal') is not True
+                or report.get('eval_source_reward_unchanged') is not True
+                or report.get('PD_termination_source_unchanged') is not True
+            ):
+                raise RuntimeError(
+                    'M470_AB_M2_REPORT_GATE_INVALID'
+                )
+
+            audit = report.get(
+                'h1_m2_training_transition_audit', {}
+            )
+
+            active = float(audit.get('active_steps', 0))
+            penalty = float(
+                audit.get('sum_weighted_pre_dt', 0)
+            )
+
+            if (
+                not math.isfinite(active)
+                or not math.isfinite(penalty)
+                or active <= 0
+                or penalty >= 0
+                or audit.get('nonfinite_steps') != 0
+            ):
+                raise RuntimeError(
+                    'M470_AB_M2_TRANSITION_AUDIT_INVALID'
+                )
         if not report.get('checkpoints'):
             raise RuntimeError('M470_AB_NO_CHECKPOINTS')
         entry = report['checkpoints'][-1]
@@ -460,7 +533,7 @@ def run(args, ctx, selected):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--mode', required=True, choices=('inspect','run'))
-    parser.add_argument('--m470-policy', choices=('C401M','OLD10M','M1_10M'))
+    parser.add_argument('--m470-policy', choices=('C401M','OLD10M','M1_10M','M2_10M'))
 
     parser.add_argument(
         "--rc1-telemetry",
