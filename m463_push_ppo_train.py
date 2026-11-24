@@ -1445,7 +1445,8 @@ def h4c_report():
     return {'status':'M470_H4C_IN_PROGRESS','spec':copy.deepcopy(H4C_SPEC),
             'attempted_physical_transitions':0,'recorded_physical_transitions':0,
             'attempted_optimizer_updates':0,'recorded_optimizer_updates':0,
-            'evaluation_transitions':0,'dispatches':[],'completed':[],
+            'evaluation_transitions':0,'initialization_resets':0,'initialization_lanes':0,
+            'initialization_counted_as_physics':False,'dispatches':[],'completed':[],
             'phase_verdicts':{'A':'NOT_RUN','B':'NOT_RUN'},'comparisons':{},
             'boundaries':{},'production_authorized':False,'promotion_authorized':False,
             'weights_retained':False,'batch_retained':False,
@@ -1586,6 +1587,41 @@ def h4c_compare(np,left,right,phase):
             'first_observed_bitwise':first_bits,'first_observed_acceptance':first_fail}
 
 
+def h4c_trace_batch_layout(np,x):
+    x=np.asarray(x)
+    h4c_require(x.shape[:4]==(1,1,32,16),'TRACE_LAYOUT')
+    return np.swapaxes(x[:,0],1,2)
+
+
+def h4c_expected_keys(jax,np,key):
+    ks,kg,kn=jax.random.split(key,3)
+    current,outer=jax.random.split(kg)
+    actor_keys=[]; next_keys=[]
+    for _ in range(32):
+        actor,current=jax.random.split(current)
+        actor_keys.append(np.asarray(actor))
+        next_keys.append(np.asarray(current))
+    expected={'h4c_perm_key':[],'h4c_grad_key':[],'h4c_sgd_key':[],
+              'h4c_minibatch_final_key':[],'h4c_loss_key':[],
+              'h4c_next_minibatch_key':[]}
+    sk=ks
+    for _ in range(5):
+        sk,perm,grad=jax.random.split(sk,3)
+        expected['h4c_perm_key'].append(np.asarray(perm))
+        expected['h4c_grad_key'].append(np.asarray(grad))
+        expected['h4c_sgd_key'].append(np.asarray(sk))
+        mk=grad; loss_keys=[]; minibatch_keys=[]
+        for _ in range(8):
+            mk,loss=jax.random.split(mk)
+            loss_keys.append(np.asarray(loss)); minibatch_keys.append(np.asarray(mk))
+        expected['h4c_loss_key'].append(loss_keys)
+        expected['h4c_next_minibatch_key'].append(minibatch_keys)
+        expected['h4c_minibatch_final_key'].append(np.asarray(mk))
+    return (np.asarray(ks)[None,:],np.asarray(kn)[None,:],
+            np.asarray(outer)[None,:],np.asarray(current)[None,None,:],
+            np.asarray(actor_keys)[None,None,:,:],np.asarray(next_keys)[None,None,:,:],
+            {k:np.asarray(v)[None,...] for k,v in expected.items()},np.asarray(sk)[None,:])
+
 def h4c_audit_callback(api,args,report,persist,gpu_check):
     jax,np=api['jax'],api['numpy']
     from flax import serialization
@@ -1629,35 +1665,6 @@ def h4c_audit_callback(api,args,report,persist,gpu_check):
         same(count,target,'NORMALIZER_COUNT')
         return {'logical_env_steps':int(ts.env_steps[0]),'adam_count':updates,
                 'normalizer_count':count.item()}
-    def prepare_keys(initial):
-        key=initial[2][0]
-        ks,kg,kn=jax.random.split(key,3)
-        current,outer=jax.random.split(kg)
-        actor_keys=[]; next_keys=[]
-        for _ in range(32):
-            actor,current=jax.random.split(current)
-            actor_keys.append(np.asarray(actor))
-            next_keys.append(np.asarray(current))
-        expected={'h4c_perm_key':[],'h4c_grad_key':[],'h4c_sgd_key':[],
-                  'h4c_minibatch_final_key':[],'h4c_loss_key':[],
-                  'h4c_next_minibatch_key':[]}
-        sk=ks
-        for _ in range(5):
-            sk,perm,grad=jax.random.split(sk,3)
-            expected['h4c_perm_key'].append(np.asarray(perm))
-            expected['h4c_grad_key'].append(np.asarray(grad))
-            expected['h4c_sgd_key'].append(np.asarray(sk))
-            mk=grad; loss_keys=[]; minibatch_keys=[]
-            for _ in range(8):
-                mk,loss=jax.random.split(mk)
-                loss_keys.append(np.asarray(loss)); minibatch_keys.append(np.asarray(mk))
-            expected['h4c_loss_key'].append(loss_keys)
-            expected['h4c_next_minibatch_key'].append(minibatch_keys)
-            expected['h4c_minibatch_final_key'].append(np.asarray(mk))
-        return (np.asarray(ks)[None,:],np.asarray(kn)[None,:],
-                np.asarray(outer)[None,:],np.asarray(current)[None,None,:],
-                np.asarray(actor_keys)[None,None,:,:],np.asarray(next_keys)[None,None,:,:],
-                {k:np.asarray(v)[None,...] for k,v in expected.items()},np.asarray(sk)[None,:])
     def callback(label,value,aux):
         nonlocal initial_hash,dr_hash,initial_count,fixed_hash,a_ref,b_ref
         nonlocal a0_batch_hash,a0_sgd_hash
@@ -1674,10 +1681,12 @@ def h4c_audit_callback(api,args,report,persist,gpu_check):
             restored=tuple(serialization.to_state_dict(jax.tree_util.tree_map(lambda x:x[0],v))
                            for v in (ts.normalizer_params,ts.params.policy,ts.params.value))
             h4c_require(compare_exact(expected_parts,restored,jax,np,'H4C_RESTORE')==25,'RESTORE')
+            report['initialization_resets']=1
+            report['initialization_lanes']=16
             report['initial']={'carry_sha256':initial_hash,'dr_sha256':dr_hash,
                                'restored_weights_exact':True,**state_check(ts,0)}
             (expected_sgd,expected_new,expected_outer,expected_inner,expected_actor_keys,
-             expected_next_keys,expected_sgd_metrics,expected_sgd_final)=prepare_keys(value)
+             expected_next_keys,expected_sgd_metrics,expected_sgd_final)=h4c_expected_keys(jax,np,value[2][0])
         elif label.startswith('A') and label.endswith('_before'):
             h4c_require(digest_tree(value)==initial_hash and model_digest(*aux)==dr_hash,'A_INPUT')
             state_check(value[0],0)
@@ -1699,7 +1708,7 @@ def h4c_audit_callback(api,args,report,persist,gpu_check):
             # Sidecar observations and flags must describe the very same
             # actor_step transitions, including AutoReset semantics.
             def batch_layout(x):
-                return np.swapaxes(np.asarray(x)[:,0],1,2)
+                return h4c_trace_batch_layout(np,x)
             for side,obs in (('pre',batch.observation),('post',batch.next_observation)):
                 left=jax.tree_util.tree_leaves(trace[side]['obs'])
                 right=jax.tree_util.tree_leaves(obs)
@@ -2124,6 +2133,35 @@ def h4c_static_regression(brax_train_path,acting_path,failure_report):
     for bad in (np.array([np.nan],np.float32),np.array([np.inf],np.float32),
                 np.array([1.],np.float64),np.array([1.,2.],np.float32)):
         reject(lambda:compare({'x':np.array([1.],np.float32)},{'x':bad}))
+    # Synthetic layout and deterministic mock key splitter validate host
+    # accounting, not JAX's PRNG implementation.
+    x=np.arange(32*16,dtype=np.int32).reshape(1,1,32,16)
+    y=h4c_trace_batch_layout(np,x)
+    h4c_require(y.shape==(1,16,32) and y[0,5,7]==7*16+5,'LAYOUT_FIXTURE')
+    reject(lambda:h4c_trace_batch_layout(np,x.reshape(1,1,16,32)))
+    class MockRandom:
+        @staticmethod
+        def split(key,n=2):
+            a,b=map(int,key)
+            return np.array([[a*7+i+1,b*3+i+1] for i in range(n)],dtype=object)
+    # Bound mock integers and make every split output distinguishable.
+    class BoundedRandom:
+        @staticmethod
+        def split(key,n=2):
+            a,b=map(int,key)
+            return np.array([[(a*7+i+1)%2**32,(b*3+i+1)%2**32]
+                             for i in range(n)],dtype=np.uint32)
+    rng=SimpleNamespace(random=BoundedRandom())
+    key=np.array([11,23],np.uint32)
+    ks,kn,outer,inner,actors,nexts,sgd,final=h4c_expected_keys(rng,np,key)
+    expected=rng.random.split(key,3)
+    h4c_require(np.array_equal(ks[0],expected[0]) and np.array_equal(kn[0],expected[2]),
+                 'MOCK_ROOT_KEYS')
+    h4c_require(actors.shape==nexts.shape==(1,1,32,2) and inner.shape==(1,1,2) and
+                 sgd['h4c_loss_key'].shape==(1,5,8,2) and final.shape==(1,2),'MOCK_KEY_LAYOUT')
+    h4c_require(np.array_equal(inner[0,0],nexts[0,0,-1]) and
+                 np.array_equal(final[0],sgd['h4c_sgd_key'][0,-1]),'MOCK_FINAL_KEYS')
+    print('M470_H4C_LAYOUT_KEY_FIXTURE_PASS',flush=True)
     f=Path(failure_report)
     h4c_failure_pin(f)
     prior=json.loads(f.read_bytes())
