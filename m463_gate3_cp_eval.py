@@ -2119,6 +2119,20 @@ def h3_decide(session):
             'promotion_authorized':False,'further_training_authorized':False}
 
 
+def h3_verify_brax_train_source(networks):
+    """Verify installed PPO source bytes WITHOUT executing its training imports."""
+    from importlib.util import find_spec
+    spec=find_spec('brax.training.agents.ppo.train')
+    h3_require(spec is not None and spec.origin is not None,'BRAX_TRAIN_SOURCE_MISSING')
+    path=Path(spec.origin).resolve(strict=True)
+    expected=Path(networks.__file__).resolve(strict=True).with_name('train.py')
+    h3_require(path==expected and path.is_file(),'BRAX_TRAIN_SOURCE_LOCATION')
+    actual=sha256(path)
+    if actual!=TRAIN_SHA:
+        raise RuntimeError('M462_PINNED_BRAX_SOURCE_MISMATCH')
+    return {'path':str(path),'sha256':actual,'train_module_import_required':False}
+
+
 def h3_run(args):
     import shutil
     from m462_ppo_warmstart_run import GPUMonitor,sample_gpu
@@ -2183,7 +2197,13 @@ def run(args):
     import numpy as np
     from flax import serialization
     from brax.training.acme import running_statistics
-    from brax.training.agents.ppo import networks, train as ppo
+    if h3_mode:
+        from brax.training.agents.ppo import networks
+        args.h3_session['brax_source_verification']=h3_verify_brax_train_source(networks)
+        print('M470_H3_EVAL_BRAX_SOURCE_PASS',
+              args.h3_session['brax_source_verification'],flush=True)
+    else:
+        from brax.training.agents.ppo import networks, train as ppo
     from mujoco_playground import locomotion
     from mujoco_playground._src import collision
     if jax.default_backend()!='gpu':raise RuntimeError('M463_GATE3_REQUIRES_GPU')
@@ -2191,7 +2211,7 @@ def run(args):
         h3_require(jax.__version__=='0.4.35' and jax.process_count()==1
                    and jax.local_device_count()==1,'RUNTIME_PIN')
         args.h3_session['jax_version']=jax.__version__
-    if sha256(inspect.getfile(ppo.train))!=TRAIN_SHA:raise RuntimeError('M462_PINNED_BRAX_SOURCE_MISMATCH')
+    if not h3_mode and sha256(inspect.getfile(ppo.train))!=TRAIN_SHA:raise RuntimeError('M462_PINNED_BRAX_SOURCE_MISMATCH')
     paper=build_paper_config()
     if sha256(args.checkpoint_c)!=BASE_SHA:raise RuntimeError('M462_FROZEN_401M_SHA_MISMATCH')
     report_p = None
