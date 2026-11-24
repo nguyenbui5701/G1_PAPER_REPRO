@@ -1767,6 +1767,10 @@ def h3_read_inputs(args):
                and r['stage']=='easy_repeat_support' and r['independent_budget']=='10M'
                and r['trained_from']=='C401M_WEIGHTS_ONLY_ADAM_STARTED_ONCE'
                and r['source_commit']==PIN and r['source_checkpoint_sha256']==BASE_SHA
+               and r['orbax_sha256']==old['orbax_sha256']
+               and r['instrumented_brax']['original_brax_sha256']==TRAIN_SHA
+               and r['instrumented_brax']['instrumented_sha256']=='0ff25f52fac87ff112579ad7f91f35ffa5b0a2d654e22d74c45be26dd0850f7a'
+               and r['runner_sha256']=='56dad9056cd1bef579839eddbf9e21f2117b8634c190f833606736014667b56c'
                and r['training_seed']==1 and r['cumulative_steps_start']==0
                and r['resume_fullstate_sha256'] is None
                and r['train_steps_target']==r['steps_observed']==r['run_steps_observed']==10485760
@@ -2044,7 +2048,16 @@ def h3_decide(session):
                             'new_critical_terminal_flags':new_flags,
                             'survival':{n:row['policies'][n]['survived'] for n in H3_EVAL_POLICIES}}
                 if kind!='nominal':
-                    comparison['recovery5']={n:row['policies'][n]['recovery_5s']['recovered'] for n in H3_EVAL_POLICIES}
+                    comparison['exposed']={n:row['policies'][n]['exposed'] for n in H3_EVAL_POLICIES}
+                    for sec in (2,5):
+                        comparison['recovery'+str(sec)]={n:row['policies'][n]['recovery_'+str(sec)+'s']['recovered']
+                                                           for n in H3_EVAL_POLICIES}
+                comparison['discordance']={}
+                for metric in ('survival','exposed','recovery2','recovery5'):
+                    if metric in comparison:
+                        a,b=(comparison[metric][n] for n in ('OLD','H3'))
+                        comparison['discordance'][metric]=(
+                            'BOTH' if a and b else 'OLD_ONLY' if a else 'H3_ONLY' if b else 'NEITHER')
                 if kind=='nominal':
                     for k in ('xy_tracking_rmse_mps','yaw_tracking_rmse_radps'):
                         if not h3_tracking_limit(o[k],h[k]):
@@ -2090,7 +2103,16 @@ def h3_decide(session):
     # A safety failure is never masked by a primary ceiling or missing window.
     decision=('NO_GO' if hard else 'INCONCLUSIVE' if ceiling else
               'NO_GO' if not primary_pass else 'INCONCLUSIVE' if missing else 'DEV_PASS')
+    discordance={}
+    for pair in paired:
+        _,profile,kind,_=pair['case']
+        key=profile+'/'+kind
+        dst=discordance.setdefault(key,{})
+        for metric,label in pair['discordance'].items():
+            counts=dst.setdefault(metric,{k:0 for k in ('BOTH','OLD_ONLY','H3_ONLY','NEITHER')})
+            counts[label]+=1
     return {'decision':decision,'primary_stand_double':primary,'primary_ceiling':ceiling,
+            'discordance_counts':discordance,
             'moving_double_recovery5':moving,'nominal_survivors':nominal,
             'standing_common_windows':standing,'missing_standing_windows':missing,
             'hard_failures':hard,'paired_cases':paired,'logical_outcomes':summaries,
@@ -2145,7 +2167,8 @@ def h3_run(args):
 
 
 def run(args):
-    if args.output.exists() and not (args.h3_m1_eval and getattr(args,'h3_session',None) is not None):
+    h3_mode=bool(getattr(args,'h3_m1_eval',False))
+    if args.output.exists() and not (h3_mode and getattr(args,'h3_session',None) is not None):
         raise FileExistsError('Refuse to overwrite output: '+str(args.output))
     # Use the same pinned runner environment; apply compatibility BEFORE JAX import.
     from train import check_source, build_paper_config
@@ -2164,7 +2187,7 @@ def run(args):
     from mujoco_playground import locomotion
     from mujoco_playground._src import collision
     if jax.default_backend()!='gpu':raise RuntimeError('M463_GATE3_REQUIRES_GPU')
-    if args.h3_m1_eval:
+    if h3_mode:
         h3_require(jax.__version__=='0.4.35' and jax.process_count()==1
                    and jax.local_device_count()==1,'RUNTIME_PIN')
         args.h3_session['jax_version']=jax.__version__
@@ -2191,7 +2214,7 @@ def run(args):
         raise RuntimeError('M462_EVAL_PINNED_SOURCE_PUSH_CONFIG_CHANGED')
     if float(cfg.reward_config.scales.base_height)!=0.:
         raise RuntimeError('M462_EVAL_SOURCE_REWARD_CONFIG_CHANGED')
-    if args.h3_m1_eval:
+    if h3_mode:
         original_reward=json.loads(args.report_h3.read_bytes())['train_reward_config']
         h3_require(cfg.reward_config.to_dict()==original_reward,'ORIGINAL_REWARD_CONFIG')
     cfg.push_config.enable=False
@@ -2225,7 +2248,7 @@ def run(args):
         policies['P'] = load_policy(
             args.checkpoint_p
         )
-    if args.h3_m1_eval:
+    if h3_mode:
         policies['OLD']=policies.pop('P')
         policies['H3']=load_policy(args.checkpoint_h3)
     results=[]
@@ -2468,7 +2491,7 @@ def run(args):
                         ),
                 })
 
-                if args.h2a or args.h2b or args.h3_m1_eval:
+                if args.h2a or args.h2b or h3_mode:
                     model = env.mj_model
 
                     def limit_excess(values, limits, mask):
@@ -2489,7 +2512,7 @@ def run(args):
                         )
 
                     diag.update({
-                        **({} if args.h3_m1_eval else {'h2a_action': action}),
+                        **({} if h3_mode else {'h2a_action': action}),
 
                         'h2a_joint_limit_excess': limit_excess(
                             d.qpos[7:],
@@ -2518,7 +2541,7 @@ def run(args):
                         ),
                     })
 
-                if args.h3_m1_eval:
+                if h3_mode:
                     diag.update({
                         'h3_pose_l1': jnp.sum(jnp.abs(d.qpos[7:]-env._default_pose)),
                         'h3_root_x': d.qpos[0], 'h3_root_y': d.qpos[1],
@@ -2532,7 +2555,7 @@ def run(args):
                     })
                 return next_state,diag
             step_fn=jax.jit(one_step)
-            if args.h3_m1_eval:
+            if h3_mode:
                 session=args.h3_session
                 g=h3_group(args,env,step_fn,jax,jnp,np,session,name,seed,profile)
                 session['gpu']=h3_gpu_check(args.h3_monitor)
@@ -2804,7 +2827,7 @@ def run(args):
                 print('M463_GATE3_RESULT',name,seed,profile,direction,
                     'nominal',off['steps'],'pushed',last,'terminated',terminated,
                     'recovered',recovery['recovered'],flush=True)
-    if args.h3_m1_eval:
+    if h3_mode:
         args.h3_session['decision']=h3_decide(args.h3_session)
         return
     if args.h2b:
