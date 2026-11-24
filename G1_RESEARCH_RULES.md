@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.49  
+**Version:** 1.2.50  
 **Ngày cập nhật:** 2026-11-24 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -559,6 +559,16 @@ H2B1 READY PENDING SEPARATE EXPLICIT OWNER GO, not execution authorization from 
 
 Decision H2B0_COMPLETE / H2B1_READY_PENDING_EXPLICIT_OWNER_GO / PPO0.
 
+### M4.70-H2B1 — EXPLICIT OWNER GO, ONE INTEGRATED CALIBRATION AND CONTROLLED EVALUATION (v1.2.50; 2026-11-24)
+
+Owner explicitly approved "GO H2B1 — triển khai một lần Integrated Controlled Recovery Evaluation theo Rules v1.2.49, frozen C401M, 6 calibration + 60 logical trajectories, không PPO." H2B0 CLOSED/PASS per v1.2.49. This is authorization for exactly ONE integrated H2B1 CUDA/MJX job, not H2B2, PPO, source edits, retries or tuning. Reviewed remote prior HEAD 67199647898ce11b6367b4a5dc65146872f22e34 and exact evaluator blob 65f0b46cc0b61561e8f75864ed9348be60a7919c, train.py, paper_config.py and runtime contract. Owner runs locally; SA only writes Rules. No runtime result yet.
+
+**Execution contract:** safe ff-only sync with clean tracked tree, exact evaluator blob and logged SHA256, frozen C401M checkpoint m430_seed1/checkpoint_pilot_20261114_120515_1722937_step_401080320.msgpack SHA256 1ccf579ea35d4518713b00ea20d77db8463bc469b7de903b8f10f457b3dc90b8, upstream pinned HEAD 9bcbe736177472ba35d60773e3030a36e37962b7 and clean worktree. Reuse g1_m463 CUDA launcher; existing evaluator checks source, applies sibling nvcc_compat before JAX, requires GPU, pinned Brax SHA256 e20613d42bf0868a13003e0312998816cc8d3593bb5ccaf9f1d070fd09c44bd7, paper configuration, C401M checkpoint and finite weights, then sampler guards and actual first transition in same process. One invocation of m463_gate3_cp_eval.py --mode run --h2b --checkpoint-c <frozen C401M> --seeds 7331,7357 --profiles stand,forward_fast,turn_left --directions left,right --push-step 300 --push-magnitude 0.50 --second-push-step 335 --second-push-magnitude 0.35 --max-steps 1000 --output <fresh timestamp.json>. Calibration7301/7303 ordered first, six nominal trajectories/6000 pre-action samples, immutable canonical reference SHA before eval. Six paired eval groups, 60 logical trajectories and max49014 physical transitions including calibration; no new heldout or H2A run. Preserve exact controller parameters, cached causal timing and original goal. One heavy GPU job, unique timestamped stdout+stderr log, nvidia-smi VRAM sampling, raw progress JSON and frozen .reference.json under existing m463_runs; retain evidence even on failure, log evaluator/tee exit status and recheck source/checkpoint after job. No auto retry or post-result adjustment. Known prefix/reference blocks persist partial group; arbitrary failures may leave only prior groups/log. Unsupported reference is INCONCLUSIVE; prepush intervention/termination or nominal failure is NO-GO under frozen gates. Do not demand remaining trajectories after predefined stop.
+
+**Review gates:** verify calibration count/ages, deterministic refit from raw calibration and digest, same reference across all groups, exact seeds/commands/kick vectors, cached age i-1 and derivative, fork at299/334, source flags/finite telemetry, original-goal metrics, residual and command bounds/slew/yaw, timeouts and second exposure. Nominal 6/6 each, zero intervention including startup, XY/yaw RMSE increase <=5% (absolute <=.0005 for baseline <.01), no critical new source terminal/nonfinite or joint/ctrl/force regression at .001/.001/.1 tolerances, double survival AND recovery5s gain >=2/12 each, no lost single survival case, nonexposed second push counted failure. Report paired 2s/5s recovery, survival, tracking and limits. Complete evidence/zero exit is not efficacy PASS. H2B2 only on full PASS and separate approved fresh holdout. H1/H2A1 CLOSED, H2A2 not eligible, M1/M2/+100M NO-PROMOTE, +400M HOLD, Branch B HOLD; PPO0.
+
+Decision H2B1_OWNER_GO_ONE_INTEGRATED_EVAL_EXECUTION_PENDING. Owner returns log, VRAM CSV, raw JSON and reference JSON if produced. No SA GPU/PPO execution or source changes.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -820,6 +830,9 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-24)
+
+**M470-H2B1 EXPLICIT OWNER GO (v1.2.50; 2026-11-24):** One integrated pinned CUDA/MJX job on frozen C401M, exact evaluator65f0b46c, 6 calibration then frozen reference +60 logical eval, max49014 physical transitions, original-goal metrics, no PPO. Owner local execution pending, logs/VRAM/raw+reference required; predefined block stops, no retry/tune. H2B2 conditional, H1/H2A CLOSED, Branch B HOLD.
+
 
 **M470-H2B0 FINAL STATIC GATE PASS (v1.2.49; 2026-11-24):** Owner log m470_h2b_static_20261124_161827_120641727.log all pure/plan/final PASS, +0/-11 matches F01 correction, exact remote evaluator65f0b46c unchanged. Log lacks explicit source SHA/exit code; verify source pin at integrated preflight, no redundant rerun. H2B0 CLOSED/PASS, H2B1 READY PENDING SEPARATE EXPLICIT OWNER GO for one frozen 6 calibration +60 logical evaluation, max49014 physical, no PPO. Runtime/efficacy untested. H1/H2A CLOSED, Branch B HOLD.
 
@@ -1219,6 +1232,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-24 | H2B1 explicit owner GO | H2B0 PASS v1.2.49, exact evaluator65f0b46c and pinned runtime reviewed, owner approval one integrated frozen protocol | v1.2.50 execution pending; 6 calibration +60 logical, max49014 physical, no PPO, no retry | 1.2.50 |
+
 | 2026-11-24 | H2B0 final owner static gate | m470_h2b_static_20261124_161827_120641727.log pure/plan/final PASS, +0/-11 matches reviewed F01, remote evaluator65f0b46c | v1.2.49 H2B0 CLOSED/PASS; H2B1 ready pending separate owner GO; no GPU/PPO | 1.2.49 |
 
 | 2026-11-24 | H2B0 corrected source review | 47c2ec0 parent94c672e, evaluator65f0b46c, one file +0/-11 exact F01 cleanup, correct outer finalization retained | v1.2.48 source review PASS, static evidence pending, H2B1 HOLD, no GPU/PPO | 1.2.48 |
@@ -1380,6 +1395,8 @@ PY
 | 2026-11-21 | Research governance | Khóa mục tiêu push → fall → get-up → resume; định nghĩa thước đo và cổng nghiệm thu | RULES ACTIVE; GET-UP NOT IMPLEMENTED | 1.0.0 |
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.50 — 2026-11-24:** Recorded explicit owner GO for one integrated H2B1 calibration and controlled evaluation on frozen C401M, exact source/runtime pins, fixed gates and evidence/stop contract; execution pending. Rules-only, no source edits or PPO.
 
 - **v1.2.49 — 2026-11-24:** Accepted owner H2B0 static/pure/plan evidence against reviewed source; H2B0 closed/PASS, H2B1 ready pending separate explicit owner GO, same frozen protocol. Rules-only; no executable source changes, GPU or PPO.
 
