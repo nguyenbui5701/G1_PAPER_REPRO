@@ -73,7 +73,8 @@ H3_OLD10M_RUNNER_SHA = '706a19830e426672efeac4b2832c6b46512973ecc7baff30c8235028
 H3_OLD10M_COMMIT = 'aae9e8f484612790029d54d4537993e614477885'
 
 
-H4_SPEC = {'arms': ['control','candidate'], 'episode_mix': [.20,.40,.16,.24],
+H4_SPEC = {'arms': ['control','candidate'], 'control_episode_mix': [.20,.80,0.,0.],
+           'candidate_episode_mix': [.20,.40,.16,.24],
            'rollouts':40,'num_evals':3,'rollouts_per_epoch':20,
            'rollouts_per_chunk':5,'collection_ticks':640,
            'env_steps':10485760,'optimizer_updates_target':1600,
@@ -180,6 +181,22 @@ def h4_chunk_callback(jax,np,monitor,report,persist,arm):
                 row['counts'][k]=n
                 epoch_counts[k]=epoch_counts.get(k,0)+n
                 all_counts[k]=all_counts.get(k,0)+n
+        required = {'bad','assigned','repeat_assigned','first_events','repeat_events',
+                    'first_closed','repeat_closed','first_due','repeat_due',
+                    'event_terminal','close_repeat','close_terminal','close_complete',
+                    'close_boundary','broad_events'}
+        required.update(f'class_{i}_steps' for i in range(4))
+        for kind in (1,2):
+            for w in H4_SPEC['tail_windows']:
+                required.update(f'tail_{kind}_{w}_{v}' for v in
+                    ('executed','survived','same_command','same_unroll'))
+        for side in (1,2):
+            required.add(f'stand_{side}_events')
+            required.update(f'stand_{side}_tail_2_{w}' for w in (100,250))
+            required.update(f'turn_{m}_{side}_events' for m in (3,4))
+        required.update(f'broad_{k}_{j}' for j in range(6) for k in ('motion','direction'))
+        if any('m463_h4_'+k+'_per_rollout' not in row['counts'] for k in required):
+            raise RuntimeError('M470_H4_CHUNK_MISSING_METRICS')
         if row['counts']['m463_h4_bad_per_rollout']!=0:
             raise RuntimeError('M470_H4_CHUNK_INVARIANT')
         if index==4:
@@ -189,7 +206,8 @@ def h4_chunk_callback(jax,np,monitor,report,persist,arm):
                             ('repeat_pending','h4_repeat_pending'),
                             ('tail_pending','h4_tail_kind')):
                 arr=np.asarray(jax.device_get(info[field]))
-                if arr.size!=8192:
+                allowed=(0,1,2) if k=='tail_pending' else (0,1)
+                if arr.size!=8192 or not np.isin(arr,allowed).all():
                     raise RuntimeError('M470_H4_PENDING_SCHEMA')
                 pending[k]=int(np.count_nonzero(arr))
                 all_pending[k]+=pending[k]
@@ -216,6 +234,15 @@ def h4_chunk_callback(jax,np,monitor,report,persist,arm):
         row['passed']=True
         persist()
     return callback
+
+
+def h4_matched_nominal_check(control_counts, candidate_counts):
+    """Requires separately provenance-validated matched-control counts."""
+    k='m463_h4_class_0_steps_per_rollout'
+    a,b=control_counts[k],candidate_counts[k]
+    if not (0<=a<=10485760 and 0<=b<=10485760):
+        raise RuntimeError('M470_H4_NOMINAL_COUNT_SCHEMA')
+    return b>=.15*10485760 and 5*b>=4*a
 
 
 def validate_h4_cli(a):
