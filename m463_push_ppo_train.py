@@ -829,6 +829,389 @@ def h4_static_regression(brax_train_path):
     print('M470_H4_STATIC_REGRESSION_PASS NO_JAX NO_SIMULATION NO_PPO',flush=True)
 
 
+
+# H4-M1-1B separate diagnostic; production and readiness remain locked.
+H4R_EXECUTION_AUTHORIZED = False
+H4R_SPEC = {'num_envs':16,'batch_size':2,'num_minibatches':8,
+            'unroll_length':32,'num_updates_per_batch':5,'seed':1,
+            'rollouts_per_path':20,'rollouts_per_chunk':5,'ticks':640,
+            'paths':['R0','R1','S'],'transitions_per_path':10240,
+            'max_transitions':30720,'max_optimizer_updates':2400,
+            'eval_transitions':0,'float_cap':1e-5,'eps_multiplier':8}
+H4R_REWARD_SHA='84c285315e109ca8716476b0f527873046b441d35e3fe963570e5f2019fe3530'
+H4R_LOCAL_SHA={
+    'm462_ppo_warmstart_run':'2b8846723287b6999db3cc27fbf50e556ce6b6bfd19822ff2bfd7a84a53d5328',
+    'm462_typed_orbax_stage':'2dc81e3c3f515745954d189eeaec53bc014fe0e399b98dbe9a3219586dfb85cc',
+    'nvcc_compat':'c92cd0f79e04acc409c4d0d52c7b1cc2c5b71822aafbd1e4d957a949f5044e8f',
+    'm463_coverage_env':'5a995942b87ba9514d9187fc7b864f33ee6eafa4d4994662f1faeb5c96e74e27'}
+H4R_CONFIG_SHA='36ab984a162e053a58d6f4313369a95dde77fd84a4db61b54d42ab856fadd19b'
+
+
+def h4r_require(ok,label):
+    if not bool(ok):
+        raise RuntimeError('M470_H4R_'+label)
+
+
+def validate_h4r_cli(a):
+    requested=getattr(a,'h4_readiness',False)
+    if not requested:
+        h4r_require(a.mode!='readiness' and getattr(a,'h4_readiness_reward_report',None) is None,'FLAG_REQUIRED')
+        return
+    h4r_require(a.mode in ('plan','readiness') and a.stage=='easy_repeat_support','MODE_STAGE')
+    h4r_require(not any(getattr(a,k,False) for k in (
+        'h1_m1','h1_m2','h3_m1','h3_diagnostic_only')) and all(
+        getattr(a,k,None) is None for k in ('h4_arm','h4_control_report','h3_causal_report',
+        'h3_old10m_report','smoke_report','resume_state','independent_budget','rollouts','num_evals')),
+        'CONFLICT')
+    h4r_require(getattr(a,'h4_readiness_reward_report',None) is not None,'REWARD_REFERENCE_REQUIRED')
+    if a.mode!='plan':
+        h4r_require(H4R_EXECUTION_AUTHORIZED is True and H4_EXECUTION_AUTHORIZED is False,
+                     'EXECUTION_HOLD')
+
+
+def h4r_distance(np,a,b,exact=False):
+    a,b=np.asarray(a),np.asarray(b)
+    h4r_require(a.shape==b.shape and a.dtype==b.dtype,'LEAF_SCHEMA')
+    h4r_require(a.dtype.kind in 'biuf' and np.isfinite(a).all() and np.isfinite(b).all(),'LEAF_NONFINITE')
+    if exact or a.dtype.kind!='f':
+        return (0. if np.array_equal(a,b) else 1.),0.
+    u,v=a.astype(np.float64),b.astype(np.float64)
+    d=float(np.max(np.abs(u-v)/np.maximum(1.,np.maximum(np.abs(u),np.abs(v))),initial=0.))
+    return d,float(np.finfo(a.dtype).eps)
+
+
+def h4r_compare(np,reference,other,repeatability=None,exact_paths=()):
+    h4r_require(set(reference)==set(other),'PATH_SCHEMA')
+    if repeatability is not None:
+        h4r_require(set(reference)==set(repeatability),'REPEATABILITY_SCHEMA')
+    rows={}
+    for k,a in reference.items():
+        d,eps=h4r_distance(np,a,other[k],k in exact_paths)
+        limit=0. if eps==0 else H4R_SPEC['float_cap']
+        if repeatability is not None and eps:
+            limit=min(limit,max(repeatability[k]['distance'],H4R_SPEC['eps_multiplier']*eps))
+        rows[k]={'distance':d,'limit':limit,'passed':d<=limit}
+    return {'paths':rows,'passed':all(v['passed'] for v in rows.values())}
+
+
+def h4r_counts(metrics,rollouts):
+    result={}
+    for k,v in metrics.items():
+        # Weighted reward sums are floating metrics, not counts.
+        if k.endswith('_per_rollout') and not k.endswith('_weighted_sum_per_rollout'):
+            x=float(v)*rollouts
+            h4r_require(math.isfinite(x) and 0<=x<=512*rollouts and abs(x-round(x))<=.125,
+                        'COUNT '+k)
+            result[k]=int(round(x))
+    h4r_require(result['h4r_nonfinite_per_rollout']==0 and
+                 result['m463_h4_bad_per_rollout']==0,'ROLLOUT_BAD')
+    h4r_require(sum(result[f'm463_h4_class_{c}_steps_per_rollout'] for c in range(4))
+                ==512*rollouts,'PARTITION')
+    return result
+
+
+def h4r_pending(np,info):
+    names=('h4_first_pending','h4_repeat_pending','h4_tail_kind','h4_class',
+           'h4_repeat_origin_motion','m463_direction')
+    a={k:np.asarray(info[k]).reshape(-1) for k in names}
+    h4r_require(all(v.size==16 for v in a.values()),'PENDING_SHAPE')
+    for k,allowed in (('h4_first_pending',(0,1)),('h4_repeat_pending',(0,1)),
+                      ('h4_tail_kind',(0,1,2)),('h4_class',(0,1,2,3))):
+        h4r_require(np.isin(a[k],allowed).all(),'PENDING_VALUE '+k)
+    fp,rp,cls=a['h4_first_pending']>0,a['h4_repeat_pending']>0,a['h4_class']
+    q={'first_pending':int(fp.sum()),'repeat_pending':int(rp.sum()),
+       'tail_pending':int((a['h4_tail_kind']>0).sum())}
+    for ci in range(4):
+        q[f'class_{ci}_first_pending']=int((fp&(cls==ci)).sum())
+        q[f'class_{ci}_repeat_pending']=int((rp&(cls==ci)).sum())
+    for m in (0,3,4):
+        for side in (1,2):
+            q[f'target_{m}_{side}_pending']=int((rp&(cls==3)&
+                (a['h4_repeat_origin_motion']==m)&(a['m463_direction']==side+1)).sum())
+    return q
+
+
+def h4r_ledger(np,counts,env_info):
+    pending=h4r_pending(np,env_info)
+    checks=h4_epoch_audit(counts,pending,'control')['checks']
+    excluded=('step_partition','nominal_fraction')
+    h4r_require(all(k in checks for k in excluded),'LEDGER_SCHEMA')
+    checks={k:v for k,v in checks.items() if k not in excluded}
+    checks['readiness_step_partition']=sum(counts[f'm463_h4_class_{c}_steps_per_rollout']
+                                          for c in range(4))==10240
+    checks['legacy_event_reconcile']=(counts['m463_events_per_rollout']==
+        counts['m463_h4_first_events_per_rollout']+counts['m463_h4_repeat_events_per_rollout'])
+    checks['legacy_repeat_reconcile']=(counts['m463_repeat_per_rollout']==
+                                      counts['m463_h4_repeat_events_per_rollout'])
+    return {'checks':checks,'pending':pending,'excluded_training_scale_gates':list(excluded),
+            'passed':all(checks.values())}
+
+
+def h4r_audit_callback(api,args,report,persist,gpu_check):
+    """Host only: compare full actual carries, never write a weight artifact."""
+    jax,np=api['jax'],api['numpy']
+    from flax import serialization
+    import optax
+    from m462_typed_orbax_stage import checkpoint_parts,compare_exact
+    expected_parts=checkpoint_parts(serialization.msgpack_restore(args.checkpoint.read_bytes()))
+    schedule=[('initial',0),('R0_before',20),('R0',20),('R1_before',20),('R1',20)]
+    for n in range(1,5):
+        schedule.extend([('S_before',n),('S_chunk',n)])
+    schedule.append(('S',20))
+    initial_hash=None
+    initial_count=None
+    expected_keys=[]
+    ref=None
+    ref_counts=None
+    repeatability=None
+    split_counts={}
+    prior_split_hash=None
+    index=0
+    def snapshot(tree):
+        paths,structure=jax.tree_util.tree_flatten_with_path(tree)
+        values={}
+        for p,v in paths:
+            name=jax.tree_util.keystr(p)
+            h4r_require(name not in values,'DUPLICATE_PATH')
+            a=np.array(jax.device_get(v),copy=True)
+            h4r_require(a.dtype.kind in 'biuf' and np.isfinite(a).all(),'NONFINITE '+name)
+            values[name]=a
+        return values,str(structure)
+    def digest_snapshot(values,structure):
+        h=hashlib.sha256(structure.encode())
+        for name,v in sorted(values.items()):
+            h.update(json.dumps([name,str(v.dtype),list(v.shape)]).encode()+b'\0')
+            h.update(v.tobytes())
+        return h.hexdigest()
+    def exact_paths(values):
+        return tuple(k for k in values if k.endswith(('.done','.count',"['command']","['truncation']","['episode_done']")))
+    def state_checks(carry,rollouts):
+        state,env,key=carry
+        h4r_require(np.asarray(state.env_steps).shape==(1,) and int(state.env_steps[0])==rollouts*512,'ENV_STEPS')
+        adam=jax.tree_util.tree_leaves(state.optimizer_state,
+            is_leaf=lambda x:isinstance(x,optax.ScaleByAdamState))
+        adam=[v for v in adam if isinstance(v,optax.ScaleByAdamState)]
+        h4r_require(len(adam)==1 and int(adam[0].count[0])==rollouts*40,'ADAM_COUNT')
+        if rollouts==0:
+            h4r_require(all(not np.any(np.asarray(x)) for x in
+                jax.tree_util.tree_leaves((adam[0].mu,adam[0].nu))),'ADAM_FRESH')
+        cnt=np.asarray(state.normalizer_params.count)
+        h4r_require(cnt.shape==(1,),'NORMALIZER_COUNT_SHAPE')
+        expected=initial_count.copy()
+        for _ in range(rollouts):
+            expected=np.add(expected,np.asarray(512,dtype=expected.dtype),dtype=expected.dtype)
+        h4r_require(np.array_equal(cnt,expected),'NORMALIZER_COUNT')
+        h4r_require(np.array_equal(np.asarray(key),expected_keys[rollouts]),'RNG_KEY')
+        return {'env_steps':rollouts*512,'adam_count':rollouts*40,
+                'normalizer_count':cnt.item(),'rng_key':np.asarray(key).tolist()}
+    def callback(label,n,carry,metrics):
+        nonlocal initial_hash,initial_count,index,ref,ref_counts,repeatability,prior_split_hash
+        h4r_require(index<len(schedule) and schedule[index]==(label,n),'CALL_SEQUENCE')
+        index+=1
+        gpu_check()
+        values,structure=snapshot(carry)
+        state_hash=digest_snapshot(values,structure)
+        if label=='initial':
+            initial_hash=state_hash
+            ts=carry[0]
+            initial_count=np.array(ts.normalizer_params.count,copy=True)
+            key=carry[2]
+            for j in range(21):
+                expected_keys.append(np.array(key,copy=True))
+                if j<20:
+                    key=jax.vmap(lambda k:jax.random.split(k,3)[2])(key)
+            restored=tuple(serialization.to_state_dict(jax.tree_util.tree_map(lambda x:x[0],v))
+                           for v in (ts.normalizer_params,ts.params.policy,ts.params.value))
+            compare_exact(expected_parts,restored,jax,np,'H4R_INITIAL_RESTORE')
+            report['initial']={'carry_sha256':initial_hash,'restored_weights_exact':True,
+                               **state_checks(carry,0)}
+            persist()
+            return
+        if label.endswith('_before'):
+            rollouts=(n-1)*5 if label=='S_before' else 0
+            h4r_require(state_hash==(initial_hash if rollouts==0 else prior_split_hash),'CARRY_BOUNDARY')
+            state_checks(carry,rollouts)
+            charge=5 if label=='S_before' else 20
+            report['attempted_transitions']+=charge*512
+            report['attempted_optimizer_updates']+=charge*40
+            h4r_require(report['attempted_transitions']<=30720 and
+                         report['attempted_optimizer_updates']<=2400,'BUDGET')
+            report['dispatches'].append({'label':label,'index':n,'rollouts':charge,
+                'input_sha256':state_hash})
+            persist()
+            return
+        rollouts=n*5 if label=='S_chunk' else 20
+        checks=state_checks(carry,rollouts)
+        m={k:np.array(jax.device_get(v),copy=True) for k,v in metrics.items()}
+        h4r_require(all(v.ndim==0 and np.isfinite(v).all() for v in m.values()),'METRIC_SCHEMA')
+        counts=h4r_counts(m,5 if label=='S_chunk' else 20)
+        if label!='S':
+            completed=5 if label=='S_chunk' else 20
+            report['recorded_transitions']+=completed*512
+            report['recorded_optimizer_updates']+=completed*40
+        row={'label':label,'index':n,'carry_sha256':state_hash,**checks,
+             'metrics':{k:v.item() for k,v in m.items()},'counts':counts}
+        report['boundaries'].append(row)
+        if label=='S_chunk':
+            prior_split_hash=state_hash
+            for k,v in counts.items():
+                split_counts[k]=split_counts.get(k,0)+v
+            persist()
+            return
+        row['ledger']=h4r_ledger(np,counts,carry[1].info)
+        persist()
+        h4r_require(row['ledger']['passed'],'LEDGER')
+        # Compare count metrics as integer totals, not floating reductions.
+        for k,v in m.items():
+            if k not in counts:
+                values['metric:'+k]=v
+        if label=='R0':
+            ref=(values,structure)
+            ref_counts=counts
+        else:
+            h4r_require(structure==ref[1] and counts==ref_counts,'REFERENCE_DISCRETE_METRICS')
+            if label=='S':
+                h4r_require(counts==split_counts,'CHUNK_REDUCTION')
+            result=h4r_compare(np,ref[0],values,
+                repeatability if label=='S' else None,exact_paths(ref[0]))
+            report['comparisons'][label]=result
+            persist()
+            h4r_require(result['passed'],'REFERENCE_REPEATABILITY' if label=='R1' else 'SPLIT_EQUIVALENCE')
+            if label=='R1':
+                repeatability=result['paths']
+        persist()
+    return callback
+
+
+def h4r_bootstrap_pins(args):
+    from importlib.machinery import PathFinder
+    root=Path(__file__).resolve().parent
+    compat=root.parent/'G1_M4_0_G1_PPO_ONE_UPDATE_SMOKE_V1'
+    paths={}
+    for name,expected in H4R_LOCAL_SHA.items():
+        search=[str(compat),*sys.path] if name=='nvcc_compat' else sys.path
+        spec=PathFinder.find_spec(name,search)
+        h4r_require(spec is not None and spec.origin is not None,'MODULE_MISSING '+name)
+        actual=Path(spec.origin).resolve()
+        intended=(compat if name=='nvcc_compat' else root)/(name+'.py')
+        h4r_require(actual==intended.resolve() and digest(actual)==expected,'MODULE_PIN '+name)
+        paths[name]=str(actual)
+    for name,blob in (('train','b36b69a38d2ebb1a218342b3f34386d47624383e'),
+                      ('paper_config','6dc390de5eec3cd0b036b2d766c71e3164e1b17f')):
+        spec=PathFinder.find_spec(name,sys.path)
+        h4r_require(spec is not None and spec.origin is not None,'MODULE_MISSING '+name)
+        actual=Path(spec.origin).resolve()
+        raw=actual.read_bytes()
+        actual_blob=hashlib.sha1(('blob '+str(len(raw))+'\0').encode()+raw).hexdigest()
+        h4r_require(actual==root/(name+'.py') and actual_blob==blob,'MODULE_PIN '+name)
+        paths[name]=str(actual)
+    h4r_require(digest(root/'paper_config_preflight.json')==H4R_CONFIG_SHA,'PAPER_CONFIG_PIN')
+    for path,sha in ((args.checkpoint,SEED1_SHA),(args.restore_report,H3_CAUSAL_RESTORE_SHA),
+                     (args.h4_readiness_reward_report,H4R_REWARD_SHA)):
+        h4r_require(path.is_file() and not path.is_symlink() and digest(path)==sha,'INPUT_PIN '+str(path))
+    return paths
+
+
+def h4r_run(args):
+    validate_h4r_cli(args)
+    h4r_require(args.mode=='readiness' and H4R_EXECUTION_AUTHORIZED is True and
+                 H4_EXECUTION_AUTHORIZED is False,'EXECUTION_HOLD')
+    import shutil
+    import traceback
+    h4r_require(not args.output_dir.exists() and args.output_dir.parent.is_dir(),'OUTPUT')
+    h4r_require(shutil.disk_usage(args.output_dir.parent).free>=2*1024**3,'DISK')
+    args.output_dir.mkdir(exist_ok=False)
+    report={'status':'M470_H4R_IN_PROGRESS','spec':H4R_SPEC,'attempted_transitions':0,
+            'attempted_optimizer_updates':0,'recorded_transitions':0,'recorded_optimizer_updates':0,
+            'evaluation_transitions':0,'dispatches':[],'boundaries':[],'comparisons':{},
+            'production_authorized':False,'promotion_authorized':False,'weights_retained':False,
+            'runner_sha256':digest(Path(__file__))}
+    def persist():
+        path=args.output_dir/'report.json'
+        tmp=path.with_suffix('.json.tmp')
+        tmp.write_text(json.dumps(report,allow_nan=False,indent=2)+'\n',encoding='utf8')
+        tmp.replace(path)
+    persist()
+    monitor=None
+    try:
+        pins=h4r_bootstrap_pins(args)
+        report['resolved_modules']=pins
+        from m462_ppo_warmstart_run import read_restore_gate,check_source_and_config,GPUMonitor,sample_gpu
+        from m463_instrument_brax import build_h4_readiness_ppo
+        gate,orbax_dir=read_restore_gate(args.restore_report,args.checkpoint)
+        h4r_require(gate['orbax_dir_sha256']==H4_ORBAX_SHA,'ORBAX_PIN')
+        report['frozen_inputs']={'checkpoint_sha256':SEED1_SHA,'restore_report_sha256':H3_CAUSAL_RESTORE_SHA,
+                                'orbax_sha256':H4_ORBAX_SHA,'reward_reference_sha256':H4R_REWARD_SHA}
+        monitor=GPUMonitor()
+        def gpu_check():
+            g=sample_gpu()
+            snap=monitor.snapshot()
+            h4r_require(g['total_mib']==12288 and 0<=g['used_mib']<.95*12288 and
+                not snap['sampler_errors'] and (snap['peak_used_mib'] is None or
+                snap['peak_used_mib']<.95*12288),'GPU')
+            report['gpu']=snap
+        with monitor:
+            gpu_check()
+            # Sole bootstrap invocation; it applies NVCC before importing JAX.
+            api=check_source_and_config('A')
+            jax=api['jax']
+            h4r_require(jax.__version__=='0.4.35' and jax.default_backend()=='gpu' and
+                         jax.process_count()==jax.local_device_count()==1,'JAX_RUNTIME')
+            from m463_coverage_env import CoverageJoystick
+            for name,path in pins.items():
+                mod=sys.modules.get(name)
+                h4r_require(mod is not None and Path(mod.__file__).resolve()==Path(path),'IMPORTED_ORIGIN '+name)
+            h4r_require(h4r_bootstrap_pins(args)==pins,'BOOTSTRAP_IMMUTABILITY')
+            scaled=copy.deepcopy(api['scaled'])
+            h4r_require(m470_fingerprint(scaled.to_dict())==H3_FP,'PRODUCTION_CONFIG')
+            scaled.num_envs=16
+            scaled.batch_size=2
+            scaled.num_timesteps=10240
+            scaled.num_evals=1
+            cfg=scaled.to_dict()
+            report['scaled_config']=copy.deepcopy(cfg)
+            source_cfg=api['source_cfg']
+            env_cfg=copy.deepcopy(source_cfg)
+            reward=json.loads(args.h4_readiness_reward_report.read_bytes())['train_reward_config']
+            h4r_require(source_cfg.to_dict()['reward_config']==reward and
+                        bool(source_cfg.push_config.enable),'ORIGINAL_REWARD')
+            env_cfg.push_config.enable=False
+            h4r_require(env_cfg.to_dict()['reward_config']==reward,'REWARD_UNCHANGED')
+            env=CoverageJoystick(config=env_cfg,stage='easy_repeat_support',h4_arm='control')
+            h4r_require(env.action_size==29 and float(env.dt)==.02,'ENV_CONFIG')
+            mod,meta=build_h4_readiness_ppo(api['ppo'],args.output_dir/'h4_readiness_generated.py')
+            report['generated']=meta
+            factory=functools.partial(api['networks'].make_ppo_networks,**cfg.pop('network_factory'))
+            audit=h4r_audit_callback(api,args,report,persist,gpu_check)
+            report['bootstrap_pass']=True
+            persist()
+            print('M470_H4R_BOOTSTRAP_PASS',flush=True)
+            result=mod.readiness_train(environment=env,wrap_env_fn=api['wrapper'].wrap_for_brax_training,
+                 network_factory=factory,seed=1,randomization_fn=api['randomizer'],
+                 restore_checkpoint_path=str(orbax_dir.resolve()),h4r_audit_fn=audit,**cfg)
+            h4r_require(result is None,'NO_PARAMETER_RETURN')
+            h4r_require(report['attempted_transitions']==report['recorded_transitions']==30720 and
+                report['attempted_optimizer_updates']==report['recorded_optimizer_updates']==2400 and
+                len(report['dispatches'])==6 and len(report['boundaries'])==7 and
+                all(report['comparisons'][k]['passed'] for k in ('R1','S')),'FINAL')
+            h4r_require(h4r_bootstrap_pins(args)==pins,'INPUT_IMMUTABILITY')
+            read_restore_gate(args.restore_report,args.checkpoint)
+            gpu_check()
+        report['gpu']=monitor.snapshot()
+        h4r_require(report['gpu']['samples']>0 and not report['gpu']['sampler_errors'] and
+                     0<report['gpu']['peak_used_mib']<.95*12288,'FINAL_GPU')
+        report['status']='M470_H4R_NUMERICAL_PASS'
+        persist()
+    except BaseException as exc:
+        report['status']='M470_H4R_STOPPED'
+        report['error']=type(exc).__name__+': '+str(exc)
+        report['traceback']=traceback.format_exc()
+        if monitor is not None:
+            report['gpu']=monitor.snapshot()
+        persist()
+        raise
+
+
 def validate_h4_cli(a):
     arm=getattr(a,'h4_arm',None)
     if arm is None:
@@ -1565,6 +1948,9 @@ def h3_technical_gate(api, train_cfg, stage, instrument_meta, result, persist):
 
 
 def run(args):
+    validate_h4r_cli(args)
+    if getattr(args,'h4_readiness',False):
+        return h4r_run(args)
     validate_h4_cli(args)
     h4_arm=getattr(args,'h4_arm',None)
     if h4_arm is not None:
@@ -2101,7 +2487,7 @@ def run(args):
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--mode',choices=['plan','smoke','probe2','smoke3','pilot','longtrain'],required=True)
+    p.add_argument('--mode',choices=['plan','smoke','probe2','smoke3','pilot','longtrain','readiness'],required=True)
     p.add_argument('--stage',choices=['easy','easy_repeat','easy_repeat_support','medium','hard'],default='easy')
     p.add_argument('--checkpoint',type=Path,required=True)
     p.add_argument('--restore-report',type=Path,required=True)
@@ -2122,11 +2508,20 @@ def main():
                    help='Exact OLD10M comparator report and adjacent frozen artifacts')
     p.add_argument('--h4-arm',choices=['control','candidate'],help='H4 design plan only; execution HOLD')
     p.add_argument('--h4-control-report',type=Path,help='Future pinned matched control; execution HOLD')
+    p.add_argument('--h4-readiness',action='store_true',help='Isolated readiness plan; execution HOLD')
+    p.add_argument('--h4-readiness-reward-report',type=Path)
     a=p.parse_args()
     try:
+        validate_h4r_cli(a)
         validate_h4_cli(a)
     except RuntimeError as exc:
         p.error(str(exc))
+    if a.h4_readiness:
+        if a.mode=='plan':
+            print('M470_H4R_PLAN_NO_GPU',json.dumps({'spec':H4R_SPEC,'execution_authorized':False,
+                 'production_authorized':False},sort_keys=True))
+            return
+        return h4r_run(a)
     if a.h4_arm is not None and a.mode=='plan':
         print('M470_H4_PLAN_NO_GPU',json.dumps({'arm':a.h4_arm,'spec':H4_SPEC,
               'execution_authorized':False,'training_performed':False},sort_keys=True))
