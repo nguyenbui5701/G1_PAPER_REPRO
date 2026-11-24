@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.56  
+**Version:** 1.2.57  
 **Ngày cập nhật:** 2026-11-24 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -639,6 +639,14 @@ H3-M1-0 integrated exact v1.2.55 handoff code blocks on pinned source in isolate
 
 Decision H3_M1_0_SOURCE_LANDED / OWNER_STATIC_EVIDENCE_PENDING / ALL_GPU_PPO_HOLD. H2C and Branch B HOLD.
 
+### M4.70-H3-M1-0 — INVALID STATIC LOG, FAIL-CLOSED LAUNCHER CORRECTION (v1.2.57; 2026-11-24)
+
+Owner log m470_h3_m1_0_static_20261124_171939_913644616.log SHA256 d5a465a367c58823d5ac10229d0f8df93b3dcc41c3abe2f640c0ef0cd6d3e92f. Source preflight PASS: HEAD e7e8b6ca52aaf11bb6907cfcaf0e19c0cc31c0f1, source SHA256 env f59bfdfc8e9000ab52bbeda25abf9d1556cb96d354f133ee18e9efaebef1a582, instrument 16e7e0b024de80e9f2663987d79fe2ac4bedb17a9a95ac6a5f9d7115c6df39fd, runner 4dee7c0d75d23dba5f039048254c745c2e3cc44dc23aea962700dd0ddb79d39d, evaluator 81d1a0bec04749e649ed252fabb7b77b3a5ea2d9758e5e96d711fccafa91d627; expected Git blobs remain unchanged remotely. Log shows seven 'Command python not found' failures and absent AST/helper/mock/reducer/audit/positive plan markers; final PASS and exit0 are INVALID. Assistant-provided shell pipeline placed in OR-list suppresses errexit inside subshell; negative CLI test accepted missing executable as expected rejection. This is a launch/evidence defect, not demonstrated H3 algorithm defect. Preserve log; no deleting untracked artifacts, no source changes or package installation.
+
+Correct once: use verified existing Python 3 with NumPy (ordinary python3 or existing venv interpreter, no JAX import/backend), execute actual source AST/helper/mock/reducer/legacy emission/audit/CLI tests in one Python process with checked subprocess exit codes; expected negative CLI must specifically return 2 with M470_H3_M1_MODE_NOT_APPROVED, positive H3/legacy plans must return0 and correct markers. Capture PIPESTATUS immediately outside OR-list/conditional, final PASS only after all assertions and both exit codes0. Keep actual source pin preflight, no output directory or training created. No rerun of already verified source changes, no new runner. Static gate pending valid evidence; technical gate/smoke3/+10M remain HOLD separate GO. H2C/B HOLD.
+
+Decision H3_M1_0_SOURCE_PREFLIGHT_PASS / STATIC_INVALID_LAUNCHER_ONLY / CORRECTED_STATIC_PENDING / GPU_PPO_HOLD.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -900,6 +908,9 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-24)
+
+**M470-H3-M1-0 INVALID STATIC LOG (v1.2.57; 2026-11-24):** owner log SHA d5a465a3, source preflight PASS; seven missing python command errors, apparent final PASS invalid due assistant OR-list/errexit and negative CLI weakness. No actual static tests executed, no source defect demonstrated. One corrected fail-closed static run using verified Python3+NumPy, exact exit/markers, no executable source changes. All GPU/PPO HOLD.
+
 
 **M470-H3-M1-0 SOURCE LANDED / SA SOURCE DELEGATION (v1.2.56; 2026-11-24):** Owner delegates source edit/push to SA on experiment branch, owner pulls and executes locally. Exact H3 handoff integrated at 3cc9f578fd120d1d743c3b9f8a7421413c0f2689, three source files only, evaluator unchanged. Git source review, actual static gate pending owner log; all CUDA/GPU/PPO HOLD separate GO. No manual edits needed. H2C/B HOLD.
 
@@ -1320,6 +1331,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-24 | H3-M1-0 static launcher audit | owner log d5a465a3, source preflight PASS, missing python and false PASS | v1.2.57 invalid evidence, corrected static pending, no source edit/GPU/PPO | 1.2.57 |
+
 | 2026-11-24 | H3-M1-0 delegated source landing | Owner redelegated edits, exact handoff three files at 3cc9f578fd120d1d743c3b9f8a7421413c0f2689, diff reviewed, prior design static only | v1.2.56 source landed; owner actual static pending; GPU/PPO HOLD | 1.2.56 |
 
 | 2026-11-24 | H3-M1-0 detailed source handoff | Pinned three source blobs, handoff SHA bdfa53ca, proposed helper/reducer/audit/CLI NumPy synthetic PASS, evaluator unchanged | v1.2.55 design complete, owner edit/static pending; no JAX/GPU/PPO/source changes by SA | 1.2.55 |
@@ -1496,6 +1509,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.57 — 2026-11-24:** Reject H3-M1-0 false static PASS; record missing Python and assistant shell guard defect, require single fail-closed corrected static evidence; source pins unchanged, execution HOLD.
 
 - **v1.2.56 — 2026-11-24:** Owner reauthorizes SA source edit and push for approved experiment tasks; H3-M1-0 three-file source landing, actual static gate pending, no GPU/PPO GO. AGENTS updated, preserve all historical gates.
 
