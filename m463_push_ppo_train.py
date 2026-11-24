@@ -359,8 +359,8 @@ def h4_verify_ledger(report):
             gpu=row['gpu']
             if (gpu['total_mib']!=12288 or not 0<gpu['peak_used_mib']<.95*12288 or gpu['sampler_errors']):
                 raise RuntimeError('M470_H4_REPORT_CHUNK_GPU')
-            if (sum(row['counts'][PREFIX+f'h4_class_{ci}_steps_per_rollout'] for ci in range(4))!=5*TOTAL_STEPS_BATCH
-                    or row['counts'][PREFIX+'h4_bad_per_rollout']!=0):
+            if (sum(row['counts'][f'm463_h4_class_{ci}_steps_per_rollout'] for ci in range(4))!=5*TOTAL_STEPS_BATCH
+                    or row['counts']['m463_h4_bad_per_rollout']!=0):
                 raise RuntimeError('M470_H4_REPORT_CHUNK_INVARIANT')
             for key,v in row['counts'].items():
                 if type(v) is not int or not 0<=v<=5*TOTAL_STEPS_BATCH:
@@ -409,7 +409,7 @@ def h4_final_checks(report,audit,control):
     legacy=h4_legacy_audit(report['report_history'])
     if legacy!=audit or not legacy['passed']:
         raise RuntimeError('M470_H4_LEGACY_COVERAGE')
-    n=counts[PREFIX+'h4_first_events_per_rollout']+counts[PREFIX+'h4_repeat_events_per_rollout']
+    n=counts['m463_h4_first_events_per_rollout']+counts['m463_h4_repeat_events_per_rollout']
     if abs(legacy['push_events_observed']-n)>=.1:
         raise RuntimeError('M470_H4_LEGACY_EVENT_RECONCILE')
     if [row['additional_steps'] for row in report['report_history']]!=[0,*H4_EDGES]:
@@ -510,7 +510,7 @@ def h4_static_ledger_fixture():
     def counts(arm):
         c={}
         def setc(name,value=0):
-            c[PREFIX+'h4_'+name+'_per_rollout']=value
+            c['m463_h4_'+name+'_per_rollout']=value
         for name in ('bad','assigned','repeat_assigned','first_events','repeat_events',
                      'first_closed','repeat_closed','first_due','repeat_due','event_terminal',
                      'close_repeat','close_terminal','close_complete','close_boundary',
@@ -632,7 +632,7 @@ def h4_static_ledger_fixture():
                 'h4_close_complete_per_rollout','h4_class_0_steps_per_rollout',
                 'h4_stand_1_events_per_rollout'):
         bad=copy.deepcopy(candidate)
-        bad['h4_chunks'][0]['counts'][PREFIX+key]+=1
+        bad['h4_chunks'][0]['counts']['m463_'+key]+=1
         reject(lambda:h4_verify_ledger(bad))
     # Fixture report has real bytes and hashes, but no actual trained weights.
     with tempfile.TemporaryDirectory() as tmp:
