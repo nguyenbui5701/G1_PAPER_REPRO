@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.60  
+**Version:** 1.2.61  
 **Ngày cập nhật:** 2026-11-24 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -671,6 +671,12 @@ Owner submitted log m470_h3_m1_1_20261124_172941_067558015.log (7754 bytes SHA25
 
 **Harness defect verified by source:** old gate independently jits off.reset and on.reset with identical keys, then prepares each separately; no actual shared snapshot. Same keys do not guarantee bitwise identical compiled numerical results. Exact numerical mechanism/leaf not identified from supplied log; cannot attribute to H3 reward, which has not been called. Fix only runner h3_technical_gate: one H3-enabled reset and prepare, fork exact same immutable physical/obs/reward/done/common info leaves with independent dictionaries, remove precisely eight H3 extras for OFF, verify reset/fork schema and exact initial data/obs/reward/done/metrics/common info. Add tree path to exact comparison failure labels. No change to any poststep equality or reward tolerance, cases/seeds/action/DR/scheduler, frozen reward, optimizer, PPO config or budget. New marker M470_H3_TECH_SHARED_SNAPSHOT_PASS. Source commit 5cfd2f696f22e5a5652b2ff53f6e483083c1cf73, runner blob d755fe8f66ce3a85bd958a6a5ba26ea3cf8b832b, parent 6c8ac607d083157c275e4debe38a3be072ec4239; other three source blobs unchanged. Actual GPU/AST on corrected runner not performed by SA; exact source diff reviewed. Correction under owner source delegation, no automatic rerun. Original GO consumed by bounded stop; one corrected integrated job requires fresh explicit owner GO, preserve old log/report, same 27 max diagnostic transitions/786432 PPO budget, no additional stand-alone probes. If exact poststep comparison or any gate fails, STOP and report leaf/case; do not widen tolerance, bypass gate or retry. Legacy bytes rechecked inside integrated preflight because new runner provenance, no repeated separate static campaign. No +10M, H2C/B or larger budgets. Decision H3_M1_1_BLOCKED_HARNESS_INITIAL_DATA / SHARED_SNAPSHOT_CORRECTION_LANDED / CORRECTED_EXECUTION_PENDING_EXPLICIT_OWNER_GO. H3-M1-0 PASS remains.
 
+### M4.70-H3-M1-1 — EXPLICIT CORRECTED GO, SHARED SNAPSHOT + SMOKE3 (v1.2.61; 2026-11-24)
+
+Owner explicitly approved "GO H3-M1-1 corrected — đọc Rules v1.2.60, sử dụng Shared Snapshot correction và cung cấp một khối lệnh pull + Integrated Technical Gate + PPO Smoke3, 786432 steps từ frozen C401M. Không thay đổi reward hoặc nới gate." One corrected integrated job authorized, A only. Prior failed run had 0 PPO; preserve its log/report. Reviewed AGENTS, Rules v1.2.60 at 407ea922016f409c3a3d7d9baf256fc0415f58ae, exact correction diff 5cfd2f696f22e5a5652b2ff53f6e483083c1cf73 and full corrected gate. Runner blob d755fe8f66ce3a85bd958a6a5ba26ea3cf8b832b, env b83ec0a031ea4184c48a1a189da9f87fcfb104d4, instrumenter 05d6349fc4cbe7f1ce92e14ec95438d79dcb4bda, evaluator 65f0b46cc0b61561e8f75864ed9348be60a7919c. No further executable changes. Shared snapshot initial equality (all common fields), exact post-step comparisons and all original v1.2.59 gates unchanged; log M470_H3_TECH_SHARED_SNAPSHOT_PASS before paired physics, leaf path on mismatch. Actual CUDA validation pending. Same 9 direct pairs + 9 wrapped transitions, max27 diagnostic control transitions (270 substeps), no separate probes or altered tolerances. Only after all pre-PPO gates pass: smoke3 786432 steps/3 rollouts/120 optimizer updates, seed1, 8192env/32unroll/1024batch/8minibatches/5updates, 2 evals, fresh Adam from C401M weights/normalizer and typed Orbax stage SHA5acfabc1376e91a2a9a52b47ac821e296f0e84f5545b646b07c9482ddc462bf3; original config fingerprint420ecb3798789b0f90f3ed249572ad8298fad03a5ce56a83a7a83e59ebe90fef. H3 .5/100 ticks, easy_repeat_support, no H1, no resume. Exact source pins and checkpoint SHA from v1.2.59, existing typed restore report SHA9c46427c16aa482730e45bc9f79c53f6cb18ec3a267d1fc3253faab695916e81, upstream clean/pinned. Single fail-closed shell job with ff-only sync, AST, g1_m463 launcher, fresh output path, source/restore/checkpoint immutability after run, combined log and report/checkpoint hashes, PIPESTATUS exact; runner failure captured without suppressing post-run checks. Stop on any gate failure, no automatic retry, no tolerance widening. Return log and report if generated; smoke checkpoint not promoted or used for independent training. No +10M, H2C/B or larger budgets. Rules-only update; SA has not executed GPU/PPO.
+
+Decision H3_M1_1_CORRECTED_OWNER_GO_ONE_INTEGRATED_JOB_PENDING / H3_M1_2_HOLD.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -932,6 +938,9 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-24)
+
+**M470-H3-M1-1 CORRECTED GO (v1.2.61; 2026-11-24):** Owner authorized one corrected integrated shared snapshot gate + smoke3. Source unchanged from v1.2.60, exact poststep gates retained, max27 diagnostic transitions/786432 PPO steps only after technical PASS. Prior failure evidence preserved, execution pending, no retry or promotion; +10M/H2C/B HOLD.
+
 
 **M470-H3-M1-1 INITIAL_DATA BLOCKED (v1.2.60; 2026-11-24):** log/report hashes dfd98048/8a3e4948, legacy actual bytes PASS, 231/315 mismatch at separately compiled reset outputs before physics; 0 PPO, peak725MiB, immutability PASS. Corrected runner single shared reset snapshot fork at 5cfd2f696f22e5a5652b2ff53f6e483083c1cf73; poststep gates unchanged. Original GO consumed, fresh explicit GO required for one corrected integrated job. H3-M1-0 PASS; +10M/H2C/B HOLD.
 
@@ -1364,6 +1373,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-24 | H3-M1-1 corrected explicit GO | Rules v1.2.60, correction diff5cfd2f69, runner d755fe8f, source pins unchanged | v1.2.61 one corrected integrated execution pending; 786432 PPO conditional, no retry | 1.2.61 |
+
 | 2026-11-24 | H3-M1-1 bounded initial state stop and harness correction | log dfd98048, report8a3e4948, INITIAL_DATA mismatch before step, legacy bytes/immutability PASS, 0 PPO | v1.2.60 single shared snapshot source correction, corrected run pending explicit GO | 1.2.60 |
 
 | 2026-11-24 | H3-M1-1 owner GO and integrated runtime gate source | 635d962aaca9b377e6bd257c6fc7c15c963ea6bd runner only, actual pinned API/diff review, fixed 27 diagnostic transitions, 786432 PPO budget | v1.2.59 one execution pending, no SA runtime, +10M HOLD | 1.2.59 |
@@ -1548,6 +1559,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.61 — 2026-11-24:** Record explicit corrected H3-M1-1 owner GO, shared snapshot and all original exact gates retained; one integrated job, no new executable edits, +10M HOLD.
 
 - **v1.2.60 — 2026-11-24:** Record H3-M1-1 pre-PPO INITIAL_DATA block, correct independent reset harness to fork one shared snapshot; keep exact downstream gates and frozen training unchanged. Fresh explicit GO required; no automatic retry.
 
