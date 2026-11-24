@@ -1561,7 +1561,11 @@ def h4c_compare(np,left,right,phase):
         def first(mask,kind):
             if not mask.any():
                 return None
-            idx=tuple(int(i) for i in np.unravel_index(int(np.flatnonzero(mask)[0]),x.shape))
+            ordered=phase=='A' and name.startswith("['batch']") and mask.ndim>=3
+            search=np.swapaxes(mask,1,2) if ordered else mask
+            idx=tuple(int(i) for i in np.unravel_index(int(np.flatnonzero(search)[0]),search.shape))
+            if ordered:
+                idx=(idx[0],idx[2],idx[1],*idx[3:])
             result=event(name,idx,kind)
             result.update(left=x[idx].item(),right=y[idx].item())
             return result
@@ -1688,11 +1692,34 @@ def h4c_audit_callback(api,args,report,persist,gpu_check):
                 h4c_require(all(x.shape[:4]==(1,1,32,16)
                                  for x in snap(trace[side])[0].values()),'TRACE_LAYOUT')
             h4c_require(np.isin(np.asarray(batch.discount),(0,1)).all(),'DISCOUNT')
+            h4c_require(np.asarray(batch.action).shape==(1,16,32,29),'ACTION_LAYOUT')
+            # Sidecar observations and flags must describe the very same
+            # actor_step transitions, including AutoReset semantics.
+            def batch_layout(x):
+                return np.swapaxes(np.asarray(x)[:,0],1,2)
+            for side,obs in (('pre',batch.observation),('post',batch.next_observation)):
+                left=jax.tree_util.tree_leaves(trace[side]['obs'])
+                right=jax.tree_util.tree_leaves(obs)
+                h4c_require(jax.tree_util.tree_structure(trace[side]['obs'])==
+                             jax.tree_util.tree_structure(obs),'OBS_SCHEMA')
+                for x,y in zip(left,right):
+                    same(batch_layout(x),y,'TRACE_OBS_'+side)
+            same(batch_layout(trace['post']['done']),1-np.asarray(batch.discount),'TRACE_DONE')
             ex=batch.extras['state_extras']
+            for k in ('truncation','h4_source_terminal','m463_event','m463_repeat',
+                      'm463_direction','m463_support_side','h4_class','h4_first_pending',
+                      'h4_repeat_pending','h4_tail_kind','h4_tail_age'):
+                same(batch_layout(trace['post']['info'][k]),ex[k],'TRACE_EXTRA '+k)
             h4c_require(np.isin(np.asarray(ex['truncation']),(0,1)).all() and
                          np.isin(np.asarray(ex['h4_source_terminal']),(0,1)).all(),'TERMINAL_SCHEMA')
             for side in ('pre','post'):
                 h4c_require(np.isin(np.asarray(trace[side]['done']),(0,1)).all(),'DONE_SCHEMA')
+            for k in ('m463_event','m463_repeat','h4_first_pending','h4_repeat_pending','h4_bad',
+                      'h4_boundary','h4_source_terminal','h4_tick_survived','m463_no_push'):
+                h4c_require(np.isin(np.asarray(ex[k]),(0,1)).all(),'FLAG_SCHEMA '+k)
+            for k,allowed in (('h4_class',(0,1)),('h4_tail_kind',(0,1,2)),
+                              ('m463_direction',tuple(range(6))),('m463_support_side',tuple(range(4)))):
+                h4c_require(np.isin(np.asarray(ex[k]),allowed).all(),'CATEGORY_SCHEMA '+k)
             m={k:np.asarray(v) for k,v in metrics.items()}
             h4c_require(all(v.shape==(1,) and np.isfinite(v).all() for v in m.values()),'METRICS')
             counts=h4r_counts({k:v[0] for k,v in m.items()},1)
