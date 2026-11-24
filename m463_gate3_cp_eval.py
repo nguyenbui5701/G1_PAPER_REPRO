@@ -2108,17 +2108,6 @@ def run(args):
                     if group['blocked'] is not None:
                         raise RuntimeError('M470_H2B_BOUNDED_STOP')
                 continue
-            if args.h2b:
-                if len(session['calibration']) != 6 or len(results) != 6:
-                    raise RuntimeError('H2B_INCOMPLETE_GROUPS')
-                if sha256(reference_path) != session['reference_sha256']:
-                    raise RuntimeError('H2B_REFERENCE_CHANGED')
-                if sha256(args.checkpoint_c) != BASE_SHA:
-                    raise RuntimeError('H2B_BASELINE_CHANGED')
-                session['status'] = 'M470_H2B_EVALUATION_COMPLETED'
-                h2b_write_progress(args.output, session)
-                print(session['status'], args.output, flush=True)
-                return
             if args.h2a:
                 result = h2a_evaluate_group(
                     args,
