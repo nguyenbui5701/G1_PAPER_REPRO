@@ -84,11 +84,21 @@ H4_SPEC = {'arms': ['control','candidate'], 'control_episode_mix': [.20,.80,0.,0
            'tail_windows':[10,25,50,100,250]}
 
 
+# Deliberately locked for this source revision. Opening H4 requires a
+# separately reviewed source change and explicit owner execution GO.
+H4_EXECUTION_AUTHORIZED = False
+H4_APPROVED_CONTROL_REPORT_SHA = None
+H4_ORBAX_SHA = '5acfabc1376e91a2a9a52b47ac821e296f0e84f5545b646b07c9482ddc462bf3'
+H4_EDGES = (5242880,10485760)
+H4_FILES = ('m463_coverage_env.py','m463_instrument_brax.py',
+            'm463_push_ppo_train.py','train.py','paper_config.py')
+
+
 def h4_integer_count(mean, rollouts=5):
     # Each integer rollout count <= 262144; five-count sum <= 1310720
     # is exactly representable in float32. Division rounding < .125 counts.
     x = float(mean)*rollouts
-    if not math.isfinite(x) or x < 0 or abs(x-round(x)) > .125:
+    if not math.isfinite(x) or not 0 <= x <= 2*rollouts*TOTAL_STEPS_BATCH or abs(x-round(x)) > .125:
         raise RuntimeError('M470_H4_NONINTEGER_COUNT')
     return int(round(x))
 
@@ -99,6 +109,8 @@ def h4_epoch_audit(counts, pending, arm, final=False):
         return counts['m463_h4_'+name+'_per_rollout']
     def q(name):
         return pending[name]
+    if any(type(v) is not int or v<0 for v in (*counts.values(),*pending.values())):
+        raise RuntimeError('M470_H4_LEDGER_COUNT_SCHEMA')
     checks = {
         'step_partition':sum(c(f'class_{i}_steps') for i in range(4)) ==
                          (10485760 if final else 5242880),
@@ -116,6 +128,30 @@ def h4_epoch_audit(counts, pending, arm, final=False):
         'due_bounds': c('first_events')<=c('first_due')<=c('assigned') and
                       c('repeat_events')<=c('repeat_due')<=c('repeat_assigned'),
     }
+    for ci in range(4):
+        def cc(k):
+            return c(f'class_{ci}_{k}')
+        checks[f'class_{ci}_first_ledger'] = (
+            cc('assigned') == cc('first_events')+cc('first_closed')+q(f'class_{ci}_first_pending')
+            and cc('first_events')<=cc('first_due')<=cc('assigned'))
+        checks[f'class_{ci}_repeat_ledger'] = (
+            cc('repeat_assigned') == cc('repeat_events')+cc('repeat_closed')+q(f'class_{ci}_repeat_pending')
+            and cc('repeat_events')<=cc('repeat_due')<=cc('repeat_assigned'))
+        for name in ('assigned','repeat_assigned','first_due','repeat_due',
+                     'first_closed','repeat_closed','first_events','repeat_events'):
+            checks[f'partition_{name}'] = sum(c(f'class_{j}_{name}') for j in range(4)) == c(name)
+    checks['nominal_no_events'] = c('class_0_first_events')+c('class_0_repeat_events')==0
+    checks['single_no_repeat'] = c('class_2_repeat_events')+c('class_2_repeat_assigned')==0
+    checks['arm_partition'] = (arm=='candidate' or
+        sum(c(f'class_{j}_steps') for j in (2,3))==0)
+    for motion in (0,3,4):
+        for side in (1,2):
+            prefix=f'target_{motion}_{side}_'
+            n=c(prefix+'repeat_events')
+            checks[prefix+'ledger'] = (
+                c(prefix+'repeat_assigned') == n+c(prefix+'repeat_closed')+q(prefix+'pending')
+                and n<=c(prefix+'repeat_due')<=c(prefix+'repeat_assigned')
+                and n==c(prefix+'matched')+c(prefix+'fallback'))
     for kind,total in ((1,c('first_events')),(2,c('repeat_events'))):
         for w in H4_SPEC['tail_windows']:
             executed=c(f'tail_{kind}_{w}_executed')
@@ -124,6 +160,15 @@ def h4_epoch_audit(counts, pending, arm, final=False):
                 c(f'tail_{kind}_{w}_same_command')<=executed and
                 c(f'tail_{kind}_{w}_same_unroll')<=executed)
             total=executed
+    for side in (1,2):
+        n=c(f'stand_{side}_events')
+        checks[f'qual_{side}_matched_bound'] = n<=c(f'target_0_{side}_matched')
+        prev=n
+        for w in H4_SPEC['tail_windows']:
+            count=c(f'stand_{side}_tail_2_{w}')
+            checks[f'qual_{side}_{w}_bounds'] = (
+                0<=c(f'stand_{side}_survived_2_{w}')<=count<=prev)
+            prev=count
     if arm == 'candidate':
         for side in (1,2):
             n=c(f'stand_{side}_events')
@@ -151,7 +196,7 @@ def h4_chunk_callback(jax,np,monitor,report,persist,arm):
     chunks=[]
     epoch_counts={}
     all_counts={}
-    all_pending={k:0 for k in ('first_pending','repeat_pending','tail_pending')}
+    all_pending={}
     report['h4_chunks']=chunks
     report['h4_epochs']=[]
     def callback(index,state,env_state,metrics):
@@ -185,20 +230,26 @@ def h4_chunk_callback(jax,np,monitor,report,persist,arm):
                     'first_closed','repeat_closed','first_due','repeat_due',
                     'event_terminal','close_repeat','close_terminal','close_complete',
                     'close_boundary','broad_events'}
-        required.update(f'class_{i}_steps' for i in range(4))
+        required.update(f'class_{i}_{k}' for i in range(4) for k in
+            ('steps','assigned','repeat_assigned','first_due','repeat_due','first_closed',
+             'repeat_closed','first_events','repeat_events'))
+        required.update(f'target_{m}_{side}_{k}' for m in (0,3,4) for side in (1,2) for k in
+            ('repeat_assigned','repeat_due','repeat_closed','repeat_events','matched','fallback'))
         for kind in (1,2):
             for w in H4_SPEC['tail_windows']:
                 required.update(f'tail_{kind}_{w}_{v}' for v in
                     ('executed','survived','same_command','same_unroll'))
         for side in (1,2):
             required.add(f'stand_{side}_events')
-            required.update(f'stand_{side}_tail_2_{w}' for w in (100,250))
+            required.update(f'stand_{side}_{k}_2_{w}' for w in H4_SPEC['tail_windows'] for k in ('tail','survived'))
             required.update(f'turn_{m}_{side}_events' for m in (3,4))
         required.update(f'broad_{k}_{j}' for j in range(6) for k in ('motion','direction'))
         if any('m463_h4_'+k+'_per_rollout' not in row['counts'] for k in required):
             raise RuntimeError('M470_H4_CHUNK_MISSING_METRICS')
         if row['counts']['m463_h4_bad_per_rollout']!=0:
             raise RuntimeError('M470_H4_CHUNK_INVARIANT')
+        # Read only scalar device arrays, not full MJX state. Validate at
+        # every host boundary, preserving the actual carry untouched.
         if index==4:
             info=env_state.info
             pending={}
@@ -210,7 +261,22 @@ def h4_chunk_callback(jax,np,monitor,report,persist,arm):
                 if arr.size!=8192 or not np.isin(arr,allowed).all():
                     raise RuntimeError('M470_H4_PENDING_SCHEMA')
                 pending[k]=int(np.count_nonzero(arr))
-                all_pending[k]+=pending[k]
+            hc=np.asarray(jax.device_get(info['h4_class']))
+            fp=np.asarray(jax.device_get(info['h4_first_pending']))>0
+            rp=np.asarray(jax.device_get(info['h4_repeat_pending']))>0
+            origin=np.asarray(jax.device_get(info['h4_repeat_origin_motion']))
+            direction=np.asarray(jax.device_get(info['m463_direction']))
+            if any(x.shape!=hc.shape for x in (fp,rp,origin,direction)) or not np.isin(hc,(0,1,2,3)).all():
+                raise RuntimeError('M470_H4_PENDING_CELL_SCHEMA')
+            for ci in range(4):
+                pending[f'class_{ci}_first_pending']=int(np.count_nonzero(fp & (hc==ci)))
+                pending[f'class_{ci}_repeat_pending']=int(np.count_nonzero(rp & (hc==ci)))
+            for motion in (0,3,4):
+                for side in (1,2):
+                    pending[f'target_{motion}_{side}_pending']=int(np.count_nonzero(
+                        rp & (hc==3) & (origin==motion) & (direction==side+1)))
+            for k,v in pending.items():
+                all_pending[k]=all_pending.get(k,0)+v
             result=h4_epoch_audit(epoch_counts,pending,arm)
             # Early exposure floor only after first epoch; second epoch
             # must satisfy conservation but full-run floor governs exposure.
@@ -228,6 +294,7 @@ def h4_chunk_callback(jax,np,monitor,report,persist,arm):
                 final=h4_epoch_audit(all_counts,all_pending,arm,final=True)
                 report['h4_final_exposure']=final
                 report['h4_final_counts']=dict(all_counts)
+                report['h4_final_pending']=dict(all_pending)
                 persist()
                 if not final['passed']:
                     raise RuntimeError('M470_H4_FINAL_EXPOSURE')
@@ -245,9 +312,165 @@ def h4_matched_nominal_check(control_counts, candidate_counts):
     return b>=.15*10485760 and 5*b>=4*a
 
 
+def h4_common_contract(config,reward,instrument):
+    if (m470_fingerprint(config)!=H3_FP or config.get('num_timesteps')!=10485760
+            or config.get('num_evals')!=3 or config.get('num_resets_per_eval')!=1
+            or config.get('episode_length')!=1000):
+        raise RuntimeError('M470_H4_CONFIG_CONTRACT')
+    if instrument.get('original_brax_sha256')!=H3_CAUSAL_ORIGINAL_BRAX_SHA:
+        raise RuntimeError('M470_H4_BRAX_PIN')
+    return {'source_commit':PIN,'checkpoint_sha256':SEED1_SHA,
+            'restore_report_sha256':H3_CAUSAL_RESTORE_SHA,'orbax_sha256':H4_ORBAX_SHA,
+            'seed':1,'config':copy.deepcopy(config),'reward':copy.deepcopy(reward),
+            'source_digests':{name:digest(Path(__file__).with_name(name)) for name in H4_FILES},
+            'generated_brax_sha256':instrument['instrumented_sha256'],
+            'original_brax_sha256':instrument['original_brax_sha256']}
+
+
+def h4_verify_ledger(report):
+    chunks=report['h4_chunks']
+    epochs=report['h4_epochs']
+    arm=report['h4_arm']
+    if len(chunks)!=8 or len(epochs)!=2:
+        raise RuntimeError('M470_H4_REPORT_CHUNKS')
+    combined={}
+    pending={}
+    for j,ep in enumerate(epochs):
+        counts={}
+        for k,row in enumerate(chunks[j*4:j*4+4]):
+            n=j*4+k+1
+            if row['chunk']!=n or row['steps']!=n*5*TOTAL_STEPS_BATCH or row['passed'] is not True:
+                raise RuntimeError('M470_H4_REPORT_CHUNK_SEQUENCE')
+            gpu=row['gpu']
+            if (gpu['total_mib']!=12288 or not 0<gpu['peak_used_mib']<.95*12288 or gpu['sampler_errors']):
+                raise RuntimeError('M470_H4_REPORT_CHUNK_GPU')
+            for key,v in row['counts'].items():
+                if type(v) is not int or v<0:
+                    raise RuntimeError('M470_H4_REPORT_CHUNK_COUNTS')
+                counts[key]=counts.get(key,0)+v
+                combined[key]=combined.get(key,0)+v
+        if counts!=ep['counts']:
+            raise RuntimeError('M470_H4_REPORT_EPOCH_COUNTS')
+        q=ep['pending_at_reset']
+        result=h4_epoch_audit(counts,q,arm)
+        if j==1:
+            result['checks']={k:v for k,v in result['checks'].items()
+                if not k.startswith(('stand_','turn_'))}
+            result['passed']=all(result['checks'].values())
+        if result!=ep['audit'] or not result['passed']:
+            raise RuntimeError('M470_H4_REPORT_EPOCH_AUDIT')
+        for key,v in q.items():
+            pending[key]=pending.get(key,0)+v
+    result=h4_epoch_audit(combined,pending,arm,final=True)
+    if (combined!=report['h4_final_counts'] or pending!=report['h4_final_pending']
+            or result!=report['h4_final_exposure'] or not result['passed']):
+        raise RuntimeError('M470_H4_REPORT_FINAL_LEDGER')
+    return combined
+
+
+def h4_legacy_audit(history):
+    # Same original repeat-side requirements and exact tolerance.
+    a=audit_coverage(history,20)
+    c=a['counts']
+    t,m,f,left,right,repeat=(c[PREFIX+k+'_per_rollout'] for k in (
+        'repeat_side_targeted','repeat_side_matched','repeat_side_fallback',
+        'repeat_side_target_left','repeat_side_target_right','repeat'))
+    a['checks'].update({
+        'repeat_side_targeted_observed':t>0,
+        'repeat_side_matched_observed':m>0,
+        'repeat_side_both_directions_observed':left>0 and right>0,
+        'repeat_side_counts_reconcile':abs(t-m-f)<.1 and abs(t-left-right)<.1 and t<=repeat})
+    a['passed']=all(a['checks'].values())
+    return a
+
+
+def h4_final_checks(report,audit,control):
+    counts=h4_verify_ledger(report)
+    legacy=h4_legacy_audit(report['report_history'])
+    if legacy!=audit or not legacy['passed']:
+        raise RuntimeError('M470_H4_LEGACY_COVERAGE')
+    n=counts[PREFIX+'h4_first_events_per_rollout']+counts[PREFIX+'h4_repeat_events_per_rollout']
+    if abs(legacy['push_events_observed']-n)>=.1:
+        raise RuntimeError('M470_H4_LEGACY_EVENT_RECONCILE')
+    if [row['additional_steps'] for row in report['report_history']]!=[0,*H4_EDGES]:
+        raise RuntimeError('M470_H4_EVAL_EDGES')
+    for k in ('checkpoints','fullstate_checkpoints'):
+        if [v['steps'] for v in report[k]]!=list(H4_EDGES):
+            raise RuntimeError('M470_H4_CHECKPOINT_EDGES')
+    if report['h4_arm']=='candidate':
+        if control is None or not h4_matched_nominal_check(control['counts'],counts):
+            raise RuntimeError('M470_H4_MATCHED_NOMINAL')
+        report['h4_matched_nominal_pass']=True
+    report['h4_legacy_reconciled']=True
+
+
+def h4_read_control(path,expected_sha,contract):
+    """Verify the separately reviewed, immutable matched-control artifact.
+
+    No historical OLD10M, resume, arbitrary CLI digest or partial control.
+    """
+    if not isinstance(expected_sha,str) or len(expected_sha)!=64 or any(x not in '0123456789abcdef' for x in expected_sha):
+        raise RuntimeError('M470_H4_CONTROL_NOT_APPROVED')
+    path=Path(path)
+    if path.is_symlink() or not path.is_file():
+        raise RuntimeError('M470_H4_CONTROL_FILE')
+    raw=path.read_bytes()
+    if hashlib.sha256(raw).hexdigest()!=expected_sha:
+        raise RuntimeError('M470_H4_CONTROL_SHA')
+    r=json.loads(raw)
+    expected={'status':'M463_COVERAGE_LONGTRAIN_PASS','h4_arm':'control',
+        'h4_common_contract':contract,'h4_spec':H4_SPEC,'training_performed':True,
+        'source_commit':PIN,'source_checkpoint_sha256':SEED1_SHA,'orbax_sha256':H4_ORBAX_SHA,
+        'trained_from':'C401M_WEIGHTS_ONLY_ADAM_STARTED_ONCE','training_seed':1,
+        'hardware_scaled_config':contract['config'],'train_reward_config':contract['reward'],
+        'runner_sha256':contract['source_digests']['m463_push_ppo_train.py'],
+        'steps_observed':10485760,'run_steps_observed':10485760,'rollouts_target':40,
+        'rollouts_per_epoch':20,'cumulative_steps_start':0,'resume_fullstate_sha256':None,
+        'coverage_gate_pass':True,'memory_gate_pass':True,'weights_finite':True,
+        'callback_vs_final_equal':True,'gpu_total_mib':12288,'h4_legacy_reconciled':True,
+        'h4_resume_forbidden':True,'promotion_authorized':False,'h4_control_report_sha256':None,
+        'reward_PD_termination_source_unchanged':True,'h1_m1_enabled':False,'h1_m2_enabled':False}
+    for key,v in expected.items():
+        if key not in r or r[key]!=v:
+            raise RuntimeError('M470_H4_CONTROL_CONTRACT '+key)
+    if r.get('h3_m1_enabled',False) or not 0<r['gpu_peak_mib']<.95*12288 or r['gpu_monitor_errors']:
+        raise RuntimeError('M470_H4_CONTROL_SAFETY')
+    counts=h4_verify_ledger(r)
+    h4_final_checks(r,r['coverage'],None)
+    def artifact(name,sha):
+        if not isinstance(name,str) or Path(name).name!=name or name in ('.','..'):
+            raise RuntimeError('M470_H4_CONTROL_ARTIFACT_PATH')
+        q=path.parent/name
+        if q.is_symlink() or not q.is_file() or digest(q)!=sha:
+            raise RuntimeError('M470_H4_CONTROL_ARTIFACT_SHA '+name)
+        return q
+    im=r['instrumented_brax']
+    if im['original_brax_sha256']!=contract['original_brax_sha256'] or im['instrumented_sha256']!=contract['generated_brax_sha256']:
+        raise RuntimeError('M470_H4_CONTROL_GENERATED_PIN')
+    artifact('m463_brax_ppo_instrumented.py',contract['generated_brax_sha256'])
+    for step,policy,full in zip(H4_EDGES,r['checkpoints'],r['fullstate_checkpoints']):
+        if (policy['file']!=f'm463_easy_repeat_support_longtrain_step_{step:09d}.msgpack' or
+                full['file']!=f'm470_fullstate_step_{step:09d}.msgpack' or
+                full['manifest']!=f'm470_fullstate_step_{step:09d}.json'):
+            raise RuntimeError('M470_H4_CONTROL_ARTIFACT_NAMES')
+        artifact(policy['file'],policy['sha256'])
+        artifact(full['file'],full['sha256'])
+        manifest=json.loads(artifact(full['manifest'],full['manifest_sha256']).read_bytes())
+        for key,value in {'h4_arm':'control','h4_resume_forbidden':True,
+            'h4_common_contract':contract,'cumulative_steps':step,
+            'fullstate_sha256':full['sha256'],'parent_resume_sha256':None,
+            'reset_edge':True,'optimizer_state_included':True,'training_rng_included':True,
+            'evaluator_rng_included':True}.items():
+            if key not in manifest or manifest[key]!=value:
+                raise RuntimeError('M470_H4_CONTROL_MANIFEST '+key)
+    return {'sha256':expected_sha,'counts':counts}
+
+
 def validate_h4_cli(a):
     arm=getattr(a,'h4_arm',None)
     if arm is None:
+        if getattr(a,'h4_control_report',None) is not None:
+            raise RuntimeError('M470_H4_EVIDENCE_REQUIRES_ARM')
         return
     if arm not in H4_SPEC['arms'] or a.stage!='easy_repeat_support':
         raise RuntimeError('M470_H4_ARM_STAGE')
@@ -255,8 +478,14 @@ def validate_h4_cli(a):
             any(v is not None for v in (a.h3_causal_report,a.h3_old10m_report,
                 a.resume_state,a.smoke_report,a.independent_budget,a.rollouts,a.num_evals))):
         raise RuntimeError('M470_H4_CONFLICT')
-    if a.mode!='plan':
+    if a.mode=='plan':
+        if getattr(a,'h4_control_report',None) is not None:
+            raise RuntimeError('M470_H4_PLAN_EVIDENCE_NOT_ALLOWED')
+        return
+    if not H4_EXECUTION_AUTHORIZED:
         raise RuntimeError('M470_H4_EXECUTION_HOLD')
+    if a.mode!='longtrain' or ((arm=='candidate') != (a.h4_control_report is not None)):
+        raise RuntimeError('M470_H4_RUNTIME_FLAGS')
 
 
 def validate_h3_cli(a):
@@ -585,6 +814,8 @@ def m470_resume_manifest(path: Path, fingerprint, instrument_sha, batches_per_ev
     if manifest_path.is_symlink() or not manifest_path.is_file():
         raise RuntimeError('M470_RESUME_MANIFEST_MISSING')
     meta = json.loads(manifest_path.read_text('utf8'))
+    if meta.get('h4_arm') is not None or meta.get('h4_resume_forbidden',False):
+        raise RuntimeError('M470_H4_RESUME_FORBIDDEN')
     if meta.get('h3_m1_enabled', False):
         raise RuntimeError('M470_H3_RESUME_FORBIDDEN')
     expected = {
@@ -972,8 +1203,11 @@ def h3_technical_gate(api, train_cfg, stage, instrument_meta, result, persist):
 
 def run(args):
     validate_h4_cli(args)
-    if getattr(args,'h4_arm',None) is not None:
-        raise RuntimeError('M470_H4_EXECUTION_HOLD')
+    h4_arm=getattr(args,'h4_arm',None)
+    if h4_arm is not None:
+        if not H4_EXECUTION_AUTHORIZED or args.mode!='longtrain':
+            raise RuntimeError('M470_H4_EXECUTION_HOLD')
+        args.rollouts,args.num_evals=40,3
     validate_h3_cli(args)
     h3_m1 = bool(getattr(args, 'h3_m1', False))
     h3_diagnostic = bool(getattr(args, 'h3_diagnostic_only', False))
@@ -994,6 +1228,9 @@ def run(args):
     from m463_instrument_brax import build_instrumented_ppo
 
     report_gate,orbax_dir=read_restore_gate(args.restore_report,args.checkpoint)
+    if h4_arm is not None and (digest(args.restore_report)!=H3_CAUSAL_RESTORE_SHA or
+            digest(args.checkpoint)!=SEED1_SHA or report_gate['orbax_dir_sha256']!=H4_ORBAX_SHA):
+        raise RuntimeError('M470_H4_FROZEN_RESTORE_MISMATCH')
     if h3_m1 and (digest(args.checkpoint) != SEED1_SHA or
             report_gate['orbax_dir_sha256'] !=
             '5acfabc1376e91a2a9a52b47ac821e296f0e84f5545b646b07c9482ddc462bf3'):
@@ -1049,7 +1286,7 @@ def run(args):
     from flax import serialization
     from m463_coverage_env import CoverageJoystick, STAGES
     if jax.default_backend()!='gpu':raise RuntimeError('M463_GPU_REQUIRED')
-    if h3_acceptance is not None and (jax.process_count() != 1 or jax.local_device_count() != 1
+    if (h3_acceptance is not None or h4_arm is not None) and (jax.process_count() != 1 or jax.local_device_count() != 1
             or gpu_initial['total_mib'] != 12288
             or not 0 <= gpu_initial['used_mib'] < .95*gpu_initial['total_mib']):
         raise RuntimeError('M470_H3_SMOKE_GPU_PREFLIGHT')
@@ -1083,7 +1320,7 @@ def run(args):
     elif original_reward != train_cfg.to_dict()['reward_config']:
         raise RuntimeError('M463_REWARD_CHANGED')
     train_env=CoverageJoystick(config=train_cfg,stage=args.stage,
-                               h1_m1=h1_m1,h1_m2=h1_m2,h3_m1=h3_m1)
+                               h1_m1=h1_m1,h1_m2=h1_m2,h3_m1=h3_m1,h4_arm=h4_arm)
     # Original source-driven randomized evaluation; only 2 envs as previous.
     eval_env=api['locomotion'].load(api['env_name'],config=source_cfg)
     scaled=api['scaled']
@@ -1097,6 +1334,9 @@ def run(args):
         raise RuntimeError('M470_SMOKE3_REQUIRES_CONTINUOUS_ENV_STATE')
     fp = m470_fingerprint(scaled.to_dict()) if longtrain else None
     h3_fp = m470_fingerprint(scaled.to_dict()) if h3_m1 else None
+    if h4_arm is not None and (fp!=H3_FP or batches!=40 or scaled.num_evals!=3 or
+            cfg.get('episode_length')!=1000 or cfg.get('num_resets_per_eval')!=1):
+        raise RuntimeError('M470_H4_PPO_CONFIG_MISMATCH')
     if h3_m1 and h3_fp != H3_FP:
         raise RuntimeError('M470_H3_PPO_FINGERPRINT_MISMATCH')
     if h3_acceptance is not None and (not longtrain or batches != 40
@@ -1116,7 +1356,13 @@ def run(args):
     out.mkdir(parents=True,exist_ok=False)
     instrumented_ppo,instrument_meta=build_instrumented_ppo(
         api['ppo'],out/'m463_brax_ppo_instrumented.py',
-        enable_resume=longtrain, enable_h3=h3_m1)
+        enable_resume=longtrain, enable_h3=h3_m1,enable_h4=h4_arm is not None)
+    h4_contract=None
+    h4_control=None
+    if h4_arm is not None:
+        h4_contract=h4_common_contract(scaled.to_dict(),original_reward,instrument_meta)
+        if h4_arm=='candidate':
+            h4_control=h4_read_control(args.h4_control_report,H4_APPROVED_CONTROL_REPORT_SHA,h4_contract)
     if h3_acceptance is not None:
         h3_acceptance['longtrain_brax_comparison']=verify_h3_longtrain_brax(api,instrument_meta)
         print('M470_H3_OLD10M_GENERATED_SOURCE_PASS',flush=True)
@@ -1177,6 +1423,10 @@ def run(args):
         'gpu_initial':gpu_initial,
         'training_performed':False,'report_history':history,'checkpoints':checkpoints,
     }
+    if h4_arm is not None:
+        report.update(h4_arm=h4_arm,h4_spec=H4_SPEC,h4_common_contract=h4_contract,
+                      h4_control_report_sha256=(h4_control['sha256'] if h4_control else None),
+                      h4_resume_forbidden=True,promotion_authorized=False)
     if h3_m1:
         report.update(h3_m1_enabled=True, h3_m1_spec=H3_SPEC,
                       h3_ppo_fingerprint=h3_fp,
@@ -1295,6 +1545,8 @@ def run(args):
             'training_rng_included':True,
             'evaluator_rng_included':True,
         }
+        if h4_arm is not None:
+            info.update(h4_arm=h4_arm,h4_resume_forbidden=True,h4_common_contract=h4_contract)
         if h3_m1:
             info['h3_m1_enabled'] = True
             info['h3_m1_spec'] = H3_SPEC
@@ -1306,12 +1558,15 @@ def run(args):
         report['fullstate_checkpoints'].append({
             'steps':int(step), 'file':file.name,
             'sha256':info['fullstate_sha256'],
-            'manifest':meta_file.name})
+            'manifest':meta_file.name, **({'manifest_sha256':digest(meta_file)} if h4_arm is not None else {})})
         persist()
         print('M470_FULLSTATE_CHECKPOINT',int(step),file.name,
               info['fullstate_sha256'],flush=True)
 
     monitor=GPUMonitor()
+    if h4_arm is not None:
+        cfg['h4_chunk_fn']=h4_chunk_callback(jax,np,monitor,report,persist,h4_arm)
+        persist()
     try:
         with monitor:
             if h3_diagnostic:
@@ -1343,8 +1598,10 @@ def run(args):
                         raise RuntimeError('M470_H3_PPO_HOLD_CAUSAL_VALIDATION')
                     print('M470_H3_INDEPENDENT_10M_READY',json.dumps(h3_acceptance,sort_keys=True),
                           flush=True)
+                if h4_arm is not None and not H4_EXECUTION_AUTHORIZED:
+                    raise RuntimeError('M470_H4_EXECUTION_HOLD')
                 report['training_performed']=True
-                if h3_m1:
+                if h3_m1 or h4_arm is not None:
                     persist()
                 _,params,_=instrumented_ppo.train(
                     environment=train_env,eval_env=eval_env,
@@ -1443,6 +1700,8 @@ def run(args):
             report['h3_m1_training_transition_audit'] = h3_result
             audit['checks'].update(h3_result['checks'])
             audit['passed'] = all(audit['checks'].values())
+        if h4_arm is not None:
+            h4_final_checks(report,audit,h4_control)
         memory_ok=(gpu['peak_used_mib'] is not None and gpu['total_mib'] is not None
                    and gpu['peak_used_mib']<gpu['total_mib']*0.95)
         report.update(steps_observed=expected,run_steps_observed=scaled.num_timesteps,
@@ -1491,12 +1750,13 @@ def main():
     p.add_argument('--h3-old10m-report',type=Path,
                    help='Exact OLD10M comparator report and adjacent frozen artifacts')
     p.add_argument('--h4-arm',choices=['control','candidate'],help='H4 design plan only; execution HOLD')
+    p.add_argument('--h4-control-report',type=Path,help='Future pinned matched control; execution HOLD')
     a=p.parse_args()
     try:
         validate_h4_cli(a)
     except RuntimeError as exc:
         p.error(str(exc))
-    if a.h4_arm is not None:
+    if a.h4_arm is not None and a.mode=='plan':
         print('M470_H4_PLAN_NO_GPU',json.dumps({'arm':a.h4_arm,'spec':H4_SPEC,
               'execution_authorized':False,'training_performed':False},sort_keys=True))
         return

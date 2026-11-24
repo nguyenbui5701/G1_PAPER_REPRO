@@ -181,7 +181,7 @@ def _add_m470_fullstate_hooks(s):
     )
     return s
 
-H4_EXT_FIELDS = ('h4_class', 'h4_boundary', 'h4_age', 'h4_target', 'h4_motion', 'h4_actor_motion', 'h4_refresh', 'h4_changed', 'h4_assigned', 'h4_first_pending', 'h4_repeat_pending', 'h4_first_due', 'h4_repeat_due', 'h4_first_closed', 'h4_repeat_closed', 'h4_event_qual', 'h4_mature_repeat', 'h4_repeat_assigned', 'h4_event_terminal', 'h4_tail_kind', 'h4_tail_cell', 'h4_tail_age', 'h4_tail_same', 'h4_tick_kind', 'h4_tick_cell', 'h4_tick_age', 'h4_tick_same', 'h4_tick_survived', 'h4_close_repeat', 'h4_close_terminal', 'h4_close_complete', 'h4_close_boundary', 'h4_bad','h4_actual_dx','h4_actual_dy',)
+H4_EXT_FIELDS = ('h4_class', 'h4_boundary', 'h4_age', 'h4_target', 'h4_motion', 'h4_actor_motion', 'h4_refresh', 'h4_changed', 'h4_assigned', 'h4_first_pending', 'h4_repeat_pending', 'h4_first_due', 'h4_repeat_due', 'h4_first_closed', 'h4_repeat_closed', 'h4_event_qual', 'h4_mature_repeat', 'h4_repeat_assigned', 'h4_event_terminal', 'h4_tail_kind', 'h4_tail_cell', 'h4_tail_age', 'h4_tail_same', 'h4_tick_kind', 'h4_tick_cell', 'h4_tick_age', 'h4_tick_same', 'h4_tick_survived', 'h4_close_repeat', 'h4_close_terminal', 'h4_close_complete', 'h4_close_boundary', 'h4_bad', 'h4_assign_motion', 'h4_repeat_origin_motion', 'h4_class_event', 'h4_source_terminal', 'h4_command_mismatch','h4_actual_dx','h4_actual_dy',)
 
 H4_METRICS_SOURCE = '''    # H4: only PPO-consumed scalar extras, not configured event counts.
     h4_count = lambda mask: jnp.sum(mask.astype(jnp.float32))
@@ -215,7 +215,16 @@ H4_METRICS_SOURCE = '''    # H4: only PPO-consumed scalar extras, not configured
         extras['m463_repeat_side_matched'] > 0)
     coverage['m463_h4_repeat_fallback_per_rollout'] = h4_count(
         extras['m463_repeat_side_fallback'] > 0)
+    for name in ('source_terminal','command_mismatch'):
+        coverage[f'm463_h4_{name}_per_rollout'] = h4_count(extras['h4_'+name]>0)
     for ci in range(4):
+        cm = hc == ci
+        for name in ('assigned','repeat_assigned','first_due','repeat_due',
+                     'first_closed','repeat_closed'):
+            coverage[f'm463_h4_class_{ci}_{name}_per_rollout'] = h4_count(
+                cm & (extras['h4_'+name]>0))
+        coverage[f'm463_h4_class_{ci}_first_events_per_rollout'] = h4_count(cm & he & (~hr))
+        coverage[f'm463_h4_class_{ci}_repeat_events_per_rollout'] = h4_count(cm & hr)
         coverage[f'm463_h4_class_{ci}_steps_per_rollout'] = h4_count(hc == ci)
         coverage[f'm463_h4_class_{ci}_assign_per_rollout'] = h4_count(
             (hc == ci) & (extras['h4_boundary'] > 0))
@@ -231,6 +240,20 @@ H4_METRICS_SOURCE = '''    # H4: only PPO-consumed scalar extras, not configured
             he & (hc == 1) & (extras['h4_motion'] == j))
         coverage[f'm463_h4_broad_direction_{j}_per_rollout'] = h4_count(
             he & (hc == 1) & (extras['m463_direction'] == j))
+    # Joint target ledger: origin command at first actual push, not
+    # the possibly refreshed post-step motion tag.
+    for motion in (0,3,4):
+        for side in (1,2):
+            cell = (hc == 3) & (extras['h4_repeat_origin_motion'] == motion) & (
+                extras['m463_direction'] == side+1)
+            for name in ('repeat_assigned','repeat_due','repeat_closed'):
+                coverage[f'm463_h4_target_{motion}_{side}_{name}_per_rollout'] = h4_count(
+                    cell & (extras['h4_'+name]>0))
+            coverage[f'm463_h4_target_{motion}_{side}_repeat_events_per_rollout'] = h4_count(cell & hr)
+            coverage[f'm463_h4_target_{motion}_{side}_matched_per_rollout'] = h4_count(
+                cell & (extras['m463_repeat_side_matched']>0))
+            coverage[f'm463_h4_target_{motion}_{side}_fallback_per_rollout'] = h4_count(
+                cell & (extras['m463_repeat_side_fallback']>0))
     for side in (1,2):
         coverage[f'm463_h4_stand_{side}_events_per_rollout'] = h4_count(extras['h4_event_qual'] == side)
         for motion in (3,4):
@@ -271,6 +294,11 @@ def _add_h4_chunk_hooks(s):
 
   # Initialize model params and training state.
 ''')
+    # Source revision is explicitly offline-only. Even an imported
+    # generated module must fail before the first runtime operation.
+    one('  if madrona_backend:\\n',
+        "  raise RuntimeError('M470_H4_EXECUTION_HOLD')\\n"
+        '  if madrona_backend:\\n')
     start=s.index('  def training_epoch(')
     end=s.index('  # Initialize model params and training state.',start)
     # Keep the contract above outside the replacement.

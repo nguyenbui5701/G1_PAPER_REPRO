@@ -69,7 +69,7 @@ EXTRA_FIELDS = (
 
 
 # H4: scalar info only, never included in actor/critic observations.
-H4_FIELDS = ('h4_class', 'h4_boundary', 'h4_age', 'h4_target', 'h4_motion', 'h4_actor_motion', 'h4_refresh', 'h4_changed', 'h4_assigned', 'h4_first_pending', 'h4_repeat_pending', 'h4_first_due', 'h4_repeat_due', 'h4_first_closed', 'h4_repeat_closed', 'h4_event_qual', 'h4_mature_repeat', 'h4_repeat_assigned', 'h4_event_terminal', 'h4_tail_kind', 'h4_tail_cell', 'h4_tail_age', 'h4_tail_same', 'h4_tick_kind', 'h4_tick_cell', 'h4_tick_age', 'h4_tick_same', 'h4_tick_survived', 'h4_close_repeat', 'h4_close_terminal', 'h4_close_complete', 'h4_close_boundary', 'h4_bad',)
+H4_FIELDS = ('h4_class', 'h4_boundary', 'h4_age', 'h4_target', 'h4_motion', 'h4_actor_motion', 'h4_refresh', 'h4_changed', 'h4_assigned', 'h4_first_pending', 'h4_repeat_pending', 'h4_first_due', 'h4_repeat_due', 'h4_first_closed', 'h4_repeat_closed', 'h4_event_qual', 'h4_mature_repeat', 'h4_repeat_assigned', 'h4_event_terminal', 'h4_tail_kind', 'h4_tail_cell', 'h4_tail_age', 'h4_tail_same', 'h4_tick_kind', 'h4_tick_cell', 'h4_tick_age', 'h4_tick_same', 'h4_tick_survived', 'h4_close_repeat', 'h4_close_terminal', 'h4_close_complete', 'h4_close_boundary', 'h4_bad', 'h4_assign_motion', 'h4_repeat_origin_motion', 'h4_class_event', 'h4_source_terminal', 'h4_command_mismatch',)
 H4_WINDOWS = (10, 25, 50, 100, 250)
 
 
@@ -475,6 +475,7 @@ class CoverageJoystick(joystick.Joystick):
             first_age = jp.where(boundary, -1, info['h4_first_age'])
             first_mag = jp.where(boundary, 0., info['h4_first_mag'])
             first_motion = jp.where(boundary, -1, info['h4_first_motion'])
+            assign_motion = jp.where(boundary, pre_motion, info['h4_assign_motion'])
             mature_repeat = (repeat & (h4_class == 3) &
                 (first_age >= 240) & (first_age <= 308) &
                 (first_mag >= .45) & (first_mag <= .55) &
@@ -490,7 +491,13 @@ class CoverageJoystick(joystick.Joystick):
             r_due = rp & (age == next_step)
             next_fp = fp & (~first) & (~terminal)
             next_rp = ((rp & (~repeat)) | (first & repeat_allowed)) & (~terminal)
-            bad = (injection_bad | (event & disabled) |
+            exact_pre = jp.all(COMMANDS[pre_motion] == pre_command)
+            exact_actor = jp.all(COMMANDS[actor_motion] == state.obs['state'][9:12])
+            bad = (injection_bad | (~exact_pre) | (~exact_actor) |
+                   (~jp.isfinite(after.data.qpos).all()) |
+                   (~jp.isfinite(after.data.qvel).all()) |
+                   (~jp.isfinite(after.reward)) |
+                   (event & disabled) |
                    (event & (~jp.isfinite(magnitude))) |
                    (repeat & (~rp)) | (first & (~fp)) |
                    ((h4_class == 2) & repeat) |
@@ -500,6 +507,11 @@ class CoverageJoystick(joystick.Joystick):
                    ((h4_class == 3) & repeat & ((actual_gap < 30) | (actual_gap > 40))))
             vals = dict(
                 h4_class=h4_class, h4_boundary=boundary, h4_age=age,
+                h4_assign_motion=assign_motion,
+                h4_repeat_origin_motion=jp.where(first,pre_motion,first_motion),
+                h4_class_event=jp.where(event,h4_class,-1),
+                h4_source_terminal=terminal,
+                h4_command_mismatch=actor_motion != pre_motion,
                 h4_target=next_step, h4_motion=pre_motion,
                 h4_actor_motion=actor_motion, h4_refresh=pre_source_step >= 500,
                 h4_changed=jp.any(pre_command != out['command']),
