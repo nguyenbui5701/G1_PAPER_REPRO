@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.39  
+**Version:** 1.2.40  
 **Ngày cập nhật:** 2026-11-23 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -461,6 +461,18 @@ M2 vs contemporaneous OLD10M development discordance: one gain `5889/yaw_right` 
 
 **Current decision:** `H2_RAHC_ROADMAP_DESIGN_COMPLETE / H2A0_OWNER_SOURCE_DESIGN_PENDING`. Next deliver precise existing-evaluator source design/owner diff and protocol review, then ONE consolidated read-only-in-weights fixed-kick evaluation if explicitly authorized. No GPU or PPO executed, no executable repository changes by SA. Design is not performance evidence.
 
+### M4.70-H2A0 — OWNER SOURCE DESIGN HANDOFF, NO EXECUTION GO (v1.2.40; 2026-11-24)
+
+Task H2A0 / PUSH and upright RESUME only. Reviewed exact evaluator `m463_gate3_cp_eval.py` blob `157962b1fffd599b45c0c5619fe641f86db2e94c` at HEAD `7a0ab79987f100b3b9858a51b14f1fb95434d775`, and exact upstream `google-deepmind/mujoco_playground` joystick.py at PIN `9bcbe736177472ba35d60773e3030a36e37962b7`. Actor observation state indices: noisy local pelvis linear velocity [0:3], gyro [3:6], projected gravity [6:9] computed with world [0,0,-1] (upright reference NEGATIVE z; distinguish from torso termination gravity sensor), command [9:12], joint pos [12:41], joint vel [41:70], last action [70:99], phase [99:103]. Privileged begins with same actor state. Use only current actor observation for risk/control, same noise and latency as C401M. Do not feed simulator contact, force, truth velocity or kick schedule to governor. Source eval diagnostics use post-step true pelvis velocity, torso tilt, fixed original goal; report sensor vs truth distinction. No model/PD/reward/termination/observation shape change; only existing command override value changes.
+
+Owner manual edit ONLY existing evaluator: opt-in `--h2a` branch, require checkpoint C only and exact dev protocol (seeds7331,7357; profiles stand,forward_fast,turn_left; directions left,right; first300/.50,second335/.35,max1000); legacy C/P CLI and output untouched unless flag. Load C once, use existing one_step diagnostics with optional effective command parameter, set both obs arrays [9:12] and info.command; compute goal errors against fixed original command. H2A-only post-step action and source model limit telemetry; check limited joints/actuator ctrl/force according to actual model masks/ranges; report excess and compare to baseline with explicit tolerances (joint1e-3 rad, ctrl1e-3 in model units, force0.1 in model units), not proof of hardware safety. Existing source terminal categories unchanged. No extra source file or automatic code rewriting. Static syntax/plan only after manual edit, owner push exact HEAD, SA review before GPU.
+
+Governor pure host scalar logic with immutable-valued per-branch state: NORMAL, RECOVERY, RETURN, LOCKOUT. e=norm(actor velocity_xy-goal_xy); normalized projected gravity angle to negative z; reject nonfinite or degenerate gravity. Risk e>=.45 OR tilt>=20, clear e<=.20 AND tilt<=10; enter after2, return after10 clear; gain.5, norm bias<=.25, yaw target=.5*goal, source limits x[-1,1],y[-.5,.5],yaw[-1,1], slew XY norm<=.05/tick, yaw<=.10/tick. Intervention age persists through RECOVERY/RETURN reentries, forced return at budget100 ticks, bound extra return<=10 ticks, timeout logged once, LOCKOUT at original goal until 10 fresh clear ticks; no automatic reset/termination. OFF exactly goal. Record risk, state, age, timeout, effective/goal command, action, contacts, source safety observations each tick. Recovery success requires full 2s/5s window alive, ten consecutive post-event ticks within five matched nominal bands plus original-goal XY<=.20, yaw<=.30, governor NORMAL and effective=goal; timeout separately reported. No claim that all new foot contacts are corrective.
+
+Pairing: run one truly shared prefix per seed/profile through step299 with real ON governor shadow evaluation on current observations, require zero activation and exact effective goal before each common transition; if prepush activation/termination, retain partial evidence and stop as nominal/pairing NO-GO, never mask risk using push flag. Branch OFF/ON nominal and perturbed runs from same full MJX snapshot and copied supervisor state (OFF governor disabled); preserve RNG and exact first world delta from shared yaw. At step334 snapshot each arm's single trajectory and supervisor state for its double branch; second world direction from shared FIRST yaw and exact delta same across both arms. Kick modifies root qvel only, no refresh of actor obs for either arm; both first act on previous observation, record timing. No-exposure double due to early single failure counted as failure with observed prefix, not excluded. Raw records allow reconstruction of nominal/single/double full paths and all source causes; retain first/second deltas, frame global step/done and original/effective commands. Plan 6 groups x2 arms x(1 nominal+2 single+2 double)=60 logical trajectories, with shared prefixes counted once physically. No H1 replay or PPO. One consolidated runtime gate + bounded evaluation only after source review and separate explicit GO. H2A1 previously locked directional performance gates and H2A2/Branch B hold unchanged. Design source handoff is not source review PASS, GPU PASS, or efficacy.
+
+Current `H2A0_OWNER_EDIT_PENDING`. No executable repo modifications, GPU or training by SA. Rollback only owner manual revert of own evaluator diff; never alter pinned source/checkpoints. 
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -722,6 +734,9 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-23)
+
+**M470-H2A0 OWNER SOURCE DESIGN HANDOFF (v1.2.40; 2026-11-24):** Exact M463 evaluator and pinned G1 observation layout reviewed, negative-z actor upright reference confirmed. Opt-in H2A command override on frozen C only; bounded supervisor NORMAL/RECOVERY/RETURN/LOCKOUT, true shared prefix with causal shadow gate, fixed world deltas and per-arm second snapshot; raw original-goal recovery and safety telemetry, no PPO/physics changes. **OWNER EDIT/PUSH PENDING**, SA remote review then separate runtime GO. H1 CLOSED; M1/M2/+100M NO-PROMOTE; +400M/B HOLD.
+
 
 **M470-H2-RAHC ROADMAP DESIGN COMPLETE (v1.2.39; 2026-11-24; A ONLY):** Owner requested new Recovery-Aware Control roadmap after H1 CLOSED. H2A first hypothesis bounded inference-time command supervisor OFF/ON on same frozen C401M, no reward/PD/termination/network changes or PPO, original goal tracking, causal observation/hysteresis/timeout/return. Reuse existing M463 Gate3 CP evaluator full-state fork and fixed delta-v; one proposed 60-logical-trajectory dev comparison (2 old seeds x3 profiles x2 directions, nominal/single/double), double survival and recovery +>=2/12, no lost single, no nominal intervention/regression; exact config/source review and separate execution GO pending. H2A2 fresh-heldout conditional, H2B separate future design only. No source edits or runtime work in this task. **H2A0_OWNER_SOURCE_DESIGN_PENDING**; M1/M2 NO-PROMOTE, H1 CLOSED, +100M NO-PROMOTE,+400M HOLD, Branch B HOLD.
 
@@ -1091,6 +1106,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-24 | H2A0 source design handoff | Exact M463 evaluator and pinned G1 observation layout, supervisor and shared-prefix contract | v1.2.40 owner manual edit only, remote review and runtime GO pending; no GPU or PPO | 1.2.40 |
+
 | 2026-11-24 | H2-RAHC redesign roadmap approved for design only | Read H1 final evidence and existing M463 evaluator full-state fork/metrics; literature anchors and bounded governor hypothesis | v1.2.39 H2A0 owner source design pending; H2A1 proposed 60 trajectories, fixed dev gates, no new PPO or B implementation | 1.2.39 |
 
 | 2026-11-24 | RC4B final owner 180-rollout evaluation and H1 decision | Full log/archive SHA §4; 30 JSON/153373 frames, C/OLD/M2 dev8/10/10 of18, heldout1/0/0 of12, all OFF survive, 61 foot–foot terminals, five nominal >5% regressions seed8209, historical OLD count discrepancy disclosed | v1.2.38 EVIDENCE PASS / M2 NO-PROMOTE / RC4 COMPLETE / H1 CLOSED; preserve frozen evidence, no extra probes or PPO, new roadmap only by owner approval | 1.2.38 |
@@ -1232,6 +1249,8 @@ PY
 | 2026-11-21 | Research governance | Khóa mục tiêu push → fall → get-up → resume; định nghĩa thước đo và cổng nghiệm thu | RULES ACTIVE; GET-UP NOT IMPLEMENTED | 1.0.0 |
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.40 — 2026-11-24:** H2A0 source design contract: confirm actor gravity sign and observation slices, causal governor state/timeout, exact shared prefix and fixed world kicks, original-goal recovery and safety telemetry, opt-in legacy compatibility; owner manual source edit/push pending; no execution authorization. Rules-only.
 
 - **v1.2.39 — 2026-11-24:** Design H2-RAHC within A after H1 closure: one state-dependent command governor hypothesis on frozen C401M; reuse fixed-kick full-state fork evaluator, measure original command recovery and nominal noninterference, propose finite 60-trajectory development test and stopping gates. Future heldout and learning conditional; source/execute/learning not approved by design request, B HOLD. Rules only.
 
