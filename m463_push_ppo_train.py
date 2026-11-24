@@ -52,26 +52,121 @@ H3_METRIC_KEYS = H3_BAD_KEYS + H3_POS_KEYS + (
     'h3_modified_sum_pre_dt')
 
 
+H3_CAUSAL_SHA = '47a1d2d8633ffd223768b9cedbbb6ca12a61f4fddd127fdc73b59e3e3f147a07'
+H3_CAUSAL_SOURCE_DIGESTS = {
+    'm463_coverage_env.py': 'f59bfdfc8e9000ab52bbeda25abf9d1556cb96d354f133ee18e9efaebef1a582',
+    'm463_instrument_brax.py': '16e7e0b024de80e9f2663987d79fe2ac4bedb17a9a95ac6a5f9d7115c6df39fd',
+    'm463_push_ppo_train.py': '613d405d5a43f1c8e68ac128b9e551689d8bf42308b7905914171d73e19bc120',
+}
+H3_CAUSAL_EVALUATOR_SHA = '81d1a0bec04749e649ed252fabb7b77b3a5ea2d9758e5e96d711fccafa91d627'
+H3_CAUSAL_BRAX_SHA = 'a2795ba3d305d5695b72107832bfa1531ce6750523167bea6ea584988a6a2840'
+H3_CAUSAL_ORIGINAL_BRAX_SHA = 'e20613d42bf0868a13003e0312998816cc8d3593bb5ccaf9f1d070fd09c44bd7'
+H3_CAUSAL_RESTORE_SHA = '9c46427c16aa482730e45bc9f79c53f6cb18ec3a267d1fc3253faab695916e81'
+
+
 def validate_h3_cli(a):
     diagnostic = bool(getattr(a, 'h3_diagnostic_only', False))
+    causal = getattr(a, 'h3_causal_report', None)
     if not getattr(a, 'h3_m1', False):
         if diagnostic:
             raise RuntimeError('M470_H3_DIAGNOSTIC_REQUIRES_H3')
+        if causal is not None:
+            raise RuntimeError('M470_H3_CAUSAL_REPORT_REQUIRES_H3')
         return
-    # v1.2.63: the failed exact gate is not superseded by a diagnostic.
-    # All H3 training stays locked pending a new reviewed owner decision.
-    if diagnostic and a.mode != 'smoke3':
-        raise RuntimeError('M470_H3_DIAGNOSTIC_MODE_MISMATCH')
-    if a.mode != 'plan' and not diagnostic:
+    if diagnostic and causal is not None:
+        raise RuntimeError('M470_H3_CAUSAL_DIAGNOSTIC_CONFLICT')
+    if diagnostic:
+        if a.mode != 'smoke3':
+            raise RuntimeError('M470_H3_DIAGNOSTIC_MODE_MISMATCH')
+        raise RuntimeError('M470_H3_DIAGNOSTIC_CLOSED')
+    if a.mode not in ('plan', 'smoke3'):
         raise RuntimeError('M470_H3_PPO_HOLD_CAUSAL_VALIDATION')
     if (a.h1_m1 or a.h1_m2 or a.stage != 'easy_repeat_support'
-            or a.resume_state is not None
-            or a.mode not in ('plan', 'smoke3', 'longtrain')
-            or (a.mode == 'longtrain' and a.independent_budget != '10M')
-            or (a.mode == 'longtrain' and a.smoke_report is None)
-            or (a.mode != 'longtrain' and (a.independent_budget is not None
-                or a.rollouts is not None or a.num_evals is not None))):
+            or a.resume_state is not None or a.independent_budget is not None
+            or a.rollouts is not None or a.num_evals is not None
+            or a.smoke_report is not None):
         raise RuntimeError('M470_H3_M1_MODE_NOT_APPROVED')
+    if a.mode == 'plan' and causal is not None:
+        raise RuntimeError('M470_H3_CAUSAL_REPORT_REQUIRES_SMOKE3')
+    if a.mode == 'smoke3' and causal is None:
+        raise RuntimeError('M470_H3_CAUSAL_REPORT_REQUIRED')
+
+
+def read_h3_causal_report(path):
+    """Accept only the reviewed diagnostic bytes; never reclassify exact physics."""
+    if path is None or path.is_symlink() or not path.is_file():
+        raise RuntimeError('M470_H3_CAUSAL_REPORT_PATH_INVALID')
+    raw = path.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != H3_CAUSAL_SHA:
+        raise RuntimeError('M470_H3_CAUSAL_REPORT_SHA_MISMATCH')
+    r = json.loads(raw)
+    def require(ok, label):
+        if not ok:
+            raise RuntimeError('M470_H3_CAUSAL_'+label)
+    expected = {
+        'status': 'M470_H3_DIAGNOSTIC_COMPLETE_PPO_HOLD',
+        'stage': 'easy_repeat_support', 'mode': 'smoke3',
+        'experiment_class': 'H3_CAUSAL_VALIDATION_ONLY_NO_PPO',
+        'source_commit': PIN, 'source_checkpoint_sha256': SEED1_SHA,
+        'orbax_sha256': '5acfabc1376e91a2a9a52b47ac821e296f0e84f5545b646b07c9482ddc462bf3',
+        'training_seed': 1, 'train_steps_target': 0, 'rollouts_target': 0,
+        'steps_observed': 0, 'run_steps_observed': 0,
+        'training_performed': False, 'report_history': [], 'checkpoints': [],
+        'h3_diagnostic_only': True, 'h3_m1_enabled': True,
+        'h1_m1_enabled': False, 'h1_m2_enabled': False,
+        'h3_m1_spec': H3_SPEC, 'h3_ppo_fingerprint': H3_FP,
+        'h3_source_digests': H3_CAUSAL_SOURCE_DIGESTS,
+        'runner_sha256': H3_CAUSAL_SOURCE_DIGESTS['m463_push_ppo_train.py'],
+        'h3_static_reward_config_unchanged': True, 'future_smoke_config_steps': 786432,
+    }
+    for key, value in expected.items():
+        require(r.get(key) == value, 'REPORT_FIELD_'+key)
+    require(m470_fingerprint(r['hardware_scaled_config']) == H3_FP,
+            'CONFIG_FINGERPRINT')
+    require(r['hardware_scaled_config']['num_timesteps'] == 786432
+            and r['hardware_scaled_config']['num_evals'] == 2, 'CONFIG_BUDGET')
+    require(r['gpu_total_mib'] == 12288 and 0 < r['gpu_peak_mib'] < .95*r['gpu_total_mib']
+            and r['gpu_samples'] > 0 and r['gpu_monitor_errors'] == [], 'DIAGNOSTIC_GPU')
+    im = r['instrumented_brax']
+    require(im['original_brax_sha256'] == H3_CAUSAL_ORIGINAL_BRAX_SHA
+            and im['instrumented_sha256'] == H3_CAUSAL_BRAX_SHA, 'DIAGNOSTIC_BRAX')
+    g = r['h3_m1_technical_gate']
+    require(g['historical_exact_gate'] == 'FAILED_85891a1'
+            and g['passed'] is False and g['training_authorized'] is False
+            and g['diagnostic_complete'] is True and g['shared_snapshot_passed'] is True
+            and g['cross_executable_exact_equal'] is False, 'HISTORICAL_GATE')
+    require(g['max_control_transitions'] == g['diagnostic_control_transitions'] == 54
+            and g['direct_control_transitions'] == 36, 'DIAGNOSTIC_BUDGET')
+    require(set(g['numerical_controls']) == {'off_off','on_on','off_on'}
+            and all(v['exact_equal'] is False for v in g['numerical_controls'].values()),
+            'NUMERICAL_CONTROLS')
+    b,c = g['same_postphysics_reward'],g['wrapped_validation']
+    require(b['passed'] is True and b['transitions'] == 9
+            and b['unchanged_23_exact'] is True and b['input_dicts_unchanged'] is True,
+            'SAME_POSTPHYSICS')
+    require(c['passed'] is True and c['transitions'] == 9
+            and c['autoreset_verified_not_recovery'] is True
+            and c['audit']['passed'] is True, 'WRAPPED')
+    audit = h3_audit_counts({PREFIX+k:v for k,v in c['audit']['counts'].items()})
+    require(audit['passed'] and audit == c['audit'], 'WRAPPED_AUDIT')
+    # The current runner intentionally differs; all production implementation
+    # inputs and the evaluator must match the independently reviewed evidence.
+    for name in ('m463_coverage_env.py','m463_instrument_brax.py'):
+        require(digest(Path(__file__).with_name(name)) == H3_CAUSAL_SOURCE_DIGESTS[name],
+                'CURRENT_SOURCE_'+name)
+    require(digest(Path(__file__).with_name('m463_gate3_cp_eval.py'))
+            == H3_CAUSAL_EVALUATOR_SHA, 'CURRENT_EVALUATOR')
+    return {
+        'basis': 'V1_2_65_CAUSAL_B_C_ACCEPTED_EXPLORATORY_SMOKE3',
+        'diagnostic_report_sha256': H3_CAUSAL_SHA,
+        'diagnostic_report_path': str(path.resolve()),
+        'diagnostic_runner_sha256': H3_CAUSAL_SOURCE_DIGESTS['m463_push_ppo_train.py'],
+        'historical_exact_gate': 'FAILED_85891a1',
+        'independent_executable_exact_equal': False,
+        'same_postphysics_reward_passed': True, 'wrapped_validation_passed': True,
+        'diagnostic_control_transitions_reexecuted': 0,
+        'ppo_steps_authorized': 786432, 'optimizer_updates_target': 120,
+    }
 
 
 def h3_audit_counts(counts):
@@ -573,6 +668,14 @@ def run(args):
     validate_h3_cli(args)
     h3_m1 = bool(getattr(args, 'h3_m1', False))
     h3_diagnostic = bool(getattr(args, 'h3_diagnostic_only', False))
+    h3_acceptance = read_h3_causal_report(args.h3_causal_report) if h3_m1 and not h3_diagnostic else None
+    if h3_acceptance is not None:
+        import shutil
+        if digest(args.restore_report) != H3_CAUSAL_RESTORE_SHA:
+            raise RuntimeError('M470_H3_CAUSAL_RESTORE_REPORT_SHA')
+        # Operational reserve, not a reward/physics criterion.
+        if shutil.disk_usage(args.output_dir.parent).free < 2*1024**3:
+            raise RuntimeError('M470_H3_SMOKE_DISK_RESERVE')
     if args.output_dir.exists():
         raise FileExistsError('M463_REFUSE_TO_OVERWRITE_OUTPUT_DIRECTORY')
     # Import from PRIOR, already proven checkpoint validator and GPU monitor.
@@ -636,6 +739,10 @@ def run(args):
     from flax import serialization
     from m463_coverage_env import CoverageJoystick, STAGES
     if jax.default_backend()!='gpu':raise RuntimeError('M463_GPU_REQUIRED')
+    if h3_acceptance is not None and (jax.process_count() != 1 or jax.local_device_count() != 1
+            or gpu_initial['total_mib'] != 12288
+            or not 0 <= gpu_initial['used_mib'] < .95*gpu_initial['total_mib']):
+        raise RuntimeError('M470_H3_SMOKE_GPU_PREFLIGHT')
     if args.stage not in STAGES:raise RuntimeError('M463_STAGE_UNKNOWN')
     source_cfg=api['source_cfg']
     train_cfg=copy.deepcopy(source_cfg)
@@ -682,6 +789,9 @@ def run(args):
     h3_fp = m470_fingerprint(scaled.to_dict()) if h3_m1 else None
     if h3_m1 and h3_fp != H3_FP:
         raise RuntimeError('M470_H3_PPO_FINGERPRINT_MISMATCH')
+    if h3_acceptance is not None and (args.mode != 'smoke3' or batches != 3
+            or scaled.num_timesteps != 786432 or scaled.num_evals != 2):
+        raise RuntimeError('M470_H3_SMOKE_BUDGET_MISMATCH')
     h3_source_digests = ({name: digest(Path(__file__).with_name(name))
         for name in ('m463_coverage_env.py', 'm463_instrument_brax.py',
                      'm463_push_ppo_train.py')} if h3_m1 else None)
@@ -713,6 +823,11 @@ def run(args):
     instrumented_ppo,instrument_meta=build_instrumented_ppo(
         api['ppo'],out/'m463_brax_ppo_instrumented.py',
         enable_resume=longtrain, enable_h3=h3_m1)
+    if h3_acceptance is not None and (
+            instrument_meta['original_brax_sha256'] != H3_CAUSAL_ORIGINAL_BRAX_SHA
+            or instrument_meta['instrumented_sha256'] != H3_CAUSAL_BRAX_SHA
+            or digest(Path(instrument_meta['instrumented_file'])) != H3_CAUSAL_BRAX_SHA):
+        raise RuntimeError('M470_H3_CAUSAL_GENERATED_BRAX_MISMATCH')
     prior_step = 0
     resume_meta = None
     if longtrain:
@@ -776,6 +891,9 @@ def run(args):
                       h3_source_digests=h3_source_digests,
                       h3_smoke_report_sha256=(digest(args.smoke_report) if longtrain else None),
                       h3_static_reward_config_unchanged=True)
+    if h3_acceptance is not None:
+        report['h3_smoke_acceptance_basis'] = h3_acceptance
+        report['h3_diagnostic_only'] = False
     if h3_diagnostic:
         report.update(experiment_class='H3_CAUSAL_VALIDATION_ONLY_NO_PPO',
                       train_steps_target=0,rollouts_target=0,
@@ -824,6 +942,13 @@ def run(args):
                 raise RuntimeError('M470_H3_MISSING_LIVE_TELEMETRY')
             if any(float(m[PREFIX+k]) != 0 for k in H3_BAD_KEYS):
                 raise RuntimeError('M470_H3_LIVE_INVARIANT_VIOLATION')
+            if h3_acceptance is not None:
+                live_gpu=monitor.snapshot()
+                if (live_gpu['peak_used_mib'] is None or live_gpu['total_mib'] is None
+                        or live_gpu['total_mib'] != 12288
+                        or live_gpu['peak_used_mib'] >= .95*live_gpu['total_mib']
+                        or live_gpu['sampler_errors']):
+                    raise RuntimeError('M470_H3_SMOKE_LIVE_VRAM_GATE')
         print('M463_PROGRESS',args.stage,'steps',step,
               'reward',row['metrics'].get('eval/episode_reward'),
               'train_push_events_mean_batch',row['metrics'].get(PREFIX+'events_per_rollout'),flush=True)
@@ -914,9 +1039,14 @@ def run(args):
                         or tech_gpu['sampler_errors']):
                     raise RuntimeError('M470_H3_TECH_VRAM_GATE')
             else:
-                # Redundant guard: no H3 PPO can reach the optimizer in v1.2.63.
+                # Separate approved acceptance basis; historical exact gate stays FAIL.
                 if h3_m1:
-                    raise RuntimeError('M470_H3_PPO_HOLD_CAUSAL_VALIDATION')
+                    if (h3_acceptance is None or args.mode != 'smoke3'
+                            or h3_acceptance['diagnostic_report_sha256'] != H3_CAUSAL_SHA
+                            or digest(args.h3_causal_report) != H3_CAUSAL_SHA):
+                        raise RuntimeError('M470_H3_PPO_HOLD_CAUSAL_VALIDATION')
+                    print('M470_H3_CAUSAL_SMOKE_READY',json.dumps(h3_acceptance,sort_keys=True),
+                          flush=True)
                 report['training_performed']=True
                 if h3_m1:
                     persist()
@@ -1057,9 +1187,11 @@ def main():
     p.add_argument('--independent-budget',choices=['10M','50M','100M'])
     p.add_argument('--h1-m1',action='store_true',help='H1-M1 experimental reward: smoke3 or independent 10M only')
     p.add_argument('--h1-m2',action='store_true',help='H1-M2 phase/contact foot-crossing reward: smoke3 or independent 10M only; separate owner GO required')
-    p.add_argument('--h3-m1',action='store_true',help='H3-M1 recovery-aware stand-still reward; PPO HOLD, diagnostic only')
+    p.add_argument('--h3-m1',action='store_true',help='H3-M1 recovery-aware stand-still reward; accepted causal report required for smoke3')
     p.add_argument('--h3-diagnostic-only',action='store_true',
-                   help='H3 causal diagnostic only; all H3 PPO remains blocked')
+                   help='Historical diagnostic mode (closed; no rerun)')
+    p.add_argument('--h3-causal-report',type=Path,
+                   help='Exact reviewed diagnostic report for one bounded H3 smoke3')
     a=p.parse_args()
     if a.independent_budget is not None:
         if (a.mode != 'longtrain' or a.resume_state is not None or
@@ -1086,7 +1218,9 @@ def main():
                 'batch_size': 1024, 'updates_per_batch': 5,
                 'fingerprint': H3_FP, 'training_performed': False,
                 'execution_authorized': False,
-                'ppo_hold': True, 'diagnostic_flag': '--h3-diagnostic-only',
+                'ppo_hold': True, 'diagnostic_closed': True,
+                'causal_report_flag': '--h3-causal-report',
+                'causal_report_sha256': H3_CAUSAL_SHA,
                 'diagnostic_max_control_transitions': 54,
             }, sort_keys=True))
             return
