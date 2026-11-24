@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.83  
+**Version:** 1.2.84  
 **Ngày cập nhật:** 2026-11-24 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -921,6 +921,10 @@ Reviewed read_restore_gate: exact frozen msgpack SHA and Playground commit, PASS
 
 Owner log: Python3.10.12, JAX/JAXLIB0.4.35, Brax0.12.1, Flax0.10.4, Optax0.2.4, Orbax0.11.0, MuJoCo3.2.7; dm-env1.6 found at G1_M3_11C_PPO_MANIFEST_REPAIR_V1/overlays/wheels_20261107_110316_3940764/dm_env/__init__.py, overlay search order cloudpickle, gym isolated repair, manifest repair, pinned Playground, repo, stdlib, site-packages. Finding spec/package metadata does not establish successful actual trainer import. No installation indicated. nvcc_compat.py resolved at sibling G1_M4_0_G1_PPO_ONE_UPDATE_SMOKE_V1, compile PASS, SHA256 c92cd0f79e04acc409c4d0d52c7b1cc2c5b71822aafbd1e4d957a949f5044e8f; paper_config_preflight.json repo root SHA256 36ab984a162e053a58d6f4313369a95dde77fd84a4db61b54d42ab856fadd19b. Their actual bytes and exact g1_m463 launcher definition not yet available. train.build_paper_config requires CONFIG_PREFLIGHT_OK and full normalized candidate_ppo_config equality; paper_config source sets paper overrides including 400M, 32768 envs, unroll32, batch1024, updates5, gamma.98, lr1e-4, reward scaling.1, entropy0 and clipping.2, specified policy/value network. Do not regenerate report or modify compatibility layer. Next collect only remaining two source/config files and launcher definition for review, no runtime import or GPU work. After review design focused bootstrap check, separate explicit permission for JAX/CUDA as required; no PPO execution without separate authorized numerical protocol. Existing v1.2.82 30720 transitions/2400 updates design and thresholds unchanged. Owner log NO_RUNTIME_IMPORT_PASS, simulation0/PPO0; SA did no runtime. This is Rules-only evidence acceptance, not final readiness PASS. All three H4 production holds remain. H3 NO-GO/H2C/B HOLD.
 
+### M4.70-H4-M1-1B — LAUNCHER REVIEW ACCEPTED / TWO BOOTSTRAP INPUTS PENDING (v1.2.84; 2026-11-24)
+
+Owner submitted launcher.log (764 bytes, SHA256 0268a583503a4efd5e82c9745701404f9ab6708b940d809846db4a1ce4da3da7) and requested continue according to Rules. Read actual log, retrieved current root Rules/AGENTS at eb4369b4876056332d9fab8750c3638c8a844a03, reviewed active A-only objective, current state and H4-M1-1B v1.2.82/83 contracts, checked runner blob600f88ca6ff1fc98eaec87307c009fcb3cee6023 and instrumenter3c7df08ca1d27a94438d1c07b76e69057277fa72 with production holds intact. Actual launcher definition is duplicated consistently: env -u LD_LIBRARY_PATH -u PYTHONHOME, PYTHONNOUSERSITE=1, JAX_PLATFORMS=cuda, JAX_DEFAULT_MATMUL_PRECISION=highest, XLA_PYTHON_CLIENT_PREALLOCATE=false, PYTHONPATH="$E:$D:$C:$REPO:$PWD", "$PY" -u "$@". Compare against previous actual provenance log8e5a5bad: overlay/path order consistent with observed resolution; actual variable assignments not printed in new log and actual trainer import not tested. Launcher review accepted for stated scope; no launcher change needed based on evidence. Reported compatibility/config SHA256 exactly match previous pins c92cd0f79e04acc409c4d0d52c7b1cc2c5b71822aafbd1e4d957a949f5044e8f and 36ab984a162e053a58d6f4313369a95dde77fd84a4db61b54d42ab856fadd19b. Both files already copied on owner machine to m463_runs/h4_readiness_bootstrap_20261124_225222/. Only launcher.log attached this turn; actual contents of nvcc_compat.py and paper_config_preflight.json unavailable after local inspection and two library searches. Matching reported hashes are continuity evidence, not independent rehash or actual source review. Do not mark full bootstrap PASS or infer missing local files. Request only those two existing copies, no rerun, no regeneration, no new provenance scan. M462 helpers already accepted under v1.2.83; no resend needed. Next inspect actual two byte streams against locked SHA and config/import contract before readiness implementation; focused import-only bootstrap design and separate runtime authorization thereafter. Preserve v1.2.82 numerical protocol 30720 transitions/2400 updates, all gates and all three production holds. No executable modifications, package installs, CUDA/JAX/MJX, simulation or PPO in this review. H4-M1-1B LAUNCHER REVIEW PASS / BOOTSTRAP SOURCE REVIEW PENDING / EXECUTION HOLD. H3 NO-GO/H2C/B HOLD.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -1182,6 +1186,9 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-24)
+
+**H4-M1-1B LAUNCHER REVIEW PASS (v1.2.84; 2026-11-24):** launcher log0268a583 matches existing overlay/isolation setup and reports unchanged NVCC/paper-config hashes. Two actual files pending, already copied to m463_runs/h4_readiness_bootstrap_20261124_225222; send only these, no rerun. Actual import/numerical readiness not established, all H4 production holds retained; zero simulation/PPO, no executable edits or installs.
+
 
 **H4-M1-1B LOCAL HELPER PROVENANCE ACCEPTED (v1.2.83; 2026-11-24):** log8e5a5bad reviewed; exact previously uploaded M462 source hashes match current owner-resolved files, both reviewed, sibling-path contract consistent. dm_env1.6 present in existing overlay (not import proof). Remaining nvcc_compat.py/paper_config_preflight.json actual contents and launcher definition pending; no repeat provenance scan or package install. Actual PPO bootstrap/numerical readiness HOLD, v1.2.82 budget unchanged/unapproved, zero simulation/PPO; production holds retained.
 
@@ -1683,6 +1690,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-24 | H4-M1-1B launcher evidence review | log0268a583, prior provenance8e5a5bad, current source/holds | v1.2.84 launcher review PASS, two existing bootstrap inputs pending; no rerun or PPO | 1.2.84 |
+
 | 2026-11-24 | H4-M1-1B local provenance evidence review | log8e5a5bad, exact M462 helper SHA matches and full source review, dependency metadata/overlay resolution | v1.2.83 local helper blocker closed; remaining bootstrap inputs and actual import pending, no PPO | 1.2.83 |
 
 | 2026-11-24 | H4-M1-1B PPO readiness source review/design | HEAD dcb8299f, actual upstream training_step/chunk/restore wiring, remote helper404/tree evidence, proposed matched carry protocol | v1.2.82 design proposed 30720 max PPO transitions/2400 updates subject to source review and separate GO; local provenance pending, zero execution | 1.2.82 |
@@ -1914,6 +1923,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.84 — 2026-11-24:** Accept launcher definition and unchanged reported compatibility/config digests, distinguish launcher review from actual import readiness, request only two remaining already-copied inputs; retain all training holds and numerical budget.
 
 - **v1.2.83 — 2026-11-24:** Accept actual local provenance log and exact recovered helper source review; close missing M462 source blocker, distinguish dm_env discovery from actual import, request remaining compatibility/config/launcher evidence only. All training holds and readiness budget unchanged.
 
