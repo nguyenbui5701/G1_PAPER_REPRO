@@ -1246,8 +1246,6 @@ def run(args):
             raise RuntimeError(
                 'M463_GATE3_TRAIN_BRAX_MISMATCH'
             )
-    if report_p.get('instrumented_brax',{}).get('original_brax_sha256')!=TRAIN_SHA:
-        raise RuntimeError('M463_GATE3_TRAIN_BRAX_MISMATCH')
 
     cfg=locomotion.get_default_config(ENV)
     if not bool(cfg.push_config.enable) or list(cfg.push_config.interval_range)!=[5.0,10.0] or list(cfg.push_config.magnitude_range)!=[0.1,2.0]:
