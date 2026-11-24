@@ -643,3 +643,182 @@ def build_h4_readiness_ppo(pinned_ppo_module, output):
     return mod, {'original_brax_sha256':original_sha,
                  'generated_sha256':sha256(s.encode('utf8')),
                  'generated_file':str(Path(output).resolve())}
+
+
+# H4-M1-1C: source-only causal variant, all runtime entry points held.
+H4C_ACTING_BLOB = 'ec6f81d3e3c48e96a22f7df292fb1a98b63f938d'
+H4C_HELD_SHA = '32ee163079334c965bc12ff517f00adbf232c92722fb5f43ac582c4ef3cec538'
+
+H4C_TRACE_SOURCE = '''def h4c_trace_state(state):
+  # Snapshot leaves, not mutable info/metrics dictionaries. Post-step data
+  # may be cached reset pose: done/source_terminal must accompany the trace.
+  fields = ('rng', 'command', 'phase', 'last_contact', 'steps', 'step',
+            'truncation', 'm463_age', 'm463_next', 'm463_push_count',
+            'm463_event', 'm463_repeat', 'm463_direction',
+            'm463_phase_actual', 'm463_support_side', 'm463_magnitude',
+            'h4_class', 'h4_first_pending', 'h4_repeat_pending',
+            'h4_tail_kind', 'h4_tail_age', 'h4_source_terminal')
+  return {'obs': jax.tree_util.tree_map(lambda x: x, state.obs),
+          'qpos': state.data.qpos, 'qvel': state.data.qvel,
+          'ctrl': state.data.ctrl, 'done': state.done,
+          'info': {k: state.info[k] for k in fields}}
+
+'''
+
+H4C_MINIBATCH_TRACE = '''    metrics = {**metrics,
+               'h4c_loss_key': key_loss,
+               'h4c_next_minibatch_key': key}
+    leaves = jax.tree_util.tree_leaves((params, optimizer_state, metrics))
+    finite = jnp.asarray(True)
+    for leaf in leaves:
+      finite = finite & jnp.all(jnp.isfinite(leaf))
+    metrics['h4c_finite'] = finite
+'''
+
+H4C_EXIT = '''  training_state, env_state = _strip_weak_type((training_state, env_state))
+  epoch_key, local_key = jax.random.split(local_key)
+  initial = (training_state, env_state,
+             jax.random.split(epoch_key, local_devices_to_use))
+  # DR model is part of the input even though it is not in the scan carry.
+  dr = env.env.env
+  if type(dr).__name__ != 'BraxDomainRandomizationVmapWrapper':
+    raise RuntimeError('M470_H4C_DR_WRAPPER')
+  model = dr._mjx_model_v
+  model_axes = dr._in_axes
+  collect = jax.pmap(h4c_collect, axis_name=_PMAP_AXIS_NAME)
+  optimize = jax.pmap(h4c_optimize, axis_name=_PMAP_AXIS_NAME)
+  h4c_audit_fn('initial', initial, (model, model_axes))
+  for label in ('A0', 'A1'):
+    h4c_audit_fn(label+'_before', initial, (dr._mjx_model_v, dr._in_axes))
+    result = collect(initial)
+    h4c_audit_fn(label, result, (initial, dr._mjx_model_v, dr._in_axes))
+    if label == 'A0':
+      # Keep the exact immutable device batch, not a regenerated copy.
+      batch, key_sgd = result[1], result[2]
+    del result
+  fixed = (initial[0], batch, key_sgd)
+  for label in ('B0', 'B1'):
+    h4c_audit_fn(label+'_before', fixed, None)
+    result = optimize(*fixed)
+    h4c_audit_fn(label, result, fixed)
+    del result
+  return None
+'''
+
+
+def h4c_git_blob(raw):
+    return hashlib.sha1(('blob '+str(len(raw))+'\0').encode()+raw).hexdigest()
+
+
+def h4c_once(source, old, new):
+    if source.count(old)!=1:
+        raise RuntimeError('M470_H4C_ANCHOR '+old[:90])
+    return source.replace(old,new,1)
+
+
+def h4c_regions(held):
+    start=held.index('  def training_step(')
+    end=held.index('  def h4_chunk(',start)
+    step=held[start:end]
+    collect_start=step.index('    training_state, state, key = carry\n')
+    opt_start=step.index('    # Update normalization params')
+    reducer_start=step.index('    # M4.63: analyze the EXACT transitions')
+    state_start=step.index('    new_training_state = TrainingState(')
+    finite_start=step.index(H4R_FINITE_SOURCE)
+    if not collect_start<opt_start<reducer_start<state_start<finite_start:
+        raise RuntimeError('M470_H4C_REGION_ORDER')
+    return (step[collect_start:opt_start],step[opt_start:reducer_start],
+            step[reducer_start:state_start],step[state_start:finite_start])
+
+
+def make_h4_causal_source(raw, acting_raw):
+    """Generate diagnostic from accepted held source, never authorize runtime."""
+    import ast
+    if h4c_git_blob(acting_raw)!=H4C_ACTING_BLOB:
+        raise RuntimeError('M470_H4C_ACTING_PIN')
+    held, original=make_h4_readiness_source(raw)
+    if sha256(held.encode())!=H4C_HELD_SHA:
+        raise RuntimeError('M470_H4C_READINESS_PIN')
+    acting_source=acting_raw.decode('utf8')
+    fn=next(n for n in ast.parse(acting_source).body
+            if isinstance(n,ast.FunctionDef) and n.name=='generate_unroll')
+    unroll=ast.get_source_segment(acting_source,fn)
+    # Retain original body and jit/scan, add only read-only outputs.
+    body=unroll[unroll.index('  @jax.jit\n'):]
+    body=h4c_once(body,'    nstate, transition = actor_step(',
+                  '    pre = h4c_trace_state(state)\n'
+                  '    nstate, transition = acting.actor_step(')
+    body=h4c_once(body,'    return (nstate, next_key), transition',
+                  "    trace = {'pre': pre, 'post': h4c_trace_state(nstate),\n"
+                  "             'actor_key': current_key, 'next_key': next_key}\n"
+                  '    return (nstate, next_key), (transition, trace)')
+    body=h4c_once(body,'  (final_state, _), data = jax.lax.scan(',
+                  '  (final_state, final_key), (data, trace) = jax.lax.scan(')
+    body=h4c_once(body,'  return final_state, data',
+                  '  return final_state, data, trace, final_key')
+    trace_fn=('def h4c_generate_unroll(env, env_state, policy, key, '
+              'unroll_length, extra_fields=()):\n'+body+'\n\n')
+    collect,opt,reducer,construct=h4c_regions(held)
+    collect=h4c_once(collect,'      next_state, data = acting.generate_unroll(',
+                     '      next_state, data, trace, inner_key = h4c_generate_unroll(')
+    collect=h4c_once(collect,'      return (next_state, next_key), data',
+                     '      return (next_state, next_key), (data, trace, inner_key)')
+    collect=h4c_once(collect,'    (state, _), data = jax.lax.scan(',
+                     '    (state, outer_key), (data, trace, inner_key) = jax.lax.scan(')
+    opt=h4c_once(opt,'    (optimizer_state, params, _), metrics = jax.lax.scan(',
+                 '    (optimizer_state, params, sgd_final_key), metrics = jax.lax.scan(')
+    split=('  def h4c_collect(carry):\n'+collect+
+           '    metrics = {}\n'+reducer+
+           "    metrics['h4r_nonfinite_per_rollout'] = jnp.asarray(0.,jnp.float32)\n"
+           '    return state, data, key_sgd, new_key, trace, inner_key, outer_key, metrics\n\n'
+           '  def h4c_optimize(training_state, data, key_sgd):\n'+opt+construct+
+           '    return new_training_state, sgd_final_key, metrics\n\n')
+    s=held
+    start=s.index('  def training_step(')
+    end=s.index('  # Initialize model params and training state.',start)
+    s=s[:start]+split+s[end:]
+    s=h4c_once(s,'    return (optimizer_state, params, key), metrics\n\n  def sgd_step(',
+               H4C_MINIBATCH_TRACE+
+               '    return (optimizer_state, params, key), metrics\n\n  def sgd_step(')
+    # Return actual permutation and gradient-scan seed at each SGD pass.
+    s=h4c_once(s,'    (optimizer_state, params, _), metrics = jax.lax.scan(\n'
+                 '        functools.partial(minibatch_step, normalizer_params=normalizer_params),',
+               '    (optimizer_state, params, minibatch_final_key), metrics = jax.lax.scan(\n'
+               '        functools.partial(minibatch_step, normalizer_params=normalizer_params),')
+    s=h4c_once(s,'    return (optimizer_state, params, key), metrics\n\n  def h4c_collect(',
+               "    metrics = {**metrics, 'h4c_perm_key': key_perm,\n"
+               "               'h4c_grad_key': key_grad, 'h4c_sgd_key': key,\n"
+               "               'h4c_minibatch_final_key': minibatch_final_key}\n"
+               '    return (optimizer_state, params, key), metrics\n\n  def h4c_collect(')
+    s=h4c_once(s,'def readiness_train(\n',H4C_TRACE_SOURCE+trace_fn+'def causal_train(\n')
+    s=h4c_once(s,"  raise RuntimeError('M470_H4_READINESS_EXECUTION_HOLD')\n",
+               "  raise RuntimeError('M470_H4C_EXECUTION_HOLD')\n")
+    contract=H4R_CONTRACT.replace('num_training_steps_per_epoch != 20',
+                                 'num_training_steps_per_epoch != 1')
+    contract=contract.replace('num_timesteps != 10240','num_timesteps != 512')
+    contract=contract.replace('or num_envs != 16','or env_step_per_training_step != 512\n      or num_envs != 16')
+    s=h4c_once(s,H4R_CONTRACT,contract)
+    s=h4c_once(s,H4R_EXIT,H4C_EXIT)
+    s=s.replace('h4r_audit_fn','h4c_audit_fn').replace('M470_H4_READINESS_CONFIG','M470_H4C_CONFIG')
+    compile(s,'<held causal source>','exec')
+    return s,original
+
+
+def build_h4_causal_ppo(pinned_ppo_module, output):
+    import inspect
+    raw=Path(inspect.getfile(pinned_ppo_module.train)).read_bytes()
+    from brax.training import acting
+    acting_raw=Path(inspect.getfile(acting)).read_bytes()
+    s,original=make_h4_causal_source(raw,acting_raw)
+    with Path(output).open('x',encoding='utf8') as f:
+        f.write(s)
+    spec=importlib.util.spec_from_file_location('m463_h4_causal_ppo',str(output))
+    if spec is None or spec.loader is None:
+        raise RuntimeError('M470_H4C_MODULE_SPEC')
+    mod=importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    if hasattr(mod,'train') or hasattr(mod,'readiness_train'):
+        raise RuntimeError('M470_H4C_MODULE_ENTRY')
+    return mod,{'original_brax_sha256':original,'acting_blob':H4C_ACTING_BLOB,
+                'generated_sha256':sha256(s.encode()),
+                'generated_file':str(Path(output).resolve())}
