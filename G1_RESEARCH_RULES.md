@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.61  
+**Version:** 1.2.62  
 **Ngày cập nhật:** 2026-11-24 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -677,6 +677,18 @@ Owner explicitly approved "GO H3-M1-1 corrected — đọc Rules v1.2.60, sử d
 
 Decision H3_M1_1_CORRECTED_OWNER_GO_ONE_INTEGRATED_JOB_PENDING / H3_M1_2_HOLD.
 
+### M4.70-H3-M1-1 — CORRECTED PHYSICS QPOS STOP / FULL GATE DESIGN AUDIT (v1.2.62; 2026-11-24)
+
+Owner reports corrected traceback ending AssertionError Arrays are not equal / PHYSICS .qpos, runner line313 exact(a1.data,b1.data,'PHYSICS'), line282 assert_array_equal; explicitly asks to recheck Rules after repeated mistakes. Evidence is pasted traceback only in this turn, not complete corrected log/report, no SHA/shape/error magnitude/per-case/VRAM/exit/immutability confirmation for this attempt. Remote HEAD 85891a19a6c2548f4a396f52a7d8aabc1fd0c555, exact runner d755fe8f66ce3a85bd958a6a5ba26ea3cf8b832b, coverage env b83ec0a031ea4184c48a1a189da9f87fcfb104d4, instrumenter 05d6349fc4cbe7f1ce92e14ec95438d79dcb4bda. Traceback matches exact corrected runner lines: shared initial comparisons precede line310 marker, both independent jitted vmapped step calls return before line313; therefore inferred successful shared initial equality and completed direct calls, failed first compared postphysics qpos leaf; actual markers/case values require full log. Wrapped DR actor_step, telemetry and PPO not reached along this execution path (0 PPO inferred from code order, full report pending). Do not mark original gate PASS or conclude H3 efficacy failure, GPU cause, numerical insignificance, OOM, or corruption. Owner should preserve and send full corrected log/report, no rerun.
+
+**SA process audit and correction of prior assumptions:** v1.2.57 false static PASS from missing python + OR-list/errexit, v1.2.60 independent reset INITIAL_DATA mismatch, now independent OFF/ON step mismatch despite shared snapshot. Rules v1.2.7 historical B1 identical-config independent replay was not bitwise reproducible (same seed1/C401M/runner/Brax/fingerprint/262144 steps, exposure6574 vs6571, initial eval20.8204078674 vs20.9696559906, policy/fullstate SHA differ; first-epoch leaf audit top-level RNG and env steps equal but normalizer/Adam/weights differ). Root mechanism was NOT identified. v1.2.9 selects independent single-process no-resume, acknowledges reproducibility limitation; no blanket requirement independent runs be bitwise identical. H3 gate omitted this evidence and a same-treatment negative control; two distinct JIT executables can differ even given identical snapshot, but this traceback alone does not prove compiler/nondeterminism caused qpos mismatch. Shared snapshot solved only input equality, not execution equivalence. Do NOT change assert_array_equal to allclose after observing failure, tune tolerances, remove check, or run PPO through failed gate. Current gate is FAILED, scientifically attribution INCONCLUSIVE.
+
+**Causal source review:** pinned joystick.py blob561a18948e3467ab924468eaf362150dadb9d4a6 lines313–336 source push/qvel, motor targets and mjx_env.step occur BEFORE obs/termination350–351 and reward353–359; command/RNG/phase updates361–390 and return state392+. Coverage env lines315–326 H3 only adds countdown context and captures command before super.step, shared world_delta injection unchanged; _get_reward168–185 calls original reward then multiplies ONLY stand_still; poststep telemetry384–399. No direct source dataflow from reward to current qpos or action with fixed action; this is source evidence, NOT runtime proof. Two separately compiled whole transitions at runner311–312 confound execution path with treatment. Also prepare270–275 changes terminal synthetic qpos/qvel without refreshing dependent FK/contact/sensor fields; coherence of diagnostic input not established (not demonstrated cause of failure). exact() uses NumPy assert_array_equal, which can consider colocated NaNs equal; physical finite and legitimate sentinel checks need explicit design. Full audit must separate input coherence, source dataflow, reward arithmetic, wrapper semantics, and independent-executable reproducibility. Do not claim current technical test establishes any of these merely by passing initial equality.
+
+**Next design only, no executable edits or execution authorization:** H3-M1-1 remains blocked; finish review of supplied corrected log/report when available. Propose a single new predeclared causal validation contract for owner selection, not another line-by-line retry: (A) same-treatment repeated execution controls OFF/OFF and ON/ON on exact snapshots and fixed model/action/RNG, record per-field/per-case absolute/relative mismatch and finite/terminal/contact, no tolerance tuning; independent executable comparison remains separately labeled FAILED/UNPROVEN if unequal; (B) isolate actual source and H3 reward hook on the SAME actual postphysics data/action/info/done/first_contact/contact captured at reward-call boundary before command/phase refresh, compare all 24 terms, exact unchanged23, exact forbidden/terminal equality, existing formula and total tolerances, mutation/RNG/obs independence; use actual production hook not reimplemented arithmetic alone, no privileged context to actor; (C) verify production H3 wrapped actor_step/reducer with coherent fixed diagnostic inputs, actual event/boundary/repeat/stand/nonstand/source termination/truncation, shape and finite gates; ensure any synthetic terminal state derived data is coherent, no reset masquerading as recovery. If A fails do not claim bitwise physical equivalence; B/C cannot convert old exact gate to PASS. Owner must explicitly approve a scientifically distinct revised acceptance contract BEFORE new source or GPU test, or retain current exact gate and investigate determinism. Freeze exact cases, counts, execution bound and any new test implementation before data. No bypass/relaxation or automatic launch, no new files by default. Existing 50%/100-tick reward, C401M, pinned source/Brax, 786432 budget, VRAM<95%, all PPO telemetry/safety gates remain unchanged and HOLD. H3-M1-0 static PASS remains valid for its tested blobs. No H3 efficacy inference, no +10M/H2C/B. Rules-only audit, zero SA runtime/PPO.
+
+Decision H3_M1_1_CORRECTED_EXACT_PHYSICS_GATE_FAIL / ATTRIBUTION_INCONCLUSIVE / FULL_EVIDENCE_AND_REDESIGN_PENDING / ALL_GPU_PPO_HOLD.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -938,6 +950,9 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-24)
+
+**M470-H3-M1-1 CORRECTED PHYSICS QPOS FAIL (v1.2.62; 2026-11-24):** owner pasted traceback matching corrected runner line313 PHYSICS .qpos, full log/report pending. Direct steps reached, PPO not reached on reported path. Exact gate FAIL, attribution INCONCLUSIVE; v1.2.7 non-bitwise evidence omitted from SA design, independent step JIT confounded, terminal synthetic coherence/finite audit required. No tolerance widening, bypass or further retry. Source unchanged; new causal validation design requires owner approval, all GPU/PPO HOLD. H3 reward and C401M frozen.
+
 
 **M470-H3-M1-1 CORRECTED GO (v1.2.61; 2026-11-24):** Owner authorized one corrected integrated shared snapshot gate + smoke3. Source unchanged from v1.2.60, exact poststep gates retained, max27 diagnostic transitions/786432 PPO steps only after technical PASS. Prior failure evidence preserved, execution pending, no retry or promotion; +10M/H2C/B HOLD.
 
@@ -1373,6 +1388,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-24 | H3-M1-1 corrected qpos stop / full SA gate audit | pasted traceback PHYSICS .qpos line313; exact source and v1.2.7/v1.2.9 history reviewed, full corrected artifacts pending | v1.2.62 exact gate FAIL, attribution INCONCLUSIVE, redesign pending approval; no source edit or execution | 1.2.62 |
+
 | 2026-11-24 | H3-M1-1 corrected explicit GO | Rules v1.2.60, correction diff5cfd2f69, runner d755fe8f, source pins unchanged | v1.2.61 one corrected integrated execution pending; 786432 PPO conditional, no retry | 1.2.61 |
 
 | 2026-11-24 | H3-M1-1 bounded initial state stop and harness correction | log dfd98048, report8a3e4948, INITIAL_DATA mismatch before step, legacy bytes/immutability PASS, 0 PPO | v1.2.60 single shared snapshot source correction, corrected run pending explicit GO | 1.2.60 |
@@ -1559,6 +1576,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.62 — 2026-11-24:** Record corrected PHYSICS .qpos stop and repeated SA harness design errors; acknowledge historical non-bitwise reproducibility, preserve failed exact gate, require full evidence and preapproved causal validation redesign before any further GPU/PPO. No reward, tolerance or executable source change.
 
 - **v1.2.61 — 2026-11-24:** Record explicit corrected H3-M1-1 owner GO, shared snapshot and all original exact gates retained; one integrated job, no new executable edits, +10M HOLD.
 
