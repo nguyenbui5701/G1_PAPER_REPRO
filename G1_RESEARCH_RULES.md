@@ -1,7 +1,7 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.46  
-**Ngày cập nhật:** 2026-11-23 (Asia/Ho_Chi_Minh)  
+**Version:** 1.2.47  
+**Ngày cập nhật:** 2026-11-24 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
 **Nhánh làm việc:** `experiment/b1-hardware-scaled` — **KHÔNG sửa `main` hoặc tag/checkpoint baseline**  
@@ -537,6 +537,14 @@ Owner requested detailed source design according to Rules. Reviewed HEAD fa991d4
 
 Decision H2B0_OWNER_EDIT_PENDING / H2B1_HOLD. H1 CLOSED, H2A1 NO-GO/CLOSED, H2A2 not eligible, H2B2 conditional, PPO0, Branch B HOLD.
 
+### M4.70-H2B0 — OWNER INTEGRATION SOURCE REVIEW, CLEANUP AND STATIC EVIDENCE PENDING (v1.2.47; 2026-11-24)
+
+Owner pushed abacb3b10ebdf9de4837ed9dc7422e897a9e4730 (parent 25021e4165a0028be25b3b63fb1dffa7aaca84e3), one modified file m463_gate3_cp_eval.py +613/-5, evaluator blob e7f358d8689d82f5e1f79d1dfb9002f4b3949d96. Reviewed exact diff/source and verified existing handoff Markdown SHA256 2200eb517c4c8f1b9ffbf6c9419d34e02d606ea06036369bc6c60f411bfcd21b (43191 bytes). Source logic review: mass-weighted xipos and causal IMU/phase sampling, history/cache/kick/fork, deterministic profile/contact/age/phase reference and freeze verification, residual/timeout supervisor, original-goal tracking, safety telemetry, calibration/eval ordering, CLI/provenance and legacy isolation consistent with locked design. No observed change to pinned source, baseline, network, reward, PD, termination or physics. Source review is not MJX runtime evidence.
+
+Finding H2B0-F01 LOW: duplicate finalization block at lines 2111-2121 inside nested rollout loop, immediately following H2B dispatch continue, is unreachable for either H2B flag value. Correct finalization is already present outside loop at lines 2349-2359. Owner manually delete ONLY the duplicate inner block; preserve outer finalization and H2A dispatch. No change to behavior, parameters or experiment protocol; no automated SA source edit. Owner static/pure/plan log not provided with commit; do not assume PASS from source landing. After cleanup use existing handoff section 4 combined static/pure/plan gate if not already evidenced on corrected source, git diff/check and push only evaluator; send exact HEAD and timestamped gate log. No repeat GPU replay/training.
+
+Decision H2B0_SOURCE_LOGIC_PASS_CLEANUP_REQUIRED / OWNER_STATIC_EVIDENCE_PENDING / H2B1_HOLD. Separate explicit owner GO required after corrected source review and gate evidence. Same six calibration + 60 logical trajectories, max49014 physical transitions; no GPU/PPO or new design/tuning. H1/H2A1 CLOSED, H2A2 not eligible, H2B2 conditional, +400M HOLD, Branch B HOLD.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -797,7 +805,10 @@ PY
 
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
-## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-23)
+## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-24)
+
+**M470-H2B0 OWNER INTEGRATION REVIEW (v1.2.47; 2026-11-24):** Owner abacb3b, evaluator e7f358d8, only M463 +613/-5. Source logic consistent with frozen design; F01 LOW duplicate unreachable inner finalization lines2111-2121, preserve correct outer2349-2359. Owner manual cleanup and static/pure/plan log pending; H2B1 HOLD until corrected source review + separate explicit GO. No GPU/PPO, H1/H2A CLOSED, Branch B HOLD.
+
 
 **M470-H2B0 DETAILED SOURCE HANDOFF (v1.2.46; 2026-11-24):** Exact G1 XML/joystick/MJX field review; actor phase timing and cached sample/fork contract frozen. Local Markdown proposal with full manual helper/integration/test code and SHA §4, synthetic host tests PASS only. **OWNER EDIT/PUSH PENDING** in existing M463 evaluator, source review and separate H2B1 GO still required. 6 calibration+60 logical eval protocol unchanged, reference frozen before eval, no retry/tuning, PPO0, H1/H2A CLOSED, Branch B HOLD.
 
@@ -1188,6 +1199,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-24 | H2B0 owner integration review | abacb3b, e7f358d8, one evaluator +613/-5; source logic consistent, duplicate unreachable inner finalization F01 LOW; owner gate log missing | v1.2.47 owner cleanup and static evidence pending, H2B1 HOLD, no GPU/PPO | 1.2.47 |
+
 | 2026-11-24 | H2B0 detailed owner source handoff | Exact G1/MJX source fields verified, local Markdown design hash §4, synthetic Python tests PASS only | v1.2.46 owner manual edit and static/plan gate, remote review then separate H2B1 GO; no GPU/PPO | 1.2.46 |
 
 | 2026-11-24 | H2B-R0 owner roadmap design | H2A1 startup false activation and stand partial evidence; pinned G1 sensor/contact source reviewed | v1.2.45 select one support-aware DCM command residual, fixed 6 calibration+60 eval proposed, H2B0 source design pending, no GPU/PPO | 1.2.45 |
@@ -1343,6 +1356,8 @@ PY
 | 2026-11-21 | Research governance | Khóa mục tiêu push → fall → get-up → resume; định nghĩa thước đo và cổng nghiệm thu | RULES ACTIVE; GET-UP NOT IMPLEMENTED | 1.0.0 |
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.47 — 2026-11-24:** Recorded H2B0 integrated source review at abacb3b, F01 unreachable duplicate finalization cleanup and missing owner static gate evidence; H2B1 HOLD pending corrected source review and separate GO. Rules-only; no source or protocol change, no GPU/PPO.
 
 - **v1.2.46 — 2026-11-24:** H2B0 detailed source handoff, verify IMU site/CoM/phase timing, causal sample cache/fork, fixed reference fit and progress persistence; isolated synthetic helper tests PASS, owner integration/runtime pending. Rules only; no executable source changes, no GPU/PPO.
 
