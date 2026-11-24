@@ -1646,7 +1646,9 @@ def h4c_audit_callback(api,args,report,persist,gpu_check):
         # Hash all numeric leaves and treedef including static metadata exactly.
         return digest_tree((model,axes),False)
     def same(x,y,label):
-        h4c_require(np.array_equal(np.asarray(x),np.asarray(y)),'KEY_OR_VALUE '+label)
+        x,y=np.asarray(x),np.asarray(y)
+        h4c_require(x.shape==y.shape and x.dtype==y.dtype and np.array_equal(x,y),
+                     'KEY_OR_VALUE '+label)
     def state_check(ts,updates):
         h4c_require(np.asarray(ts.env_steps).shape==(1,) and
                      int(ts.env_steps[0])==(512 if updates else 0),'LOGICAL_ENV_STEPS')
@@ -2139,11 +2141,6 @@ def h4c_static_regression(brax_train_path,acting_path,failure_report):
     y=h4c_trace_batch_layout(np,x)
     h4c_require(y.shape==(1,16,32) and y[0,5,7]==7*16+5,'LAYOUT_FIXTURE')
     reject(lambda:h4c_trace_batch_layout(np,x.reshape(1,1,16,32)))
-    class MockRandom:
-        @staticmethod
-        def split(key,n=2):
-            a,b=map(int,key)
-            return np.array([[a*7+i+1,b*3+i+1] for i in range(n)],dtype=object)
     # Bound mock integers and make every split output distinguishable.
     class BoundedRandom:
         @staticmethod
