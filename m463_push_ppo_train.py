@@ -83,6 +83,141 @@ H4_SPEC = {'arms': ['control','candidate'], 'episode_mix': [.20,.40,.16,.24],
            'tail_windows':[10,25,50,100,250]}
 
 
+def h4_integer_count(mean, rollouts=5):
+    # Each integer rollout count <= 262144; five-count sum <= 1310720
+    # is exactly representable in float32. Division rounding < .125 counts.
+    x = float(mean)*rollouts
+    if not math.isfinite(x) or x < 0 or abs(x-round(x)) > .125:
+        raise RuntimeError('M470_H4_NONINTEGER_COUNT')
+    return int(round(x))
+
+
+def h4_epoch_audit(counts, pending, arm, final=False):
+    """Integer ledger over real PPO extras and pending pre-reset env info."""
+    def c(name):
+        return counts['m463_h4_'+name+'_per_rollout']
+    def q(name):
+        return pending[name]
+    checks = {
+        'step_partition':sum(c(f'class_{i}_steps') for i in range(4)) ==
+                         (10485760 if final else 5242880),
+        'first_conservation': c('assigned') == c('first_events') +
+                              c('first_closed') + q('first_pending'),
+        'repeat_conservation': c('repeat_assigned') == c('repeat_events') +
+                               c('repeat_closed') + q('repeat_pending'),
+        'tail_conservation': c('first_events')+c('repeat_events') ==
+                             c('event_terminal')+c('close_repeat')+
+                             c('close_terminal')+c('close_complete')+
+                             c('close_boundary')+q('tail_pending'),
+        'no_bad': c('bad') == 0,
+        'nominal_fraction': c('class_0_steps') >= .15 *
+                            (10485760 if final else 5242880),
+        'due_bounds': c('first_events')<=c('first_due')<=c('assigned') and
+                      c('repeat_events')<=c('repeat_due')<=c('repeat_assigned'),
+    }
+    for kind,total in ((1,c('first_events')),(2,c('repeat_events'))):
+        for w in H4_SPEC['tail_windows']:
+            executed=c(f'tail_{kind}_{w}_executed')
+            checks[f'tail_{kind}_{w}_bounds'] = (
+                0<=c(f'tail_{kind}_{w}_survived')<=executed<=total and
+                c(f'tail_{kind}_{w}_same_command')<=executed and
+                c(f'tail_{kind}_{w}_same_unroll')<=executed)
+            total=executed
+    if arm == 'candidate':
+        for side in (1,2):
+            n=c(f'stand_{side}_events')
+            checks[f'stand_{side}_exposure']=n >= (32 if final else 1)
+            checks[f'stand_{side}_tail100']=c(f'stand_{side}_tail_2_100') >= (16 if final else 1)
+            if final:
+                checks[f'stand_{side}_tail250']=c(f'stand_{side}_tail_2_250')>=8
+            for motion in (3,4):
+                checks[f'turn_{motion}_{side}']=c(f'turn_{motion}_{side}_events') >= (32 if final else 1)
+        if final:
+            checks['broad_events']=c('broad_events')>=1000
+            for j in range(6):
+                for k in ('motion','direction'):
+                    checks[f'broad_{k}_{j}']=c(f'broad_{k}_{j}')>0
+    elif arm != 'control':
+        raise RuntimeError('M470_H4_ARM')
+    return {'checks':checks, 'passed':all(checks.values())}
+
+
+def h4_chunk_callback(jax,np,monitor,report,persist,arm):
+    """Prepared callback; no H4 runtime is authorized by this source revision.
+
+    The caller must bind the same monitor and report as the future H4 runner.
+    """
+    chunks=[]
+    epoch_counts={}
+    all_counts={}
+    all_pending={k:0 for k in ('first_pending','repeat_pending','tail_pending')}
+    report['h4_chunks']=chunks
+    report['h4_epochs']=[]
+    def callback(index,state,env_state,metrics):
+        expected_index=len(chunks)%4+1
+        expected_steps=(len(chunks)+1)*5*TOTAL_STEPS_BATCH
+        if index!=expected_index or int(jax.device_get(state.env_steps))!=expected_steps:
+            raise RuntimeError('M470_H4_CHUNK_STEP')
+        if len(chunks)>=8:
+            raise RuntimeError('M470_H4_CHUNK_BUDGET')
+        gpu=monitor.snapshot()
+        row={'chunk':len(chunks)+1,'steps':expected_steps,'gpu':gpu,
+             'counts':{},'passed':False}
+        chunks.append(row)
+        persist()
+        if (gpu['total_mib']!=12288 or gpu['peak_used_mib'] is None or
+                not 0<gpu['peak_used_mib']<.95*12288 or gpu['sampler_errors']):
+            raise RuntimeError('M470_H4_CHUNK_GPU')
+        for leaf in jax.tree_util.tree_leaves(jax.device_get(state)):
+            if not np.isfinite(np.asarray(leaf)).all():
+                raise RuntimeError('M470_H4_CHUNK_NONFINITE_STATE')
+        for k,v in metrics.items():
+            a=np.asarray(jax.device_get(v))
+            if a.ndim!=0 or not np.isfinite(a).all():
+                raise RuntimeError('M470_H4_CHUNK_METRIC_SCHEMA '+k)
+            if k.startswith('m463_h4_') and k.endswith('_per_rollout'):
+                n=h4_integer_count(a)
+                row['counts'][k]=n
+                epoch_counts[k]=epoch_counts.get(k,0)+n
+                all_counts[k]=all_counts.get(k,0)+n
+        if row['counts']['m463_h4_bad_per_rollout']!=0:
+            raise RuntimeError('M470_H4_CHUNK_INVARIANT')
+        if index==4:
+            info=env_state.info
+            pending={}
+            for k,field in (('first_pending','h4_first_pending'),
+                            ('repeat_pending','h4_repeat_pending'),
+                            ('tail_pending','h4_tail_kind')):
+                arr=np.asarray(jax.device_get(info[field]))
+                if arr.size!=8192:
+                    raise RuntimeError('M470_H4_PENDING_SCHEMA')
+                pending[k]=int(np.count_nonzero(arr))
+                all_pending[k]+=pending[k]
+            result=h4_epoch_audit(epoch_counts,pending,arm)
+            # Early exposure floor only after first epoch; second epoch
+            # must satisfy conservation but full-run floor governs exposure.
+            if len(chunks)==8:
+                result['checks']={k:v for k,v in result['checks'].items()
+                    if not k.startswith(('stand_','turn_'))}
+                result['passed']=all(result['checks'].values())
+            report['h4_epochs'].append({'counts':dict(epoch_counts),
+                'pending_at_reset':pending,'audit':result})
+            persist()
+            if not result['passed']:
+                raise RuntimeError('M470_H4_EPOCH_EXPOSURE_OR_LEDGER')
+            epoch_counts.clear()
+            if len(chunks)==8:
+                final=h4_epoch_audit(all_counts,all_pending,arm,final=True)
+                report['h4_final_exposure']=final
+                report['h4_final_counts']=dict(all_counts)
+                persist()
+                if not final['passed']:
+                    raise RuntimeError('M470_H4_FINAL_EXPOSURE')
+        row['passed']=True
+        persist()
+    return callback
+
+
 def validate_h4_cli(a):
     arm=getattr(a,'h4_arm',None)
     if arm is None:

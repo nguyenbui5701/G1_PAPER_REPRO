@@ -240,7 +240,9 @@ class CoverageJoystick(joystick.Joystick):
             })
         if self._h4_arm is not None:
             info.update({k: zeros for k in H4_FIELDS})
-            info.update(h4_first_age=jp.asarray(-1, jp.int32),
+            info.update(h4_actual_dx=jp.asarray(0.,jp.float32),
+                        h4_actual_dy=jp.asarray(0.,jp.float32),
+                        h4_first_age=jp.asarray(-1, jp.int32),
                         h4_first_mag=jp.asarray(0., jp.float32),
                         h4_first_motion=jp.asarray(-1, jp.int32),
                         h4_tail_motion=jp.asarray(-1, jp.int32))
@@ -366,6 +368,7 @@ class CoverageJoystick(joystick.Joystick):
             info['m470_h3_n'] = h3_n
         updated_qvel = state.data.qvel.at[:2].add(world_delta)
         if self._h4_arm is not None:
+            h4_actual_delta = updated_qvel[:2] - state.data.qvel[:2]
             injection_bad = (~jp.isfinite(updated_qvel).all() |
                 (jp.max(jp.abs((updated_qvel[:2] - state.data.qvel[:2]) -
                                world_delta)) > 2e-6))
@@ -483,14 +486,17 @@ class CoverageJoystick(joystick.Joystick):
             # Track assigned first/repeat targets, including unreached terminal.
             fp = jp.where(boundary, ~disabled, info['h4_first_pending'] > 0)
             rp = (~boundary) & (info['h4_repeat_pending'] > 0)
-            f_due = fp & (age >= next_step)
-            r_due = rp & (age >= next_step)
+            f_due = fp & (age == next_step)
+            r_due = rp & (age == next_step)
             next_fp = fp & (~first) & (~terminal)
             next_rp = ((rp & (~repeat)) | (first & repeat_allowed)) & (~terminal)
             bad = (injection_bad | (event & disabled) |
                    (event & (~jp.isfinite(magnitude))) |
                    (repeat & (~rp)) | (first & (~fp)) |
                    ((h4_class == 2) & repeat) |
+                   (first & mature & ((age < 240) | (age > 308) |
+                                      (magnitude < .45) | (magnitude > .55))) |
+                   (repeat & mature & ((magnitude < .30) | (magnitude > .40))) |
                    ((h4_class == 3) & repeat & ((actual_gap < 30) | (actual_gap > 40))))
             vals = dict(
                 h4_class=h4_class, h4_boundary=boundary, h4_age=age,
@@ -520,6 +526,7 @@ class CoverageJoystick(joystick.Joystick):
                 h4_bad=bad)
             out.update({k: jp.asarray(v, jp.int32) for k,v in vals.items()})
             out.update(
+                h4_actual_dx=h4_actual_delta[0], h4_actual_dy=h4_actual_delta[1],
                 h4_first_age=jp.where(first,age,first_age),
                 h4_first_mag=jp.where(first,magnitude,first_mag),
                 h4_first_motion=jp.where(first,pre_motion,first_motion),

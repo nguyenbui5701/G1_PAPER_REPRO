@@ -181,7 +181,7 @@ def _add_m470_fullstate_hooks(s):
     )
     return s
 
-H4_EXT_FIELDS = ('h4_class', 'h4_boundary', 'h4_age', 'h4_target', 'h4_motion', 'h4_actor_motion', 'h4_refresh', 'h4_changed', 'h4_assigned', 'h4_first_pending', 'h4_repeat_pending', 'h4_first_due', 'h4_repeat_due', 'h4_first_closed', 'h4_repeat_closed', 'h4_event_qual', 'h4_mature_repeat', 'h4_repeat_assigned', 'h4_event_terminal', 'h4_tail_kind', 'h4_tail_cell', 'h4_tail_age', 'h4_tail_same', 'h4_tick_kind', 'h4_tick_cell', 'h4_tick_age', 'h4_tick_same', 'h4_tick_survived', 'h4_close_repeat', 'h4_close_terminal', 'h4_close_complete', 'h4_close_boundary', 'h4_bad',)
+H4_EXT_FIELDS = ('h4_class', 'h4_boundary', 'h4_age', 'h4_target', 'h4_motion', 'h4_actor_motion', 'h4_refresh', 'h4_changed', 'h4_assigned', 'h4_first_pending', 'h4_repeat_pending', 'h4_first_due', 'h4_repeat_due', 'h4_first_closed', 'h4_repeat_closed', 'h4_event_qual', 'h4_mature_repeat', 'h4_repeat_assigned', 'h4_event_terminal', 'h4_tail_kind', 'h4_tail_cell', 'h4_tail_age', 'h4_tail_same', 'h4_tick_kind', 'h4_tick_cell', 'h4_tick_age', 'h4_tick_same', 'h4_tick_survived', 'h4_close_repeat', 'h4_close_terminal', 'h4_close_complete', 'h4_close_boundary', 'h4_bad','h4_actual_dx','h4_actual_dy',)
 
 H4_METRICS_SOURCE = '''    # H4: only PPO-consumed scalar extras, not configured event counts.
     h4_count = lambda mask: jnp.sum(mask.astype(jnp.float32))
@@ -195,6 +195,26 @@ H4_METRICS_SOURCE = '''    # H4: only PPO-consumed scalar extras, not configured
     # signals a contract violation. The technical gate must verify this.
     coverage['m463_h4_bad_per_rollout'] = h4_count(
         (extras['h4_bad'] != 0) | (extras['truncation'] != 0))
+    ha = extras['h4_age']
+    hm = jnp.sqrt(extras['h4_actual_dx']**2 + extras['h4_actual_dy']**2)
+    coverage['m463_h4_bad_per_rollout'] += h4_count(
+        (~jnp.isfinite(hm)) | (jnp.abs(hm - extras['m463_magnitude']) > 3e-6))
+    coverage['m463_h4_magnitude_sum'] = jnp.sum(hm)
+    for kind in (1,2):
+        mask = he & (hr if kind == 2 else ~hr)
+        for lo,hi in ((0,32),(33,239),(240,308),(309,348),(349,639)):
+            coverage[f'm463_h4_age_{kind}_{lo}_{hi}_per_rollout'] = h4_count(
+                mask & (ha >= lo) & (ha <= hi))
+        for side in range(4):
+            coverage[f'm463_h4_support_{kind}_{side}_per_rollout'] = h4_count(
+                mask & (extras['m463_support_side'] == side))
+    for lo,hi in ((0,29),(30,40),(41,639)):
+        coverage[f'm463_h4_gap_{lo}_{hi}_per_rollout'] = h4_count(
+            hr & (extras['m463_repeat_gap'] >= lo) & (extras['m463_repeat_gap'] <= hi))
+    coverage['m463_h4_repeat_matched_per_rollout'] = h4_count(
+        extras['m463_repeat_side_matched'] > 0)
+    coverage['m463_h4_repeat_fallback_per_rollout'] = h4_count(
+        extras['m463_repeat_side_fallback'] > 0)
     for ci in range(4):
         coverage[f'm463_h4_class_{ci}_steps_per_rollout'] = h4_count(hc == ci)
         coverage[f'm463_h4_class_{ci}_assign_per_rollout'] = h4_count(
