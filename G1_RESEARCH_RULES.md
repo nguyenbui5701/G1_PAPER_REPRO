@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.47  
+**Version:** 1.2.48  
 **Ngày cập nhật:** 2026-11-24 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -545,6 +545,12 @@ Finding H2B0-F01 LOW: duplicate finalization block at lines 2111-2121 inside nes
 
 Decision H2B0_SOURCE_LOGIC_PASS_CLEANUP_REQUIRED / OWNER_STATIC_EVIDENCE_PENDING / H2B1_HOLD. Separate explicit owner GO required after corrected source review and gate evidence. Same six calibration + 60 logical trajectories, max49014 physical transitions; no GPU/PPO or new design/tuning. H1/H2A1 CLOSED, H2A2 not eligible, H2B2 conditional, +400M HOLD, Branch B HOLD.
 
+### M4.70-H2B0 — OWNER CLEANUP SOURCE REVIEW PASS, STATIC EVIDENCE PENDING (v1.2.48; 2026-11-24)
+
+Owner pushed 47c2ec0cd216d095ecd51d2c6ad13cf0e0572666, parent 94c672e955f4c0848fee39b81736c8db203d4d55, evaluator blob 65f0b46cc0b61561e8f75864ed9348be60a7919c. Exact compare shows only m463_gate3_cp_eval.py, +0/-11: unreachable inner finalization removed precisely, outer finalization retained, H2A dispatch and all H2B algorithms/parameters unchanged. F01 CLOSED, SOURCE-ON-GIT and corrected source review PASS; no further source edits required by this review. No GPU/PPO performed by SA. Owner static/pure/plan gate log not supplied in current handoff: request existing timestamped combined log tied to corrected source (do not repeat if already executed with evidence); otherwise run existing section 4 gate once. Do not infer test PASS from commit or source review. H2B0 final technical sign-off awaits that evidence; H2B1 remains HOLD and requires separate explicit owner GO. Locked protocol six calibration + 60 logical trajectories, max49014 physical transitions, frozen C401M and no PPO unchanged. H1/H2A1 CLOSED, H2A2 not eligible, H2B2 conditional, +400M HOLD, Branch B HOLD.
+
+Decision H2B0_CORRECTED_SOURCE_REVIEW_PASS / OWNER_STATIC_EVIDENCE_PENDING / H2B1_HOLD.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -806,6 +812,9 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-24)
+
+**M470-H2B0 CORRECTED SOURCE REVIEW PASS (v1.2.48; 2026-11-24):** Owner 47c2ec0, evaluator 65f0b46c, only M463 +0/-11; F01 CLOSED, outer finalization retained, frozen design unchanged. No further source edits required. Owner corrected-source static/pure/plan log pending; no duplicate gate if existing evidence available. H2B1 HOLD pending evidence and separate explicit owner GO, no GPU/PPO, H1/H2A CLOSED, Branch B HOLD.
+
 
 **M470-H2B0 OWNER INTEGRATION REVIEW (v1.2.47; 2026-11-24):** Owner abacb3b, evaluator e7f358d8, only M463 +613/-5. Source logic consistent with frozen design; F01 LOW duplicate unreachable inner finalization lines2111-2121, preserve correct outer2349-2359. Owner manual cleanup and static/pure/plan log pending; H2B1 HOLD until corrected source review + separate explicit GO. No GPU/PPO, H1/H2A CLOSED, Branch B HOLD.
 
@@ -1199,6 +1208,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-24 | H2B0 corrected source review | 47c2ec0 parent94c672e, evaluator65f0b46c, one file +0/-11 exact F01 cleanup, correct outer finalization retained | v1.2.48 source review PASS, static evidence pending, H2B1 HOLD, no GPU/PPO | 1.2.48 |
+
 | 2026-11-24 | H2B0 owner integration review | abacb3b, e7f358d8, one evaluator +613/-5; source logic consistent, duplicate unreachable inner finalization F01 LOW; owner gate log missing | v1.2.47 owner cleanup and static evidence pending, H2B1 HOLD, no GPU/PPO | 1.2.47 |
 
 | 2026-11-24 | H2B0 detailed owner source handoff | Exact G1/MJX source fields verified, local Markdown design hash §4, synthetic Python tests PASS only | v1.2.46 owner manual edit and static/plan gate, remote review then separate H2B1 GO; no GPU/PPO | 1.2.46 |
@@ -1356,6 +1367,8 @@ PY
 | 2026-11-21 | Research governance | Khóa mục tiêu push → fall → get-up → resume; định nghĩa thước đo và cổng nghiệm thu | RULES ACTIVE; GET-UP NOT IMPLEMENTED | 1.0.0 |
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.48 — 2026-11-24:** Recorded exact owner F01 cleanup at 47c2ec0; corrected source review PASS, static/pure/plan evidence pending, H2B1 HOLD and separate owner GO required. Rules-only; no executable source changes, no GPU/PPO.
 
 - **v1.2.47 — 2026-11-24:** Recorded H2B0 integrated source review at abacb3b, F01 unreachable duplicate finalization cleanup and missing owner static gate evidence; H2B1 HOLD pending corrected source review and separate GO. Rules-only; no source or protocol change, no GPU/PPO.
 
