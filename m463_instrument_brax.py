@@ -731,8 +731,8 @@ def h4c_regions(held):
             step[reducer_start:state_start],step[state_start:finite_start])
 
 
-def make_h4_causal_source(raw, acting_raw):
-    """Generate diagnostic from accepted held source, never authorize runtime."""
+def make_h4_causal_source(raw, acting_raw, *, authorize=False):
+    """Generate exact accepted held diagnostic; explicit one-run authorization only."""
     import ast
     if h4c_git_blob(acting_raw)!=H4C_ACTING_BLOB:
         raise RuntimeError('M470_H4C_ACTING_PIN')
@@ -803,16 +803,24 @@ def make_h4_causal_source(raw, acting_raw):
     s=h4c_once(s,H4R_CONTRACT,contract)
     s=h4c_once(s,H4R_EXIT,H4C_EXIT)
     s=s.replace('h4r_audit_fn','h4c_audit_fn').replace('M470_H4_READINESS_CONFIG','M470_H4C_CONFIG')
-    compile(s,'<held causal source>','exec')
+    if sha256(s.encode())!='d17e5055528931e89fe82534932f076bf8b638f65ac568ec5bfa1b93aaa17c7a':
+        raise RuntimeError('M470_H4C_ACCEPTED_SOURCE_DRIFT')
+    if authorize is True:
+        s=h4c_once(s,"  raise RuntimeError('M470_H4C_EXECUTION_HOLD')\n",
+                   "  if h4c_audit_fn is None:\n"
+                   "    raise RuntimeError('M470_H4C_AUDIT_REQUIRED')\n")
+    elif authorize is not False:
+        raise RuntimeError('M470_H4C_AUTHORIZATION_TYPE')
+    compile(s,'<causal source>','exec')
     return s,original
 
 
-def build_h4_causal_ppo(pinned_ppo_module, output):
+def build_h4_causal_ppo(pinned_ppo_module, output, *, authorize=False):
     import inspect
     raw=Path(inspect.getfile(pinned_ppo_module.train)).read_bytes()
     from brax.training import acting
     acting_raw=Path(inspect.getfile(acting)).read_bytes()
-    s,original=make_h4_causal_source(raw,acting_raw)
+    s,original=make_h4_causal_source(raw,acting_raw,authorize=authorize)
     with Path(output).open('x',encoding='utf8') as f:
         f.write(s)
     spec=importlib.util.spec_from_file_location('m463_h4_causal_ppo',str(output))

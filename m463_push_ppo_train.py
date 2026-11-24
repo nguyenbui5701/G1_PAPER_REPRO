@@ -1368,8 +1368,8 @@ def h4r_static_regression(brax_train_path,technical_report):
 
 
 # H4-M1-1C isolated causal diagnostic, separate from both prior entries.
-H4C_EXECUTION_AUTHORIZED = False
-H4C_AUTHORIZED_RUN = None
+H4C_EXECUTION_AUTHORIZED = True
+H4C_AUTHORIZED_RUN = 'm463_runs/m470_h4_m1_1c_causal_v1295'
 H4C_SPEC = {'paths':['A0','A1','B0','B1'], 'num_envs':16,'batch_size':2,
             'unroll_length':32,'num_minibatches':8,'num_updates_per_batch':5,
             'seed':1,'max_physical_transitions':1024,'max_optimizer_updates':80,
@@ -1901,7 +1901,8 @@ def h4c_run(args):
             h4c_require(env_cfg.to_dict()['reward_config']==reward,'REWARD_UNCHANGED')
             env=CoverageJoystick(config=env_cfg,stage='easy_repeat_support',h4_arm='control')
             h4c_require(env.action_size==29 and float(env.dt)==.02,'ENV_CONFIG')
-            mod,meta=build_h4_causal_ppo(api['ppo'],args.output_dir/'h4_causal_generated.py')
+            mod,meta=build_h4_causal_ppo(api['ppo'],args.output_dir/'h4_causal_generated.py',
+                                        authorize=H4C_EXECUTION_AUTHORIZED)
             report['generated']=meta
             factory=functools.partial(api['networks'].make_ppo_networks,**cfg.pop('network_factory'))
             audit,budget=h4c_audit_callback(api,args,report,persist,gpu_check)
@@ -3477,7 +3478,7 @@ def main():
     p.add_argument('--h4-control-report',type=Path,help='Future pinned matched control; execution HOLD')
     p.add_argument('--h4-readiness',action='store_true',help='Isolated readiness plan; execution HOLD')
     p.add_argument('--h4-readiness-reward-report',type=Path)
-    p.add_argument('--h4-causal',action='store_true',help='Isolated causal plan; execution HOLD')
+    p.add_argument('--h4-causal',action='store_true',help='Isolated causal diagnostic; one authorized output only')
     p.add_argument('--h4-causal-failure-report',type=Path)
     a=p.parse_args()
     try:
@@ -3489,8 +3490,8 @@ def main():
         p.error(str(exc))
     if a.h4_causal:
         if a.mode=='plan':
-            print('M470_H4C_PLAN_NO_GPU',json.dumps({'spec':H4C_SPEC,'execution_authorized':False,
-                'production_authorized':False},sort_keys=True))
+            print('M470_H4C_PLAN_NO_GPU',json.dumps({'spec':H4C_SPEC,'execution_authorized':H4C_EXECUTION_AUTHORIZED,
+                'authorized_run':H4C_AUTHORIZED_RUN,'production_authorized':False},sort_keys=True))
             return
         return h4c_run(a)
     if a.h4_readiness:
