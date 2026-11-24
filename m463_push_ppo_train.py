@@ -64,32 +64,40 @@ H3_CAUSAL_ORIGINAL_BRAX_SHA = 'e20613d42bf0868a13003e0312998816cc8d3593bb5ccaf9f
 H3_CAUSAL_RESTORE_SHA = '9c46427c16aa482730e45bc9f79c53f6cb18ec3a267d1fc3253faab695916e81'
 
 
+H3_SMOKE_SHA = '55e6d2248e17c9a58eaae6c0c0b965792059e3f4edec564b5444791ffa750aca'
+H3_SMOKE_RUNNER_SHA = '7a3d475928765fc669ef6f6ca71fd043cc7ad4053b4c6a381cad747dbb6e8031'
+H3_OLD10M_SHA = '04f7c71b3dd4b9d24e06b13991a9e4bb4e6c482d217929a74aa40537e9b62f74'
+H3_OLD10M_POLICY_SHA = '0a011b6a3011f126a29832e4faa18972d7fbdddef77b63414219a15abab8314a'
+H3_OLD10M_BRAX_SHA = '2a7182e7bd8e9134b5317b858cc0e022468a057807c0021c2a6a449ce1be68b5'
+H3_OLD10M_RUNNER_SHA = '706a19830e426672efeac4b2832c6b46512973ecc7baff30c82350281153bb2f'
+H3_OLD10M_COMMIT = 'aae9e8f484612790029d54d4537993e614477885'
+
+
 def validate_h3_cli(a):
     diagnostic = bool(getattr(a, 'h3_diagnostic_only', False))
     causal = getattr(a, 'h3_causal_report', None)
+    comparator = getattr(a, 'h3_old10m_report', None)
     if not getattr(a, 'h3_m1', False):
         if diagnostic:
             raise RuntimeError('M470_H3_DIAGNOSTIC_REQUIRES_H3')
-        if causal is not None:
-            raise RuntimeError('M470_H3_CAUSAL_REPORT_REQUIRES_H3')
+        if causal is not None or comparator is not None:
+            raise RuntimeError('M470_H3_EVIDENCE_REQUIRES_H3')
         return
-    if diagnostic and causal is not None:
-        raise RuntimeError('M470_H3_CAUSAL_DIAGNOSTIC_CONFLICT')
     if diagnostic:
-        if a.mode != 'smoke3':
-            raise RuntimeError('M470_H3_DIAGNOSTIC_MODE_MISMATCH')
         raise RuntimeError('M470_H3_DIAGNOSTIC_CLOSED')
-    if a.mode not in ('plan', 'smoke3'):
-        raise RuntimeError('M470_H3_PPO_HOLD_CAUSAL_VALIDATION')
-    if (a.h1_m1 or a.h1_m2 or a.stage != 'easy_repeat_support'
-            or a.resume_state is not None or a.independent_budget is not None
-            or a.rollouts is not None or a.num_evals is not None
-            or a.smoke_report is not None):
+    if a.h1_m1 or a.h1_m2 or a.stage != 'easy_repeat_support' or a.resume_state is not None:
         raise RuntimeError('M470_H3_M1_MODE_NOT_APPROVED')
-    if a.mode == 'plan' and causal is not None:
-        raise RuntimeError('M470_H3_CAUSAL_REPORT_REQUIRES_SMOKE3')
-    if a.mode == 'smoke3' and causal is None:
-        raise RuntimeError('M470_H3_CAUSAL_REPORT_REQUIRED')
+    if a.mode == 'plan':
+        if any(v is not None for v in (causal, comparator, a.smoke_report,
+                                      a.independent_budget, a.rollouts, a.num_evals)):
+            raise RuntimeError('M470_H3_PLAN_FLAGS_NOT_APPROVED')
+        return
+    if a.mode != 'longtrain' or a.independent_budget != '10M':
+        raise RuntimeError('M470_H3_ONLY_INDEPENDENT_10M_APPROVED')
+    if (a.rollouts, a.num_evals) != (40, 6):
+        raise RuntimeError('M470_H3_LONGTRAIN_BUDGET_MISMATCH')
+    if any(v is None for v in (causal, comparator, a.smoke_report)):
+        raise RuntimeError('M470_H3_LONGTRAIN_EVIDENCE_REQUIRED')
 
 
 def read_h3_causal_report(path):
@@ -167,6 +175,118 @@ def read_h3_causal_report(path):
         'diagnostic_control_transitions_reexecuted': 0,
         'ppo_steps_authorized': 786432, 'optimizer_updates_target': 120,
     }
+
+
+def read_h3_independent_evidence(args, causal_basis):
+    """Offline immutable evidence and comparator byte validation; no JAX."""
+    def require(ok, label):
+        if not ok:
+            raise RuntimeError('M470_H3_10M_'+label)
+    def read(path, sha, label):
+        require(path is not None and path.is_file() and not path.is_symlink(), label+'_PATH')
+        raw=path.read_bytes()
+        require(hashlib.sha256(raw).hexdigest()==sha, label+'_SHA')
+        return json.loads(raw)
+    sr=read(args.smoke_report,H3_SMOKE_SHA,'SMOKE')
+    old=read(args.h3_old10m_report,H3_OLD10M_SHA,'OLD10M')
+    for r,steps,rollouts,evals in ((sr,786432,3,2),(old,10485760,40,6)):
+        require(r['source_commit']==PIN and r['source_checkpoint_sha256']==SEED1_SHA
+                and r['orbax_sha256']=='5acfabc1376e91a2a9a52b47ac821e296f0e84f5545b646b07c9482ddc462bf3'
+                and r['stage']=='easy_repeat_support' and r['training_seed']==1
+                and r['train_steps_target']==r['steps_observed']==r['run_steps_observed']==steps
+                and r['rollouts_target']==rollouts and r['hardware_scaled_config']['num_evals']==evals
+                and r['hardware_scaled_config']['num_timesteps']==steps
+                and m470_fingerprint(r['hardware_scaled_config'])==H3_FP
+                and r['training_performed'] is True and r['weights_finite'] is True
+                and r['callback_vs_final_equal'] is True and r['coverage_gate_pass'] is True
+                and r['memory_gate_pass'] is True and not r['gpu_monitor_errors']
+                and 0<r['gpu_peak_mib']<.95*r['gpu_total_mib']
+                and r['gpu_total_mib']==12288
+                and r['instrumented_brax']['original_brax_sha256']==H3_CAUSAL_ORIGINAL_BRAX_SHA,
+                'COMMON_REPORT')
+    require(sr['status']=='M463_COVERAGE_SMOKE3_PASS' and sr['h3_m1_spec']==H3_SPEC
+            and sr['h3_m1_enabled'] is True and sr['h3_diagnostic_only'] is False
+            and sr['h1_m1_enabled'] is False and sr['h1_m2_enabled'] is False
+            and sr['h3_ppo_fingerprint']==H3_FP
+            and sr['runner_sha256']==H3_SMOKE_RUNNER_SHA
+            and sr['h3_source_digests']=={**H3_CAUSAL_SOURCE_DIGESTS,
+                       'm463_push_ppo_train.py':H3_SMOKE_RUNNER_SHA}
+            and sr['h3_smoke_acceptance_basis']==causal_basis
+            and not sr.get('h3_m1_technical_gate',{}).get('passed',False)
+            and sr['instrumented_brax']['instrumented_sha256']==H3_CAUSAL_BRAX_SHA,
+            'SMOKE_CONTRACT')
+    audit=sr['h3_m1_training_transition_audit']
+    require(audit['passed'] and h3_audit_counts(sr['coverage']['counts'])==audit,
+            'SMOKE_AUDIT')
+    require(old['status']=='M463_COVERAGE_LONGTRAIN_PASS'
+            and old['runner_sha256']==H3_OLD10M_RUNNER_SHA
+            and old['instrumented_brax']['instrumented_sha256']==H3_OLD10M_BRAX_SHA
+            and old['experiment_design']=='INDEPENDENT_C401M_SINGLE_PROCESS'
+            and old['independent_budget']=='10M' and old['rollouts_per_epoch']==8
+            and old['cumulative_steps_start']==0 and old['resume_fullstate_sha256'] is None
+            and old['trained_from']=='C401M_WEIGHTS_ONLY_ADAM_STARTED_ONCE'
+            and old['reward_PD_termination_source_unchanged'] is True
+            and old['config_fingerprint']==H3_FP, 'OLD10M_CONTRACT')
+    require([x['additional_steps'] for x in old['report_history']]==list(range(0,10485761,2097152))
+            and [x['steps'] for x in old['checkpoints']]==list(range(2097152,10485761,2097152)),
+            'OLD10M_HISTORY')
+    ck=old['checkpoints'][-1]
+    require(ck['sha256']==H3_OLD10M_POLICY_SHA
+            and ck['file']=='m463_easy_repeat_support_longtrain_step_010485760.msgpack',
+            'OLD10M_FINAL_METADATA')
+    policy=args.h3_old10m_report.parent/ck['file']
+    generated=args.h3_old10m_report.parent/'m463_brax_ppo_instrumented.py'
+    for p,sha in ((policy,H3_OLD10M_POLICY_SHA),(generated,H3_OLD10M_BRAX_SHA)):
+        require(p.is_file() and not p.is_symlink() and digest(p)==sha,'OLD10M_ARTIFACT_'+p.name)
+    return {**causal_basis,
+        'basis':'V1_2_67_SMOKE_TECH_PASS_OLD10M_SOURCE_COMPARATOR',
+        'smoke_report_sha256':H3_SMOKE_SHA,'old10m_report_sha256':H3_OLD10M_SHA,
+        'old10m_policy_sha256':H3_OLD10M_POLICY_SHA,
+        'old10m_original_generated_brax_sha256':H3_OLD10M_BRAX_SHA,
+        'ppo_steps_authorized':10485760,'optimizer_updates_target':1600,
+        'source_comparison_not_bitwise_runtime_proof':True}
+
+
+def verify_h3_longtrain_brax(api, instrument_meta):
+    """Prove generated-code equivalence except the reviewed telemetry additions."""
+    import inspect
+    import subprocess
+    from m463_instrument_brax import EXT_FIELDS,H3_EXT_FIELDS,H3_METRICS_SOURCE
+    raw=Path(inspect.getfile(api['ppo'].train)).read_bytes()
+    def require(ok,label):
+        if not ok:
+            raise RuntimeError('M470_H3_10M_BRAX_'+label)
+    def historical(name):
+        return subprocess.check_output(['git','show',H3_OLD10M_COMMIT+':'+name],
+                                      cwd=Path(__file__).resolve().parent)
+    require(hashlib.sha256(historical('m463_push_ppo_train.py')).hexdigest()==H3_OLD10M_RUNNER_SHA,
+            'HISTORICAL_RUNNER')
+    ns={'__name__':'h3_old10m_instrumenter'}
+    exec(compile(historical('m463_instrument_brax.py'),'<OLD10M instrumenter>','exec'),ns)
+    legacy,sha=ns['make_patched_source'](raw,enable_resume=True)
+    require(sha==H3_CAUSAL_ORIGINAL_BRAX_SHA and
+            hashlib.sha256(legacy.encode('utf8')).hexdigest()==H3_OLD10M_BRAX_SHA,
+            'HISTORICAL_GENERATED')
+    p=Path(instrument_meta['instrumented_file'])
+    require(digest(p)==instrument_meta['instrumented_sha256'],'CURRENT_GENERATED_SHA')
+    generated=p.read_text('utf8')
+    current_fields=EXT_FIELDS+H3_EXT_FIELDS
+    field_text=lambda fields: "extra_fields=('truncation', "+', '.join(repr(k) for k in fields)+'),'
+    require(generated.count(field_text(current_fields))==1,'EXTRAS')
+    normalized=generated.replace(field_text(current_fields),field_text(ns['EXT_FIELDS']),1)
+    require(normalized.count(H3_METRICS_SOURCE)==1,'H3_TELEMETRY')
+    normalized=normalized.replace(H3_METRICS_SOURCE,'',1)
+    start='    # H1-M1: the transitions consumed by PPO, not the two-env eval reward.'
+    end='    metrics = {**metrics, **coverage, **m464_tail}'
+    require(normalized.count(start)==1 and normalized.count(end)==1,'H1_TELEMETRY')
+    lo,hi=normalized.index(start),normalized.index(end)
+    require(lo<hi,'TELEMETRY_ORDER')
+    normalized=normalized[:lo]+normalized[hi:]
+    require(normalized==legacy,'NONTELEMETRY_SOURCE_DIFF')
+    return {'old10m_generated_sha256':H3_OLD10M_BRAX_SHA,
+            'current_generated_sha256':instrument_meta['instrumented_sha256'],
+            'normalized_generated_matches_old10m':True,
+            'bitwise_runtime_equivalence_claimed':False}
 
 
 def h3_audit_counts(counts):
@@ -670,6 +790,7 @@ def run(args):
     h3_diagnostic = bool(getattr(args, 'h3_diagnostic_only', False))
     h3_acceptance = read_h3_causal_report(args.h3_causal_report) if h3_m1 and not h3_diagnostic else None
     if h3_acceptance is not None:
+        h3_acceptance=read_h3_independent_evidence(args,h3_acceptance)
         import shutil
         if digest(args.restore_report) != H3_CAUSAL_RESTORE_SHA:
             raise RuntimeError('M470_H3_CAUSAL_RESTORE_REPORT_SHA')
@@ -789,32 +910,16 @@ def run(args):
     h3_fp = m470_fingerprint(scaled.to_dict()) if h3_m1 else None
     if h3_m1 and h3_fp != H3_FP:
         raise RuntimeError('M470_H3_PPO_FINGERPRINT_MISMATCH')
-    if h3_acceptance is not None and (args.mode != 'smoke3' or batches != 3
-            or scaled.num_timesteps != 786432 or scaled.num_evals != 2):
-        raise RuntimeError('M470_H3_SMOKE_BUDGET_MISMATCH')
+    if h3_acceptance is not None and (not longtrain or batches != 40
+            or scaled.num_timesteps != 10485760 or scaled.num_evals != 6):
+        raise RuntimeError('M470_H3_LONGTRAIN_BUDGET_MISMATCH')
+    if h3_acceptance is not None:
+        sr=json.loads(args.smoke_report.read_bytes())
+        if original_reward!=sr['train_reward_config']:
+            raise RuntimeError('M470_H3_LONGTRAIN_REWARD_CONFIG_MISMATCH')
     h3_source_digests = ({name: digest(Path(__file__).with_name(name))
         for name in ('m463_coverage_env.py', 'm463_instrument_brax.py',
                      'm463_push_ppo_train.py')} if h3_m1 else None)
-    if h3_m1 and longtrain:
-        sr = json.loads(args.smoke_report.read_text('utf8'))
-        if not (sr.get('status') == 'M463_COVERAGE_SMOKE3_PASS'
-                and sr.get('stage') == 'easy_repeat_support'
-                and sr.get('h3_m1_enabled') is True
-                and sr.get('h3_m1_spec') == H3_SPEC
-                and sr.get('h3_ppo_fingerprint') == H3_FP
-                and sr.get('h3_source_digests') == h3_source_digests
-                and sr.get('source_commit') == PIN
-                and sr.get('source_checkpoint_sha256') == SEED1_SHA
-                and sr.get('orbax_sha256') == report_gate['orbax_dir_sha256']
-                and sr.get('steps_observed') == 786432
-                and sr.get('training_performed') is True
-                and sr.get('weights_finite') is True
-                and sr.get('coverage_gate_pass') is True
-                and sr.get('memory_gate_pass') is True
-                and not sr.get('gpu_monitor_errors')
-                and sr.get('h3_m1_technical_gate', {}).get('passed') is True
-                and sr.get('h3_m1_training_transition_audit', {}).get('passed') is True):
-            raise RuntimeError('M470_H3_SMOKE3_PROVENANCE_MISMATCH')
     net_cfg=cfg.pop('network_factory')
     cfg.update(seed=1,randomization_fn=api['randomizer'],
                restore_checkpoint_path=str(orbax_dir.resolve()))
@@ -823,11 +928,9 @@ def run(args):
     instrumented_ppo,instrument_meta=build_instrumented_ppo(
         api['ppo'],out/'m463_brax_ppo_instrumented.py',
         enable_resume=longtrain, enable_h3=h3_m1)
-    if h3_acceptance is not None and (
-            instrument_meta['original_brax_sha256'] != H3_CAUSAL_ORIGINAL_BRAX_SHA
-            or instrument_meta['instrumented_sha256'] != H3_CAUSAL_BRAX_SHA
-            or digest(Path(instrument_meta['instrumented_file'])) != H3_CAUSAL_BRAX_SHA):
-        raise RuntimeError('M470_H3_CAUSAL_GENERATED_BRAX_MISMATCH')
+    if h3_acceptance is not None:
+        h3_acceptance['longtrain_brax_comparison']=verify_h3_longtrain_brax(api,instrument_meta)
+        print('M470_H3_OLD10M_GENERATED_SOURCE_PASS',flush=True)
     prior_step = 0
     resume_meta = None
     if longtrain:
@@ -892,7 +995,7 @@ def run(args):
                       h3_smoke_report_sha256=(digest(args.smoke_report) if longtrain else None),
                       h3_static_reward_config_unchanged=True)
     if h3_acceptance is not None:
-        report['h3_smoke_acceptance_basis'] = h3_acceptance
+        report['h3_independent_acceptance_basis'] = h3_acceptance
         report['h3_diagnostic_only'] = False
     if h3_diagnostic:
         report.update(experiment_class='H3_CAUSAL_VALIDATION_ONLY_NO_PPO',
@@ -1041,11 +1144,15 @@ def run(args):
             else:
                 # Separate approved acceptance basis; historical exact gate stays FAIL.
                 if h3_m1:
-                    if (h3_acceptance is None or args.mode != 'smoke3'
-                            or h3_acceptance['diagnostic_report_sha256'] != H3_CAUSAL_SHA
-                            or digest(args.h3_causal_report) != H3_CAUSAL_SHA):
+                    if (h3_acceptance is None or args.mode != 'longtrain'
+                            or args.independent_budget != '10M'
+                            or not h3_acceptance['longtrain_brax_comparison']['normalized_generated_matches_old10m']
+                            or digest(args.h3_causal_report) != H3_CAUSAL_SHA
+                            or digest(args.smoke_report) != H3_SMOKE_SHA
+                            or digest(args.h3_old10m_report) != H3_OLD10M_SHA
+                            or args.resume_state is not None):
                         raise RuntimeError('M470_H3_PPO_HOLD_CAUSAL_VALIDATION')
-                    print('M470_H3_CAUSAL_SMOKE_READY',json.dumps(h3_acceptance,sort_keys=True),
+                    print('M470_H3_INDEPENDENT_10M_READY',json.dumps(h3_acceptance,sort_keys=True),
                           flush=True)
                 report['training_performed']=True
                 if h3_m1:
@@ -1187,11 +1294,13 @@ def main():
     p.add_argument('--independent-budget',choices=['10M','50M','100M'])
     p.add_argument('--h1-m1',action='store_true',help='H1-M1 experimental reward: smoke3 or independent 10M only')
     p.add_argument('--h1-m2',action='store_true',help='H1-M2 phase/contact foot-crossing reward: smoke3 or independent 10M only; separate owner GO required')
-    p.add_argument('--h3-m1',action='store_true',help='H3-M1 recovery-aware stand-still reward; accepted causal report required for smoke3')
+    p.add_argument('--h3-m1',action='store_true',help='H3-M1 independent 10M only with immutable diagnostic/smoke/comparator evidence')
     p.add_argument('--h3-diagnostic-only',action='store_true',
                    help='Historical diagnostic mode (closed; no rerun)')
     p.add_argument('--h3-causal-report',type=Path,
-                   help='Exact reviewed diagnostic report for one bounded H3 smoke3')
+                   help='Exact reviewed causal diagnostic report')
+    p.add_argument('--h3-old10m-report',type=Path,
+                   help='Exact OLD10M comparator report and adjacent frozen artifacts')
     a=p.parse_args()
     if a.independent_budget is not None:
         if (a.mode != 'longtrain' or a.resume_state is not None or
