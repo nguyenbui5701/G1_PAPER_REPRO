@@ -769,7 +769,10 @@ def make_h4_causal_source(raw, acting_raw):
                  '    (optimizer_state, params, sgd_final_key), metrics = jax.lax.scan(')
     split=('  def h4c_collect(carry):\n'+collect+
            '    metrics = {}\n'+reducer+
-           "    metrics['h4r_nonfinite_per_rollout'] = jnp.asarray(0.,jnp.float32)\n"
+           '    finite = jnp.asarray(True)\n'
+           '    for leaf in jax.tree_util.tree_leaves((state,data,trace,metrics)):\n'
+           '      finite = finite & jnp.all(jnp.isfinite(leaf))\n'
+           "    metrics['h4r_nonfinite_per_rollout'] = (~finite).astype(jnp.float32)\n"
            '    return state, data, key_sgd, new_key, trace, inner_key, outer_key, metrics\n\n'
            '  def h4c_optimize(training_state, data, key_sgd):\n'+opt+construct+
            '    return new_training_state, sgd_final_key, metrics\n\n')
