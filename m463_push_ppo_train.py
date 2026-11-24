@@ -163,8 +163,15 @@ def h4_epoch_audit(counts, pending, arm, final=False):
                 c(f'tail_{kind}_{w}_same_command')<=executed and
                 c(f'tail_{kind}_{w}_same_unroll')<=executed)
             total=executed
+    checks['tail_completed_reconcile']=c('close_complete') == sum(
+        c(f'tail_{kind}_250_survived') for kind in (1,2))
+    checks['tail_repeat_reconcile']=c('close_repeat')==c('repeat_events')
+    checks['no_stale_natural_boundary']=c('close_boundary')==0
     checks['repeat_gap_partition']=sum(c(f'gap_{lo}_{hi}') for lo,hi in ((0,29),(30,40),(41,639)))==c('repeat_events')
     checks['repeat_side_bound']=c('repeat_matched')+c('repeat_fallback')<=c('repeat_events')
+    checks['broad_partition']=c('broad_events')==c('class_1_first_events')+c('class_1_repeat_events')
+    for k in ('motion','direction'):
+        checks[f'broad_{k}_partition']=sum(c(f'broad_{k}_{j}') for j in range(6))==c('broad_events')
     for side in (1,2):
         n=c(f'stand_{side}_events')
         checks[f'qual_{side}_matched_bound'] = n<=c(f'target_0_{side}_matched')
@@ -490,6 +497,222 @@ def h4_read_control(path,expected_sha,contract):
     return {'sha256':expected_sha,'counts':counts}
 
 
+def h4_static_ledger_fixture():
+    """No JAX, no simulation. Synthetic count/report/artifact contract tests."""
+    import tempfile
+    import struct
+    def f32(x):
+        return struct.unpack('f',struct.pack('f',x))[0]
+    # All possible actual count sums for five 8192x32 rollouts.
+    for n in range(5*TOTAL_STEPS_BATCH+1):
+        if h4_integer_count(f32(n/5))!=n:
+            raise RuntimeError('M470_H4_COUNT_RECONSTRUCTION')
+    def counts(arm):
+        c={}
+        def setc(name,value=0):
+            c[PREFIX+'h4_'+name+'_per_rollout']=value
+        for name in ('bad','assigned','repeat_assigned','first_events','repeat_events',
+                     'first_closed','repeat_closed','first_due','repeat_due','event_terminal',
+                     'close_repeat','close_terminal','close_complete','close_boundary',
+                     'broad_events','repeat_matched','repeat_fallback'):
+            setc(name)
+        for ci in range(4):
+            for name in ('steps','assigned','repeat_assigned','first_due','repeat_due',
+                         'first_closed','repeat_closed','first_events','repeat_events'):
+                setc(f'class_{ci}_{name}')
+        for kind in (1,2):
+            for lo,hi in ((0,32),(33,239),(240,308),(309,348),(349,639)):
+                setc(f'age_{kind}_{lo}_{hi}')
+            for side in range(4):
+                setc(f'support_{kind}_{side}')
+            for w in H4_SPEC['tail_windows']:
+                for v in ('executed','survived','same_command','same_unroll'):
+                    setc(f'tail_{kind}_{w}_{v}')
+        for lo,hi in ((0,29),(30,40),(41,639)):
+            setc(f'gap_{lo}_{hi}')
+        for j in range(6):
+            for k in ('motion','direction'):
+                setc(f'broad_{k}_{j}')
+        for side in (1,2):
+            setc(f'stand_{side}_events')
+            for kind in (1,2):
+                for w in H4_SPEC['tail_windows']:
+                    setc(f'stand_{side}_tail_{kind}_{w}')
+                    setc(f'stand_{side}_survived_{kind}_{w}')
+            for motion in (3,4):
+                setc(f'turn_{motion}_{side}_events')
+            for motion in (0,3,4):
+                for k in ('repeat_assigned','repeat_due','repeat_closed','repeat_events','matched','fallback'):
+                    setc(f'target_{motion}_{side}_{k}')
+        # 600 broad first + 120 broad repeat events per chunk.
+        # Candidate has 6 target cells * 10 additional repeats.
+        mature=60 if arm=='candidate' else 0
+        setc('class_0_steps',TOTAL_STEPS_BATCH)
+        setc('class_1_steps',4*TOTAL_STEPS_BATCH-(TOTAL_STEPS_BATCH if mature else 0))
+        setc('class_3_steps',TOTAL_STEPS_BATCH if mature else 0)
+        for ci,first,repeat in ((1,600,120),(3,mature,mature)):
+            for k,n in (('assigned',first),('first_due',first),('first_events',first),
+                        ('repeat_assigned',repeat),('repeat_due',repeat),('repeat_events',repeat)):
+                setc(f'class_{ci}_{k}',n)
+        for name,value in (('assigned',600+mature),('first_due',600+mature),
+                           ('first_events',600+mature),('repeat_assigned',120+mature),
+                           ('repeat_due',120+mature),('repeat_events',120+mature),
+                           ('close_repeat',120+mature),('close_complete',600+mature),
+                           ('broad_events',720),('repeat_matched',120+mature)):
+            setc(name,value)
+        setc('age_1_0_32',600)
+        setc('age_1_240_308',mature)
+        setc('age_2_33_239',120)
+        setc('age_2_309_348',mature)
+        setc('support_1_3',600+mature)
+        setc('support_2_1',(120+mature)//2)
+        setc('support_2_2',(120+mature)//2)
+        setc('gap_30_40',120+mature)
+        for j in range(6):
+            for k in ('motion','direction'):
+                setc(f'broad_{k}_{j}',120)
+        for kind,total in ((1,600+mature),(2,120+mature)):
+            for w in H4_SPEC['tail_windows']:
+                n=total if kind==2 or w<=25 else 480
+                setc(f'tail_{kind}_{w}_executed',n)
+                setc(f'tail_{kind}_{w}_survived',n)
+                setc(f'tail_{kind}_{w}_same_command',n)
+        if mature:
+            for side in (1,2):
+                setc(f'stand_{side}_events',10)
+                for w in H4_SPEC['tail_windows']:
+                    setc(f'stand_{side}_tail_2_{w}',10)
+                    setc(f'stand_{side}_survived_2_{w}',10)
+                for motion in (0,3,4):
+                    for k in ('repeat_assigned','repeat_due','repeat_events','matched'):
+                        setc(f'target_{motion}_{side}_{k}',10)
+                    if motion:
+                        setc(f'turn_{motion}_{side}_events',10)
+        return c
+    q={'first_pending':0,'repeat_pending':0,'tail_pending':0}
+    for ci in range(4):
+        for k in ('first_pending','repeat_pending'):
+            q[f'class_{ci}_{k}']=0
+    for m in (0,3,4):
+        for side in (1,2):
+            q[f'target_{m}_{side}_pending']=0
+    gpu={'total_mib':12288,'peak_used_mib':5000,'sampler_errors':[]}
+    def build(arm):
+        c=counts(arm)
+        report={'h4_arm':arm,'h4_chunks':[],'h4_epochs':[]}
+        for n in range(1,9):
+            report['h4_chunks'].append({'chunk':n,'steps':n*5*TOTAL_STEPS_BATCH,
+                 'passed':True,'gpu':dict(gpu),'counts':dict(c)})
+            if n%4==0:
+                ep={k:4*v for k,v in c.items()}
+                res=h4_epoch_audit(ep,q,arm)
+                if n==8:
+                    res['checks']={k:v for k,v in res['checks'].items()
+                        if not k.startswith(('stand_','turn_'))}
+                    res['passed']=all(res['checks'].values())
+                report['h4_epochs'].append({'counts':ep,'pending_at_reset':dict(q),'audit':res})
+        total={k:8*v for k,v in c.items()}
+        report['h4_final_counts']=total
+        report['h4_final_pending']=dict(q)
+        report['h4_final_exposure']=h4_epoch_audit(total,q,arm,final=True)
+        if h4_verify_ledger(report)!=total:
+            raise RuntimeError('M470_H4_FIXTURE_LEDGER')
+        return report
+    control=build('control')
+    candidate=build('candidate')
+    if not h4_matched_nominal_check(control['h4_final_counts'],candidate['h4_final_counts']):
+        raise RuntimeError('M470_H4_FIXTURE_MATCHED_NOMINAL')
+    def reject(fn):
+        try:
+            fn()
+        except (RuntimeError,KeyError):
+            return
+        raise RuntimeError('M470_H4_FIXTURE_ACCEPTED_BAD_INPUT')
+    for key in ('h4_first_events_per_rollout','h4_repeat_events_per_rollout',
+                'h4_close_complete_per_rollout','h4_class_0_steps_per_rollout',
+                'h4_stand_1_events_per_rollout'):
+        bad=copy.deepcopy(candidate)
+        bad['h4_chunks'][0]['counts'][PREFIX+key]+=1
+        reject(lambda:h4_verify_ledger(bad))
+    # Fixture report has real bytes and hashes, but no actual trained weights.
+    with tempfile.TemporaryDirectory() as tmp:
+        root=Path(tmp)
+        def write(name,data):
+            p=root/name
+            p.write_bytes(data)
+            return digest(p)
+        def jsonbytes(obj):
+            return json.dumps(obj,sort_keys=True,allow_nan=False).encode('utf8')
+        contract={'config':{'fixture':True},'reward':{'fixture':True},
+                  'source_digests':{'m463_push_ppo_train.py':'fixture'},
+                  'original_brax_sha256':H3_CAUSAL_ORIGINAL_BRAX_SHA,
+                  'generated_brax_sha256':write('m463_brax_ppo_instrumented.py',b'fixture')}
+        h=[]
+        for step in (0,*H4_EDGES):
+            metrics={}
+            if step:
+                metrics={PREFIX+'events_per_rollout':144.,
+                    PREFIX+'push_magnitude_sum':60.,PREFIX+'phase_matched_per_rollout':100.,
+                    PREFIX+'repeat_side_targeted_per_rollout':24.,
+                    PREFIX+'repeat_side_matched_per_rollout':24.,
+                    PREFIX+'repeat_side_fallback_per_rollout':0.,
+                    PREFIX+'repeat_side_target_left_per_rollout':12.,
+                    PREFIX+'repeat_side_target_right_per_rollout':12.,
+                    PREFIX+'repeat_per_rollout':24.}
+                for j in range(6):
+                    metrics[PREFIX+f'direction_{j}_per_rollout']=24.
+                    metrics[PREFIX+f'motion_{j}_per_rollout']=24.
+                for j in range(3):
+                    metrics[PREFIX+f'phase_target_{j}_per_rollout']=48.
+            h.append({'additional_steps':step,'metrics':metrics})
+        control.update(status='M463_COVERAGE_LONGTRAIN_PASS',h4_common_contract=contract,
+            h4_spec=H4_SPEC,training_performed=True,source_commit=PIN,
+            source_checkpoint_sha256=SEED1_SHA,orbax_sha256=H4_ORBAX_SHA,
+            trained_from='C401M_WEIGHTS_ONLY_ADAM_STARTED_ONCE',training_seed=1,
+            experiment_design='H4_MATCHED_C401M_SINGLE_PROCESS',stage='easy_repeat_support',
+            mode='longtrain',hardware_scaled_config=contract['config'],
+            train_reward_config=contract['reward'],runner_sha256='fixture',
+            steps_observed=10485760,run_steps_observed=10485760,rollouts_target=40,
+            rollouts_per_epoch=20,cumulative_steps_start=0,resume_fullstate_sha256=None,
+            coverage_gate_pass=True,memory_gate_pass=True,weights_finite=True,
+            callback_vs_final_equal=True,gpu_total_mib=12288,gpu_peak_mib=5000,gpu_monitor_errors=[],
+            h4_legacy_reconciled=True,h4_resume_forbidden=True,promotion_authorized=False,
+            h4_control_report_sha256=None,reward_PD_termination_source_unchanged=True,
+            h1_m1_enabled=False,h1_m2_enabled=False,report_history=h,coverage=h4_legacy_audit(h),
+            instrumented_brax={'original_brax_sha256':contract['original_brax_sha256'],
+                               'instrumented_sha256':contract['generated_brax_sha256']},
+            checkpoints=[],fullstate_checkpoints=[])
+        for step in H4_EDGES:
+            policy=f'm463_easy_repeat_support_longtrain_step_{step:09d}.msgpack'
+            full=f'm470_fullstate_step_{step:09d}.msgpack'
+            manifest=f'm470_fullstate_step_{step:09d}.json'
+            ps=write(policy,b'fixture policy')
+            fs=write(full,b'fixture fullstate')
+            meta={'h4_arm':'control','h4_resume_forbidden':True,'h4_common_contract':contract,
+                'cumulative_steps':step,'fullstate_sha256':fs,'parent_resume_sha256':None,
+                'reset_edge':True,'optimizer_state_included':True,'training_rng_included':True,
+                'evaluator_rng_included':True}
+            ms=write(manifest,jsonbytes(meta))
+            control['checkpoints'].append({'steps':step,'file':policy,'sha256':ps})
+            control['fullstate_checkpoints'].append({'steps':step,'file':full,'sha256':fs,
+                'manifest':manifest,'manifest_sha256':ms})
+        path=root/'report.json'
+        approved=write('report.json',jsonbytes(control))
+        if h4_read_control(path,approved,contract)['counts']!=control['h4_final_counts']:
+            raise RuntimeError('M470_H4_FIXTURE_CONTROL')
+        reject(lambda:h4_read_control(path,None,contract))
+        reject(lambda:h4_read_control(path,'0'*64,contract))
+        reject(lambda:h4_read_control(path,approved,dict(contract,reward={'other':True})))
+        bad=copy.deepcopy(control)
+        bad['h4_arm']='candidate'
+        wrong=write('report.json',jsonbytes(bad))
+        reject(lambda:h4_read_control(path,wrong,contract))
+        write('report.json',jsonbytes(control))
+        write(policy,b'tampered')
+        reject(lambda:h4_read_control(path,approved,contract))
+    print('M470_H4_LEDGER_PROVENANCE_FIXTURE_PASS',flush=True)
+
+
 def h4_static_regression(brax_train_path):
     """Offline: compile exact files and generated copies; do not import runtime."""
     import ast
@@ -600,6 +823,7 @@ def h4_static_regression(brax_train_path):
     else:
         raise RuntimeError('M470_H4_DIRECT_RUN_NOT_BLOCKED')
     print('M470_H4_CLI_INTERLOCK_PASS',len(cases),'plus direct run',flush=True)
+    h4_static_ledger_fixture()
     if 'jax' in sys.modules or 'brax' in sys.modules or 'mujoco' in sys.modules:
         raise RuntimeError('M470_H4_STATIC_RUNTIME_IMPORTED')
     print('M470_H4_STATIC_REGRESSION_PASS NO_JAX NO_SIMULATION NO_PPO',flush=True)
