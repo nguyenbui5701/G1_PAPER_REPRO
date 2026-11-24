@@ -53,8 +53,17 @@ H3_METRIC_KEYS = H3_BAD_KEYS + H3_POS_KEYS + (
 
 
 def validate_h3_cli(a):
+    diagnostic = bool(getattr(a, 'h3_diagnostic_only', False))
     if not getattr(a, 'h3_m1', False):
+        if diagnostic:
+            raise RuntimeError('M470_H3_DIAGNOSTIC_REQUIRES_H3')
         return
+    # v1.2.63: the failed exact gate is not superseded by a diagnostic.
+    # All H3 training stays locked pending a new reviewed owner decision.
+    if diagnostic and a.mode != 'smoke3':
+        raise RuntimeError('M470_H3_DIAGNOSTIC_MODE_MISMATCH')
+    if a.mode != 'plan' and not diagnostic:
+        raise RuntimeError('M470_H3_PPO_HOLD_CAUSAL_VALIDATION')
     if (a.h1_m1 or a.h1_m2 or a.stage != 'easy_repeat_support'
             or a.resume_state is not None
             or a.mode not in ('plan', 'smoke3', 'longtrain')
@@ -197,8 +206,8 @@ def m470_resume_manifest(path: Path, fingerprint, instrument_sha, batches_per_ev
     return meta
 
 
-def h3_technical_gate(api, train_cfg, stage, instrument_meta):
-    """Bounded diagnostic only; no optimizer, policy weights or training RNG."""
+def h3_technical_gate(api, train_cfg, stage, instrument_meta, result, persist):
+    """Causal diagnostic ONLY; never authorizes PPO."""
     import inspect
     import subprocess
     import textwrap
@@ -234,7 +243,8 @@ def h3_technical_gate(api, train_cfg, stage, instrument_meta):
                     'ACTUAL_INSTRUMENTED_FILE')
     print('M470_H3_TECH_LEGACY_BYTES_PASS', flush=True)
 
-    # All cases are synthetic starting states; no training distribution or RNG is altered.
+    from mujoco_playground._src import mjx_env
+    from m463_coverage_env import joystick, geoms_colliding
     labels = ('prepush', 'first', 'post', 'repeat', 'moving', 'terminal',
               'boundary', 'nominal', 'truncation')
     expected_n = np.array([0,100,99,100,100,100,0,0,0])
@@ -244,142 +254,325 @@ def h3_technical_gate(api, train_cfg, stage, instrument_meta):
     ncase = len(labels)
     keys = jax.random.split(jax.random.PRNGKey(913701), ncase)
     action = jp.zeros((ncase,29), dtype=jp.float32)
-
-    def prepare(state):
-        info = dict(state.info)
-        values = {
-            'steps': [10,24,25,40,24,24,0,10,999],
-            'm463_age': [10,24,25,40,24,24,0,10,999],
-            'm463_next': [24,0,9999,0,0,0,0,0,9999],
-            'm463_push_count': [0,0,2,1,0,0,1,0,2],
-            'm463_recent': [0,0,100,65,0,0,88,0,0],
-            'm463_no_push': [0,0,0,0,0,0,0,1,0],
-            'm463_direction': [0]*ncase,
-            'm463_phase_target': [0]*ncase,
-            'm463_last_event_age': [-1,-1,24,24,-1,-1,5,-1,24],
-            'step': [10,24,25,40,24,24,0,10,499],
-        }
-        for k, v in values.items():
-            dtype = info[k].dtype if k in info else jp.int32
-            info[k] = jp.asarray(v, dtype=dtype)
-        command = jp.zeros((ncase,3), dtype=jp.float32).at[4,0].set(.6)
-        info['command'] = command
-        obs = dict(state.obs)
-        for k in ('state','privileged_state'):
-            obs[k] = obs[k].at[:,9:12].set(command)
-        # Finite, inverted root at elevated height to exercise real source done.
-        data = state.data.replace(
-            qpos=state.data.qpos.at[5,2].set(1.5).at[5,3:7].set(
-                jp.array([0.,1.,0.,0.], dtype=jp.float32)),
-            qvel=state.data.qvel.at[5].set(0.))
-        return state.replace(info=info, obs=obs, data=data)
-
-    def exact(a, b, name):
-        require(jax.tree_util.tree_structure(a) == jax.tree_util.tree_structure(b),
-                name+'_TREE')
-        for (path,x),(_,y) in zip(jax.tree_util.tree_flatten_with_path(a)[0],
-                                  jax.tree_util.tree_flatten_with_path(b)[0]):
-            np.testing.assert_array_equal(np.asarray(jax.device_get(x)),
-                                          np.asarray(jax.device_get(y)),
-                                          err_msg=name+' '+jax.tree_util.keystr(path))
+    scales = train_cfg.to_dict()['reward_config']['scales']
+    slots = tuple(sorted(scales))
+    require(len(slots)==24 and scales['stand_still']==-1.0, 'SLOT_SCHEMA')
+    stand_index = slots.index('stand_still')
+    diag_fields = ('m470_diag_base_raw','m470_diag_h3_raw','m470_diag_base_total',
+                   'm470_diag_h3_total','m470_diag_inputs_unchanged',
+                   'm470_diag_command','m470_diag_contact','m470_diag_first_contact',
+                   'm470_diag_done')
 
     def host(x):
         return np.asarray(jax.device_get(x))
 
-    def make(enabled):
-        return CoverageJoystick(stage=stage, config=copy.deepcopy(train_cfg),
-                                h3_m1=enabled)
+    def exact(a,b,name):
+        require(jax.tree_util.tree_structure(a)==jax.tree_util.tree_structure(b),name+'_TREE')
+        for (path,x),(_,y) in zip(jax.tree_util.tree_flatten_with_path(a)[0],
+                                 jax.tree_util.tree_flatten_with_path(b)[0]):
+            np.testing.assert_array_equal(host(x),host(y),
+                err_msg=name+' '+jax.tree_util.keystr(path))
 
-    off, on = make(False), make(True)
-    # One actual reset/prepare, then fork the same immutable array leaves.
-    # Separate reset compilations are not an identical-state A/B test.
-    shared = prepare(jax.jit(jax.vmap(on.reset))(keys))
-    require(set(H3_EXT_FIELDS).issubset(shared.info), 'H3_RESET_SCHEMA')
-    a = shared.replace(info={k:v for k,v in shared.info.items()
-                             if k not in H3_EXT_FIELDS},
-                       metrics=dict(shared.metrics), obs=dict(shared.obs))
-    b = shared.replace(info=dict(shared.info),
-                       metrics=dict(shared.metrics), obs=dict(shared.obs))
-    require(set(b.info) - set(a.info) == set(H3_EXT_FIELDS), 'FORK_SCHEMA')
+    def finite_tree(x,name):
+        for path,v in jax.tree_util.tree_flatten_with_path(x)[0]:
+            arr=host(v)
+            require(arr.dtype.kind in 'biuf' and np.all(np.isfinite(arr)),
+                    'NONFINITE_'+name+' '+jax.tree_util.keystr(path))
+
+    # Check physical quantities used by the actual policy, rewards and dynamics.
+    # Other MJX leaves (including possible padding/sentinels) are reported by
+    # the exact comparison, not asserted to be physical measurements.
+    critical = ('qpos','qvel','qacc','ctrl','actuator_force','sensordata',
+                'xpos','xquat','xmat','site_xpos','site_xmat')
+    def finite_state(st,name):
+        finite_tree({k:getattr(st.data,k) for k in critical},name+'_DATA')
+        finite_tree(st.obs,name+'_OBS')
+        finite_tree(st.reward,name+'_REWARD')
+        finite_tree(st.done,name+'_DONE')
+        finite_tree(st.metrics,name+'_METRICS')
+        finite_tree({k:v for k,v in st.info.items() if k!='first_state'},name+'_INFO')
+        require(set(st.obs)=={'state','privileged_state'} and
+                st.obs['state'].shape==(ncase,103),name+'_OBS_SCHEMA')
+
+    def make(enabled,cls=CoverageJoystick):
+        return cls(stage=stage,config=copy.deepcopy(train_cfg),h3_m1=enabled)
+
+    fixtures = {
+        'steps': [10,24,25,40,24,24,0,10,999],
+        'm463_age': [10,24,25,40,24,24,0,10,999],
+        'm463_next': [24,0,9999,0,0,0,0,0,9999],
+        'm463_push_count': [0,0,2,1,0,0,1,0,2],
+        'm463_recent': [0,0,100,65,0,0,88,0,0],
+        'm463_no_push': [0,0,0,0,0,0,0,1,0],
+        'm463_direction': [0]*ncase,
+        'm463_phase_target': [0]*ncase,
+        'm463_last_event_age': [-1,-1,24,24,-1,-1,5,-1,24],
+        'step': [10,24,25,40,24,24,0,10,499],
+    }
+
+    def prepare(env,state,model,axes):
+        # All nine diagnostic poses come from the source knees_bent keyframe,
+        # with a fixed 0.02 rad first-joint offset. Rebuild data via actual
+        # mjx_env.init/forward under the exact model (including each DR model).
+        # No stale FK/contact/sensor values from editing only qpos.
+        def one(m,st,index):
+            info=dict(st.info)
+            for k,values in fixtures.items():
+                dtype=info[k].dtype if k in info else jp.int32
+                info[k]=jp.asarray(values,dtype=dtype)[index]
+            info['command']=jp.array([jp.where(index==4,.6,0.),0.,0.],dtype=jp.float32)
+            q=env._init_q.at[7].add(.02)
+            fallen=q.at[2].set(1.5).at[3:7].set(jp.array([0.,1.,0.,0.],dtype=q.dtype))
+            q=jp.where(index==5,fallen,q)
+            data=mjx_env.init(m,qpos=q,qvel=jp.zeros_like(st.data.qvel),ctrl=q[7:])
+            contact=jp.array([geoms_colliding(data,g,env._floor_geom_id)
+                              for g in env._feet_geom_id])
+            info['last_contact']=contact
+            old_model=env._mjx_model
+            try:
+                env._mjx_model=m
+                obs=env._get_obs(data,info,contact)
+                pre_done=env._get_termination(data)
+            finally:
+                env._mjx_model=old_model
+            return st.replace(data=data,obs=obs,info=info),pre_done
+        st,pre_done=jax.jit(jax.vmap(one,in_axes=(axes,0,0)))(
+            model,state,jp.arange(ncase,dtype=jp.int32))
+        np.testing.assert_array_equal(host(pre_done),expected_done,
+                                      err_msg='COHERENT_FIXTURE_PRE_DONE')
+        finite_state(st,'FIXTURE')
+        return st
+
+    def fork(st,enabled):
+        return st.replace(info={k:v for k,v in st.info.items()
+                                if enabled or k not in H3_EXT_FIELDS},
+                          metrics=dict(st.metrics),obs=dict(st.obs))
+
+    def comparison(x,y,cross):
+        # Exact equality, not a new acceptance tolerance. Store every differing
+        # leaf and its per-case finite differences (mixed units remain separate).
+        def common(st):
+            return {'data':st.data,'obs':st.obs,'done':st.done,
+                    'info':{k:v for k,v in st.info.items()
+                            if not cross or k not in H3_EXT_FIELDS},
+                    'metrics':{k:v for k,v in st.metrics.items()
+                               if not cross or k!='reward/stand_still'},
+                    **({} if cross else {'reward':st.reward})}
+        u,v=common(x),common(y)
+        require(jax.tree_util.tree_structure(u)==jax.tree_util.tree_structure(v),
+                'COMPARE_TREE')
+        differences={}
+        for (path,a),(_,b) in zip(jax.tree_util.tree_flatten_with_path(u)[0],
+                                 jax.tree_util.tree_flatten_with_path(v)[0]):
+            a,b=host(a),host(b)
+            require(a.shape==b.shape and a.dtype==b.dtype,'COMPARE_SHAPE_DTYPE')
+            if a.dtype.kind not in 'biuf':
+                require(np.array_equal(a,b),'COMPARE_NONNUMERIC')
+                continue
+            equal=np.equal(a,b)
+            nonfinite=~(np.isfinite(a)&np.isfinite(b))
+            if bool(np.all(equal)) and not bool(np.any(nonfinite)):
+                continue
+            batched=a.ndim>0 and a.shape[0]==ncase
+            rows={}
+            for i,name in enumerate(labels if batched else ('global',)):
+                aa,bb,ee,nf=(a[i],b[i],equal[i],nonfinite[i]) if batched else (a,b,equal,nonfinite)
+                aa,bb=np.asarray(aa),np.asarray(bb)
+                valid=~np.asarray(nf)
+                av,bv=aa[valid].astype(np.float64),bb[valid].astype(np.float64)
+                delta=np.abs(av-bv)
+                rows[name]={'elements':int(aa.size),'mismatch':int(np.sum(~np.asarray(ee))),
+                    'nonfinite_either':int(np.sum(nf)),
+                    'max_abs_finite':float(np.max(delta)) if delta.size else None,
+                    'max_rel_finite':float(np.max(delta/np.maximum(np.abs(av),1e-30))) if delta.size else None}
+            differences[jax.tree_util.keystr(path)]=rows
+        return {'exact_equal':not any(row['mismatch'] for rows in differences.values()
+                                     for row in rows.values()),
+                'different_or_nonfinite_leaves':differences,
+                'relative_denominator_floor':1e-30}
+
+    off,on=make(False),make(True)
+    require(off._config.to_dict()==on._config.to_dict(),'DIRECT_CONFIG')
+    exact(off._default_pose,on._default_pose,'DIRECT_DEFAULT_POSE')
+    # Diagnostic direct arms share the actual same MJX model object.
+    model=on.mjx_model
+    off._mjx_model=model
+    shared=prepare(on,jax.jit(jax.vmap(on.reset))(keys),model,None)
+    require(set(H3_EXT_FIELDS).issubset(shared.info),'H3_RESET_SCHEMA')
+    a,b=fork(shared,False),fork(shared,True)
+    require(set(b.info)-set(a.info)==set(H3_EXT_FIELDS),'FORK_SCHEMA')
     exact(a.data,b.data,'INITIAL_DATA')
     exact(a.obs,b.obs,'INITIAL_OBS')
     exact(a.reward,b.reward,'INITIAL_REWARD')
     exact(a.done,b.done,'INITIAL_DONE')
     exact(a.metrics,b.metrics,'INITIAL_METRICS')
     exact(a.info,{k:b.info[k] for k in a.info},'INITIAL_INFO')
-    print('M470_H3_TECH_SHARED_SNAPSHOT_PASS', flush=True)
-    a1 = jax.jit(jax.vmap(off.step))(a, action)
-    b1 = jax.jit(jax.vmap(on.step))(b, action)
-    exact(a1.data,b1.data,'PHYSICS')
-    exact(a1.obs,b1.obs,'OBS')
-    exact(a1.done,b1.done,'DONE')
-    exact(a1.info,{k:b1.info[k] for k in a1.info},'COMMON_INFO')
-    require(set(a1.metrics) == set(b1.metrics), 'METRIC_KEYS')
-    require(sum(k.startswith('reward/') for k in a1.metrics) == 24, 'REWARD_COUNT')
-    for k in a1.metrics:
-        if k != 'reward/stand_still':
-            exact(a1.metrics[k],b1.metrics[k],k)
-    base = host(a1.metrics['reward/stand_still'])
-    weighted = host(b1.metrics['reward/stand_still'])
-    info = b1.info
-    for k, expected in [('m470_h3_n',expected_n),('m463_event',expected_event),
-                        ('m470_h3_stand',expected_stand),('m470_h3_done',expected_done)]:
-        np.testing.assert_array_equal(host(info[k]),expected,err_msg=k)
-    require(host(info['m463_repeat'])[3] == 1, 'REPEAT_EVENT')
-    np.testing.assert_array_equal(host(a1.done),expected_done)
-    np.testing.assert_allclose(host(info['m470_h3_base']),base,rtol=2e-6,atol=2e-6)
-    g = np.where(expected_done,1.,1.-.5*expected_n/100)
-    np.testing.assert_allclose(weighted,g*base,rtol=2e-6,atol=2e-6)
-    np.testing.assert_allclose(host(b1.reward)-host(a1.reward),
-                               .02*(weighted-base),rtol=2e-6,atol=1e-5)
-    np.testing.assert_array_equal(weighted[[0,4,5,6,7,8]],base[[0,4,5,6,7,8]])
-    require(np.all(weighted[[1,2,3]] > base[[1,2,3]]), 'POSITIVE_ACTIVATION')
-    print('M470_H3_TECH_PAIRED_PHYSICS_PASS', flush=True)
+    result['shared_snapshot_passed']=True
+    persist()
+    print('M470_H3_DIAG_SHARED_SNAPSHOT_PASS',flush=True)
 
-    # Actual training wrapper + domain randomization + Brax actor_step;
-    # fixed actions and independent diagnostic keys, no optimizer.
-    wrapped = api['wrapper'].wrap_for_brax_training(
-        make(True), episode_length=1000, action_repeat=1,
-        randomization_fn=functools.partial(
-            api['randomizer'], rng=jax.random.split(jax.random.PRNGKey(913702),ncase)))
-    ws = prepare(jax.jit(wrapped.reset)(keys))
+    # Separate jitted call sites for the two same-treatment controls and
+    # cross-treatment pair. No cross-executable mismatch is silently waived.
+    def direct(env,enabled):
+        fn=jax.jit(jax.vmap(lambda st,act: env.step(st,act)))
+        out=fn(fork(shared,enabled),action)
+        finite_state(out,'DIRECT')
+        return out
+    a1=direct(off,False)
+    a2=direct(off,False)
+    b1=direct(on,True)
+    b2=direct(on,True)
+    result['numerical_controls']={
+        'off_off':comparison(a1,a2,False),
+        'on_on':comparison(b1,b2,False),
+        'off_on':comparison(a1,b1,True),
+    }
+    result['direct_control_transitions']=4*ncase
+    result['cross_executable_exact_equal']=result['numerical_controls']['off_on']['exact_equal']
+    result['direct_done']={k:host(v.done).tolist() for k,v in
+                           [('off1',a1),('off2',a2),('on1',b1),('on2',b2)]}
+    result['direct_support_side']={k:host(v.info['m463_support_side']).tolist() for k,v in
+                                   [('off1',a1),('off2',a2),('on1',b1),('on2',b2)]}
+    persist()
+    print('M470_H3_DIAG_NUMERICAL_CONTROLS_RECORDED',
+          {k:v['exact_equal'] for k,v in result['numerical_controls'].items()},flush=True)
+
+    # B: capture both ACTUAL reward functions at the same reward-call boundary.
+    # This local diagnostic subclass does not enter production PPO/wrapper C.
+    class RewardAuditJoystick(CoverageJoystick):
+        def _get_reward(self,data,action,info,metrics,done,first_contact,contact):
+            bi,hi,bm,hm=dict(info),dict(info),dict(metrics),dict(metrics)
+            base=joystick.Joystick._get_reward(self,data,action,bi,bm,done,first_contact,contact)
+            shaped=CoverageJoystick._get_reward(self,data,action,hi,hm,done,first_contact,contact)
+            if set(base)!=set(slots) or set(shaped)!=set(slots):
+                raise RuntimeError('M470_H3_DIAG_REWARD_KEYS')
+            def unchanged(before,after):
+                if jax.tree_util.tree_structure(before)!=jax.tree_util.tree_structure(after):
+                    return jp.asarray(False)
+                return jp.all(jp.stack([jp.array_equal(x,y) for x,y in zip(
+                    jax.tree_util.tree_leaves(before),jax.tree_util.tree_leaves(after))]))
+            same=unchanged(info,bi)&unchanged(info,hi)&unchanged(metrics,bm)&unchanged(metrics,hm)
+            info.update(m470_diag_base_raw=jp.stack([base[k] for k in slots]),
+                        m470_diag_h3_raw=jp.stack([shaped[k] for k in slots]),
+                        m470_diag_base_total=sum(base[k]*scales[k] for k in base)*self.dt,
+                        m470_diag_h3_total=sum(shaped[k]*scales[k] for k in shaped)*self.dt,
+                        m470_diag_inputs_unchanged=same,
+                        m470_diag_command=info['command'],
+                        m470_diag_contact=contact,
+                        m470_diag_first_contact=first_contact,
+                        m470_diag_done=done)
+            return shaped
+
+    def expected_context(info):
+        for k,expected in [('m470_h3_n',expected_n),('m463_event',expected_event),
+                           ('m470_h3_stand',expected_stand),('m470_h3_done',expected_done)]:
+            np.testing.assert_array_equal(host(info[k]),expected,err_msg=k)
+        require(host(info['m463_repeat'])[3]==1,'REPEAT_EVENT')
+
+    audit_env=make(True,RewardAuditJoystick)
+    audit_env._mjx_model=model
+    captured=jax.jit(jax.vmap(audit_env.step))(fork(shared,True),action)
+    finite_state(captured,'CAPTURED')
+    ci=captured.info
+    require(set(ci)-set(b1.info)==set(diag_fields),'CAPTURE_SCHEMA')
+    expected_context(ci)
+    np.testing.assert_array_equal(host(captured.done),expected_done)
+    np.testing.assert_array_equal(host(ci['m470_diag_done']),expected_done)
+    np.testing.assert_array_equal(host(ci['m470_diag_inputs_unchanged']),np.ones(ncase,bool))
+    np.testing.assert_array_equal(np.linalg.norm(host(ci['m470_diag_command']),axis=1)<.01,
+                                  expected_stand.astype(bool))
+    raw,shaped=host(ci['m470_diag_base_raw']),host(ci['m470_diag_h3_raw'])
+    require(raw.shape==shaped.shape==(ncase,24),'CAPTURE_REWARD_SHAPE')
+    other=[i for i in range(24) if i!=stand_index]
+    np.testing.assert_array_equal(raw[:,other],shaped[:,other],
+                                  err_msg='SAME_POSTPHYSICS_UNCHANGED23')
+    base=-raw[:,stand_index]
+    weighted=-shaped[:,stand_index]
+    g=np.where(expected_done,1.,1.-.5*expected_n/100)
+    np.testing.assert_allclose(weighted,g*base,rtol=2e-6,atol=2e-6)
+    np.testing.assert_array_equal(weighted[[0,4,5,6,7,8]],base[[0,4,5,6,7,8]])
+    require(np.all(weighted[[1,2,3]]>base[[1,2,3]]),'POSITIVE_ACTIVATION')
+    np.testing.assert_allclose(host(ci['m470_h3_base']),base,rtol=2e-6,atol=2e-6)
+    np.testing.assert_allclose(host(ci['m470_h3_weighted']),weighted,rtol=2e-6,atol=2e-6)
+    for i,k in enumerate(slots):
+        np.testing.assert_allclose(host(captured.metrics['reward/'+k]),
+            shaped[:,i]*np.asarray(scales[k],dtype=shaped.dtype),rtol=2e-6,atol=2e-6,
+            err_msg='ACTUAL_WEIGHTED_'+k)
+    bt,ht=host(ci['m470_diag_base_total']),host(ci['m470_diag_h3_total'])
+    np.testing.assert_allclose(ht-bt,.02*(weighted-base),rtol=2e-6,atol=1e-5)
+    np.testing.assert_allclose(host(captured.reward),ht,rtol=0,atol=1e-5)
+    result['same_postphysics_reward']={'passed':True,'slots':list(slots),
+        'base_raw':raw.tolist(),'h3_raw':shaped.tolist(),
+        'base_total':bt.tolist(),'h3_total':ht.tolist(),
+        'command':host(ci['m470_diag_command']).tolist(),
+        'contact':host(ci['m470_diag_contact']).tolist(),
+        'first_contact':host(ci['m470_diag_first_contact']).tolist(),
+        'transitions':ncase,'unchanged_23_exact':True,'input_dicts_unchanged':True}
+    persist()
+    print('M470_H3_DIAG_SAME_POSTPHYSICS_REWARD_PASS',flush=True)
+
+    # C: actual production H3 class (not the audit subclass), actual DR and
+    # Episode/AutoReset wrapper, actual actor_step and reducer. Use each
+    # vectorized randomized model to construct coherent fixtures.
+    wrap_env=make(True)
+    wrapped=api['wrapper'].wrap_for_brax_training(
+        wrap_env,episode_length=1000,action_repeat=1,
+        randomization_fn=functools.partial(api['randomizer'],
+            rng=jax.random.split(jax.random.PRNGKey(913702),ncase)))
+    dr=wrapped.env.env
+    require(isinstance(dr,api['wrapper'].BraxDomainRandomizationVmapWrapper)
+            and dr.env is wrap_env,'WRAPPED_DR_STRUCTURE')
+    ws=prepare(on,jax.jit(wrapped.reset)(keys),dr._mjx_model_v,dr._in_axes)
     def policy(obs,key):
-        return action, {}
-    def collect(state):
-        return acting.actor_step(wrapped,state,policy,jax.random.PRNGKey(913703),
-            extra_fields=('truncation',)+EXT_FIELDS+H3_EXT_FIELDS)
-    wn, transition = jax.jit(collect)(ws)
-    extras = transition.extras['state_extras']
-    require(transition.reward.shape == (ncase,), 'WRAPPED_REWARD_SHAPE')
+        return action,{}
+    def collect(st):
+        return acting.actor_step(wrapped,st,policy,jax.random.PRNGKey(913703),
+                                 extra_fields=('truncation',)+EXT_FIELDS+H3_EXT_FIELDS)
+    wn,transition=jax.jit(collect)(ws)
+    finite_state(wn,'WRAPPED')
+    finite_tree(transition,'TRANSITION')
+    extras=transition.extras['state_extras']
+    require(transition.reward.shape==(ncase,),'WRAPPED_REWARD_SHAPE')
+    require(set(extras)==set(('truncation',)+EXT_FIELDS+H3_EXT_FIELDS),'WRAPPED_EXTRA_SCHEMA')
     for k in ('truncation',)+EXT_FIELDS+H3_EXT_FIELDS:
-        require(extras[k].shape == transition.reward.shape, 'EXTRA_SHAPE_'+k)
+        require(extras[k].shape==transition.reward.shape,'EXTRA_SHAPE_'+k)
         exact(extras[k],wn.info[k],'WRAPPED_EXTRA_'+k)
-    for k, expected in [('m470_h3_n',expected_n),('m463_event',expected_event),
-                        ('m470_h3_stand',expected_stand),('m470_h3_done',expected_done)]:
-        np.testing.assert_array_equal(host(extras[k]),expected,err_msg=k)
+    expected_context(extras)
     np.testing.assert_array_equal(host(extras['truncation']),[0,0,0,0,0,0,0,0,1])
     np.testing.assert_array_equal(host(wn.done),[0,0,0,0,0,1,0,0,1])
+    np.testing.assert_array_equal(host(transition.discount),1-host(wn.done))
+    exact(transition.observation,ws.obs,'ACTOR_INPUT_OBS')
+    exact(transition.action,action,'FIXED_ACTION')
+    exact(transition.next_observation,wn.obs,'NEXT_OBS')
+    # AutoReset is not recovery; explicitly check terminal/truncated reset qpos.
+    np.testing.assert_array_equal(host(wn.data.qpos)[[5,8]],
+                                  host(ws.info['first_state'].qpos)[[5,8]])
     np.testing.assert_allclose(host(transition.reward),
         host(extras['m470_h3_reward_sum']),rtol=0,atol=1e-5)
-    coverage = {}
+    coverage={}
     exec(compile(textwrap.dedent(H3_METRICS_SOURCE),'<actual H3 reducer>','exec'),{
         'extras':extras,'data':transition,'jnp':jp,'coverage':coverage,
         'recent':extras['m463_recent']})
-    counts = {'training/'+k:float(host(v)) for k,v in coverage.items()}
-    audit = h3_audit_counts(counts)
-    require(audit['passed'], 'WRAPPED_AUDIT')
-    result = {'passed':True,'cases':list(labels),'direct_pairs':ncase,
-              'wrapped_transitions':ncase,'legacy_resume_modes':[False,True],
-              'paired_initialization':'single_reset_shared_snapshot',
-              'wrapped_audit':audit,'jax_version':jax.__version__,
-              'training_performed':False}
-    print('M470_H3_TECH_GATE_PASS',json.dumps(result,allow_nan=False),flush=True)
+    counts={'training/'+k:float(host(v)) for k,v in coverage.items()}
+    audit=h3_audit_counts(counts)
+    result['wrapped_validation']={'passed':audit['passed'],'transitions':ncase,
+        'audit':audit,'actual_extras':{k:host(v).tolist() for k,v in extras.items()},
+        'reward':host(transition.reward).tolist(),'done':host(wn.done).tolist(),
+        'autoreset_verified_not_recovery':True}
+    persist()
+    require(audit['passed'],'WRAPPED_AUDIT')
+    result.update(diagnostic_complete=True,diagnostic_control_transitions=6*ncase,
+                  passed=False,training_authorized=False)
+    persist()
+    print('M470_H3_DIAG_WRAPPED_PASS',flush=True)
+    print('M470_H3_DIAGNOSTIC_COMPLETE_PPO_HOLD',flush=True)
     return result
 
 
 def run(args):
     validate_h3_cli(args)
     h3_m1 = bool(getattr(args, 'h3_m1', False))
+    h3_diagnostic = bool(getattr(args, 'h3_diagnostic_only', False))
     if args.output_dir.exists():
         raise FileExistsError('M463_REFUSE_TO_OVERWRITE_OUTPUT_DIRECTORY')
     # Import from PRIOR, already proven checkpoint validator and GPU monitor.
@@ -583,6 +776,11 @@ def run(args):
                       h3_source_digests=h3_source_digests,
                       h3_smoke_report_sha256=(digest(args.smoke_report) if longtrain else None),
                       h3_static_reward_config_unchanged=True)
+    if h3_diagnostic:
+        report.update(experiment_class='H3_CAUSAL_VALIDATION_ONLY_NO_PPO',
+                      train_steps_target=0,rollouts_target=0,
+                      future_smoke_config_steps=scaled.num_timesteps,
+                      h3_diagnostic_only=True)
     if longtrain:
         report.update(
             independent_budget=independent_budget,
@@ -699,34 +897,48 @@ def run(args):
     monitor=GPUMonitor()
     try:
         with monitor:
-            if h3_m1 and args.mode == 'smoke3':
-                import gc
-                report['h3_m1_technical_gate'] = {'passed':False}
+            if h3_diagnostic:
+                report['h3_m1_technical_gate']={
+                    'passed':False,'diagnostic_complete':False,
+                    'training_authorized':False,'max_control_transitions':54,
+                    'historical_exact_gate':'FAILED_85891a1',
+                    'cases':['prepush','first','post','repeat','moving','terminal',
+                             'boundary','nominal','truncation'],
+                }
                 persist()
-                report['h3_m1_technical_gate'] = h3_technical_gate(
-                    api, train_cfg, args.stage, instrument_meta)
-                persist()
-                jax.clear_caches()
-                gc.collect()
-                tech_gpu = monitor.snapshot()
+                h3_technical_gate(api,train_cfg,args.stage,instrument_meta,
+                                  report['h3_m1_technical_gate'],persist)
+                tech_gpu=monitor.snapshot()
                 if (tech_gpu['peak_used_mib'] is None or tech_gpu['total_mib'] is None
                         or tech_gpu['peak_used_mib'] >= .95*tech_gpu['total_mib']
                         or tech_gpu['sampler_errors']):
                     raise RuntimeError('M470_H3_TECH_VRAM_GATE')
-                print('M470_H3_TECH_READY_FOR_SMOKE3',flush=True)
-            report['training_performed']=True
-            if h3_m1:
-                persist()
-            _,params,_=instrumented_ppo.train(
-                environment=train_env,eval_env=eval_env,
-                wrap_env_fn=api['wrapper'].wrap_for_brax_training,
-                network_factory=functools.partial(api['networks'].make_ppo_networks,**net_cfg),
-                progress_fn=progress,policy_params_fn=save_policy,
-                **({'m470_state_checkpoint_fn': save_fullstate} if longtrain else {}),
-                **cfg)
+            else:
+                # Redundant guard: no H3 PPO can reach the optimizer in v1.2.63.
+                if h3_m1:
+                    raise RuntimeError('M470_H3_PPO_HOLD_CAUSAL_VALIDATION')
+                report['training_performed']=True
+                if h3_m1:
+                    persist()
+                _,params,_=instrumented_ppo.train(
+                    environment=train_env,eval_env=eval_env,
+                    wrap_env_fn=api['wrapper'].wrap_for_brax_training,
+                    network_factory=functools.partial(api['networks'].make_ppo_networks,**net_cfg),
+                    progress_fn=progress,policy_params_fn=save_policy,
+                    **({'m470_state_checkpoint_fn': save_fullstate} if longtrain else {}),
+                    **cfg)
         gpu=monitor.snapshot()
         report.update(gpu_peak_mib=gpu['peak_used_mib'],gpu_total_mib=gpu['total_mib'],
                       gpu_samples=gpu['samples'],gpu_monitor_errors=gpu['sampler_errors'])
+        if h3_diagnostic:
+            if (gpu['peak_used_mib'] is None or gpu['total_mib'] is None
+                    or gpu['peak_used_mib'] >= .95*gpu['total_mib'] or gpu['sampler_errors']):
+                raise RuntimeError('M470_H3_TECH_VRAM_GATE')
+            report.update(status='M470_H3_DIAGNOSTIC_COMPLETE_PPO_HOLD',
+                          steps_observed=0,run_steps_observed=0,
+                          training_performed=False)
+            persist()
+            return
         expected=prior_step+scaled.num_timesteps if longtrain else scaled.num_timesteps
         if not history or history[-1]['additional_steps']!=expected:
             raise RuntimeError('M463_STEP_BUDGET_INCOMPLETE')
@@ -845,7 +1057,9 @@ def main():
     p.add_argument('--independent-budget',choices=['10M','50M','100M'])
     p.add_argument('--h1-m1',action='store_true',help='H1-M1 experimental reward: smoke3 or independent 10M only')
     p.add_argument('--h1-m2',action='store_true',help='H1-M2 phase/contact foot-crossing reward: smoke3 or independent 10M only; separate owner GO required')
-    p.add_argument('--h3-m1',action='store_true',help='H3-M1 recovery-aware stand-still reward; smoke3 or independent 10M only')
+    p.add_argument('--h3-m1',action='store_true',help='H3-M1 recovery-aware stand-still reward; PPO HOLD, diagnostic only')
+    p.add_argument('--h3-diagnostic-only',action='store_true',
+                   help='H3 causal diagnostic only; all H3 PPO remains blocked')
     a=p.parse_args()
     if a.independent_budget is not None:
         if (a.mode != 'longtrain' or a.resume_state is not None or
@@ -872,6 +1086,8 @@ def main():
                 'batch_size': 1024, 'updates_per_batch': 5,
                 'fingerprint': H3_FP, 'training_performed': False,
                 'execution_authorized': False,
+                'ppo_hold': True, 'diagnostic_flag': '--h3-diagnostic-only',
+                'diagnostic_max_control_transitions': 54,
             }, sort_keys=True))
             return
         print('M463_COVERAGE_PLAN_NO_GPU',json.dumps({
