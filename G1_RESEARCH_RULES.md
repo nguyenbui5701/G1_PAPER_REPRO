@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.45  
+**Version:** 1.2.46  
 **Ngày cập nhật:** 2026-11-23 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -523,6 +523,20 @@ Owner requested continuation after H2A1 NO-GO, explicitly per Rules. This author
 
 Decision H2B_R0_ROADMAP_DESIGN_COMPLETE / H2B0_SOURCE_DESIGN_PENDING. All parameters are proposed pre-data, exact implementation contract subject to pre-execution source design review (no post-result changes). Zero GPU/zero PPO/source edits by SA. Rules-only.
 
+### M4.70-H2B0 — DETAILED OWNER SOURCE HANDOFF (v1.2.46; 2026-11-24)
+
+Owner requested detailed source design according to Rules. Reviewed HEAD fa991d4f0a7c043aee3c0748d65699de91474666, M463 evaluator blob e26043088bee558015b8592b6ef86dd85bf546b1, exact upstream joystick.py/base.py and G1 feet-only XML/flat scene at PIN 9bcbe736177472ba35d60773e3030a36e37962b7, upstream MuJoCo 3.2.7 MJX Data types. Confirmed xipos body COM, geom/site positions/orientations, model body_mass, local_linvel_pelvis velocimeter at imu_in_pelvis, floor plane. Actor phase cosL at99 and sinL at101; source computes obs BEFORE updating info.phase, so use atan2(obs[101],obs[99]), not next-phase info. Age counts completed external constant-command transitions, not source step resetting at501. Orientation uses horizontal projection of pelvis IMU +X for heading; command mapping is heading-axis approximation, not certified full-tilt transform. Source API review is not owner-runtime field proof.
+
+**Manual source handoff:** standalone local Markdown proposal H2B0_SOURCE_DESIGN.md SHA256 2200eb517c4c8f1b9ffbf6c9419d34e02d606ea06036369bc6c60f411bfcd21b, 43191 bytes; provided to owner in chat, not an executable repo file. Contains full proposed H2B helpers before run(), exact six integration edits, pure logic tests, CLI plan and commit instructions. Owner edits ONLY m463_gate3_cp_eval.py after clean ff-only sync; preserve H2A/legacy helpers and rollout behavior, extend report-P/policy-P guards to skip both opt-in H2 modes, extend safety telemetry guard only, mutually exclusive --h2b and --h2a, no PPO. Reuse aggregate_frames, h2a_recovery, h2a_initial_state, clip helpers and existing one_step. Module-level H2B helpers are pure host code until runtime factory; keep JAX imports after NVCC compat. No automated source rewrite or source push by SA.
+
+**Exact causal contract:** positive-mass bodies verified descendants of pelvis, normalized weighted xipos CoM; sample flat-plane z and +Z orientation, sampled IMU world position/rotation and actor noisy local velocity, foot center/contact proxies. Estimate v_com_world=R_imu*v_local+(relative_com_now-relative_com_prev)/.02; reset derivative zero and logged, relative COM vector expressed in world axes (do not differentiate support-relative d). Height clamp [.35,1.0] and source phase/rotation/shape guards. Cache once at reset age0 and after each nonterminal physics step, consumes age i-1 for action i. No qvel read for controller, no new obs/RNG on kick; fork state+deep-copied cache+governor and keep cache unchanged during kick. Record full pre-action sample and poststep diagnostics; sample at step299/334 before forks. Source truth kinematic/contact proxies explicitly idealized, no hardware claim.
+
+**Reference and runtime design:** ordered calibration seeds7301,7303 first (six complete nominal traces,6000 samples), frozen deterministic profile/contact/age/phase boxes with v1.2.45 age edges10/30/75 and phase quadrants, min8, fallback same profile/contact age pooled phase then pooled age+phase; unknown unsupported category STOP even on OFF (diagnostic completeness), no default safe or extrapolation. Reference .reference.json created exclusive, canonical JSON and SHA before eval, verify bytes before each eval group and final; no refitting. Raw .json progress created exclusive and atomically updated after groups, known reference/prefix blocks include partial current frames; arbitrary exceptions retain prior completed groups but unflushed current frames not guaranteed. Session reports config/provenance/evaluator digest. Then evaluation7331,7357 six groups, shared299 prefix with true causal ON check, same world kicks300/.50 and335/.35, single-to-double snapshot334; 60 logical plus6 calibration, max49014 physical. H2B residual rho thresholds .04/.015m, gain2 s^-1, entry2/exit10, max bias.25m/s, slew.05, yaw unchanged,100 active ticks plus bounded return10 and lockout; exact original goal tracking, safety tolerances and performance gates unchanged. No threshold retuning, startup masking, retry or H2A replay.
+
+**Preliminary design verification only:** exact proposed helper block parsed with Python AST and exercised synthetic estimator, phase/contact and reference fallback, six synthetic reference traces, supervisor entry/return/timeout/lockout/bounds, mock functional kick/cache-copy test using equivalent existing pure H2A clip/state helpers in isolated host Python. All pass, no JAX/GPU/PPO. This does NOT test actual owner integrated source, source MJX fields at runtime, actual calibration/reference adequacy, or evaluation. Owner must run one combined static/pure/plan gate, review only target diff, push new HEAD + log; SA review then separate H2B1 execution GO. No new source or GPU result by SA.
+
+Decision H2B0_OWNER_EDIT_PENDING / H2B1_HOLD. H1 CLOSED, H2A1 NO-GO/CLOSED, H2A2 not eligible, H2B2 conditional, PPO0, Branch B HOLD.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -784,6 +798,9 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-23)
+
+**M470-H2B0 DETAILED SOURCE HANDOFF (v1.2.46; 2026-11-24):** Exact G1 XML/joystick/MJX field review; actor phase timing and cached sample/fork contract frozen. Local Markdown proposal with full manual helper/integration/test code and SHA §4, synthetic host tests PASS only. **OWNER EDIT/PUSH PENDING** in existing M463 evaluator, source review and separate H2B1 GO still required. 6 calibration+60 logical eval protocol unchanged, reference frozen before eval, no retry/tuning, PPO0, H1/H2A CLOSED, Branch B HOLD.
+
 
 **M470-H2B-R0 ROADMAP DESIGN (v1.2.45; 2026-11-24):** Owner approved design continuation after H2A1 CLOSED. Select single support-relative capture-point proxy + phase/contact/command-age nominal reference + bounded command residual on frozen C401M, no direct joint action or PPO. Proposed six nominal calibration trajectories seeds7301/7303 separate from 60 exposed-dev eval7331/7357; reference frozen before eval, exact same perturbations/paired recovery gates, no startup mask or retune. Ideal sim sensor proxies, no hardware claim. **H2B0_SOURCE_DESIGN_PENDING**, owner source edit/review then separate execution GO. H2B1 not executed; H2B2 conditional; Branch B HOLD; H1 CLOSED.
 
@@ -1171,6 +1188,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-24 | H2B0 detailed owner source handoff | Exact G1/MJX source fields verified, local Markdown design hash §4, synthetic Python tests PASS only | v1.2.46 owner manual edit and static/plan gate, remote review then separate H2B1 GO; no GPU/PPO | 1.2.46 |
+
 | 2026-11-24 | H2B-R0 owner roadmap design | H2A1 startup false activation and stand partial evidence; pinned G1 sensor/contact source reviewed | v1.2.45 select one support-aware DCM command residual, fixed 6 calibration+60 eval proposed, H2B0 source design pending, no GPU/PPO | 1.2.45 |
 
 | 2026-11-24 | H2A1 owner controlled evaluation stopped by nominal gate | Three full files audited; 10/60 logical,5915 physical; 7331/forward_fast step2 PREPUSH_INTERVENTION on startup error; partial stand tied double outcomes, new joint-limit excess regression | v1.2.44 H2A1 NO-GO/CLOSED, H2A2 not eligible, no rerun/tuning/PPO; new design requires owner approval | 1.2.44 |
@@ -1324,6 +1343,8 @@ PY
 | 2026-11-21 | Research governance | Khóa mục tiêu push → fall → get-up → resume; định nghĩa thước đo và cổng nghiệm thu | RULES ACTIVE; GET-UP NOT IMPLEMENTED | 1.0.0 |
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.46 — 2026-11-24:** H2B0 detailed source handoff, verify IMU site/CoM/phase timing, causal sample cache/fork, fixed reference fit and progress persistence; isolated synthetic helper tests PASS, owner integration/runtime pending. Rules only; no executable source changes, no GPU/PPO.
 
 - **v1.2.45 — 2026-11-24:** Owner-approved H2B design roadmap after H2A1 NO-GO; select one phase/contact/command-age conditioned support-relative DCM command residual, freeze proposed nominal reference and bounded protocol, causal cached sensor timing, idealized sensor-proxy caveats, no warmup masking, no tuning or PPO. H2B0 source design pending, separate execution GO required. Rules only.
 
