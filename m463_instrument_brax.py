@@ -522,3 +522,124 @@ def build_instrumented_ppo(pinned_ppo_module, output:Path, *, enable_resume=Fals
                 'instrumented_file':str(output.resolve()),
                 'instrumented_sha256':sha256(patched.encode('utf8')),
                 'extra_fields':list(EXT_FIELDS + (H3_EXT_FIELDS if enable_h3 else ()) + (H4_EXT_FIELDS if enable_h4 else ()))}
+
+
+# Readiness-only source. Never change the production H4 generator or hold.
+H4R_FINITE_SOURCE = '''    # Read-only diagnostic of actual sampled PPO tensors and updated carry.
+    h4r_leaves = jax.tree_util.tree_leaves((
+        data, new_training_state, state, metrics))
+    h4r_finite = jnp.asarray(True)
+    for h4r_leaf in h4r_leaves:
+      h4r_finite = h4r_finite & jnp.all(jnp.isfinite(h4r_leaf))
+    metrics['h4r_nonfinite_per_rollout'] = (~h4r_finite).astype(jnp.float32)
+'''
+
+H4R_CONTRACT = '''  if (num_training_steps_per_epoch != 20 or num_evals != 1
+      or num_resets_per_eval != 1 or num_timesteps != 10240
+      or num_envs != 16 or batch_size != 2 or num_minibatches != 8
+      or num_updates_per_batch != 5 or unroll_length != 32
+      or action_repeat != 1 or episode_length != 1000 or seed != 1
+      or device_count != 1 or process_count != 1 or local_device_count != 1
+      or not wrap_env or wrap_env_fn is None or randomization_fn is None
+      or restore_checkpoint_path is None or m470_resume_state_path is not None
+      or m470_resume_expected_steps is not None or h4_chunk_fn is not None
+      or madrona_backend or augment_pixels or eval_env is not None
+      or not normalize_observations or not normalize_advantage
+      or learning_rate != 1e-4 or entropy_cost != 0.
+      or discounting != .98 or reward_scaling != .1
+      or clipping_epsilon != .2 or gae_lambda != .95 or max_grad_norm != 1.
+      or h4r_audit_fn is None):
+    raise RuntimeError('M470_H4_READINESS_CONFIG')
+'''
+
+H4R_EXIT = '''  # No evaluator, normal training loop, checkpoint or parameter return.
+  training_state, env_state = _strip_weak_type((training_state, env_state))
+  epoch_key, local_key = jax.random.split(local_key)
+  initial = (training_state, env_state,
+             jax.random.split(epoch_key, local_devices_to_use))
+
+  def h4r_reference(training_state, state, key):
+    carry, metrics = jax.lax.scan(
+        training_step, (training_state, state, key), (), length=20)
+    return carry, jax.tree_util.tree_map(jnp.mean, metrics)
+
+  h4r_reference = jax.pmap(h4r_reference, axis_name=_PMAP_AXIS_NAME)
+  h4r_audit_fn('initial', 0, initial, None)
+  for label in ('R0', 'R1'):
+    h4r_audit_fn(label+'_before', 20, initial, None)
+    result, metrics = h4r_reference(*initial)
+    metrics = jax.tree_util.tree_map(jnp.mean, metrics)
+    h4r_audit_fn(label, 20, result, metrics)
+    del result, metrics
+  carry = initial
+  chunks = []
+  for idx in range(4):
+    h4r_audit_fn('S_before', idx+1, carry, None)
+    carry, metrics = h4_chunk(*carry)
+    metrics = jax.tree_util.tree_map(jnp.mean, metrics)
+    h4r_audit_fn('S_chunk', idx+1, carry, metrics)
+    chunks.append(metrics)
+  metrics = jax.tree_util.tree_map(lambda *xs: jnp.mean(jnp.stack(xs)), *chunks)
+  h4r_audit_fn('S', 20, carry, metrics)
+  return None
+'''
+
+
+def make_h4_readiness_source(raw):
+    """Generate an isolated, hard-held diagnostic from exact production H4.
+
+    The only callable entry is readiness_train; no path to evaluation or
+    production training survives. This source revision cannot execute PPO.
+    """
+    s, original_sha = make_patched_source(raw, enable_resume=True, enable_h4=True)
+    def one(old,new):
+        nonlocal s
+        if s.count(old)!=1:
+            raise RuntimeError('M470_H4R_ANCHOR '+old[:80])
+        s=s.replace(old,new,1)
+    one('def train(\n','def readiness_train(\n')
+    one('    h4_chunk_fn: Optional[Callable[..., None]] = None,\n',
+        '    h4r_audit_fn: Optional[Callable[..., None]] = None,\n'
+        '    h4_chunk_fn: Optional[Callable[..., None]] = None,\n')
+    one("  raise RuntimeError('M470_H4_EXECUTION_HOLD')\n",
+        "  raise RuntimeError('M470_H4_READINESS_EXECUTION_HOLD')\n")
+    # Validate the frozen diagnostic parameters before reset/initialization.
+    start=s.index('  if (num_training_steps_per_epoch != 20')
+    end=s.index('  # Initialize model params and training state.',start)
+    s=s[:start]+s[end:]
+    one('  key = jax.random.PRNGKey(seed)\n',
+        H4R_CONTRACT+'\n  key = jax.random.PRNGKey(seed)\n')
+    one('    return (new_training_state, state, new_key), metrics\n',
+        H4R_FINITE_SOURCE+'    return (new_training_state, state, new_key), metrics\n')
+    # No resume or zero-step return in this diagnostic entry.
+    start=s.index('  # M4.70: resume only at host reset/evaluation boundaries.')
+    end=s.index('  training_state = jax.device_put_replicated(',start)
+    s=s[:start]+s[end:]
+    # Drop the unused production epoch timing wrapper (same actual h4_chunk).
+    start=s.index('  def training_epoch_with_timing(')
+    end=s.index('  # Initialize model params and training state.',start)
+    s=s[:start]+s[end:]
+    marker='  if not eval_env:\n'
+    if s.count(marker)!=1:
+        raise RuntimeError('M470_H4R_EVAL_ANCHOR')
+    s=s[:s.index(marker)]+H4R_EXIT
+    return s, original_sha
+
+
+def build_h4_readiness_ppo(pinned_ppo_module, output):
+    import inspect
+    raw=Path(inspect.getfile(pinned_ppo_module.train)).read_bytes()
+    s, original_sha=make_h4_readiness_source(raw)
+    compile(s,str(output),'exec')
+    with Path(output).open('x',encoding='utf8') as f:
+        f.write(s)
+    spec=importlib.util.spec_from_file_location('m463_h4_readiness_ppo',str(output))
+    if spec is None or spec.loader is None:
+        raise RuntimeError('M470_H4R_MODULE_SPEC')
+    mod=importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    if hasattr(mod,'train') or mod.readiness_train.__module__!='m463_h4_readiness_ppo':
+        raise RuntimeError('M470_H4R_MODULE_ENTRY')
+    return mod, {'original_brax_sha256':original_sha,
+                 'generated_sha256':sha256(s.encode('utf8')),
+                 'generated_file':str(Path(output).resolve())}
