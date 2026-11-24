@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.70  
+**Version:** 1.2.71  
 **Ngày cập nhật:** 2026-11-24 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -779,6 +779,16 @@ Owner explicitly approved "GO H3-M1-3 — đọc Rules v1.2.69, review toàn b�
 
 Decision H3_M1_3_CONDITIONAL_OWNER_GO_FIXED_180_LOGICAL_MAX134424_PHYSICAL / EVALUATION_PENDING / ALL_PPO_AND_PROMOTION_HOLD.
 
+### M4.70-H3-M1-3 — BOOTSTRAP IMPORT FAILURE / MINIMAL CORRECTION / FRESH GO REQUIRED (v1.2.71; 2026-11-24)
+
+Owner submitted m470_h3_m1_3_controlled_20261124_190425_278651212.log (16617 bytes SHA256 8d67a5af8daaeb9af9f592adb2df65adaf52d013828ed5ae34ff3fd6bea24ed1) and report(20261124-120513).json (1656 bytes SHA256 e3597c1d1143b92a8d353e935abdd4d317c322d25e73b3e72e4c9c26e22aea63, equals local log hash). Actual tested HEAD 9526b52e83e202708b100dcf950d919051c5e88e, evaluator SHA256 00be05ffb8c18c3859c5f8c2d0fc29d9d451f1e5c2c1c3e6ee668b8c3e3ed4ec; other three source digests match v1.2.70. Six pinned inputs verified pre/post, clean tracked/upstream source, actual AST/compile, provenance and tamper checks, recovery thresholds, 3 shared-prefix mocks, 4 synthetic decisions, CLI 15/15 (3 positive,12 negative exit2), NO_JAX NO_GPU NO_PPO static gate PASS on exact prior source. NVCC compatibility printed pinned JAX0.4.35 versions. Then FAILED at evaluator line2186 importing brax.training.agents.ppo.train, through acting -> brax.v1.envs -> wrappers -> import dm_env (ModuleNotFoundError). Exit1/tee0, report status M470_H3_EVAL_FAILED, 0 groups, 0 attempted/recorded physical transitions, 0 logical, training_performed false, peak sampled512/12288MiB one sample, no sampler errors. No actual policy/environment or efficacy evidence; prior accepted training evidence intact. No new GPU runtime pin/health PASS inferred. 16GB disk available,95% used. Original GO consumed. Preserve failed report/log unchanged, no retry.
+
+**Root cause and EDIT-FIRST correction:** existing evaluator imports ppo.train only to obtain inspect.getfile(ppo.train) for SHA guard, not for inference or optimization. Direct import unnecessarily traverses training-only dependencies. Reviewed exact current evaluator run(), archived M462 warmstart and typed restore sources (archived copies not proof of current sibling source), pinned Brax v0.12.1 networks/types/distribution/running_statistics import chain and pinned Playground package imports. Archived warmstart also imports train; reason earlier successful training runtime resolved dm_env and current evaluator cannot is NOT established. Do not assume package uninstall or install/patch dm_env, no fake modules or environment changes. Minimal H3-only source commit 088302465ef09b5f6d6af22d5ecbb7fd18a17698 parent 9526b52e83e202708b100dcf950d919051c5e88e, evaluator blob8c91d45ef70b53e953e54846b61b3bc080e490dc +22/-2. New h3_verify_brax_train_source(networks) uses importlib.util.find_spec('brax.training.agents.ppo.train') without executing target module, resolves actual file and requires same directory as imported networks.py, verifies exact unchanged TRAIN_SHA e20613d42bf0868a13003e0312998816cc8d3593bb5ccaf9f1d070fd09c44bd7. H3 imports networks only and records path/SHA in brax_source_verification with M470_H3_EVAL_BRAX_SOURCE_PASS; legacy branch retains exact original train import/inspect hash. All other evaluator source byte-identical by reverse-patch comparison. All 180 logical/max134424 physical, v1.2.54/55 efficacy/safety/standing/recovery gates, fixed seeds/commands/perturbations, original model/reward/PD/termination, source checks, network and normalizer inference unchanged; training runner/env/instrumenter untouched. No new file. Rollback reviewed revert only. No new PPO, no dependency installation, no H2C/B.
+
+**Actual SA regression scope:** copied exact new helper into isolated Python mock package where train.py deliberately raises if executed; compile and real find_spec valid case succeeds without loading train, altered bytes rejected, missing spec rejected, foreign package path rejected (4/4). This is helper-only test, not whole committed evaluator compile or installed owner Brax import. Remote source diff verified. Previous static tests remain accepted for unchanged functions; corrected owner preflight should rehash source/inputs, compile actual changed evaluator, run focused helper regression using isolated fixture or mocked spec and real SHA check, actual provenance guard and frozen CLI plan, then same-process inference imports, real train-file SHA, JAX/GPU/config/policy gates before first transition. No separate GPU diagnostic or repeat unchanged full mock matrix required. Actual owner-local dependency chain beyond failed import remains untested; stop on next technical failure without changing pins or retry. The historical import failure is not an H3 efficacy NO_GO. Fresh explicit owner GO required for exactly one corrected full controlled evaluation (previous attempt 0 transitions), new timestamp, same budgets, no PPO and no rerun of training/diagnostic. Final raw report decision recomputation and immutability checks unchanged. No GPU or PPO by SA.
+
+Decision H3_M1_3_BLOCKED_AT_TRAIN_IMPORT / INFERENCE_ONLY_BOOTSTRAP_CORRECTION_LANDED / CORRECTED_EVALUATION_PENDING_EXPLICIT_OWNER_GO / EFFICACY_UNTESTED.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -1040,6 +1050,9 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-24)
+
+**M470-H3-M1-3 BOOTSTRAP FAILURE (v1.2.71; 2026-11-24):** log8d67a5af/report e3597c1d verified; v1.2.70 static gates PASS, NVCC PASS, direct PPO train import fails missing dm_env, 0 physical/logical/PPO, all inputs immutable, exit1/tee0. Evaluator-only correction 088302465ef09b5f6d6af22d5ecbb7fd18a17698 verifies actual installed train.py SHA without importing training module in H3 branch; helper mock4/4 PASS, other source byte-identical. Actual runtime untested. GO consumed; fresh explicit corrected evaluation GO required, no install/retry/PPO, H2C/B HOLD.
+
 
 **M470-H3-M1-3 CONTROLLED DEV EVAL GO (v1.2.70; 2026-11-24):** explicit owner GO, evaluator-only source 65ac7fa5ba68ab85730f4158ca68da67857a7971 blob5860be85, exact C/OLD/H3 final report/policy pins and original reward/physics, fixed 180 logical/max134424 physical, shared prefixes, raw scalar evidence and v1.2.54/55 gates, 0 PPO. Prior 10M closed no promotion. Full actual evaluator static/runtime checks pending owner execution, no retry; all PPO/H2C/B HOLD.
 
@@ -1502,6 +1515,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-24 | H3-M1-3 bootstrap failure review/correction | log8d67a5af/report e3597c1d, static PASS, missing dm_env at train import, 0 transitions; evaluator 088302465ef09b5f6d6af22d5ecbb7fd18a17698 helper mock4/4 | v1.2.71 correction landed; exact source hash retained; fresh GO pending, efficacy untested | 1.2.71 |
+
 | 2026-11-24 | H3-M1-3 explicit controlled development evaluation GO | Rules v1.2.69 + v1.2.54/55; exact C/OLD/H3 evidence, evaluator 65ac7fa5ba68ab85730f4158ca68da67857a7971 | v1.2.70 one conditional 180 logical/max134424 physical original-source evaluation, no PPO, owner static and runtime pending | 1.2.70 |
 
 | 2026-11-24 | H3-M1-2 independent10M final review | log7bfead06/report84c28531/manifestb7e99cf8, comparator PASS, exact10485760, 42/42 checks, 46944 events,602436 active, peak4887MiB, final aaa4e14b | v1.2.69 TECH PASS / EFFICACY PENDING / NO PROMOTE, GO consumed; fixed controlled eval pending distinct GO | 1.2.69 |
@@ -1707,6 +1722,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.71 — 2026-11-24:** Record H3-M1-3 zero-transition bootstrap failure, remove unnecessary H3 train module import while preserving exact installed train.py SHA/path verification, helper-only offline regression PASS, all frozen gates unchanged, fresh corrected evaluation GO pending. No install, GPU or PPO.
 
 - **v1.2.70 — 2026-11-24:** Record explicit H3-M1-3 owner GO, existing evaluator-only H3 opt-in and immutable three-policy guard, shared-prefix bounded controlled development evaluation and all frozen efficacy/safety gates, no PPO/promotion. Actual owner static/runtime evidence pending.
 
