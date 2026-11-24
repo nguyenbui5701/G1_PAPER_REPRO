@@ -34,6 +34,55 @@ BATCHES={'smoke':1,'probe2': 2,'smoke3':3,'pilot':20}
 PREFIX='training/m463_'
 
 
+H3_SPEC = {'id': 'H3-M1', 'slot': 'stand_still', 'source_scale': -1.0,
+           'alpha': 0.5, 'window_ticks': 100, 'dt': 0.02,
+           'terminal_factor': 1.0, 'context': 'actual_event_boundary_corrected',
+           'actor_critic_context_added': False}
+H3_FP = '420ecb3798789b0f90f3ed249572ad8298fad03a5ce56a83a7a83e59ebe90fef'
+H3_BAD_KEYS = tuple('h3_' + k for k in (
+    'timing_bad_per_rollout', 'formula_bad_per_rollout',
+    'forbidden_bad_per_rollout', 'truncation_bad_per_rollout',
+    'reward_sum_bad_per_rollout', 'nonfinite_per_rollout'))
+H3_POS_KEYS = tuple('h3_' + k for k in (
+    'active_per_rollout', 'post_active_per_rollout', 'stand_events_per_rollout',
+    'stand_post_steps_per_rollout', 'nominal_steps_per_rollout',
+    'nonstand_steps_per_rollout', 'delta_sum_dt'))
+H3_METRIC_KEYS = H3_BAD_KEYS + H3_POS_KEYS + (
+    'h3_terminal_steps_per_rollout', 'h3_base_sum_pre_dt',
+    'h3_modified_sum_pre_dt')
+
+
+def validate_h3_cli(a):
+    if not getattr(a, 'h3_m1', False):
+        return
+    if (a.h1_m1 or a.h1_m2 or a.stage != 'easy_repeat_support'
+            or a.resume_state is not None
+            or a.mode not in ('plan', 'smoke3', 'longtrain')
+            or (a.mode == 'longtrain' and a.independent_budget != '10M')
+            or (a.mode == 'longtrain' and a.smoke_report is None)
+            or (a.mode != 'longtrain' and (a.independent_budget is not None
+                or a.rollouts is not None or a.num_evals is not None))):
+        raise RuntimeError('M470_H3_M1_MODE_NOT_APPROVED')
+
+
+def h3_audit_counts(counts):
+    vals = {k: float(counts[PREFIX+k]) for k in H3_METRIC_KEYS}
+    if not all(math.isfinite(v) for v in vals.values()):
+        raise RuntimeError('M470_H3_NONFINITE_AUDIT')
+    checks = {k: vals[k] == 0 for k in H3_BAD_KEYS}
+    checks.update({k: vals[k] > 0 for k in H3_POS_KEYS})
+    checks['h3_signed_sums'] = (vals['h3_base_sum_pre_dt'] < 0
+        and vals['h3_base_sum_pre_dt'] < vals['h3_modified_sum_pre_dt'] <= 0)
+    checks['h3_terminal_count_nonnegative'] = vals['h3_terminal_steps_per_rollout'] >= 0
+    checks['h3_post_active_le_active'] = vals['h3_post_active_per_rollout'] <= vals['h3_active_per_rollout']
+    checks['h3_post_active_le_post_steps'] = vals['h3_post_active_per_rollout'] <= vals['h3_stand_post_steps_per_rollout']
+    # Float32 reductions across many samples: descriptive aggregate reconciliation.
+    predicted = 0.02*(vals['h3_modified_sum_pre_dt']-vals['h3_base_sum_pre_dt'])
+    observed = vals['h3_delta_sum_dt']
+    checks['h3_delta_sum_reconciles'] = abs(predicted-observed) <= max(0.01, 1e-4*abs(predicted))
+    return {'counts': vals, 'checks': checks, 'passed': all(checks.values())}
+
+
 def digest(p:Path):
     h=hashlib.sha256()
     with p.open('rb') as fh:
@@ -126,6 +175,8 @@ def m470_resume_manifest(path: Path, fingerprint, instrument_sha, batches_per_ev
     if manifest_path.is_symlink() or not manifest_path.is_file():
         raise RuntimeError('M470_RESUME_MANIFEST_MISSING')
     meta = json.loads(manifest_path.read_text('utf8'))
+    if meta.get('h3_m1_enabled', False):
+        raise RuntimeError('M470_H3_RESUME_FORBIDDEN')
     expected = {
         'format': 'M470_PPO_FULLSTATE_RESET_EDGE_V1',
         'stage': 'easy_repeat_support',
@@ -147,6 +198,8 @@ def m470_resume_manifest(path: Path, fingerprint, instrument_sha, batches_per_ev
 
 
 def run(args):
+    validate_h3_cli(args)
+    h3_m1 = bool(getattr(args, 'h3_m1', False))
     if args.output_dir.exists():
         raise FileExistsError('M463_REFUSE_TO_OVERWRITE_OUTPUT_DIRECTORY')
     # Import from PRIOR, already proven checkpoint validator and GPU monitor.
@@ -213,6 +266,10 @@ def run(args):
     if not bool(source_cfg.push_config.enable):
         raise RuntimeError('M463_ORIGINAL_SOURCE_PUSH_WAS_NOT_ENABLED')
     original_reward = source_cfg.to_dict()['reward_config']
+    if h3_m1 and (float(original_reward['scales']['stand_still']) != -1.0
+                  or float(original_reward['scales']['termination']) != -100.0
+                  or len(original_reward['scales']) != 24):
+        raise RuntimeError('M470_H3_SOURCE_REWARD_MISMATCH')
     if h1_m1:
         if float(original_reward['scales']['lin_vel_z']) != 0.0:
             raise RuntimeError('M470_H1M1_SOURCE_LIN_VEL_Z_NONZERO')
@@ -232,7 +289,7 @@ def run(args):
     elif original_reward != train_cfg.to_dict()['reward_config']:
         raise RuntimeError('M463_REWARD_CHANGED')
     train_env=CoverageJoystick(config=train_cfg,stage=args.stage,
-                               h1_m1=h1_m1,h1_m2=h1_m2)
+                               h1_m1=h1_m1,h1_m2=h1_m2,h3_m1=h3_m1)
     # Original source-driven randomized evaluation; only 2 envs as previous.
     eval_env=api['locomotion'].load(api['env_name'],config=source_cfg)
     scaled=api['scaled']
@@ -245,6 +302,31 @@ def run(args):
     if args.mode in ('smoke3', 'longtrain') and cfg.get('num_resets_per_eval') != 1:
         raise RuntimeError('M470_SMOKE3_REQUIRES_CONTINUOUS_ENV_STATE')
     fp = m470_fingerprint(scaled.to_dict()) if longtrain else None
+    h3_fp = m470_fingerprint(scaled.to_dict()) if h3_m1 else None
+    if h3_m1 and h3_fp != H3_FP:
+        raise RuntimeError('M470_H3_PPO_FINGERPRINT_MISMATCH')
+    h3_source_digests = ({name: digest(Path(__file__).with_name(name))
+        for name in ('m463_coverage_env.py', 'm463_instrument_brax.py',
+                     'm463_push_ppo_train.py')} if h3_m1 else None)
+    if h3_m1 and longtrain:
+        sr = json.loads(args.smoke_report.read_text('utf8'))
+        if not (sr.get('status') == 'M463_COVERAGE_SMOKE3_PASS'
+                and sr.get('stage') == 'easy_repeat_support'
+                and sr.get('h3_m1_enabled') is True
+                and sr.get('h3_m1_spec') == H3_SPEC
+                and sr.get('h3_ppo_fingerprint') == H3_FP
+                and sr.get('h3_source_digests') == h3_source_digests
+                and sr.get('source_commit') == PIN
+                and sr.get('source_checkpoint_sha256') == SEED1_SHA
+                and sr.get('orbax_sha256') == report_gate['orbax_dir_sha256']
+                and sr.get('steps_observed') == 786432
+                and sr.get('training_performed') is True
+                and sr.get('weights_finite') is True
+                and sr.get('coverage_gate_pass') is True
+                and sr.get('memory_gate_pass') is True
+                and not sr.get('gpu_monitor_errors')
+                and sr.get('h3_m1_training_transition_audit', {}).get('passed') is True):
+            raise RuntimeError('M470_H3_SMOKE3_PROVENANCE_MISMATCH')
     net_cfg=cfg.pop('network_factory')
     cfg.update(seed=1,randomization_fn=api['randomizer'],
                restore_checkpoint_path=str(orbax_dir.resolve()))
@@ -252,7 +334,7 @@ def run(args):
     out.mkdir(parents=True,exist_ok=False)
     instrumented_ppo,instrument_meta=build_instrumented_ppo(
         api['ppo'],out/'m463_brax_ppo_instrumented.py',
-        enable_resume=longtrain)
+        enable_resume=longtrain, enable_h3=h3_m1)
     prior_step = 0
     resume_meta = None
     if longtrain:
@@ -280,7 +362,7 @@ def run(args):
         'rollouts_target':batches,'hardware_scaled_config':scaled.to_dict(),
         'source_push_disabled_in_custom_train_env':True,
         'source_random_push_enabled_in_eval':True,
-        'reward_PD_termination_source_unchanged':not (h1_m1 or h1_m2),
+        'reward_PD_termination_source_unchanged':not (h1_m1 or h1_m2 or h3_m1),
         'PD_termination_source_unchanged':True,
         'h1_m1_enabled':h1_m1,
         'h1_m2_enabled':h1_m2,
@@ -310,6 +392,12 @@ def run(args):
         'gpu_initial':gpu_initial,
         'training_performed':False,'report_history':history,'checkpoints':checkpoints,
     }
+    if h3_m1:
+        report.update(h3_m1_enabled=True, h3_m1_spec=H3_SPEC,
+                      h3_ppo_fingerprint=h3_fp,
+                      h3_source_digests=h3_source_digests,
+                      h3_smoke_report_sha256=(digest(args.smoke_report) if longtrain else None),
+                      h3_static_reward_config_unchanged=True)
     if longtrain:
         report.update(
             independent_budget=independent_budget,
@@ -347,6 +435,12 @@ def run(args):
     def progress(step,metrics):
         row={'additional_steps':int(step),'metrics':convert_metrics(metrics)}
         history.append(row);persist()
+        if h3_m1 and int(step) > 0:
+            m = row['metrics']
+            if any(PREFIX+k not in m for k in H3_METRIC_KEYS):
+                raise RuntimeError('M470_H3_MISSING_LIVE_TELEMETRY')
+            if any(float(m[PREFIX+k]) != 0 for k in H3_BAD_KEYS):
+                raise RuntimeError('M470_H3_LIVE_INVARIANT_VIOLATION')
         print('M463_PROGRESS',args.stage,'steps',step,
               'reward',row['metrics'].get('eval/episode_reward'),
               'train_push_events_mean_batch',row['metrics'].get(PREFIX+'events_per_rollout'),flush=True)
@@ -401,6 +495,9 @@ def run(args):
             'training_rng_included':True,
             'evaluator_rng_included':True,
         }
+        if h3_m1:
+            info['h3_m1_enabled'] = True
+            info['h3_m1_spec'] = H3_SPEC
         with file.open('xb') as stream:
             stream.write(raw)
         with meta_file.open('x', encoding='utf8') as stream:
@@ -501,6 +598,11 @@ def run(args):
                 'm2_finite_training_transitions':nonfinite==0,
             })
             audit['passed']=all(audit['checks'].values())
+        if h3_m1:
+            h3_result = h3_audit_counts(audit['counts'])
+            report['h3_m1_training_transition_audit'] = h3_result
+            audit['checks'].update(h3_result['checks'])
+            audit['passed'] = all(audit['checks'].values())
         memory_ok=(gpu['peak_used_mib'] is not None and gpu['total_mib'] is not None
                    and gpu['peak_used_mib']<gpu['total_mib']*0.95)
         report.update(steps_observed=expected,run_steps_observed=scaled.num_timesteps,
@@ -541,6 +643,7 @@ def main():
     p.add_argument('--independent-budget',choices=['10M','50M','100M'])
     p.add_argument('--h1-m1',action='store_true',help='H1-M1 experimental reward: smoke3 or independent 10M only')
     p.add_argument('--h1-m2',action='store_true',help='H1-M2 phase/contact foot-crossing reward: smoke3 or independent 10M only; separate owner GO required')
+    p.add_argument('--h3-m1',action='store_true',help='H3-M1 recovery-aware stand-still reward; smoke3 or independent 10M only')
     a=p.parse_args()
     if a.independent_budget is not None:
         if (a.mode != 'longtrain' or a.resume_state is not None or
@@ -552,7 +655,23 @@ def main():
             '50M': (192, 25),
             '100M': (384, 49),
         }[a.independent_budget]
+    try:
+        validate_h3_cli(a)
+    except RuntimeError as exc:
+        p.error(str(exc))
     if a.mode=='plan':
+        if a.h3_m1:
+            print('M470_H3_M1_PLAN_NO_GPU', json.dumps({
+                'spec': H3_SPEC, 'stage': a.stage,
+                'smoke_steps': 786432, 'smoke_rollouts': 3,
+                'independent_steps': 10485760, 'independent_rollouts': 40,
+                'independent_evals': 6, 'num_envs': 8192,
+                'unroll_length': 32, 'num_minibatches': 8,
+                'batch_size': 1024, 'updates_per_batch': 5,
+                'fingerprint': H3_FP, 'training_performed': False,
+                'execution_authorized': False,
+            }, sort_keys=True))
+            return
         print('M463_COVERAGE_PLAN_NO_GPU',json.dumps({
             'stage':a.stage,'mode':a.mode,'smoke_steps':TOTAL_STEPS_BATCH,
             'pilot_steps':20*TOTAL_STEPS_BATCH,'num_envs':8192,

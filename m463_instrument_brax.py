@@ -22,6 +22,63 @@ EXT_FIELDS = (
 )
 
 
+H3_EXT_FIELDS = (
+    'm470_h3_n', 'm470_h3_prior', 'm470_h3_boundary',
+    'm470_h3_stand', 'm470_h3_done', 'm470_h3_base',
+    'm470_h3_weighted', 'm470_h3_reward_sum',
+)
+
+H3_METRICS_SOURCE = '''    # H3-M1 opt-in, exact sampled PPO transitions.
+    hn = extras['m470_h3_n']
+    hp = extras['m470_h3_prior']
+    hb = extras['m470_h3_boundary']
+    hs = extras['m470_h3_stand']
+    hd = extras['m470_h3_done']
+    hbase = extras['m470_h3_base']
+    hw = extras['m470_h3_weighted']
+    htotal = extras['m470_h3_reward_sum']
+    he = extras['m463_event']
+    hnp = extras['m463_no_push']
+    ht = extras['truncation']
+    expected_n = jnp.where(he == 1, 100,
+                          jnp.maximum(jnp.where(hb == 1, 0, hp) - 1, 0))
+    hg = jnp.where(hd == 1, 1.0, 1.0 - 0.5 * hn.astype(jnp.float32) / 100.0)
+    hdelta = hw - hbase
+    allowed = (hs == 1) & (hd == 0) & (hn > 0) & (hnp == 0)
+    hfinite = (jnp.isfinite(hbase) & jnp.isfinite(hw) &
+               jnp.isfinite(htotal) & jnp.isfinite(data.reward))
+    bad_binary = ((hb != 0) & (hb != 1)) | ((hs != 0) & (hs != 1)) | ((hd != 0) & (hd != 1)) | ((he != 0) & (he != 1)) | ((hnp != 0) & (hnp != 1))
+    bad_timing = (bad_binary | (hp < 0) | (hp > 100) | (hn < 0) |
+                  (hn > 100) | (hn != expected_n) | (hn != recent) |
+                  ((hnp == 1) & ((he != 0) | (hn != 0))))
+    bad_formula = ((hbase > 0) | (hw > 0) | (hdelta < 0) |
+                   ((hs == 0) & (hbase != 0)) |
+                   (jnp.abs(hw - hg * hbase) > 2e-6 * (1.0 + jnp.abs(hbase))))
+    bad_forbidden = (~allowed) & (hdelta != 0)
+    bad_truncation = (ht != 0) & (hdelta != 0)
+    bad_total = jnp.abs(htotal - data.reward) > 1e-5
+    hcount = lambda mask: jnp.sum(mask.astype(jnp.float32))
+    coverage.update({
+        'm463_h3_active_per_rollout': hcount(allowed & (hdelta > 0)),
+        'm463_h3_post_active_per_rollout': hcount(allowed & (hn < 100) & (hdelta > 0)),
+        'm463_h3_stand_events_per_rollout': hcount((he == 1) & (hs == 1)),
+        'm463_h3_stand_post_steps_per_rollout': hcount((hs == 1) & (hn > 0) & (hn < 100)),
+        'm463_h3_nominal_steps_per_rollout': hcount(hnp == 1),
+        'm463_h3_nonstand_steps_per_rollout': hcount(hs == 0),
+        'm463_h3_terminal_steps_per_rollout': hcount(hd == 1),
+        'm463_h3_timing_bad_per_rollout': hcount(bad_timing),
+        'm463_h3_formula_bad_per_rollout': hcount(bad_formula),
+        'm463_h3_forbidden_bad_per_rollout': hcount(bad_forbidden),
+        'm463_h3_truncation_bad_per_rollout': hcount(bad_truncation),
+        'm463_h3_reward_sum_bad_per_rollout': hcount(bad_total),
+        'm463_h3_nonfinite_per_rollout': hcount(~hfinite),
+        'm463_h3_base_sum_pre_dt': jnp.sum(hbase),
+        'm463_h3_modified_sum_pre_dt': jnp.sum(hw),
+        'm463_h3_delta_sum_dt': jnp.sum(hdelta * 0.02),
+    })
+'''
+
+
 def sha256(data):
     return hashlib.sha256(data).hexdigest()
 
@@ -124,7 +181,7 @@ def _add_m470_fullstate_hooks(s):
     )
     return s
 
-def make_patched_source(raw, *, require_pin=True, enable_resume=False):
+def make_patched_source(raw, *, require_pin=True, enable_resume=False, enable_h3=False):
     if isinstance(raw, bytes):
         actual_sha=sha256(raw)
         s=raw.decode('utf8')
@@ -136,7 +193,8 @@ def make_patched_source(raw, *, require_pin=True, enable_resume=False):
     old="extra_fields=('truncation',),"
     if s.count(old) != 1:
         raise RuntimeError('M463_BRAX_UNROLL_EXTRA_FIELDS_PATCH_ANCHOR_NOT_UNIQUE')
-    new="extra_fields=('truncation', " + ', '.join(repr(k) for k in EXT_FIELDS) + '),'
+    fields = EXT_FIELDS + (H3_EXT_FIELDS if enable_h3 else ())
+    new="extra_fields=('truncation', " + ', '.join(repr(k) for k in fields) + '),'
     s=s.replace(old,new,1)
     # Only one target: training_step, immediately before new TrainingState.
     anchor='    new_training_state = TrainingState(\n'
@@ -265,16 +323,22 @@ def make_patched_source(raw, *, require_pin=True, enable_resume=False):
         (~jnp.isfinite(m2w)).astype(jnp.float32))
     metrics = {**metrics, **coverage, **m464_tail}
 '''
+    if enable_h3:
+        marker = '    metrics = {**metrics, **coverage, **m464_tail}\n'
+        if instrument.count(marker) != 1:
+            raise RuntimeError('M470_H3_INSTRUMENT_ANCHOR_NOT_UNIQUE')
+        instrument = instrument.replace(marker, H3_METRICS_SOURCE + marker, 1)
     s = s.replace(anchor, instrument+anchor, 1)
     if enable_resume:
         s = _add_m470_fullstate_hooks(s)
     return s, actual_sha
 
 
-def build_instrumented_ppo(pinned_ppo_module, output:Path, *, enable_resume=False):
+def build_instrumented_ppo(pinned_ppo_module, output:Path, *, enable_resume=False, enable_h3=False):
     import inspect
     p=Path(inspect.getfile(pinned_ppo_module.train))
-    patched,original_sha=make_patched_source(p.read_bytes(), enable_resume=enable_resume)
+    patched,original_sha=make_patched_source(p.read_bytes(),
+        enable_resume=enable_resume, enable_h3=enable_h3)
     if output.exists():
         if output.read_text('utf8')!=patched:
             raise RuntimeError('M463_REFUSE_TO_OVERWRITE_DIFFERENT_PATCH')
@@ -290,4 +354,4 @@ def build_instrumented_ppo(pinned_ppo_module, output:Path, *, enable_resume=Fals
     return mod,{'original_brax_sha256':original_sha,
                 'instrumented_file':str(output.resolve()),
                 'instrumented_sha256':sha256(patched.encode('utf8')),
-                'extra_fields':list(EXT_FIELDS)}
+                'extra_fields':list(EXT_FIELDS + (H3_EXT_FIELDS if enable_h3 else ()))}

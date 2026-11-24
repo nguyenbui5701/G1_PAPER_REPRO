@@ -73,6 +73,16 @@ def heading_from_wxyz(quat):
     return jp.arctan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
 
 
+def h3_countdown(event, prior_recent, boundary):
+    prior = jp.where(boundary, 0, prior_recent)
+    return jp.where(event, 100, jp.maximum(prior - 1, 0)).astype(jp.int32)
+
+
+def h3_stand_factor(countdown, done):
+    n = jp.asarray(countdown, dtype=jp.float32)
+    return jp.where(done, 1.0, 1.0 - 0.5 * n / 100.0)
+
+
 class CoverageJoystick(joystick.Joystick):
     """JAX-compatible source G1 subclass, independent of pinned checkout.
 
@@ -81,7 +91,7 @@ class CoverageJoystick(joystick.Joystick):
     boundary for re-sampling push targets and counters.  Tracking `age` also
     supports a direct/unwrapped one-env diagnostic.
     """
-    def __init__(self, *, stage: str, config, task='flat_terrain', h1_m1=False, h1_m2=False):
+    def __init__(self, *, stage: str, config, task='flat_terrain', h1_m1=False, h1_m2=False, h3_m1=False):
         if stage not in STAGES:
             raise ValueError('M463_BAD_STAGE')
         if bool(config.push_config.enable):
@@ -91,6 +101,17 @@ class CoverageJoystick(joystick.Joystick):
         self._h1_m2 = bool(h1_m2)
         if self._h1_m1 and self._h1_m2:
             raise ValueError('M470_H1_M1_M2_MUTUALLY_EXCLUSIVE')
+        self._h3_m1 = bool(h3_m1)
+        if self._h3_m1 and (self._h1_m1 or self._h1_m2):
+            raise ValueError('M470_H3_M1_MUTUALLY_EXCLUSIVE')
+        if self._h3_m1 and (
+            stage != 'easy_repeat_support'
+            or float(config.reward_config.scales.stand_still) != -1.0
+            or float(config.reward_config.scales.termination) != -100.0
+            or float(config.ctrl_dt) != 0.02
+            or int(config.action_repeat) != 1
+        ):
+            raise ValueError('M470_H3_M1_ENV_CONFIG_MISMATCH')
         self._m463_stage = stage
         self._m463_min_mag, self._m463_max_mag, self._m463_repeat_probability = STAGES[stage]
         super().__init__(task=task, config=config)
@@ -145,7 +166,7 @@ class CoverageJoystick(joystick.Joystick):
         )
 
     def _get_reward(self, data, action, info, metrics, done, first_contact, contact):
-        """Opt-in M1 OR M2: replace exactly one otherwise inactive source key."""
+        """Opt-in H1 or H3: change exactly one source reward term."""
         rewards = super()._get_reward(
             data, action, info, metrics, done, first_contact, contact
         )
@@ -158,6 +179,9 @@ class CoverageJoystick(joystick.Joystick):
             rewards["feet_clearance"] = self._cost_h1_m2_phase_foot_crossing(
                 data, info, contact
             )
+        if self._h3_m1:
+            g = h3_stand_factor(info['m470_h3_n'], done)
+            rewards['stand_still'] = g * rewards['stand_still']
         return rewards
 
     def reset(self, rng):
@@ -191,6 +215,17 @@ class CoverageJoystick(joystick.Joystick):
             m470_m1_weighted=jp.asarray(0.0, dtype=jp.float32),
             m470_m2_weighted=jp.asarray(0.0, dtype=jp.float32),
         )
+        if self._h3_m1:
+            info.update({
+                k: jp.asarray(0, dtype=jp.int32)
+                for k in ('m470_h3_n', 'm470_h3_prior', 'm470_h3_boundary',
+                          'm470_h3_stand', 'm470_h3_done')
+            })
+            info.update({
+                k: jp.asarray(0.0, dtype=jp.float32)
+                for k in ('m470_h3_base', 'm470_h3_weighted',
+                          'm470_h3_reward_sum')
+            })
         return state.replace(info=info)
 
     def step(self, state, action):
@@ -277,10 +312,17 @@ class CoverageJoystick(joystick.Joystick):
             c * body_delta[0] - s * body_delta[1],
             s * body_delta[0] + c * body_delta[1],
         ]) * event.astype(jp.float32)
+        if self._h3_m1:
+            h3_prior = info['m463_recent']
+            h3_n = h3_countdown(event, h3_prior, boundary)
+            h3_pre_command = info['command']
+            h3_pre_stand = (jp.linalg.norm(h3_pre_command) < 0.01)
+            info['m470_h3_n'] = h3_n
         updated_qvel = state.data.qvel.at[:2].add(world_delta)
         state = state.replace(data=state.data.replace(qvel=updated_qvel), info=info)
-        # The pinned G1 source runs the SAME PD, physics, reward, termination,
-        # observations, and RNG progression. Built-in random push is OFF.
+        # The pinned G1 source runs the same PD, physics, termination,
+        # observations, and RNG progression. Only opt-in reward hooks differ.
+        # Built-in random push is OFF.
         after = super().step(state, action)
         out = dict(after.info)
         repeat = event & (count > 0)
@@ -339,4 +381,19 @@ class CoverageJoystick(joystick.Joystick):
             m470_m1_weighted=after.metrics['reward/lin_vel_z'],
             m470_m2_weighted=after.metrics['reward/feet_clearance'],
         )
+        if self._h3_m1:
+            base = -self._cost_stand_still(h3_pre_command,
+                                          after.data.qpos[7:])
+            total = sum(after.metrics['reward/' + k]
+                        for k in self._config.reward_config.scales) * self.dt
+            out.update(
+                m470_h3_n=h3_n,
+                m470_h3_prior=h3_prior.astype(jp.int32),
+                m470_h3_boundary=jp.asarray(boundary, dtype=jp.int32),
+                m470_h3_stand=h3_pre_stand.astype(jp.int32),
+                m470_h3_done=(after.done > 0).astype(jp.int32),
+                m470_h3_base=base.astype(jp.float32),
+                m470_h3_weighted=after.metrics['reward/stand_still'].astype(jp.float32),
+                m470_h3_reward_sum=jp.asarray(total, dtype=jp.float32),
+            )
         return after.replace(info=out)
