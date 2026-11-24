@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.37  
+**Version:** 1.2.38  
 **Ngày cập nhật:** 2026-11-23 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -405,6 +405,41 @@ Owner explicitly approved `GO M2 +10M, triển khai independent training theo ru
 
 **Final decision gate unchanged:** M2 dev ON >=13/18 and gain >=2/18 vs measured OLD10M; intended-heldout ON nonworse than OLD10M on same new seeds; M2 OFF all30 survive; no material >5% nominal per-case XY/yaw RMSE regression with explicit near-zero handling and no new critical failure. Report contemporaneous comparator vs prior dev counts if different (do not silently replace historical anchor or claim deterministic replay). Analyze every recorded push and 2s/5s survival/tracking on common windows, distinguish failure from horizon censoring and survival from demonstrated recovery. M435 only logs root/velocity/yaw/done and source terminal classification, no corrective foot-contact latency or sampled push magnitude; report unavailable, prepush mismatch flags and no strict counterfactual proof. Scoped intended-heldout independence per v1.2.33, not absolute generalization. RC4B execution pending; final decision only after raw evidence review. If no-go/inconclusive, close bounded H1; no retuning/extra training. M1 NO-PROMOTE,+100M NO-PROMOTE,+400M HOLD,B HOLD.
 
+### M4.70-H1 FINAL DECISION — RC4B EVIDENCE PASS, M2 NO-PROMOTE, BOUNDED H1 CLOSED (v1.2.38; 2026-11-24)
+
+**Immutable owner evidence:** `m470_h1m2_ab_20261124_111802_308322340.log` (2986 lines) SHA256 `816fad7ddd799309593fdd5e30725850e0516836df9b6eae8e00f2e4f4243627`; matching tar.gz SHA256 `128501dc71f6892fdb3ed2e67913bef21fd6f6ebe3080896953a2a6f533bba60`. Independently read complete log and all 30 raw JSON members without extraction or source execution. Owner ff-only synchronized Rules v1.2.37 HEAD `87f04ea1418c7456046badd1255d767647cc2a67`, exact evaluator blob `e0c5e3d5692c4a6c7d48380e5fdde034aa378005`, static/preflight and 30/30 process passes, evidence PASS, no training, EXIT0/TEE0. Exact 180 unique policy×seed×command×arm keys, 153373 frames; checkpoint SHA labels match all three frozen policies, train seed1, source G1JoystickFlatTerrain, deterministic fixed command, 1000-step horizon, DR OFF, RC1 telemetry OFF; OFF no push, consecutive frame indices, terminal metadata and completed flags consistent, all inspected root/velocity/yaw frame data finite. Independently reconstructed XY/yaw RMSE maximum absolute residual 4.996e-16 and prepush-observable mismatch flags. Log has 570 JAX overflow-in-cast warnings; exported telemetry is finite, internal cause unresolved; do not claim warnings harmless. Owner runtime verifies checkpoint bytes; binaries not independently rehashed by SA.
+
+**Frozen A/B outcomes (survival at 1000 steps; all failed ON arms source-classified foot–foot only):**
+
+| Policy | Dev ON (18) | Intended-heldout ON (12) | All ON (30) | OFF (30) | Mean ON steps | Foot–foot terminal ON |
+|---|---:|---:|---:|---:|---:|---:|
+| C401M | 8 | 1 | 9 | 30 | 723.500 | 21 |
+| OLD10M | 10 | 0 | 10 | 30 | 687.567 | 20 |
+| M2_10M | 10 | 0 | 10 | 30 | 701.367 | 20 |
+
+**Full case evidence, ON survived steps (1000 = complete, columns stand/forward/yaw_right):**
+
+| Seed | C401M | OLD10M | M2_10M |
+|---|---|---|---|
+| 5186 | 920/1000/1000 | 1000/1000/1000 | 1000/1000/1000 |
+| 5112 | 1000/1000/690 | 1000/1000/1000 | 1000/1000/1000 |
+| 5149 | 367/372/979 | 364/365/1000 | 352/362/669 |
+| 5593 | 1000/1000/1000 | 1000/1000/1000 | 1000/1000/1000 |
+| 5667 | 751/765/739 | 751/753/741 | 749/769/744 |
+| 5889 | 318/325/1000 | 322/313/343 | 319/312/1000 |
+| 8107 | 316/324/853 | 318/319/853 | 318/318/627 |
+| 8209 | 489/490/482 | 486/466/481 | 494/487/481 |
+| 8303 | 704/1000/377 | 703/703/413 | 701/701/713 |
+| 8407 | 812/817/815 | 812/817/304 | 811/818/296 |
+
+M2 vs contemporaneous OLD10M development discordance: one gain `5889/yaw_right` 343→1000 (first-push failure vs 3 pushes survived), one loss `5149/yaw_right` 1000→669 (second-push failure); net0/18. All 12 intended-heldout ON failed for both, so nonworse is a tie at zero, NOT heldout recovery success. C401M survived 8303/forward whereas both +10M policies failed. Prior M1 evaluation archive independently reopened: historical OLD10M dev11/18 differs from contemporary10/18 only at 5889/yaw_right (1000→343); C401M dev count unchanged. Do not hide or erase earlier result, and do not attribute reproducibility difference to a specific cause. M2 fails both absolute >=13/18 and relative gain >=2/18 criteria regardless of comparator vintage.
+
+**Nominal tracking:** all 90 OFF complete. Mean per-case OFF XY RMSE C401M/OLD/M2 = .13326973/.12598907/.12674135 m/s; yaw .23519811/.21912888/.21967905 rad/s. M2 vs OLD mean +0.597% XY/+0.251% yaw, but locked screen is PER CASE, not mean. Min OLD denominator .07644152 m/s XY and .16590260 rad/s yaw: no near-zero denominator encountered, ordinary relative ratios meaningful. Five >5% metric regressions in three intended-heldout OFF cases, all seed8209: stand XY .18266461→.21007719 (+15.007%), yaw .20378229→.22461870 (+10.225%); forward XY .16580307→.17689119 (+6.688%), yaw .22804724→.25852955 (+13.367%); yaw_right XY .19844077→.21077614 (+6.216%). One XY improvement >5%, no yaw improvement >5% vs OLD. Thus nominal survival PASS, nominal tracking screen FAIL (descriptive per-case screen, not statistical proof of degradation).
+
+**All-push and postpush audit:** 58/55/56 logged push events for C401M/OLD/M2, all90 ON arms exposed. Counts below are event-level, not independent samples; distinguish actual failure by target horizon vs administrative censoring at 1000. 2s (100 steps after each push) survived/failed/censored C 35/21/2, OLD31/20/4, M2 33/20/3; 5s (250 steps) C32/21/5, OLD28/20/7, M2 29/20/7. First-push survival at both horizons C20/30, OLD18/30, M2 20/30; not demonstrated return to command tracking. Last event ordinal at terminal C first/second/third10/6/5, OLD12/5/3, M2 10/8/2. For OLD vs M2 there are 53 common ordinal events with exact recorded step+direction, 0 mismatched among common; for C vs M2 54 common/0 mismatched. Unknown sampled magnitude; event counts differ with survival. In shared windows start at first post-event pre-step observable (step p+1) through min(p+h, both observed horizons), include later pushes if they occur; mean per-event RMSE across 53 OLD/M2 shared events: at2s XY .806753/.797741 m/s and yaw .480116/.452877 rad/s (mean shared71.23 steps); at5s XY .754817/.745993, yaw .460549/.430213 (mean shared146.17 steps). Small descriptive tracking benefits in shared/censored windows, not causal effect or recovered tracking; some windows contain subsequent pushes and unequal survival. Mean ON min root z (including poststep) C .433118, OLD .461207, M2 .464712m. All61 ON failures same source direct foot–foot predicate; no new terminal category observed. Within-policy ON/OFF limited prepush mismatches C9/30, OLD8/30, M2 9/30, total26/90; never claim strict matched force or full state. M435 lacks corrective-step latency/contact and sampled perturbation magnitude; those outcomes unmeasured. Scoped intended-heldout audit is not comprehensive independence proof.
+
+**FINAL GATES:** evidence PASS; M2 development FAIL (10/18, gain0); heldout nonworse PASS as zero tie but no generalization demonstrated; nominal OFF survival PASS; nominal per-case tracking FAIL; no new critical source terminal category observed; recovery efficacy not established. **`M470_H1M2_NO_PROMOTE / RC4_COMPLETE / H1_BOUNDED_MITIGATION_CLOSED`.** Preserve C401M and OLD10M reference and M1/M2 checkpoints as frozen research evidence only, not new production baseline. M1 NO-PROMOTE; M2 NO-PROMOTE; +100M NO-PROMOTE; +400M HOLD; Branch B HOLD. Both M2 TECH PASS gates remain historical successes, not efficacy. RC1 identified reward trade-offs but no causal attribution; read-only M2 anticipation and actual PPO activation worked technically yet single-factor experiment did not meet learned recovery criteria. No automatic extra probe, seed replacement, threshold/weight tuning, PPO continuation, checkpoint selection, or +50M/+100M/+400M. All revealed development/heldout seeds now exposed; none count as fresh future holdout. A different research hypothesis (e.g. recovery-aware progress or explicit mode transition/fall/get-up/resume) requires separate owner-approved roadmap and frozen protocol, not retroactive changes to H1; Branch B stays HOLD. Owner-only executable modifications remain in force. This SA commit updates Rules only.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -666,6 +701,9 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-23)
+
+**M470-H1 FINAL CLOSED / M2 NO-PROMOTE (v1.2.38; 2026-11-24):** Owner final A/B log+archive hashes and all case tables in §4. Independent audit 30 JSON/180 rollouts/153373 frames, EXIT0/TEE0, finite frame telemetry, frozen policy SHA, all61 ON terminals foot–foot. Dev ON C8/18 OLD10/18 M2 10/18; heldout C1/12 OLD0/12 M2 0/12; all OFF30/30 each. Historical OLD dev11/18 changed at 5889/yaw_right, no bitwise claim. M2 one win and one loss vs OLD, net0, fails >=13 and +2; five nominal >5% metric regressions in three seed8209 OFF cases. All-push/shared-window metrics documented with magnitude/prepush/censor caveats. **EVIDENCE PASS, RC4 COMPLETE, M2 NO-PROMOTE, H1 BOUNDED MITIGATION CLOSED**, both M1/M2 archived, no further probes/training/retuning/seed reuse as fresh heldout. Future alternative hypothesis requires explicit owner roadmap approval; +100M NO-PROMOTE,+400M HOLD,B HOLD.
+
 
 **M470-H1M2 RC4B SOURCE REVIEW PASS (v1.2.37; 2026-11-24):** Owner commit 8b1d1ec parent f9c73cce, only M435 +75/-2, blob e0c5e3d5692c4a6c7d48380e5fdde034aa378005; frozen M2 selector/report/checkpoint/activation guards verified, entire rollout function text unchanged. Next one frozen C401M/OLD10M/M2_10M ×10 seeds ×3 commands ×ON/OFF =180 rollouts, 30 JSONs, fresh interpreter per policy×seed, existing provenance inspect, exact source, combined log+archive; no RC1 telemetry or PPO. **RC4B_EVALUATION_READY / execution pending**, no further source edits required. Final efficacy decision per unchanged gates after raw evidence. M1 NO-PROMOTE,+100M NO-PROMOTE,+400M HOLD,B HOLD.
 
@@ -1029,6 +1067,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-24 | RC4B final owner 180-rollout evaluation and H1 decision | Full log/archive SHA §4; 30 JSON/153373 frames, C/OLD/M2 dev8/10/10 of18, heldout1/0/0 of12, all OFF survive, 61 foot–foot terminals, five nominal >5% regressions seed8209, historical OLD count discrepancy disclosed | v1.2.38 EVIDENCE PASS / M2 NO-PROMOTE / RC4 COMPLETE / H1 CLOSED; preserve frozen evidence, no extra probes or PPO, new roadmap only by owner approval | 1.2.38 |
+
 | 2026-11-24 | RC4B owner M435 selector source review PASS | 8b1d1ec parent f9c73cce, M435 only +75/-2, e0c5e3d5 blob, exact run function unchanged | v1.2.37 authorize one frozen 180-rollout read-only A/B, 30 JSON+log, runtime pending; no PPO | 1.2.37 |
 
 | 2026-11-24 | RC4A owner independent M2 +10M TECH PASS | 3 supplied files verified; exact10485760 steps,27 checks,46926 pushes,36015 active, finite, matching fullstate metadata and owner-local binary hashes, final policy d3d5d0e7... | v1.2.36 freeze final candidate, owner-only minimal M435 selector update then SA review; RC4B pending; no further PPO | 1.2.36 |
@@ -1166,6 +1206,8 @@ PY
 | 2026-11-21 | Research governance | Khóa mục tiêu push → fall → get-up → resume; định nghĩa thước đo và cổng nghiệm thu | RULES ACTIVE; GET-UP NOT IMPLEMENTED | 1.0.0 |
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.38 — 2026-11-24:** Independently audited complete final RC4B log and raw 180-rollout archive, recomputed tracking and prepush flags, compared all cases/all push events and shared horizons. M2 ties OLD10M survival on both splits, fails development improvement and nominal per-case tracking screens. Recorded historical comparator discrepancy, heldout floor and causal limits. EVIDENCE PASS, M2 NO-PROMOTE, bounded H1 CLOSED; no additional training or source changes, future hypothesis needs owner approval. Rules only.
 
 - **v1.2.37 — 2026-11-24:** Verified owner M435 M2 selector commit and exact unchanged rollout function, frozen report/checkpoint and runtime guard contract; source review PASS. One frozen 180-rollout A/B ready with pinned inputs, raw evidence and unchanged final H1 gate. No source changes or training by SA.
 
