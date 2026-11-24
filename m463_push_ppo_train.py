@@ -2176,7 +2176,491 @@ def h4c_static_regression(brax_train_path,acting_path,failure_report):
     print('M470_H4C_STATIC_PASS NO_SIMULATION NO_PPO',flush=True)
 
 
+
+# H4-M1-2R: a separate exploratory question, not a waiver of H4R FAIL.
+H4X_ID = 'H4-M1-2R-V1'
+H4X_CAUSAL_SHA = '8ff1d568e28a20842f05ef52a1107f5911980d16e128bf8b1881484091c805c5'
+H4X_PATHS = {arm:'m463_runs/m470_h4_m1_2r_'+arm+'_v1' for arm in ('control','candidate')}
+H4X_MIB = 1024**2
+H4X_SPEC = {'id':H4X_ID,'training':10485760,'optimizer':1600,'evaluation':6000,
+            'train_reset_lanes':24576,'eval_reset_lanes':6,'chunks':8,
+            'chunk_training':1310720,'chunk_optimizer':200,'eval_calls':3,
+            'train_reset_calls':3,'total_physical':10491760,
+            'output_cap':512*H4X_MIB,'policy_cap':64*H4X_MIB,
+            'fullstate_cap':128*H4X_MIB,'other_cap':128*H4X_MIB,
+            'disk_reserve':2*1024**3}
+H4X_COUNTERS = {'training':0,'optimizer':0,'evaluation':0,
+                'train_reset_lanes':0,'eval_reset_lanes':0}
+
+
+def h4x_require(ok,label):
+    if not bool(ok):
+        raise RuntimeError('M470_H4X_'+label)
+
+
+def h4x_source_digest(root):
+    paths=(*H4_FILES,'m463_gate3_cp_eval.py','paper_config_preflight.json')
+    payload={name:digest(root/name) for name in paths}
+    return hashlib.sha256(json.dumps(payload,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+
+
+def h4x_parse_marker(rules):
+    import re
+    lines=[line for line in rules.splitlines() if line.startswith('H4X_ACTIVE_GO:')]
+    h4x_require(len(lines)==1,'EXECUTION_HOLD' if not lines else 'MULTIPLE_AUTHORIZATIONS')
+    match=re.fullmatch(r'H4X_ACTIVE_GO: (H4-M1-2R-V1) (control|candidate) '
+                       r'(m463_runs/[a-z0-9_]+) ([0-9a-f]{64}) ([0-9a-f]{64}) ([0-9a-f]{64})',lines[0])
+    h4x_require(match is not None,'AUTHORIZATION_SCHEMA')
+    contract,arm,path,source,generated,evidence=match.groups()
+    h4x_require(path==H4X_PATHS[arm],'AUTHORIZATION_PATH')
+    return dict(id=contract,arm=arm,output=path,source_sha256=source,
+                generated_sha256=generated,evidence_sha256=evidence)
+
+
+def h4x_authorization():
+    h4x_require(not any((H4_EXECUTION_AUTHORIZED,H4R_EXECUTION_AUTHORIZED,H4C_EXECUTION_AUTHORIZED)),
+                'LEGACY_HOLD_REQUIRED')
+    root=Path(__file__).resolve().parent
+    auth=h4x_parse_marker((root/'G1_RESEARCH_RULES.md').read_text('utf8'))
+    h4x_require(h4x_source_digest(root)==auth['source_sha256'],'SOURCE_CONTRACT')
+    if auth['arm']=='control':
+        h4x_require(auth['evidence_sha256']==H4X_CAUSAL_SHA,'CAUSAL_AUTHORIZATION')
+    else:
+        h4x_require(auth['evidence_sha256']==h4_approved_control_sha(),'CONTROL_AUTHORIZATION')
+    return auth
+
+
+def h4x_file_pin(path,sha):
+    h4x_require(path is not None and path.is_file() and not path.is_symlink()
+                and digest(path)==sha,'INPUT_PIN '+str(path))
+
+
+def h4x_validate_cli(a):
+    enabled=getattr(a,'h4_exploratory',False)
+    evidence=(getattr(a,'h4_exploratory_causal_report',None),
+              getattr(a,'h4_exploratory_reward_report',None))
+    if not enabled:
+        h4x_require(all(v is None for v in evidence),'FLAG_REQUIRED')
+        return None
+    h4x_require(a.mode in ('plan','longtrain') and a.stage=='easy_repeat_support'
+                and getattr(a,'h4_arm',None) in H4X_PATHS,'MODE_ARM')
+    h4x_require(not any(getattr(a,k,False) for k in
+                        ('h1_m1','h1_m2','h3_m1','h3_diagnostic_only','h4_readiness','h4_causal'))
+                and all(getattr(a,k,None) is None for k in
+                    ('h3_causal_report','h3_old10m_report','h4_readiness_reward_report',
+                     'h4_causal_failure_report','resume_state','smoke_report','independent_budget',
+                     'rollouts','num_evals')),'CONFLICT')
+    if a.mode=='plan':
+        h4x_require(getattr(a,'h4_control_report',None) is None,'PLAN_CONTROL')
+        return None
+    auth=h4x_authorization()
+    root=Path(__file__).resolve().parent
+    h4x_require(a.h4_arm==auth['arm'] and a.output_dir.resolve()==root/auth['output']
+                and not a.output_dir.is_symlink() and not a.output_dir.parent.is_symlink(),
+                'ARM_OR_OUTPUT')
+    h4x_require((a.h4_arm=='candidate')==(getattr(a,'h4_control_report',None) is not None),
+                'CONTROL_REQUIRED')
+    h4x_file_pin(evidence[0],H4X_CAUSAL_SHA)
+    prior=json.loads(evidence[0].read_bytes())
+    h4x_require(prior['status']=='M470_H4C_DIAGNOSTIC_COMPLETE'
+                and prior['phase_verdicts']=={'A':'DIVERGENT','B':'PASS'}
+                and prior['comparisons']['B']['bitwise_equal'] is True
+                and prior['recorded_physical_transitions']==1024
+                and prior['recorded_optimizer_updates']==80,'CAUSAL_EVIDENCE')
+    h4x_file_pin(evidence[1],H4R_REWARD_SHA)
+    h4x_file_pin(a.checkpoint,SEED1_SHA)
+    h4x_file_pin(a.restore_report,H3_CAUSAL_RESTORE_SHA)
+    if a.h4_arm=='candidate':
+        h4x_file_pin(a.h4_control_report,auth['evidence_sha256'])
+        prior_control=json.loads(a.h4_control_report.read_bytes())
+        h4x_verify_operational(prior_control)
+    return auth
+
+
+def h4x_storage(out,extra=0,kind='other',initial=False):
+    import shutil
+    h4x_require(type(extra) is int and extra>=0 and kind in ('policy','fullstate','other'),'STORAGE_SCHEMA')
+    free=shutil.disk_usage(out.parent if initial else out).free
+    if initial:
+        h4x_require(free>=H4X_SPEC['disk_reserve']+H4X_SPEC['output_cap'],'DISK_INITIAL')
+        return
+    sizes={'policy':0,'fullstate':0,'other':0}
+    for p in out.rglob('*'):
+        h4x_require(not p.is_symlink(),'STORAGE_SYMLINK')
+        if p.is_dir():
+            continue
+        h4x_require(p.is_file(),'STORAGE_FILE')
+        k=('policy' if p.name.startswith('m463_easy_repeat_support_longtrain_step_')
+             and p.suffix=='.msgpack' else 'fullstate' if p.name.startswith('m470_fullstate_step_')
+             and p.suffix=='.msgpack' else 'other')
+        size=p.stat().st_size
+        if k!='other':
+            h4x_require(size<=H4X_SPEC[k+'_cap'],'ARTIFACT_SIZE')
+        sizes[k]+=size
+    sizes[kind]+=extra
+    h4x_require(extra<=H4X_SPEC[kind+'_cap'] and
+                sizes['policy']<=2*H4X_SPEC['policy_cap'] and
+                sizes['fullstate']<=2*H4X_SPEC['fullstate_cap'] and
+                sizes['other']<=H4X_SPEC['other_cap'] and
+                sum(sizes.values())<=H4X_SPEC['output_cap'],'STORAGE_CAP')
+    h4x_require(free>=H4X_SPEC['disk_reserve']+extra,'DISK_RESERVE')
+
+
+def h4x_write_json(path,value,exclusive=False):
+    raw=(json.dumps(value,indent=2,allow_nan=False)+'\n').encode()
+    h4x_storage(path.parent,len(raw))
+    if exclusive:
+        with path.open('xb') as f:
+            f.write(raw)
+    else:
+        tmp=path.with_suffix('.json.tmp')
+        with tmp.open('xb') as f:
+            f.write(raw)
+        tmp.replace(path)
+
+
+def h4x_generated_guard(audit,generated_file):
+    # Called before the first upstream runtime operation. No active marker,
+    # no valid reservation, or repeated generated entry => hard stop.
+    auth=h4x_authorization()
+    root=Path(__file__).resolve().parent
+    out=root/auth['output']
+    generated=Path(generated_file)
+    h4x_require(audit is not None and callable(audit) and
+                getattr(audit,'h4x_authorization',None)==auth,'AUDIT_REQUIRED')
+    h4x_require(generated.resolve()==out/'m463_brax_ppo_instrumented.py'
+                and not generated.is_symlink() and digest(generated)==auth['generated_sha256'],
+                'GENERATED_PIN')
+    reservation=out/'attempt.json'
+    h4x_require(reservation.is_file() and not reservation.is_symlink() and
+                json.loads(reservation.read_bytes())=={'authorization':auth,'reserved':True},
+                'RESERVATION')
+    h4x_write_json(out/'dispatch.started.json',{'authorization':auth},exclusive=True)
+
+
+def h4x_bootstrap(args):
+    from types import SimpleNamespace
+    proxy=SimpleNamespace(checkpoint=args.checkpoint,restore_report=args.restore_report,
+                          h4_readiness_reward_report=args.h4_exploratory_reward_report)
+    pins=h4r_bootstrap_pins(proxy)
+    # Exact launcher overlay resolution before JAX is imported.
+    from importlib import metadata
+    from importlib.machinery import PathFinder
+    root=Path(__file__).resolve().parent
+    base=root.parent
+    expected=[
+        base/'G1_M3_11E_PPO_CLOUDPICKLE_OVERLAY_V1/overlays/cloudpickle_20261107_111524_3962615',
+        base/'G1_M3_11D_PPO_GYM_ISOLATED_REPAIR_V1/overlays/wheels_20261107_111000_3952924',
+        base/'G1_M3_11C_PPO_MANIFEST_REPAIR_V1/overlays/wheels_20261107_110316_3940764',
+        base/'G1_M3_7_G1_MJX_GPU_ONE_STEP_V1/source/mujoco_playground_2025',root]
+    paths=[Path(p).resolve() for p in os.environ.get('PYTHONPATH','').split(os.pathsep)]
+    h4x_require(paths==[p.resolve() for p in expected],'LAUNCHER_PATH')
+    venv=base/'G1_M3_7_G1_MJX_GPU_ONE_STEP_V1/.venv_m37_jax0435_mjx327'
+    h4x_require(Path(sys.executable)==venv/'bin/python' and
+                Path(sys.prefix).resolve()==venv.resolve(),'LAUNCHER_PYTHON')
+    spec=PathFinder.find_spec('dm_env',sys.path)
+    origin=(expected[2]/'dm_env/__init__.py').resolve()
+    dist=metadata.distribution('dm-env')
+    h4x_require(spec is not None and spec.origin is not None and
+                Path(spec.origin).resolve()==origin and dist.version=='1.6' and
+                Path(dist.locate_file('dm_env/__init__.py')).resolve()==origin,'DM_ENV')
+    return pins
+
+
+def h4x_schedule():
+    rows=['reset_before','reset_after','initial','eval_before','eval_after']
+    for _ in range(2):
+        rows.append('epoch')
+        for _ in range(4):
+            rows.extend(('chunk_before','chunk_after','chunk_ledger'))
+        rows.extend(('reset_before','reset_after','eval_before','eval_after'))
+    return rows+['finish']
+
+
+class H4XBudget:
+    def __init__(self,report):
+        self.report=report
+        report.update(spec=copy.deepcopy(H4X_SPEC),attempted=dict(H4X_COUNTERS),
+                      recorded=dict(H4X_COUNTERS),events=[],complete=False)
+
+    def check(self,event):
+        i=len(self.report['events'])
+        schedule=h4x_schedule()
+        h4x_require(i<len(schedule) and schedule[i]==event,'SEQUENCE '+event)
+
+    def advance(self,event,detail):
+        self.check(event)
+        r=self.report
+        charges={'reset_before':('attempted',{'train_reset_lanes':8192}),
+                 'reset_after':('recorded',{'train_reset_lanes':8192}),
+                 'eval_before':('attempted',{'evaluation':2000,'eval_reset_lanes':2}),
+                 'eval_after':('recorded',{'evaluation':2000,'eval_reset_lanes':2}),
+                 'chunk_before':('attempted',{'training':1310720,'optimizer':200}),
+                 'chunk_ledger':('recorded',{'training':1310720,'optimizer':200})}
+        if event in charges:
+            target,counts=charges[event]
+            new=dict(r[target])
+            for k,v in counts.items():
+                new[k]+=v
+                h4x_require(new[k]<=H4X_SPEC[k],'BUDGET '+k)
+                if target=='recorded':
+                    h4x_require(new[k]<=r['attempted'][k],'UNATTEMPTED '+k)
+            r[target]=new
+        r['events'].append({'event':event,**detail})
+        if event=='finish':
+            expected={k:H4X_SPEC[k] for k in H4X_COUNTERS}
+            h4x_require(r['attempted']==r['recorded']==expected,'FINAL_BUDGET')
+            r['complete']=True
+
+
+def h4x_verify_operational(report):
+    r=report['h4x_operational']
+    h4x_require(r['spec']==H4X_SPEC and r['complete'] is True,'OPERATIONAL_CONTRACT')
+    replay={}
+    budget=H4XBudget(replay)
+    chunk=0
+    after=None
+    previous=None
+    evals=[]
+    resets=[]
+    epochs=[]
+    for row in r['events']:
+        event=row['event']
+        budget.advance(event,{k:v for k,v in row.items() if k!='event'})
+        if event=='reset_before':
+            resets.append(row['keys_sha256'])
+        if event=='epoch':
+            epochs.append(row['key'])
+            previous=None
+        if event=='eval_before':
+            evals.append(row['step'])
+        if event=='chunk_before':
+            h4x_require(row['chunk']==chunk+1 and row['steps']==chunk*1310720
+                        and row['adam']==chunk*200,'REPORT_PRE_COUNTER')
+            if previous is not None:
+                h4x_require(row['key']==previous['key'] and row['normalizer']==previous['normalizer']
+                            and row['same_carry'] is True,'REPORT_CARRY')
+            else:
+                h4x_require(row['key']==epochs[-1],'REPORT_EPOCH_KEY')
+            after=row
+        if event=='chunk_after':
+            chunk+=1
+            h4x_require(after is not None and row['chunk']==chunk and row['finite'] is True
+                        and row['steps']==chunk*1310720 and row['adam']==chunk*200
+                        and row['key']==after['expected_next_key']
+                        and row['normalizer']==after['expected_normalizer'],'REPORT_POST_COUNTER')
+            previous=row
+    h4x_require(replay==r and chunk==8 and len(resets)==3 and len(epochs)==2
+                and evals==[0,*H4_EDGES],'REPORT_OPERATIONAL_REPLAY')
+    initial=next(row for row in r['events'] if row['event']=='initial')
+    h4x_require(initial['restored_leaves']==25 and initial['adam']==0
+                and initial['steps']==0 and len(initial['dr_sha256'])==64,'REPORT_INITIAL')
+    return initial['dr_sha256']
+
+
+def h4x_model_digest(jax,np,model,axes):
+    # Hash actual randomized model, not just the seed. Transfer small slices
+    # of static model leaves, never the full batched dynamic environment.
+    leaves,structure=jax.tree_util.tree_flatten_with_path((model,axes))
+    h=hashlib.sha256(str(structure).encode())
+    for path,v in leaves:
+        shape=tuple(v.shape) if hasattr(v,'shape') else ()
+        dtype=np.dtype(v.dtype) if hasattr(v,'dtype') else np.asarray(v).dtype
+        h4x_require(dtype.kind in 'biuf','MODEL_DTYPE')
+        h.update(json.dumps([jax.tree_util.keystr(path),list(shape),str(dtype)]).encode()+b'\0')
+        if not shape:
+            h.update(np.asarray(jax.device_get(v)).tobytes())
+        else:
+            row_bytes=max(1,math.prod(shape[1:])*dtype.itemsize)
+            stride=max(1,(4*1024**2)//row_bytes)
+            for i in range(0,shape[0],stride):
+                h.update(np.asarray(jax.device_get(v[i:i+stride])).tobytes())
+    return h.hexdigest()
+
+
+def h4x_audit_callback(jax,np,monitor,report,persist,args,auth,control_dr):
+    import optax
+    from flax import serialization
+    from m462_typed_orbax_stage import checkpoint_parts,compare_exact
+    from m462_ppo_warmstart_run import sample_gpu
+    expected_parts=checkpoint_parts(serialization.msgpack_restore(args.checkpoint.read_bytes()))
+    op={}
+    report['h4x_operational']=op
+    budget=H4XBudget(op)
+    _,local=jax.random.split(jax.random.PRNGKey(1))
+    local=jax.random.fold_in(local,0)
+    local,key_env,eval_key=jax.random.split(local,3)
+    env_keys=jax.random.split(key_env,8192).reshape(1,8192,2)
+    epoch_keys=None
+    last_reset=None
+    last_carry=None
+    model_ref=axes_ref=dr_sha=None
+    initial_count=None
+    pending=None
+    def array(v):
+        return np.asarray(jax.device_get(v))
+    def same(x,y,label):
+        a,b=array(x),array(y)
+        h4x_require(a.shape==b.shape and a.dtype==b.dtype and np.array_equal(a,b),'KEY '+label)
+    def key_list(v):
+        a=array(v)
+        h4x_require(a.dtype==np.dtype('uint32') and a.shape in ((2,),(1,2)),'KEY_SCHEMA')
+        return a.tolist()
+    def key_hash(v):
+        a=array(v)
+        h4x_require(a.dtype==np.dtype('uint32'),'KEY_DTYPE')
+        return hashlib.sha256(a.tobytes()).hexdigest()
+    def state_check(ts,chunk):
+        steps=array(ts.env_steps)
+        count=array(ts.normalizer_params.count)
+        adam=[x for x in jax.tree_util.tree_leaves(ts.optimizer_state,
+                    is_leaf=lambda x:isinstance(x,optax.ScaleByAdamState))
+              if isinstance(x,optax.ScaleByAdamState)]
+        h4x_require(len(adam)==1 and steps.shape==count.shape==(1,) and
+                    steps.dtype.kind in 'iu' and int(steps[0])==chunk*1310720,'STATE_STEPS')
+        ac=array(adam[0].count)
+        h4x_require(ac.shape==(1,) and ac.dtype.kind in 'iu' and int(ac[0])==chunk*200,'ADAM_COUNT')
+        target=initial_count.copy()
+        for _ in range(chunk*5):
+            target=np.add(target,np.asarray(262144,dtype=target.dtype),dtype=target.dtype)
+        same(count,target,'NORMALIZER_COUNT')
+        if chunk==0:
+            h4x_require(all(not np.any(array(v)) for v in
+                     jax.tree_util.tree_leaves((adam[0].mu,adam[0].nu))),'ADAM_FRESH')
+        return {'steps':int(steps[0]),'adam':int(ac[0]),'normalizer':count.item(),
+                'normalizer_dtype':str(count.dtype)}
+    def safe():
+        h4x_storage(args.output_dir)
+        g=sample_gpu()
+        snap=monitor.snapshot()
+        h4x_require(g['total_mib']==12288 and 0<=g['used_mib']<.95*12288 and
+                    not snap['sampler_errors'] and (snap['peak_used_mib'] is None or
+                    snap['peak_used_mib']<.95*12288),'GPU')
+    def callback(event,**v):
+        nonlocal local,eval_key,env_keys,epoch_keys,last_reset,last_carry,model_ref,axes_ref,dr_sha
+        nonlocal initial_count,pending
+        budget.check(event)
+        safe()
+        chunk=op['recorded']['optimizer']//200
+        row={}
+        if event=='reset_before':
+            same(v['local_key'],local,'LOCAL_RESET')
+            same(v['eval_key'],eval_key,'EVAL_RESET')
+            if op['recorded']['train_reset_lanes']:
+                env_keys=jax.random.split(env_keys[0,0],8192).reshape(1,8192,2)
+                h4x_require(v['model'] is model_ref and v['axes'] is axes_ref,'DR_MUTATION')
+            else:
+                model_ref,axes_ref=v['model'],v['axes']
+                dr_sha=h4x_model_digest(jax,np,model_ref,axes_ref)
+                h4x_require(control_dr is None or dr_sha==control_dr,'MATCHED_DR')
+            same(v['keys'],env_keys,'ENV_RESET')
+            row={'keys_sha256':key_hash(v['keys']),'local_key':key_list(local),
+                 'eval_key':key_list(eval_key),'dr_sha256':dr_sha}
+            last_carry=None
+        elif event=='reset_after':
+            h4x_require(array(v['finite']).shape==() and bool(array(v['finite'])),'RESET_NONFINITE')
+            last_reset=v['env_state']
+            h4x_require(array(last_reset.done).shape==(1,8192),'RESET_LAYOUT')
+            row={'finite':True}
+        elif event=='initial':
+            ts=v['training_state']
+            h4x_require(v['env_state'] is last_reset and bool(array(v['finite'])),'INITIAL_CARRY')
+            initial_count=array(ts.normalizer_params.count).copy()
+            restored=tuple(serialization.to_state_dict(jax.tree_util.tree_map(lambda x:x[0],p))
+                       for p in (ts.normalizer_params,ts.params.policy,ts.params.value))
+            h4x_require(compare_exact(expected_parts,restored,jax,np,'H4X_RESTORE')==25,'RESTORE')
+            row={**state_check(ts,0),'restored_leaves':25,'dr_sha256':dr_sha}
+        elif event=='epoch':
+            h4x_require(v['env_state'] is last_reset,'EPOCH_RESET_STATE')
+            epoch,local=jax.random.split(local)
+            epoch_keys=jax.random.split(epoch,1)
+            same(v['keys'],epoch_keys,'EPOCH_KEY')
+            same(v['local_key'],local,'EPOCH_LOCAL')
+            row={**state_check(v['training_state'],chunk),'key':key_list(epoch_keys),
+                 'local_key':key_list(local)}
+            last_reset=None
+        elif event=='chunk_before':
+            carry=v['carry']
+            h4x_require(v['index']==chunk%4+1,'CHUNK_INDEX')
+            same_carry=last_carry is carry
+            if v['index']==1:
+                same(carry[2],epoch_keys,'CHUNK_ROOT')
+            else:
+                h4x_require(same_carry,'CARRY_REPLACED')
+            key=carry[2][0]
+            for _ in range(5):
+                key=jax.random.split(key,3)[2]
+            target=initial_count.copy()
+            for _ in range((chunk+1)*5):
+                target=np.add(target,np.asarray(262144,dtype=target.dtype),dtype=target.dtype)
+            pending={'key':key[None,:],'normalizer':target}
+            row={**state_check(carry[0],chunk),'chunk':chunk+1,'key':key_list(carry[2]),
+                 'expected_next_key':key_list(pending['key']),
+                 'expected_normalizer':target.item(),'same_carry':same_carry}
+        elif event=='chunk_after':
+            carry=v['carry']
+            h4x_require(v['index']==chunk%4+1 and pending is not None,'CHUNK_COMPLETION')
+            same(carry[2],pending['key'],'CHUNK_NEXT')
+            finite=array(v['metrics']['h4x_finite'])
+            h4x_require(finite.shape==() and finite.item()==1.0,'ROLLOUT_NONFINITE')
+            row={**state_check(carry[0],chunk+1),'chunk':chunk+1,
+                 'key':key_list(carry[2]),'finite':True}
+            last_carry=carry
+            pending=None
+        elif event=='chunk_ledger':
+            h4x_require(v['index']==chunk%4+1 and len(report['h4_chunks'])==chunk+1
+                        and report['h4_chunks'][-1]['passed'] is True,'CHUNK_LEDGER')
+            row={'chunk':chunk+1,'passed':True}
+        elif event=='eval_before':
+            same(v['key'],eval_key,'EVAL_BEFORE')
+            next_eval,unroll_key=jax.random.split(eval_key)
+            row={'step':v['step'],'key':key_list(eval_key),'expected_next_key':key_list(next_eval),
+                 'derived_reset_keys_sha256':key_hash(jax.random.split(unroll_key,2))}
+        elif event=='eval_after':
+            eval_key=jax.random.split(eval_key)[0]
+            same(v['key'],eval_key,'EVAL_AFTER')
+            h4x_require(all(np.isfinite(array(x)).all() for x in v['metrics'].values()),'EVAL_NONFINITE')
+            row={'step':v['step'],'key':key_list(eval_key),'finite_metrics':True}
+        elif event=='finish':
+            h4x_require(v['env_state'] is last_reset and chunk==8,'FINAL_CARRY')
+            row=state_check(v['training_state'],8)
+        else:
+            raise RuntimeError('M470_H4X_EVENT')
+        if event.startswith('eval_'):
+            h4x_require(v['step']==chunk*1310720 and v['step'] in (0,*H4_EDGES),'EVAL_EDGE')
+        budget.advance(event,row)
+        persist()
+    callback.h4x_authorization=auth
+    return callback
+
+
+def h4x_run(args):
+    # Reserve once before any bootstrap/import of the actual runtime.
+    auth=h4x_validate_cli(args)
+    h4x_require(auth is not None,'EXECUTION_HOLD')
+    out=args.output_dir
+    h4x_require(out.parent.is_dir() and not out.exists() and not out.is_symlink(),'OUTPUT_CONSUMED')
+    h4x_storage(out,initial=True)
+    out.mkdir(exist_ok=False)
+    h4x_write_json(out/'attempt.json',{'authorization':auth,'reserved':True},exclusive=True)
+    try:
+        pins=h4x_bootstrap(args)
+        _run_impl(args,h4x={'authorization':auth,'pins':pins})
+        h4x_write_json(out/'attempt_result.json',{'status':'COMPLETE','authorization':auth},exclusive=True)
+    except BaseException as exc:
+        try:
+            h4x_write_json(out/'attempt_result.json',{'status':'STOPPED','error':repr(exc),
+                           'authorization':auth},exclusive=True)
+        except Exception as write_error:
+            print('M470_H4X_PARTIAL_WRITE_FAILED',repr(write_error),flush=True)
+        raise
+
+
 def validate_h4_cli(a):
+    if getattr(a,'h4_exploratory',False):
+        h4x_validate_cli(a)
+        return
+    h4x_validate_cli(a)
     arm=getattr(a,'h4_arm',None)
     if arm is None:
         if getattr(a,'h4_control_report',None) is not None:
@@ -2912,6 +3396,19 @@ def h3_technical_gate(api, train_cfg, stage, instrument_meta, result, persist):
 
 
 def run(args):
+    if getattr(args,'h4_exploratory',False):
+        return h4x_run(args)
+    h4x_validate_cli(args)
+    return _run_impl(args)
+
+
+def _run_impl(args,h4x=None):
+    if getattr(args,'h4_exploratory',False):
+        h4x_require(h4x is not None and h4x['authorization']==h4x_validate_cli(args),'RUN_RESERVATION')
+        h4x_require(json.loads((args.output_dir/'attempt.json').read_bytes())==
+                    {'authorization':h4x['authorization'],'reserved':True},'RUN_RESERVATION')
+    else:
+        h4x_require(h4x is None,'UNEXPECTED_RESERVATION')
     validate_h4c_cli(args)
     if getattr(args,'h4_causal',False):
         return h4c_run(args)
@@ -2921,7 +3418,7 @@ def run(args):
     validate_h4_cli(args)
     h4_arm=getattr(args,'h4_arm',None)
     if h4_arm is not None:
-        if not H4_EXECUTION_AUTHORIZED or args.mode!='longtrain':
+        if (not H4_EXECUTION_AUTHORIZED and h4x is None) or args.mode!='longtrain':
             raise RuntimeError('M470_H4_EXECUTION_HOLD')
         args.rollouts,args.num_evals=40,3
     validate_h3_cli(args)
@@ -2944,7 +3441,7 @@ def run(args):
         approved_sha=h4_approved_control_sha()
         if args.h4_control_report.is_symlink() or not args.h4_control_report.is_file() or digest(args.h4_control_report)!=approved_sha:
             raise RuntimeError('M470_H4_CONTROL_SHA')
-    if args.output_dir.exists():
+    if args.output_dir.exists() and h4x is None:
         raise FileExistsError('M463_REFUSE_TO_OVERWRITE_OUTPUT_DIRECTORY')
     # Import from PRIOR, already proven checkpoint validator and GPU monitor.
     from m462_ppo_warmstart_run import (read_restore_gate, sample_gpu,
@@ -3009,6 +3506,18 @@ def run(args):
     jax,np=api['jax'],api['numpy']
     from flax import serialization
     from m463_coverage_env import CoverageJoystick, STAGES
+    if h4x is not None:
+        h4x_require(jax.__version__=='0.4.35','JAX_VERSION')
+        h4x['brax_dependencies']=h4c_dependency_pins(api)
+        import inspect
+        from brax.envs.wrappers import training as brax_wrapper
+        from m463_instrument_brax import h4c_git_blob
+        wrapper_file=Path(inspect.getfile(brax_wrapper)).resolve()
+        h4x_require(h4c_git_blob(wrapper_file.read_bytes())=='2c09c8268a29d14c832dd07050575e4541ee98af','EPISODE_WRAPPER_PIN')
+        for name,path in h4x['pins'].items():
+            module=sys.modules.get(name)
+            h4x_require(module is not None and Path(module.__file__).resolve()==Path(path),'IMPORTED_ORIGIN '+name)
+        h4x_require(h4x_bootstrap(args)==h4x['pins'],'BOOTSTRAP_IMMUTABILITY')
     if jax.default_backend()!='gpu':raise RuntimeError('M463_GPU_REQUIRED')
     if (h3_acceptance is not None or h4_arm is not None) and (jax.process_count() != 1 or jax.local_device_count() != 1
             or gpu_initial['total_mib'] != 12288
@@ -3043,6 +3552,9 @@ def run(args):
             raise RuntimeError('M470_H1M2_REWARD_DIFF_NOT_ISOLATED')
     elif original_reward != train_cfg.to_dict()['reward_config']:
         raise RuntimeError('M463_REWARD_CHANGED')
+    if h4x is not None:
+        expected_reward=json.loads(args.h4_exploratory_reward_report.read_bytes())['train_reward_config']
+        h4x_require(original_reward==expected_reward and train_cfg.to_dict()['reward_config']==expected_reward,'REWARD_PIN')
     train_env=CoverageJoystick(config=train_cfg,stage=args.stage,
                                h1_m1=h1_m1,h1_m2=h1_m2,h3_m1=h3_m1,h4_arm=h4_arm)
     # Original source-driven randomized evaluation; only 2 envs as previous.
@@ -3077,10 +3589,18 @@ def run(args):
     cfg.update(seed=1,randomization_fn=api['randomizer'],
                restore_checkpoint_path=str(orbax_dir.resolve()))
     out=args.output_dir
-    out.mkdir(parents=True,exist_ok=False)
+    if h4x is None:
+        out.mkdir(parents=True,exist_ok=False)
+    else:
+        h4x_storage(out)
+        h4x_require(cfg.get('num_eval_envs')==2 and train_env.action_size==29 and float(train_env.dt)==.02,'EXPLORATORY_CONFIG')
     instrumented_ppo,instrument_meta=build_instrumented_ppo(
         api['ppo'],out/'m463_brax_ppo_instrumented.py',
-        enable_resume=longtrain, enable_h3=h3_m1,enable_h4=h4_arm is not None)
+        enable_resume=longtrain, enable_h3=h3_m1,enable_h4=h4_arm is not None,
+        enable_h4x=h4x is not None)
+    if h4x is not None:
+        h4x_require(instrument_meta['instrumented_sha256']==h4x['authorization']['generated_sha256'],'GENERATED_PIN')
+        h4x_storage(out)
     h4_contract=None
     h4_control=None
     if h4_arm is not None:
@@ -3151,6 +3671,9 @@ def run(args):
         report.update(h4_arm=h4_arm,h4_spec=H4_SPEC,h4_common_contract=h4_contract,
                       h4_control_report_sha256=(h4_control['sha256'] if h4_control else None),
                       h4_resume_forbidden=True,promotion_authorized=False)
+    if h4x is not None:
+        report.update(h4x_authorization=h4x['authorization'],h4x_bootstrap=h4x['pins'],
+                      h4x_brax_dependencies=h4x['brax_dependencies'],h4x_exploratory=True)
     if h3_m1:
         report.update(h3_m1_enabled=True, h3_m1_spec=H3_SPEC,
                       h3_ppo_fingerprint=h3_fp,
@@ -3182,6 +3705,9 @@ def run(args):
             checkpoint_semantics='optimizer+model+normalizer+env_steps+training_rng+eval_rng; deterministic reset epoch boundary',
         )
     def persist():
+        if h4x is not None:
+            h4x_write_json(report_path,report)
+            return
         tmp=report_path.with_suffix('.json.tmp')
         tmp.write_text(json.dumps(report,indent=2,ensure_ascii=False,allow_nan=False)+'\n',encoding='utf8')
         tmp.replace(report_path)
@@ -3223,6 +3749,9 @@ def run(args):
         name=f'm463_{args.stage}_{args.mode}_step_{int(step):09d}.msgpack'
         p=out/name
         raw=serialization.to_bytes(params)
+        if h4x is not None:
+            h4x_require(int(step) in H4_EDGES and int(step)==H4_EDGES[len(checkpoints)],'POLICY_EDGE')
+            h4x_storage(out,len(raw),'policy')
         with p.open('xb') as f:f.write(raw)
         checkpoints.append({'steps':int(step),'sha256':hashlib.sha256(raw).hexdigest(),
                             'file':name})
@@ -3274,8 +3803,13 @@ def run(args):
         if h3_m1:
             info['h3_m1_enabled'] = True
             info['h3_m1_spec'] = H3_SPEC
+        if h4x is not None:
+            h4x_require(step in H4_EDGES and step==H4_EDGES[len(report['fullstate_checkpoints'])],'FULLSTATE_EDGE')
+            h4x_storage(out,len(raw),'fullstate')
         with file.open('xb') as stream:
             stream.write(raw)
+        if h4x is not None:
+            h4x_storage(out,len((json.dumps(info,indent=2,allow_nan=False)+'\n').encode()))
         with meta_file.open('x', encoding='utf8') as stream:
             json.dump(info, stream, indent=2, allow_nan=False)
             stream.write('\n')
@@ -3290,6 +3824,11 @@ def run(args):
     monitor=GPUMonitor()
     if h4_arm is not None:
         cfg['h4_chunk_fn']=h4_chunk_callback(jax,np,monitor,report,persist,h4_arm)
+        if h4x is not None:
+            control_dr=(h4x_verify_operational(json.loads(args.h4_control_report.read_bytes()))
+                        if h4_arm=='candidate' else None)
+            cfg['h4x_audit_fn']=h4x_audit_callback(jax,np,monitor,report,persist,args,
+                                                h4x['authorization'],control_dr)
         persist()
     try:
         with monitor:
@@ -3322,8 +3861,10 @@ def run(args):
                         raise RuntimeError('M470_H3_PPO_HOLD_CAUSAL_VALIDATION')
                     print('M470_H3_INDEPENDENT_10M_READY',json.dumps(h3_acceptance,sort_keys=True),
                           flush=True)
-                if h4_arm is not None and not H4_EXECUTION_AUTHORIZED:
+                if h4_arm is not None and not H4_EXECUTION_AUTHORIZED and h4x is None:
                     raise RuntimeError('M470_H4_EXECUTION_HOLD')
+                if h4x is not None:
+                    h4x_require(h4x_authorization()==h4x['authorization'],'FINAL_AUTHORIZATION')
                 report['training_performed']=True
                 if h3_m1 or h4_arm is not None:
                     persist()
@@ -3426,6 +3967,15 @@ def run(args):
             audit['passed'] = all(audit['checks'].values())
         if h4_arm is not None:
             h4_final_checks(report,audit,h4_control)
+        if h4x is not None:
+            h4x_verify_operational(report)
+            h4x_require(h4x_authorization()==h4x['authorization'] and h4x_bootstrap(args)==h4x['pins']
+                        and h4c_dependency_pins(api)==h4x['brax_dependencies'],'FINAL_IMMUTABILITY')
+            h4x_file_pin(args.h4_exploratory_causal_report,H4X_CAUSAL_SHA)
+            read_restore_gate(args.restore_report,args.checkpoint)
+            if h4_arm=='candidate':
+                h4x_file_pin(args.h4_control_report,h4x['authorization']['evidence_sha256'])
+            h4x_storage(out)
         memory_ok=(gpu['peak_used_mib'] is not None and gpu['total_mib'] is not None
                    and gpu['peak_used_mib']<gpu['total_mib']*0.95)
         report.update(steps_observed=expected,run_steps_observed=scaled.num_timesteps,
@@ -3479,6 +4029,9 @@ def main():
     p.add_argument('--h4-readiness-reward-report',type=Path)
     p.add_argument('--h4-causal',action='store_true',help='Isolated causal plan; execution HOLD')
     p.add_argument('--h4-causal-failure-report',type=Path)
+    p.add_argument('--h4-exploratory',action='store_true',help='H4-M1-2R separate Rules-only authorization')
+    p.add_argument('--h4-exploratory-causal-report',type=Path)
+    p.add_argument('--h4-exploratory-reward-report',type=Path)
     a=p.parse_args()
     try:
         validate_h4c_cli(a)
@@ -3499,6 +4052,10 @@ def main():
                  'production_authorized':False},sort_keys=True))
             return
         return h4r_run(a)
+    if a.h4_exploratory and a.mode=='plan':
+        print('M470_H4X_PLAN_NO_GPU',json.dumps({'arm':a.h4_arm,'spec':H4X_SPEC,
+              'execution_authorized':False,'training_performed':False},sort_keys=True))
+        return
     if a.h4_arm is not None and a.mode=='plan':
         print('M470_H4_PLAN_NO_GPU',json.dumps({'arm':a.h4_arm,'spec':H4_SPEC,
               'execution_authorized':False,'training_performed':False},sort_keys=True))
