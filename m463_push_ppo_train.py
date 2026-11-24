@@ -73,6 +73,30 @@ H3_OLD10M_RUNNER_SHA = '706a19830e426672efeac4b2832c6b46512973ecc7baff30c8235028
 H3_OLD10M_COMMIT = 'aae9e8f484612790029d54d4537993e614477885'
 
 
+H4_SPEC = {'arms': ['control','candidate'], 'episode_mix': [.20,.40,.16,.24],
+           'rollouts':40,'num_evals':3,'rollouts_per_epoch':20,
+           'rollouts_per_chunk':5,'collection_ticks':640,
+           'env_steps':10485760,'optimizer_updates_target':1600,
+           'first_age':[240,300],'first_magnitude':[.45,.55],
+           'repeat_gap_target':[30,32],'repeat_gap_actual':[30,40],
+           'repeat_magnitude':[.30,.40],'max_wait':8,
+           'tail_windows':[10,25,50,100,250]}
+
+
+def validate_h4_cli(a):
+    arm=getattr(a,'h4_arm',None)
+    if arm is None:
+        return
+    if arm not in H4_SPEC['arms'] or a.stage!='easy_repeat_support':
+        raise RuntimeError('M470_H4_ARM_STAGE')
+    if (a.h1_m1 or a.h1_m2 or a.h3_m1 or a.h3_diagnostic_only or
+            any(v is not None for v in (a.h3_causal_report,a.h3_old10m_report,
+                a.resume_state,a.smoke_report,a.independent_budget,a.rollouts,a.num_evals))):
+        raise RuntimeError('M470_H4_CONFLICT')
+    if a.mode!='plan':
+        raise RuntimeError('M470_H4_EXECUTION_HOLD')
+
+
 def validate_h3_cli(a):
     diagnostic = bool(getattr(a, 'h3_diagnostic_only', False))
     causal = getattr(a, 'h3_causal_report', None)
@@ -785,6 +809,9 @@ def h3_technical_gate(api, train_cfg, stage, instrument_meta, result, persist):
 
 
 def run(args):
+    validate_h4_cli(args)
+    if getattr(args,'h4_arm',None) is not None:
+        raise RuntimeError('M470_H4_EXECUTION_HOLD')
     validate_h3_cli(args)
     h3_m1 = bool(getattr(args, 'h3_m1', False))
     h3_diagnostic = bool(getattr(args, 'h3_diagnostic_only', False))
@@ -1301,7 +1328,16 @@ def main():
                    help='Exact reviewed causal diagnostic report')
     p.add_argument('--h3-old10m-report',type=Path,
                    help='Exact OLD10M comparator report and adjacent frozen artifacts')
+    p.add_argument('--h4-arm',choices=['control','candidate'],help='H4 design plan only; execution HOLD')
     a=p.parse_args()
+    try:
+        validate_h4_cli(a)
+    except RuntimeError as exc:
+        p.error(str(exc))
+    if a.h4_arm is not None:
+        print('M470_H4_PLAN_NO_GPU',json.dumps({'arm':a.h4_arm,'spec':H4_SPEC,
+              'execution_authorized':False,'training_performed':False},sort_keys=True))
+        return
     if a.independent_budget is not None:
         if (a.mode != 'longtrain' or a.resume_state is not None or
                 a.rollouts is not None or a.num_evals is not None):

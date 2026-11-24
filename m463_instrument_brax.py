@@ -181,7 +181,117 @@ def _add_m470_fullstate_hooks(s):
     )
     return s
 
-def make_patched_source(raw, *, require_pin=True, enable_resume=False, enable_h3=False):
+H4_EXT_FIELDS = ('h4_class', 'h4_boundary', 'h4_age', 'h4_target', 'h4_motion', 'h4_actor_motion', 'h4_refresh', 'h4_changed', 'h4_assigned', 'h4_first_pending', 'h4_repeat_pending', 'h4_first_due', 'h4_repeat_due', 'h4_first_closed', 'h4_repeat_closed', 'h4_event_qual', 'h4_mature_repeat', 'h4_repeat_assigned', 'h4_event_terminal', 'h4_tail_kind', 'h4_tail_cell', 'h4_tail_age', 'h4_tail_same', 'h4_tick_kind', 'h4_tick_cell', 'h4_tick_age', 'h4_tick_same', 'h4_tick_survived', 'h4_close_repeat', 'h4_close_terminal', 'h4_close_complete', 'h4_close_boundary', 'h4_bad',)
+
+H4_METRICS_SOURCE = '''    # H4: only PPO-consumed scalar extras, not configured event counts.
+    h4_count = lambda mask: jnp.sum(mask.astype(jnp.float32))
+    hc = extras['h4_class']
+    he = extras['m463_event'] > 0
+    hr = extras['m463_repeat'] > 0
+    ht = extras['h4_tick_age']
+    hk = extras['h4_tick_kind']
+    hs = extras['h4_tick_survived'] > 0
+    # H4 collection cap 640 < wrapper episode_length 1000; any truncation
+    # signals a contract violation. The technical gate must verify this.
+    coverage['m463_h4_bad_per_rollout'] = h4_count(
+        (extras['h4_bad'] != 0) | (extras['truncation'] != 0))
+    for ci in range(4):
+        coverage[f'm463_h4_class_{ci}_steps_per_rollout'] = h4_count(hc == ci)
+        coverage[f'm463_h4_class_{ci}_assign_per_rollout'] = h4_count(
+            (hc == ci) & (extras['h4_boundary'] > 0))
+    for name in ('assigned','repeat_assigned','first_closed','repeat_closed',
+                 'first_due','repeat_due','refresh','changed','event_terminal',
+                 'close_repeat','close_terminal','close_complete','close_boundary'):
+        coverage[f'm463_h4_{name}_per_rollout'] = h4_count(extras['h4_'+name] > 0)
+    coverage['m463_h4_first_events_per_rollout'] = h4_count(he & (~hr))
+    coverage['m463_h4_repeat_events_per_rollout'] = h4_count(he & hr)
+    coverage['m463_h4_broad_events_per_rollout'] = h4_count(he & (hc == 1))
+    for j in range(6):
+        coverage[f'm463_h4_broad_motion_{j}_per_rollout'] = h4_count(
+            he & (hc == 1) & (extras['h4_motion'] == j))
+        coverage[f'm463_h4_broad_direction_{j}_per_rollout'] = h4_count(
+            he & (hc == 1) & (extras['m463_direction'] == j))
+    for side in (1,2):
+        coverage[f'm463_h4_stand_{side}_events_per_rollout'] = h4_count(extras['h4_event_qual'] == side)
+        for motion in (3,4):
+            coverage[f'm463_h4_turn_{motion}_{side}_events_per_rollout'] = h4_count(
+                (extras['h4_mature_repeat'] > 0) & (extras['h4_motion'] == motion) &
+                (extras['m463_direction'] == side+1))
+    for kind in (1,2):
+        for w in (10,25,50,100,250):
+            mask = (ht == w) & (hk == kind)
+            for label,flag in (
+                ('executed',mask), ('survived',mask & hs),
+                ('same_command',mask & (extras['h4_tick_same'] > 0)),
+                ('same_unroll',mask & (jnp.arange(unroll_length)[None,:] >= w))):
+                coverage[f'm463_h4_tail_{kind}_{w}_{label}_per_rollout'] = h4_count(flag)
+            for side in (1,2):
+                cell = mask & (extras['h4_tick_cell'] == side)
+                coverage[f'm463_h4_stand_{side}_tail_{kind}_{w}_per_rollout'] = h4_count(cell)
+                coverage[f'm463_h4_stand_{side}_survived_{kind}_{w}_per_rollout'] = h4_count(cell & hs)
+'''
+
+
+def _add_h4_chunk_hooks(s):
+    """H4 only: preserve the actual scan carry across four host chunks."""
+    def one(old,new):
+        nonlocal s
+        if s.count(old) != 1:
+            raise RuntimeError('M470_H4_ANCHOR_NOT_UNIQUE '+old[:80])
+        s=s.replace(old,new,1)
+    one('    m470_resume_state_path: Optional[str] = None,\n',
+        '    h4_chunk_fn: Optional[Callable[..., None]] = None,\n'
+        '    m470_resume_state_path: Optional[str] = None,\n')
+    one('  # Initialize model params and training state.\n',
+        '''  if (num_training_steps_per_epoch != 20 or num_evals != 3
+      or num_resets_per_eval != 1 or num_timesteps != 10485760
+      or num_envs != 8192 or unroll_length != 32 or action_repeat != 1
+      or h4_chunk_fn is None or m470_resume_state_path is not None):
+    raise RuntimeError('M470_H4_CHUNK_CONTRACT')
+
+  # Initialize model params and training state.
+''')
+    start=s.index('  def training_epoch(')
+    end=s.index('  # Initialize model params and training state.',start)
+    # Keep the contract above outside the replacement.
+    cut=s.index('  if (num_training_steps_per_epoch != 20',start)
+    if not start < cut < end:
+        raise RuntimeError('M470_H4_EPOCH_ANCHOR')
+    s=s[:start]+'''  def h4_chunk(training_state, state, key):
+    carry, metrics = jax.lax.scan(
+        training_step, (training_state, state, key), (), length=5)
+    return carry, jax.tree_util.tree_map(jnp.mean, metrics)
+
+  h4_chunk = jax.pmap(h4_chunk, axis_name=_PMAP_AXIS_NAME)
+
+  def training_epoch_with_timing(training_state, env_state, key):
+    nonlocal training_walltime
+    t = time.time()
+    training_state, env_state = _strip_weak_type((training_state, env_state))
+    carry = (training_state, env_state, key)
+    chunks = []
+    for idx in range(4):
+      carry, metrics = h4_chunk(*carry)
+      metrics = jax.tree_util.tree_map(jnp.mean, metrics)
+      jax.tree_util.tree_map(lambda x: x.block_until_ready(), metrics)
+      h4_chunk_fn(idx+1, _unpmap(carry[0]), carry[1], metrics)
+      chunks.append(metrics)
+    training_state, env_state, _ = _strip_weak_type(carry)
+    metrics = jax.tree_util.tree_map(lambda *xs: jnp.mean(jnp.stack(xs)), *chunks)
+    epoch_training_time = time.time() - t
+    training_walltime += epoch_training_time
+    sps = (num_training_steps_per_epoch * env_step_per_training_step
+           * max(num_resets_per_eval, 1)) / epoch_training_time
+    return training_state, env_state, {
+        'training/sps': sps, 'training/walltime': training_walltime,
+        **{f'training/{name}': value for name,value in metrics.items()},
+    }
+
+'''+s[cut:]
+    return s
+
+
+def make_patched_source(raw, *, require_pin=True, enable_resume=False, enable_h3=False, enable_h4=False):
     if isinstance(raw, bytes):
         actual_sha=sha256(raw)
         s=raw.decode('utf8')
@@ -193,7 +303,9 @@ def make_patched_source(raw, *, require_pin=True, enable_resume=False, enable_h3
     old="extra_fields=('truncation',),"
     if s.count(old) != 1:
         raise RuntimeError('M463_BRAX_UNROLL_EXTRA_FIELDS_PATCH_ANCHOR_NOT_UNIQUE')
-    fields = EXT_FIELDS + (H3_EXT_FIELDS if enable_h3 else ())
+    if enable_h4 and (enable_h3 or not enable_resume):
+        raise RuntimeError('M470_H4_GENERATOR_CONTRACT')
+    fields = EXT_FIELDS + (H3_EXT_FIELDS if enable_h3 else ()) + (H4_EXT_FIELDS if enable_h4 else ())
     new="extra_fields=('truncation', " + ', '.join(repr(k) for k in fields) + '),'
     s=s.replace(old,new,1)
     # Only one target: training_step, immediately before new TrainingState.
@@ -328,17 +440,24 @@ def make_patched_source(raw, *, require_pin=True, enable_resume=False, enable_h3
         if instrument.count(marker) != 1:
             raise RuntimeError('M470_H3_INSTRUMENT_ANCHOR_NOT_UNIQUE')
         instrument = instrument.replace(marker, H3_METRICS_SOURCE + marker, 1)
+    if enable_h4:
+        marker = '    metrics = {**metrics, **coverage, **m464_tail}\n'
+        if instrument.count(marker) != 1:
+            raise RuntimeError('M470_H4_METRICS_ANCHOR')
+        instrument = instrument.replace(marker, H4_METRICS_SOURCE + marker, 1)
     s = s.replace(anchor, instrument+anchor, 1)
     if enable_resume:
         s = _add_m470_fullstate_hooks(s)
+    if enable_h4:
+        s = _add_h4_chunk_hooks(s)
     return s, actual_sha
 
 
-def build_instrumented_ppo(pinned_ppo_module, output:Path, *, enable_resume=False, enable_h3=False):
+def build_instrumented_ppo(pinned_ppo_module, output:Path, *, enable_resume=False, enable_h3=False, enable_h4=False):
     import inspect
     p=Path(inspect.getfile(pinned_ppo_module.train))
     patched,original_sha=make_patched_source(p.read_bytes(),
-        enable_resume=enable_resume, enable_h3=enable_h3)
+        enable_resume=enable_resume, enable_h3=enable_h3, enable_h4=enable_h4)
     if output.exists():
         if output.read_text('utf8')!=patched:
             raise RuntimeError('M463_REFUSE_TO_OVERWRITE_DIFFERENT_PATCH')
@@ -354,4 +473,4 @@ def build_instrumented_ppo(pinned_ppo_module, output:Path, *, enable_resume=Fals
     return mod,{'original_brax_sha256':original_sha,
                 'instrumented_file':str(output.resolve()),
                 'instrumented_sha256':sha256(patched.encode('utf8')),
-                'extra_fields':list(EXT_FIELDS + (H3_EXT_FIELDS if enable_h3 else ()))}
+                'extra_fields':list(EXT_FIELDS + (H3_EXT_FIELDS if enable_h3 else ()) + (H4_EXT_FIELDS if enable_h4 else ()))}

@@ -68,6 +68,11 @@ EXTRA_FIELDS = (
 )
 
 
+# H4: scalar info only, never included in actor/critic observations.
+H4_FIELDS = ('h4_class', 'h4_boundary', 'h4_age', 'h4_target', 'h4_motion', 'h4_actor_motion', 'h4_refresh', 'h4_changed', 'h4_assigned', 'h4_first_pending', 'h4_repeat_pending', 'h4_first_due', 'h4_repeat_due', 'h4_first_closed', 'h4_repeat_closed', 'h4_event_qual', 'h4_mature_repeat', 'h4_repeat_assigned', 'h4_event_terminal', 'h4_tail_kind', 'h4_tail_cell', 'h4_tail_age', 'h4_tail_same', 'h4_tick_kind', 'h4_tick_cell', 'h4_tick_age', 'h4_tick_same', 'h4_tick_survived', 'h4_close_repeat', 'h4_close_terminal', 'h4_close_complete', 'h4_close_boundary', 'h4_bad',)
+H4_WINDOWS = (10, 25, 50, 100, 250)
+
+
 def heading_from_wxyz(quat):
     w, x, y, z = quat[0], quat[1], quat[2], quat[3]
     return jp.arctan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
@@ -91,7 +96,7 @@ class CoverageJoystick(joystick.Joystick):
     boundary for re-sampling push targets and counters.  Tracking `age` also
     supports a direct/unwrapped one-env diagnostic.
     """
-    def __init__(self, *, stage: str, config, task='flat_terrain', h1_m1=False, h1_m2=False, h3_m1=False):
+    def __init__(self, *, stage: str, config, task='flat_terrain', h1_m1=False, h1_m2=False, h3_m1=False, h4_arm=None):
         if stage not in STAGES:
             raise ValueError('M463_BAD_STAGE')
         if bool(config.push_config.enable):
@@ -112,6 +117,13 @@ class CoverageJoystick(joystick.Joystick):
             or int(config.action_repeat) != 1
         ):
             raise ValueError('M470_H3_M1_ENV_CONFIG_MISMATCH')
+        if h4_arm not in (None, 'control', 'candidate'):
+            raise ValueError('M470_H4_ARM')
+        if h4_arm is not None and (stage != 'easy_repeat_support' or
+                self._h1_m1 or self._h1_m2 or self._h3_m1 or
+                float(config.ctrl_dt) != .02 or int(config.action_repeat) != 1):
+            raise ValueError('M470_H4_ENV_CONTRACT')
+        self._h4_arm = h4_arm
         self._m463_stage = stage
         self._m463_min_mag, self._m463_max_mag, self._m463_repeat_probability = STAGES[stage]
         super().__init__(task=task, config=config)
@@ -226,6 +238,12 @@ class CoverageJoystick(joystick.Joystick):
                 for k in ('m470_h3_base', 'm470_h3_weighted',
                           'm470_h3_reward_sum')
             })
+        if self._h4_arm is not None:
+            info.update({k: zeros for k in H4_FIELDS})
+            info.update(h4_first_age=jp.asarray(-1, jp.int32),
+                        h4_first_mag=jp.asarray(0., jp.float32),
+                        h4_first_motion=jp.asarray(-1, jp.int32),
+                        h4_tail_motion=jp.asarray(-1, jp.int32))
         return state.replace(info=info)
 
     def step(self, state, action):
@@ -262,6 +280,25 @@ class CoverageJoystick(joystick.Joystick):
         # 0 = any, 1 = one foot contact, 2 = both foot contacts.
         phase_target = jp.where(boundary, jax.random.randint(k_phase, (), 0, 3),
                                 info['m463_phase_target'])
+
+        if self._h4_arm is not None:
+            # Preserve original scheduler key split, including control draws.
+            h4_class = jp.where(disabled, 0, 1)
+            if self._h4_arm == 'candidate':
+                pick = jax.random.uniform(jax.random.fold_in(k_start, 41), ())
+                h4_class = jp.where(disabled, 0,
+                    jp.where(pick < .5, 1, jp.where(pick < .7, 2, 3)))
+            h4_class = jp.where(boundary, h4_class, info['h4_class'])
+            mature = h4_class >= 2
+            if self._h4_arm == 'candidate':
+                late = jax.random.randint(jax.random.fold_in(k_time, 42), (), 240, 301)
+                lateral = jax.random.randint(jax.random.fold_in(k_dir, 43), (), 2, 4)
+                next_step = jp.where(boundary & mature, late, next_step)
+                direction = jp.where(boundary & mature, lateral, direction)
+            pre_motion = jp.argmin(jp.sum(jp.abs(COMMANDS - info['command']), axis=-1))
+            actor_motion = jp.argmin(jp.sum(jp.abs(COMMANDS - state.obs['state'][9:12]), axis=-1))
+            pre_command = info['command']
+            pre_source_step = info['step']
 
         contact = jp.asarray([
             geoms_colliding(state.data, geom_id, self._floor_geom_id)
@@ -301,10 +338,19 @@ class CoverageJoystick(joystick.Joystick):
             else 2
         )
         event = (~disabled) & ready & (count < max_count)
+        if self._h4_arm == 'candidate':
+            # Mature single can never repeat, including deadline fallback.
+            event = event & ((h4_class != 2) | (count == 0))
         # Magnitude is sampled only logically at event time. JAX still computes
         # branches without Python dynamic condition (fully JIT-compatible).
         magnitude = jax.random.uniform(k_mag, (), minval=self._m463_min_mag,
                                        maxval=self._m463_max_mag)
+        if self._h4_arm == 'candidate':
+            lo = jp.where(count == 0, .45, .30)
+            hi = jp.where(count == 0, .55, .40)
+            mature_mag = jax.random.uniform(jax.random.fold_in(k_mag, 44), (),
+                                           minval=lo, maxval=hi)
+            magnitude = jp.where(mature, mature_mag, magnitude)
         body_delta = PUSH_UNIT_BODY[direction] * magnitude
         yaw = heading_from_wxyz(state.data.qpos[3:7])
         c, s = jp.cos(yaw), jp.sin(yaw)
@@ -319,6 +365,10 @@ class CoverageJoystick(joystick.Joystick):
             h3_pre_stand = (jp.linalg.norm(h3_pre_command) < 0.01)
             info['m470_h3_n'] = h3_n
         updated_qvel = state.data.qvel.at[:2].add(world_delta)
+        if self._h4_arm is not None:
+            injection_bad = (~jp.isfinite(updated_qvel).all() |
+                (jp.max(jp.abs((updated_qvel[:2] - state.data.qvel[:2]) -
+                               world_delta)) > 2e-6))
         state = state.replace(data=state.data.replace(qvel=updated_qvel), info=info)
         # The pinned G1 source runs the same PD, physics, termination,
         # observations, and RNG progression. Only opt-in reward hooks differ.
@@ -340,6 +390,10 @@ class CoverageJoystick(joystick.Joystick):
         )
         gap = jax.random.randint(k_gap, (), gap_min, gap_max)
         repeat_allowed = jax.random.bernoulli(k_repeat, p=self._m463_repeat_probability)
+        if self._h4_arm == 'candidate':
+            short_gap = jax.random.randint(jax.random.fold_in(k_gap, 45), (), 30, 33)
+            gap = jp.where(mature, short_gap, gap)
+            repeat_allowed = jp.where(mature, h4_class == 3, repeat_allowed)
         new_next = jp.where(event & repeat_allowed, age + gap,
                             jp.where(event, jp.asarray(2**30, jp.int32), next_step))
         # If no repeat was sampled, do not allow a second event.
@@ -396,4 +450,78 @@ class CoverageJoystick(joystick.Joystick):
                 m470_h3_weighted=after.metrics['reward/stand_still'].astype(jp.float32),
                 m470_h3_reward_sum=jp.asarray(total, dtype=jp.float32),
             )
+        if self._h4_arm is not None:
+            # Actual event and prior-event tail, before AutoReset alters data/obs.
+            # Stop a tail on repeat; the repeat action itself is not counted.
+            first = event & (~repeat)
+            terminal = after.done > 0
+            old_kind = info['h4_tail_kind']
+            old_cell = info['h4_tail_cell']
+            old_age = info['h4_tail_age']
+            prior = (old_kind > 0) & (~boundary)
+            tick = prior & (~event)
+            tick_age = jp.where(tick, old_age + 1, 0)
+            same = ((info['h4_tail_same'] > 0) &
+                    (pre_motion == info['h4_tail_motion']) &
+                    (actor_motion == info['h4_tail_motion']))
+            complete = tick & (tick_age == 250)
+            # A terminal at tick 250 counts executed but not survived.
+            close_terminal = tick & terminal
+            close_complete = complete & (~terminal)
+            keep = tick & (~terminal) & (~complete)
+            first_age = jp.where(boundary, -1, info['h4_first_age'])
+            first_mag = jp.where(boundary, 0., info['h4_first_mag'])
+            first_motion = jp.where(boundary, -1, info['h4_first_motion'])
+            mature_repeat = (repeat & (h4_class == 3) &
+                (first_age >= 240) & (first_age <= 308) &
+                (first_mag >= .45) & (first_mag <= .55) &
+                (actual_gap >= 30) & (actual_gap <= 40) &
+                (magnitude >= .30) & (magnitude <= .40) &
+                (first_motion == pre_motion) & (actor_motion == pre_motion))
+            qualify = mature_repeat & (pre_motion == 0) & side_matched
+            cell = jp.where(qualify, side_target, 0)
+            # Track assigned first/repeat targets, including unreached terminal.
+            fp = jp.where(boundary, ~disabled, info['h4_first_pending'] > 0)
+            rp = (~boundary) & (info['h4_repeat_pending'] > 0)
+            f_due = fp & (age >= next_step)
+            r_due = rp & (age >= next_step)
+            next_fp = fp & (~first) & (~terminal)
+            next_rp = ((rp & (~repeat)) | (first & repeat_allowed)) & (~terminal)
+            bad = (injection_bad | (event & disabled) |
+                   (event & (~jp.isfinite(magnitude))) |
+                   (repeat & (~rp)) | (first & (~fp)) |
+                   ((h4_class == 2) & repeat) |
+                   ((h4_class == 3) & repeat & ((actual_gap < 30) | (actual_gap > 40))))
+            vals = dict(
+                h4_class=h4_class, h4_boundary=boundary, h4_age=age,
+                h4_target=next_step, h4_motion=pre_motion,
+                h4_actor_motion=actor_motion, h4_refresh=pre_source_step >= 500,
+                h4_changed=jp.any(pre_command != out['command']),
+                h4_assigned=boundary & (~disabled),
+                h4_first_pending=next_fp, h4_repeat_pending=next_rp,
+                h4_first_due=f_due, h4_repeat_due=r_due,
+                h4_first_closed=fp & terminal & (~first),
+                h4_repeat_closed=terminal & ((rp & (~repeat)) | (first & repeat_allowed)),
+                h4_event_qual=cell, h4_mature_repeat=mature_repeat,
+                h4_repeat_assigned=first & repeat_allowed, h4_event_terminal=event & terminal,
+                h4_tail_kind=jp.where(event & (~terminal), jp.where(repeat,2,1),
+                                     jp.where(keep,old_kind,0)),
+                h4_tail_cell=jp.where(event & (~terminal),cell,jp.where(keep,old_cell,0)),
+                h4_tail_age=jp.where(keep,tick_age,0),
+                h4_tail_same=jp.where(event & (~terminal),actor_motion==pre_motion,keep & same),
+                h4_tick_kind=jp.where(tick,old_kind,0),
+                h4_tick_cell=jp.where(tick,old_cell,0),
+                h4_tick_age=tick_age, h4_tick_same=tick & same,
+                h4_tick_survived=tick & (~terminal),
+                h4_close_repeat=prior & event,
+                h4_close_terminal=close_terminal,
+                h4_close_complete=close_complete,
+                h4_close_boundary=boundary & (old_kind>0),
+                h4_bad=bad)
+            out.update({k: jp.asarray(v, jp.int32) for k,v in vals.items()})
+            out.update(
+                h4_first_age=jp.where(first,age,first_age),
+                h4_first_mag=jp.where(first,magnitude,first_mag),
+                h4_first_motion=jp.where(first,pre_motion,first_motion),
+                h4_tail_motion=jp.where(event,pre_motion,info['h4_tail_motion']))
         return after.replace(info=out)
