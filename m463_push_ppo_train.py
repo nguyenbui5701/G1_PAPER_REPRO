@@ -90,7 +90,8 @@ H4_EXECUTION_AUTHORIZED = False
 H4_ORBAX_SHA = '5acfabc1376e91a2a9a52b47ac821e296f0e84f5545b646b07c9482ddc462bf3'
 H4_EDGES = (5242880,10485760)
 H4_FILES = ('m463_coverage_env.py','m463_instrument_brax.py',
-            'm463_push_ppo_train.py','train.py','paper_config.py')
+            'm463_push_ppo_train.py','train.py','paper_config.py',
+            'm462_ppo_warmstart_run.py','m462_typed_orbax_stage.py')
 
 
 def h4_integer_count(mean, rollouts=5):
@@ -351,8 +352,11 @@ def h4_verify_ledger(report):
             gpu=row['gpu']
             if (gpu['total_mib']!=12288 or not 0<gpu['peak_used_mib']<.95*12288 or gpu['sampler_errors']):
                 raise RuntimeError('M470_H4_REPORT_CHUNK_GPU')
+            if (sum(row['counts'][PREFIX+f'h4_class_{ci}_steps_per_rollout'] for ci in range(4))!=5*TOTAL_STEPS_BATCH
+                    or row['counts'][PREFIX+'h4_bad_per_rollout']!=0):
+                raise RuntimeError('M470_H4_REPORT_CHUNK_INVARIANT')
             for key,v in row['counts'].items():
-                if type(v) is not int or v<0:
+                if type(v) is not int or not 0<=v<=5*TOTAL_STEPS_BATCH:
                     raise RuntimeError('M470_H4_REPORT_CHUNK_COUNTS')
                 counts[key]=counts.get(key,0)+v
                 combined[key]=combined.get(key,0)+v
@@ -393,6 +397,8 @@ def h4_legacy_audit(history):
 
 def h4_final_checks(report,audit,control):
     counts=h4_verify_ledger(report)
+    if report['h4_arm']=='candidate' and report['h4_control_report_sha256']!=(control or {}).get('sha256'):
+        raise RuntimeError('M470_H4_MATCHED_CONTROL_BINDING')
     legacy=h4_legacy_audit(report['report_history'])
     if legacy!=audit or not legacy['passed']:
         raise RuntimeError('M470_H4_LEGACY_COVERAGE')
@@ -439,6 +445,7 @@ def h4_read_control(path,expected_sha,contract):
         'h4_common_contract':contract,'h4_spec':H4_SPEC,'training_performed':True,
         'source_commit':PIN,'source_checkpoint_sha256':SEED1_SHA,'orbax_sha256':H4_ORBAX_SHA,
         'trained_from':'C401M_WEIGHTS_ONLY_ADAM_STARTED_ONCE','training_seed':1,
+        'experiment_design':'H4_MATCHED_C401M_SINGLE_PROCESS','stage':'easy_repeat_support','mode':'longtrain',
         'hardware_scaled_config':contract['config'],'train_reward_config':contract['reward'],
         'runner_sha256':contract['source_digests']['m463_push_ppo_train.py'],
         'steps_observed':10485760,'run_steps_observed':10485760,'rollouts_target':40,
@@ -481,6 +488,121 @@ def h4_read_control(path,expected_sha,contract):
             if key not in manifest or manifest[key]!=value:
                 raise RuntimeError('M470_H4_CONTROL_MANIFEST '+key)
     return {'sha256':expected_sha,'counts':counts}
+
+
+def h4_static_regression(brax_train_path):
+    """Offline: compile exact files and generated copies; do not import runtime."""
+    import ast
+    import subprocess
+    import types
+    root=Path(__file__).resolve().parent
+    names=('m463_coverage_env.py','m463_instrument_brax.py','m463_push_ppo_train.py')
+    for name in names:
+        raw=(root/name).read_bytes()
+        compile(raw,name,'exec')
+        ast.parse(raw,filename=name)
+    print('M470_H4_FULL_SOURCE_COMPILE_PASS',flush=True)
+    import m463_instrument_brax as gen
+    raw=Path(brax_train_path).read_bytes()
+    if gen.sha256(raw)!=gen.PINNED_SHA or gen.PINNED_SHA!=H3_CAUSAL_ORIGINAL_BRAX_SHA:
+        raise RuntimeError('M470_H4_STATIC_BRAX_PIN')
+    historical=subprocess.check_output(['git','show',
+        '3f4a92636adc94e758d7c4122e69fd2b1a7f77d5:m463_instrument_brax.py'],cwd=root)
+    old=types.ModuleType('_h4_historical_generator')
+    exec(compile(historical,'<historical generator>','exec'),old.__dict__)
+    for resume in (False,True):
+        for h3 in (False,True):
+            before,sha0=old.make_patched_source(raw,enable_resume=resume,enable_h3=h3)
+            after,sha1=gen.make_patched_source(raw,enable_resume=resume,enable_h3=h3)
+            if before!=after or sha0!=sha1:
+                raise RuntimeError('M470_H4_LEGACY_GENERATED_CHANGED')
+            compile(after,'<legacy generated>','exec')
+    print('M470_H4_LEGACY_GENERATED_BYTE_EQUAL_PASS 4/4',flush=True)
+    legacy,_=gen.make_patched_source(raw,enable_resume=True)
+    new,sha=gen.make_patched_source(raw,enable_resume=True,enable_h4=True)
+    compile(new,'<H4 generated>','exec')
+    tree=ast.parse(new)
+    train=next(x for x in tree.body if isinstance(x,ast.FunctionDef) and x.name=='train')
+    body=train.body
+    if (not isinstance(body[0],ast.Expr) or not isinstance(body[1],ast.Raise)
+            or 'M470_H4_EXECUTION_HOLD' not in ast.unparse(body[1])):
+        raise RuntimeError('M470_H4_GENERATED_HOLD_MISSING')
+    def span(s,start,end):
+        a=s.index(start)
+        return s[a:s.index(end,a)]
+    source_step=span(legacy,'  def training_step(','  def training_epoch(')
+    new_step=span(new,'  def training_step(','  def h4_chunk(')
+    old_fields=''.join(', '+repr(k) for k in gen.EXT_FIELDS)
+    all_fields=old_fields+''.join(', '+repr(k) for k in gen.H4_EXT_FIELDS)
+    if new_step.count(all_fields)!=1 or new_step.count(gen.H4_METRICS_SOURCE)!=1:
+        raise RuntimeError('M470_H4_GENERATED_STEP_ANCHOR')
+    normalized=new_step.replace(all_fields,old_fields,1).replace(gen.H4_METRICS_SOURCE,'',1)
+    if normalized!=source_step:
+        raise RuntimeError('M470_H4_TRAINING_STEP_DRIFT')
+    # Remove only H4 additions and replace only the H4 epoch wrapper; require
+    # all remaining generated bytes to match the exact legacy generator.
+    epoch_new=span(new,'  def h4_chunk(','  # Initialize model params and training state.')
+    epoch_old=span(legacy,'  def training_epoch(','  # Initialize model params and training state.')
+    normalized_all=new.replace(all_fields,old_fields,1).replace(gen.H4_METRICS_SOURCE,'',1)
+    normalized_all=normalized_all.replace(epoch_new,epoch_old,1)
+    normalized_all=normalized_all.replace('    h4_chunk_fn: Optional[Callable[..., None]] = None,\n','',1)
+    normalized_all=normalized_all.replace("  raise RuntimeError('M470_H4_EXECUTION_HOLD')\n",'',1)
+    if normalized_all!=legacy:
+        raise RuntimeError('M470_H4_GENERATED_OUT_OF_SCOPE_CHANGE')
+    if sha!=gen.PINNED_SHA:
+        raise RuntimeError('M470_H4_GENERATED_SHA')
+    print('M470_H4_GENERATED_COMPILE_AND_SCOPE_PASS',gen.sha256(new.encode('utf8')),flush=True)
+    # Static checks on actual environment source, without importing it.
+    env_tree=ast.parse((root/names[0]).read_bytes())
+    fields=next(ast.literal_eval(x.value) for x in env_tree.body
+                if isinstance(x,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='H4_FIELDS' for t in x.targets))
+    if tuple(fields)+('h4_actual_dx','h4_actual_dy')!=gen.H4_EXT_FIELDS:
+        raise RuntimeError('M470_H4_EXTRA_SCHEMA')
+    original_env=ast.parse(subprocess.check_output(['git','show',
+        '3f4a92636adc94e758d7c4122e69fd2b1a7f77d5:m463_coverage_env.py'],cwd=root))
+    def method(t,name):
+        cls=next(x for x in t.body if isinstance(x,ast.ClassDef) and x.name=='CoverageJoystick')
+        return ast.dump(next(x for x in cls.body if isinstance(x,ast.FunctionDef) and x.name==name))
+    for name in ('_get_reward','sample_command','_cost_h1_m2_phase_foot_crossing'):
+        if method(env_tree,name)!=method(original_env,name):
+            raise RuntimeError('M470_H4_ENV_CONTROL_CHANGED '+name)
+    print('M470_H4_ENV_STATIC_SCHEMA_PASS',len(fields)+2,flush=True)
+    # Exercise the actual CLI on the exact checkout; no runtime flags can dispatch.
+    from unittest.mock import patch
+    from types import SimpleNamespace
+    base=['--checkpoint','unused','--restore-report','unused','--output-dir','unused',
+          '--stage','easy_repeat_support']
+    cases=[]
+    for arm in ('control','candidate'):
+        cases.append((['--mode','plan','--h4-arm',arm],0))
+        for mode in ('smoke','probe2','smoke3','pilot','longtrain'):
+            cases.append((['--mode',mode,'--h4-arm',arm],2))
+        for flags in (['--h1-m1'],['--h1-m2'],['--h3-m1'],['--h3-diagnostic-only'],
+                      ['--resume-state','unused'],['--rollouts','40'],['--num-evals','3'],
+                      ['--independent-budget','10M'],['--smoke-report','unused'],
+                      ['--h4-control-report','unused'],['--h3-causal-report','unused']):
+            cases.append((['--mode','plan','--h4-arm',arm]+flags,2))
+    cases.append((['--mode','plan','--h4-control-report','unused'],2))
+    for flags,code in cases:
+        p=subprocess.run([sys.executable,'-B',str(root/names[2]),*base,*flags],
+                         capture_output=True,text=True,cwd=root)
+        if p.returncode!=code or (code==0 and 'M470_H4_PLAN_NO_GPU' not in p.stdout):
+            raise RuntimeError('M470_H4_STATIC_CLI '+repr(flags)+' '+p.stderr)
+    args=SimpleNamespace(h4_arm='candidate',stage='easy_repeat_support',mode='longtrain',
+        h1_m1=False,h1_m2=False,h3_m1=False,h3_diagnostic_only=False,
+        h3_causal_report=None,h3_old10m_report=None,resume_state=None,smoke_report=None,
+        independent_budget=None,rollouts=None,num_evals=None,h4_control_report=None)
+    try:
+        run(args)
+    except RuntimeError as exc:
+        if str(exc)!='M470_H4_EXECUTION_HOLD':
+            raise
+    else:
+        raise RuntimeError('M470_H4_DIRECT_RUN_NOT_BLOCKED')
+    print('M470_H4_CLI_INTERLOCK_PASS',len(cases),'plus direct run',flush=True)
+    if 'jax' in sys.modules or 'brax' in sys.modules or 'mujoco' in sys.modules:
+        raise RuntimeError('M470_H4_STATIC_RUNTIME_IMPORTED')
+    print('M470_H4_STATIC_REGRESSION_PASS NO_JAX NO_SIMULATION NO_PPO',flush=True)
 
 
 def validate_h4_cli(a):
@@ -1469,8 +1591,8 @@ def run(args):
     if longtrain:
         report.update(
             independent_budget=independent_budget,
-            experiment_design=('INDEPENDENT_C401M_SINGLE_PROCESS'
-                               if independent else 'LEGACY_LONGTRAIN'),
+            experiment_design=('H4_MATCHED_C401M_SINGLE_PROCESS' if h4_arm is not None else
+                               'INDEPENDENT_C401M_SINGLE_PROCESS' if independent else 'LEGACY_LONGTRAIN'),
             rollouts_per_epoch=batches // (scaled.num_evals - 1),
             trained_from=('C401M_WEIGHTS_ONLY_ADAM_STARTED_ONCE'
                           if resume_meta is None else 'FULL_OPTIMIZER_STATE_RESUME'),
