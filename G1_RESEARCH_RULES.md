@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.73  
+**Version:** 1.2.74  
 **Ngày cập nhật:** 2026-11-24 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -24,6 +24,18 @@
 **Nhánh B ON HOLD đến khi người dùng chủ động nói chuyển:** KHÔNG khởi tạo task F0/F1/F2/F3/F4 theo hướng get-up/fallen-state sandbox, không viết code, train, thiết kế implementation, benchmark hay thay đổi roadmap ưu tiên cho fall detection, get-up, reorient, resume. Giữ tài liệu yêu cầu của B làm mục tiêu dài hạn nhưng không chủ động đưa vào NEXT TASK. Khi người dùng yêu cầu chuyển mới tiếp tục B và thực hiện các gate liên quan.
 
 **Phân biệt với safety/telemetry trong A:** vẫn đo termination, instability, root height/contact nếu hữu ích để hiểu *failure của push recovery*, nhưng không coi đó là mở nhánh B hoặc cấp phép get-up implementation. Baseline/checkpoint PIN và quy tắc ghi bằng chứng không thay đổi. **Một thử nghiệm khám phá A có thể CONDITIONAL GO** với ngân sách/tiêu chí dừng khóa trước; chỉ công bố robustness PASS khi có nominal gait + matched-OFF + held-out đáng tin. Không làm các vòng lặp tái lập không cần thiết nếu không làm thay đổi quyết định quan trọng, nhưng phải công khai uncertainty về evaluator.
+
+### Active research objective — Failure-mechanism-driven PPO training (v1.2.74; owner-directed 2026-11-24)
+
+**Mục tiêu ưu tiên từ thời điểm này:** tìm hiểu cơ chế thất bại của locomotion/push recovery G1, rồi lựa chọn cách huấn luyện PPO phù hợp với chính những cơ chế thất bại đó. Failure mechanism → evidence → falsifiable hypothesis → PPO training design → controlled evaluation. Không coi việc thêm reward, đổi threshold, tăng độ khó, tăng budget hay thay neural architecture là mục tiêu tự thân. PPO vẫn là phương pháp nghiên cứu chính trong Workstream A; không chuyển sang H2C hoặc Branch B. North Star, paper/source fidelity distinction, RTX3060 12GiB, frozen C401M/OLD10M references, pinned source và toàn bộ safety/provenance/EDIT-FIRST gates vẫn giữ nguyên.
+
+**Mandatory decision sequence for the next A tasks:**
+1. Failure mechanism research (H3-R1, offline first): reuse existing H3-M1-3 report/log and prior H1/RC1/H2/coverage evidence. Compare failed and successful matched cases (including both-fail, both-success, and discordant cases); align trajectories to push1, push2 and termination. Analyze nominal pre-push differences, velocity/yaw, root height/tilt, support/contact phase, foot placement/separation, joint/control/force excess and recovery onset/tail. Distinguish initiating deviation, propagation, terminal flag and possible contributing factors; compare competing explanations. Do not infer that foot-foot contact initiated a fall merely because it triggered termination. Label OBSERVED / INFERRED / UNTESTED and explicitly identify missing per-joint, action, contact-force/CoM, reward/advantage/gradient or state data. Reused development seeds are not independent holdout. Use the existing 117480 raw physical frames before requesting new data.
+2. Select a PPO strategy only after the failure evidence is reviewed: evaluate whether the identified bottleneck concerns (a) insufficient exposure to specific failure states or recovery tails → targeted balanced curriculum/sampling; (b) conflicting or missing task-learning signals → specific reward shaping/credit signal; (c) delayed consequences/rollout/GAE or optimization behavior → temporal credit/optimization design; (d) insufficient policy-observable state/context → observation or architecture changes only if the simpler alternatives cannot address the demonstrated deficiency. These are candidate categories, NOT approved modifications or established diagnoses. Preserve on-policy PPO semantics; no arbitrary replay of old transitions as fresh PPO samples. Keep nominal training exposure and avoid catastrophic forgetting. Compare alternatives against prior NO-GO evidence rather than repeating failed ideas with new names.
+3. For the selected hypothesis, define the mechanism-to-training link, expected measurable improvement, falsifier, independent variable and matched control, source/config/initial-state provenance, actual joint exposure/post-push action metrics, bounded budget and stop criteria before observing new outcomes. Prefer one independently attributable change per experiment. If existing evidence cannot distinguish mechanisms, propose the smallest decision-relevant diagnostic with explicit justification and separate GO before any new simulation. Do not force a speculative reward or training modification merely to keep progressing.
+4. Only after owner approval of the research conclusion and training design, apply EDIT-FIRST/SOURCE-ON-GIT, static and actual technical gates, then a separately authorized bounded PPO experiment within 12GiB. Use frozen matched reference and budget, retain nominal gait and safety, count actual PPO exposure, distinguish technical training success from controlled recovery efficacy. No larger budget, hyperparameter sweep, checkpoint promotion, independent holdout or new seed campaign without their appropriate predeclared gates and separate approval. If hypothesis fails, record why, return to mechanism analysis and preserve evidence; do not auto-retry or tune thresholds after data.
+
+**Immediate next task:** H3-R1 offline Failure Mechanism Research and evidence-based PPO strategy selection/design recommendation. H3-M1 remains CLOSED / NO-PROMOTE / holdout ineligible; both stand primary gains0, 35 hard-failure entries and three lost foot-foot survivals remain accepted historical outcomes, not grounds for automatic H3-M2/M3/H4/H5 activation. User has approved the research direction, NOT a particular reward/curriculum/network, code modification, GPU simulation, PPO run or budget. This rules update does not execute H3-R1 analysis; it defines the scope of the next research task. H2C and B HOLD.
 
 ## 2. Baseline bất biến, môi trường, provenance
 
@@ -1071,6 +1083,9 @@ PY
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-24)
 
+**OWNER-DIRECTED ACTIVE OBJECTIVE (v1.2.74; 2026-11-24):** failure mechanism research → evidence-based choice of PPO training strategy for the identified failures. H3-R1 offline research is NEXT; use existing H3 raw data and H1/RC1/H2 evidence, establish observed sequence vs competing causal hypotheses, then propose a falsifiable matched-control PPO design. Reward/curriculum/credit assignment/observation alternatives conditional on evidence; no automatic selection, new executable changes, simulation or training authorization. H3-M1 NO-GO preserved, C401M/OLD10M frozen, 12GiB and safety gates unchanged; H2C/B HOLD.
+
+
 **M470-H3-M1-3 CLOSED (v1.2.73; 2026-11-24):** log4048618d/reportbeaef421 full raw evidence verified;180 logical/117480 physical,144 kicks, peak706MiB,1430 samples, exit0/tee0, 0 PPO. Independent raw gate recomputation exact35 hard-failure entries, stand double survival/recovery5 both OLD5/H35 (gain0), three lost survivals foot-foot, moving turn recovery5 5->3, nominal tracking2 and safety25 failures. TECH PASS / EFFICACY NO_GO; H3-M1 CLOSED NO PROMOTE, holdout ineligible, GO consumed. New hypothesis only via separate offline evidence review approval; no retry/tuning/training or H2C/B. Rules only.
 
 
@@ -1541,6 +1556,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-24 | Owner-directed failure-mechanism-driven PPO objective | v1.2.73 H3-M1 NO-GO and owner direction; existing raw evidence | v1.2.74 active objective locked; H3-R1 offline research then evidence-based PPO design, no execution authorized; rules only | 1.2.74 |
+
 | 2026-11-24 | H3-M1-3 corrected controlled eval final review | log4048618d/reportbeaef421, independent raw117480/180,144 kicks,35 hard failures, both primary gains0, three lost foot-foot survivals, peak706MiB | v1.2.73 TECH PASS / EFFICACY NO_GO, H3-M1 closed no promote/holdout, GO consumed, no further PPO | 1.2.73 |
 
 | 2026-11-24 | H3-M1-3 corrected explicit GO | Rules v1.2.71 and exact source8c91d45e reviewed, zero-transition failed evidence rehashed | v1.2.72 one conditional fixed 180 logical/max134424 physical, focused static plus actual bootstrap, no PPO/install, owner execution pending | 1.2.72 |
@@ -1752,6 +1769,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.74 — 2026-11-24:** Lock owner-directed failure-mechanism-driven PPO research objective and decision sequence in Workstream A; offline evidence first, select targeted PPO strategy with falsifiable mechanism and matched controls, preserve previous NO-GO and all frozen safety/provenance/budget gates. No source/simulation/PPO authorization.
 
 - **v1.2.73 — 2026-11-24:** Accept corrected complete H3-M1-3 evidence and independently recompute raw core efficacy/safety gates; technical PASS, efficacy NO_GO, both primary gains0 and 35 hard failures, close H3-M1 with no promotion or holdout. No extra evaluation, PPO, source changes or automatic new hypothesis; proposed offline evidence review only pending owner direction.
 
