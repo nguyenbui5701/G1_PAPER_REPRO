@@ -1210,6 +1210,503 @@ def h2a_write(args, results, jax_version, blocked=False):
         raise RuntimeError('M470_H2A_PREFIX_GATE_NO_GO')
 
 
+H2B_CAL_SEEDS = (7301, 7303)
+H2B_DEV_SEEDS = (7331, 7357)
+H2B_PROFILES = ('stand', 'forward_fast', 'turn_left')
+H2B_CONFIG = {
+    'dt': 0.02,
+    'gravity': 9.81,
+    'height_min': 0.35,
+    'height_max': 1.0,
+    'reference_min_count': 8,
+    'age_edges': [10, 30, 75],
+    'phase_bins': 4,
+    'entry_residual_m': 0.04,
+    'exit_residual_m': 0.015,
+    'entry_ticks': 2,
+    'exit_ticks': 10,
+    'residual_gain_per_s': 2.0,
+    'max_bias': 0.25,
+    'xy_slew': 0.05,
+    'max_active_ticks': 100,
+    'max_return_ticks': 10,
+}
+
+
+class H2BReferenceUnavailable(RuntimeError):
+    pass
+
+
+def h2b_capture_point(raw, previous=None):
+    """Pure calculation on ONE cached sample; no simulator or kick inputs."""
+    cfg = H2B_CONFIG
+    age = int(raw['age'])
+    c = tuple(map(float, raw['com_world']))
+    p = tuple(map(float, raw['imu_world']))
+    rot = tuple(tuple(map(float, row)) for row in raw['imu_rotation'])
+    local_v = tuple(map(float, raw['local_velocity']))
+    left = tuple(map(float, raw['left_foot_world']))
+    right = tuple(map(float, raw['right_foot_world']))
+    phase = float(raw['phase_left'])
+    floor_z = float(raw['floor_z'])
+    values = (*c, *p, *local_v, *left, *right, phase, floor_z,
+              *(v for row in rot for v in row))
+    if not all(math.isfinite(v) for v in values):
+        raise RuntimeError('H2B_NONFINITE_SENSOR_SAMPLE')
+    rel = tuple(c[i] - p[i] for i in range(3))
+    if previous is None:
+        if age != 0:
+            raise RuntimeError('H2B_HISTORY_MISSING')
+        rel_rate = (0.0, 0.0, 0.0)
+    else:
+        if age != previous['age'] + 1:
+            raise RuntimeError('H2B_HISTORY_NOT_CONSECUTIVE')
+        rel_rate = tuple((rel[i] - previous['relative_com_world'][i])
+                         / cfg['dt'] for i in range(3))
+    v_imu = tuple(sum(rot[i][j] * local_v[j] for j in range(3))
+                  for i in range(3))
+    v_com = tuple(v_imu[i] + rel_rate[i] for i in range(3))
+    lc, rc = map(bool, raw['contact'])
+    if lc and not rc:
+        mode, support = 'LEFT', left
+    elif rc and not lc:
+        mode, support = 'RIGHT', right
+    else:
+        mode = 'BOTH' if lc and rc else 'NO_SUPPORT_PROXY'
+        support = tuple((left[i] + right[i]) / 2 for i in range(3))
+    h_raw = c[2] - floor_z
+    if h_raw <= 0 or not math.isfinite(h_raw):
+        raise RuntimeError('H2B_INVALID_COM_HEIGHT')
+    h = h2a_clip(h_raw, cfg['height_min'], cfg['height_max'])
+    omega = math.sqrt(cfg['gravity'] / h)
+    # Heading frame: horizontal projection of IMU +X, not full 3D tilt.
+    hx, hy = rot[0][0], rot[1][0]
+    if math.hypot(hx, hy) <= 1e-6:
+        raise RuntimeError('H2B_DEGENERATE_HEADING')
+    yaw = math.atan2(hy, hx)
+    cy, sy = math.cos(yaw), math.sin(yaw)
+    xi = (c[0] + v_com[0]/omega, c[1] + v_com[1]/omega)
+    x, y = xi[0]-support[0], xi[1]-support[1]
+    d = (cy*x + sy*y, -sy*x + cy*y)
+    if not all(math.isfinite(v) for v in (*d, *v_com, *rel_rate)):
+        raise RuntimeError('H2B_NONFINITE_ESTIMATE')
+    return {
+        **raw,
+        'age': age,
+        'relative_com_world': rel,
+        'relative_com_rate_world': rel_rate,
+        'derivative_reset': previous is None,
+        'imu_velocity_world': v_imu,
+        'estimated_com_velocity_world': v_com,
+        'contact_mode': mode,
+        'support_center_world': support,
+        'height_raw': h_raw,
+        'height_used': h,
+        'omega': omega,
+        'heading_rad': yaw,
+        'capture_point_world': xi,
+        'd_heading': d,
+    }
+
+
+def h2b_make_sampler(env, jax, jnp, np, collision):
+    """Make a causal idealized sensor-proxy sampler. Call only reset/poststep."""
+    model = env.mj_model
+    masses = np.asarray(model.body_mass, dtype=np.float64)
+    if (masses.shape != (model.nbody,) or not np.isfinite(masses).all()
+            or masses[0] != 0 or (masses < 0).any() or masses.sum() <= 0):
+        raise RuntimeError('H2B_INVALID_BODY_MASSES')
+    # Pinned G1 flat scene contains only robot positive-mass bodies.
+    # Check all positive-mass bodies descend from pelvis.
+    root = int(model.body('pelvis').id)
+    for i in np.flatnonzero(masses > 0):
+        parent = int(i)
+        while parent not in (0, root):
+            parent = int(model.body_parentid[parent])
+        if parent != root:
+            raise RuntimeError('H2B_NON_ROBOT_MASS')
+    weights = jnp.asarray(masses / masses.sum(), dtype=jnp.float32)
+    imu = int(env._pelvis_imu_site_id)
+    left, right = int(env._left_foot_geom_id), int(env._right_foot_geom_id)
+    floor = int(env._floor_geom_id)
+    if int(model.geom_type[floor]) != 0:  # mjGEOM_PLANE in pinned MuJoCo
+        raise RuntimeError('H2B_EXPECTED_FLAT_PLANE')
+
+    @jax.jit
+    def raw_sample(state):
+        data = state.data
+        obs = state.obs['state']
+        if obs.shape != (103,) or data.xipos.shape != (model.nbody, 3):
+            raise RuntimeError('H2B_OBSERVATION_OR_XIPOS_SHAPE')
+        # Never use qvel directly, nor regenerate actor observation/RNG.
+        return {
+            'com_world': jnp.sum(weights[:, None]*data.xipos, axis=0),
+            'imu_world': data.site_xpos[imu],
+            'imu_rotation': data.site_xmat[imu].reshape(3, 3),
+            'local_velocity': obs[0:3],
+            'phase_cos': obs[99],
+            'phase_sin': obs[101],
+            'left_foot_world': data.geom_xpos[left],
+            'right_foot_world': data.geom_xpos[right],
+            'floor_z': data.geom_xpos[floor, 2],
+            'floor_normal': data.geom_xmat[floor].reshape(3, 3)[:, 2],
+            'contact': jnp.stack([
+                collision.geoms_colliding(data, left, floor),
+                collision.geoms_colliding(data, right, floor),
+            ]),
+        }
+
+    def sample(state, age, previous=None):
+        d = jax.device_get(raw_sample(state))
+        if not all(np.isfinite(np.asarray(v)).all() for v in d.values()):
+            raise RuntimeError('H2B_NONFINITE_RAW_SAMPLE')
+        if not np.allclose(d['floor_normal'], [0, 0, 1], rtol=0, atol=1e-6):
+            raise RuntimeError('H2B_NONHORIZONTAL_FLOOR')
+        r = np.asarray(d['imu_rotation'])
+        if (not np.allclose(r.T @ r, np.eye(3), rtol=0, atol=1e-4)
+                or abs(float(np.linalg.det(r))-1) > 1e-4):
+            raise RuntimeError('H2B_INVALID_ROTATION')
+        cos, sin = float(d['phase_cos']), float(d['phase_sin'])
+        if abs(math.hypot(cos, sin)-1.0) > 1e-4:
+            raise RuntimeError('H2B_INVALID_PHASE')
+        raw = {k: np.asarray(v).tolist() for k, v in d.items()}
+        raw['age'] = age
+        raw['phase_left'] = math.atan2(sin, cos)
+        return h2b_capture_point(raw, previous)
+
+    return sample
+
+
+def h2b_bucket(profile, sample):
+    age = sample['age']
+    if age < 0 or profile not in H2B_PROFILES:
+        raise RuntimeError('H2B_BAD_BUCKET_INPUT')
+    age_bin = sum(age >= edge for edge in H2B_CONFIG['age_edges'])
+    p = (sample['phase_left'] + math.pi) % (2*math.pi)
+    phase_bin = min(3, int(p / (math.pi/2)))
+    mode = sample['contact_mode']
+    if mode not in ('LEFT', 'RIGHT', 'BOTH', 'NO_SUPPORT_PROXY'):
+        raise RuntimeError('H2B_BAD_CONTACT_MODE')
+    # No fallback across profile or contact state.
+    prefix = f'{profile}|{mode}|'
+    return (f'{prefix}{age_bin}|{phase_bin}',
+            f'{prefix}{age_bin}|*', f'{prefix}*|*')
+
+
+def h2b_fit_reference(calibration):
+    expected = {(s, p) for s in H2B_CAL_SEEDS for p in H2B_PROFILES}
+    actual = {(g['seed'], g['profile']) for g in calibration}
+    if len(calibration) != 6 or actual != expected:
+        raise RuntimeError('H2B_CALIBRATION_GROUPS_INVALID')
+    bins = {}
+    for group in calibration:
+        frames = group['frames']
+        if (group['blocked'] is not None or len(frames) != 1000
+                or any(row['done'] for row in frames)):
+            raise RuntimeError('H2B_CALIBRATION_INCOMPLETE')
+        for i, row in enumerate(frames):
+            sample = row['h2b_sample']
+            if sample['age'] != i or row['step'] != i+1:
+                raise RuntimeError('H2B_CALIBRATION_HISTORY_INVALID')
+            xy = sample['d_heading']
+            if len(xy) != 2 or not all(math.isfinite(x) for x in xy):
+                raise RuntimeError('H2B_BAD_CALIBRATION_ESTIMATE')
+            for key in h2b_bucket(group['profile'], sample):
+                b = bins.setdefault(key, {'count': 0, 'lower': list(xy),
+                                          'upper': list(xy)})
+                b['count'] += 1
+                b['lower'] = [min(a, x) for a, x in zip(b['lower'], xy)]
+                b['upper'] = [max(a, x) for a, x in zip(b['upper'], xy)]
+    return bins
+
+
+def h2b_risk_residual(profile, sample, reference):
+    for level, key in enumerate(h2b_bucket(profile, sample)):
+        b = reference.get(key)
+        if b is not None and b['count'] >= H2B_CONFIG['reference_min_count']:
+            d = sample['d_heading']
+            r = tuple(x - h2a_clip(x, lo, hi)
+                      for x, lo, hi in zip(d, b['lower'], b['upper']))
+            return {'reference_key': key, 'reference_backoff': level,
+                    'reference_count': b['count'],
+                    'reference_lower': list(b['lower']),
+                    'reference_upper': list(b['upper']),
+                    'residual_xy_m': r, 'residual_norm_m': math.hypot(*r)}
+    raise H2BReferenceUnavailable('|'.join(h2b_bucket(profile, sample)))
+
+
+def h2b_tick(residual, goal, previous, enabled):
+    cfg = H2B_CONFIG
+    goal = tuple(map(float, goal))
+    rx, ry = map(float, residual['residual_xy_m'])
+    rho = math.hypot(rx, ry)
+    if not all(math.isfinite(x) for x in (rx, ry, rho, *goal)):
+        raise RuntimeError('H2B_NONFINITE_CONTROL')
+    risky = rho >= cfg['entry_residual_m']
+    clear = rho <= cfg['exit_residual_m']
+    metrics = {**residual, 'risk_high': risky, 'risk_clear': clear,
+               'timeout_event': False, 'intervention': False}
+    if not enabled:
+        return h2a_initial_state(goal), metrics
+    g = dict(previous)
+    old_mode = g['mode']
+    g['high'] = min(g['high']+1, cfg['entry_ticks']) if risky else 0
+    g['low'] = min(g['low']+1, cfg['exit_ticks']) if clear else 0
+    if g['mode'] == 'LOCKOUT':
+        if g['low'] >= cfg['exit_ticks']:
+            g = h2a_initial_state(goal)
+        metrics['intervention'] = True
+        return g, metrics
+    if g['mode'] == 'NORMAL' and g['high'] >= cfg['entry_ticks']:
+        g['mode'], g['age'], g['low'], g['forced'] = 'RECOVERY', 0, 0, False
+    if g['mode'] in ('RECOVERY', 'RETURN'):
+        if g['age'] >= cfg['max_active_ticks'] and not g['forced']:
+            g['forced'], g['mode'], g['return_ticks'] = True, 'RETURN', 0
+            metrics['timeout_event'] = True
+        if not g['forced']:
+            if g['mode'] == 'RECOVERY' and g['low'] >= cfg['exit_ticks']:
+                g['mode'] = 'RETURN'
+            elif g['mode'] == 'RETURN' and g['high'] >= cfg['entry_ticks']:
+                g['mode'] = 'RECOVERY'
+    if g['mode'] == 'RECOVERY':
+        bx, by = h2a_clip_norm(cfg['residual_gain_per_s']*rx,
+                               cfg['residual_gain_per_s']*ry, cfg['max_bias'])
+        target = (h2a_clip(goal[0]+bx, -1., 1.),
+                  h2a_clip(goal[1]+by, -.5, .5), goal[2])
+    else:
+        target = goal
+    px, py, _ = g['effective']
+    dx, dy = target[0]-px, target[1]-py
+    if math.hypot(dx, dy) <= cfg['xy_slew']:
+        nx, ny = target[:2]
+    else:
+        dx, dy = h2a_clip_norm(dx, dy, cfg['xy_slew'])
+        nx, ny = px+dx, py+dy
+    g['effective'] = (nx, ny, goal[2])
+    metrics['intervention'] = old_mode != 'NORMAL' or g['mode'] != 'NORMAL'
+    if g['mode'] in ('RECOVERY', 'RETURN'):
+        if g['forced']:
+            g['return_ticks'] += 1
+            if g['return_ticks'] > cfg['max_return_ticks']:
+                raise RuntimeError('H2B_RETURN_BOUND_EXCEEDED')
+        else:
+            g['age'] += 1
+    if g['mode'] == 'RETURN' and g['effective'] == goal:
+        if g['forced']:
+            g['mode'], g['high'], g['low'] = 'LOCKOUT', 0, 0
+        else:
+            g = h2a_initial_state(goal)
+    return g, metrics
+
+
+def h2b_fork(ctx, jax):
+    # MJX arrays are immutable; dict/list metadata copied without resampling.
+    import copy
+    state, cache, governor = ctx
+    return (jax.tree_util.tree_map(lambda x: x, state),
+            copy.deepcopy(cache), dict(governor))
+
+
+def h2b_kick(ctx, delta, jnp):
+    state, cache, governor = ctx
+    qvel = state.data.qvel.at[:2].add(jnp.asarray(delta, dtype=state.data.qvel.dtype))
+    # Only physics state changes. Cached sensor observation and previous
+    # estimator/supervisor history must be untouched until AFTER step_fn.
+    return state.replace(data=state.data.replace(qvel=qvel)), cache, governor
+
+
+def h2b_advance(ctx, first, last, *, profile, goal, command, enabled,
+                reference, sampler, step_fn, jax, jnp, np,
+                quiet=False, capture_step=None):
+    state, cache, governor = ctx
+    frames, snapshot, blocked = [], None, None
+    for i in range(first, last+1):
+        if cache['age'] != i-1:
+            raise RuntimeError('H2B_CACHE_AGE_MISMATCH')
+        if reference is None:  # calibration ONLY
+            if enabled or quiet:
+                raise RuntimeError('H2B_UNFROZEN_REFERENCE_CONTROL')
+            governor = h2a_initial_state(goal)
+            risk = {'risk_high': False, 'risk_clear': False,
+                    'timeout_event': False, 'intervention': False}
+        else:
+            try:
+                residual = h2b_risk_residual(profile, cache, reference)
+            except H2BReferenceUnavailable as e:
+                blocked = {'step': i, 'reason': 'REFERENCE_UNAVAILABLE',
+                           'detail': str(e), 'sample': cache}
+                break
+            governor, risk = h2b_tick(residual, goal, governor, enabled)
+        effective = governor['effective']
+        if quiet and (risk['intervention'] or effective != goal):
+            blocked = {'step': i, 'reason': 'PREPUSH_INTERVENTION',
+                       'sample': cache, 'risk': risk, 'governor': governor}
+            break
+        state, diag = step_fn(state, jnp.asarray(effective, dtype=command.dtype))
+        data = jax.device_get(diag)
+        if not bool(data['h2a_state_finite']):
+            raise RuntimeError('H2B_NONFINITE_TRANSITION')
+        row = {}
+        for key, val in data.items():
+            a = np.asarray(val)
+            if not np.isfinite(a).all():
+                raise RuntimeError('H2B_NONFINITE_DIAG '+key)
+            row[key] = float(a) if a.ndim == 0 else a.tolist()
+        row.update({'step': i, 'done': bool(data['done']),
+                    'goal_command': list(goal), 'effective_command': list(effective),
+                    'governor_mode': governor['mode'], 'governor_age': governor['age'],
+                    'h2b_sample': cache, **risk})
+        frames.append(row)
+        if row['done'] or i == 1000:
+            break
+        # Exactly one new sensor sample after completed physics; use previous
+        # sample for derivative. Never sample on a kick or branch boundary.
+        cache = sampler(state, i, cache)
+        if i == capture_step:
+            snapshot = h2b_fork((state, cache, governor), jax)
+    return {'frames': frames, 'ctx': (state, cache, governor),
+            'snapshot': snapshot, 'blocked': blocked}
+
+
+def h2b_summary(frames, max_steps):
+    if not frames:
+        raise RuntimeError('H2B_EMPTY_TRACE')
+    stats = aggregate_frames(frames, bool(frames[-1]['done']), len(frames), max_steps)
+    stats.update({
+        'intervention_steps': sum(bool(r['intervention']) for r in frames),
+        'timeout_events': sum(bool(r['timeout_event']) for r in frames),
+        'joint_limit_excess_max': max(r['h2a_joint_limit_excess'] for r in frames),
+        'ctrl_limit_excess_max': max(r['h2a_ctrl_limit_excess'] for r in frames),
+        'force_limit_excess_max': max(r['h2a_force_limit_excess'] for r in frames),
+    })
+    return stats
+
+
+def h2b_calibrate(args, env, sampler, step_fn, command, seed, profile, jax, jnp, np):
+    goal = tuple(map(float, jax.device_get(command)))
+    state = env.reset(jax.random.PRNGKey(seed))
+    ctx = state, sampler(state, 0), h2a_initial_state(goal)
+    run = h2b_advance(ctx, 1, 1000, profile=profile, goal=goal, command=command,
+                     enabled=False, reference=None, sampler=sampler,
+                     step_fn=step_fn, jax=jax, jnp=jnp, np=np)
+    frames = run['frames']
+    blocked = run['blocked']
+    if len(frames) != 1000 or frames[-1]['done']:
+        blocked = {'reason': 'CALIBRATION_NOMINAL_TERMINATION'}
+    return {'seed': seed, 'profile': profile, 'goal_command': list(goal),
+            'frames': frames, 'blocked': blocked,
+            'summary': h2b_summary(frames, args.max_steps)}
+
+
+def h2b_evaluate_group(args, env, sampler, step_fn, command, seed, profile,
+                       reference, jax, jnp, np):
+    goal = tuple(map(float, jax.device_get(command)))
+    state = env.reset(jax.random.PRNGKey(seed))
+    initial = state, sampler(state, 0), h2a_initial_state(goal)
+    common = dict(profile=profile, goal=goal, command=command, reference=reference,
+                  sampler=sampler, step_fn=step_fn, jax=jax, jnp=jnp, np=np)
+    prefix = h2b_advance(initial, 1, 299, enabled=True, quiet=True, **common)
+    pre = prefix['frames']
+    result = {'seed': seed, 'profile': profile, 'goal_command': list(goal),
+              'shared_prefix': pre, 'blocked': prefix['blocked'], 'arms': {}}
+    if result['blocked'] is not None:
+        return result
+    if len(pre) != 299 or pre[-1]['done']:
+        result['blocked'] = {'reason': 'NOMINAL_TERMINATED_BEFORE_PUSH'}
+        return result
+    heading = yaw_from_root_quat(np.asarray(jax.device_get(prefix['ctx'][0].data.qpos[3:7])))
+    result['first_heading_rad'] = heading
+
+    def initial_branch(enabled):
+        state, cache, gov = h2b_fork(prefix['ctx'], jax)
+        return state, cache, gov if enabled else h2a_initial_state(goal)
+
+    def record_block(run, arm_name, kind, direction=None):
+        if run['blocked'] is None:
+            return False
+        result['blocked'] = {**run['blocked'], 'arm': arm_name,
+                             'kind': kind, 'direction': direction}
+        return True
+
+    for enabled in (False, True):
+        name = 'ON' if enabled else 'OFF'
+        arm = {'directions': {}}
+        result['arms'][name] = arm
+        nominal = h2b_advance(initial_branch(enabled), 300, 1000,
+                              enabled=enabled, **common)
+        arm['nominal_frames'] = nominal['frames']
+        if record_block(nominal, name, 'nominal'):
+            return result
+        nf = pre + nominal['frames']
+        arm['nominal_summary'] = h2b_summary(nf, args.max_steps)
+        for direction in args.directions:
+            d1 = new_body_delta(direction, heading, args.push_magnitude)
+            d2 = new_body_delta(direction, heading, args.second_push_magnitude)
+            item = {'first_delta_world_mps': list(d1), 'second_delta_world_mps': list(d2)}
+            arm['directions'][direction] = item
+            single = h2b_advance(h2b_kick(initial_branch(enabled), d1, jnp),
+                                 300, 1000, enabled=enabled, capture_step=334, **common)
+            item['single_frames'] = single['frames']
+            if record_block(single, name, 'single', direction):
+                return result
+            sf = pre + single['frames']
+            item['single_summary'] = h2b_summary(sf, args.max_steps)
+            for sec, ticks in ((2, 100), (5, 250)):
+                item[f'single_recovery_{sec}s'] = h2a_recovery(nf, sf, 300, ticks)
+            exposed = single['snapshot'] is not None
+            item['second_push_exposed'] = exposed
+            if exposed:
+                double = h2b_advance(h2b_kick(h2b_fork(single['snapshot'], jax), d2, jnp),
+                                     335, 1000, enabled=enabled, **common)
+                item['double_frames_after_second'] = double['frames']
+                if record_block(double, name, 'double', direction):
+                    return result
+                df = sf[:334] + double['frames']
+            else:
+                if not sf[-1]['done'] or len(sf) > 334:
+                    raise RuntimeError('H2B_MISSING_SECOND_SNAPSHOT')
+                item['double_frames_after_second'] = []
+                df = sf
+            item['double_summary'] = h2b_summary(df, args.max_steps)
+            for sec, ticks in ((2, 100), (5, 250)):
+                item[f'double_recovery_{sec}s'] = (
+                    h2a_recovery(nf, df, 335, ticks) if exposed else
+                    {'success': False, 'reason': 'terminated_before_second'})
+    return result
+
+
+def h2b_write_progress(path, report, initial=False):
+    """Only update THIS run's report. Initial creation exclusive; atomic later updates."""
+    path = Path(path)
+    payload = json.dumps(report, ensure_ascii=False, allow_nan=False, indent=2)+'\n'
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if initial:
+        with path.open('x', encoding='utf8') as f:
+            f.write(payload)
+        return
+    tmp = path.with_name(path.name+'.tmp')
+    with tmp.open('x', encoding='utf8') as f:
+        f.write(payload)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+
+
+def h2b_freeze_reference(path, calibration):
+    payload = {'format': 'M470_H2B_REFERENCE_V1', 'source_commit': PIN,
+               'checkpoint_sha256': BASE_SHA, 'config': H2B_CONFIG,
+               'calibration_seeds': list(H2B_CAL_SEEDS),
+               'profiles': list(H2B_PROFILES), 'bins': h2b_fit_reference(calibration)}
+    canonical = (json.dumps(payload, sort_keys=True, separators=(',', ':'),
+                            allow_nan=False)+'\n').encode('utf8')
+    with Path(path).open('xb') as f:
+        f.write(canonical)
+    digest = hashlib.sha256(canonical).hexdigest()
+    if sha256(path) != digest:
+        raise RuntimeError('H2B_REFERENCE_SHA_MISMATCH')
+    return digest
+
+
 def run(args):
     if args.output.exists():raise FileExistsError('Refuse to overwrite output: '+str(args.output))
     # Use the same pinned runner environment; apply compatibility BEFORE JAX import.
@@ -1234,7 +1731,7 @@ def run(args):
     if sha256(args.checkpoint_c)!=BASE_SHA:raise RuntimeError('M462_FROZEN_401M_SHA_MISMATCH')
     report_p = None
 
-    if not args.h2a:
+    if not (args.h2a or args.h2b):
         report_p = read_m463_smoke_report(
             args.report_p,
             args.checkpoint_p,
@@ -1279,12 +1776,40 @@ def run(args):
         'C': load_policy(args.checkpoint_c)
     }
 
-    if not args.h2a:
+    if not (args.h2a or args.h2b):
         policies['P'] = load_policy(
             args.checkpoint_p
         )
     results=[]
-    for seed in args.seeds:
+    if args.h2b:
+        reference_path = args.output.with_suffix('.reference.json')
+        if reference_path.exists() or args.output.with_name(args.output.name+'.tmp').exists():
+            raise FileExistsError('H2B output/reference already exists')
+        sampler = h2b_make_sampler(env, jax, jnp, np, collision)
+        session = {
+            'status': 'M470_H2B_IN_PROGRESS',
+            'source_commit': PIN, 'brax_train_sha256': TRAIN_SHA,
+            'checkpoint_sha256': BASE_SHA,
+            'evaluator_sha256': sha256(Path(__file__)),
+            'jax_version': jax.__version__, 'training_performed': False,
+            'deterministic_actor': True, 'random_source_push_enabled': False,
+            'domain_randomization_enabled': False,
+            'governor_config': H2B_CONFIG,
+            'calibration_seeds': list(H2B_CAL_SEEDS), 'seeds': args.seeds,
+            'profiles': args.profiles, 'directions': args.directions,
+            'push_step': args.push_step, 'push_magnitude_mps': args.push_magnitude,
+            'second_push_step': args.second_push_step,
+            'second_push_magnitude_mps': args.second_push_magnitude,
+            'max_steps': args.max_steps, 'dt_s': float(env.dt),
+            'reference_sha256': None, 'calibration': [], 'results': results,
+            'expected_calibration_trajectories': 6,
+            'expected_logical_trajectories': 60,
+        }
+        h2b_write_progress(args.output, session, initial=True)
+        run_seeds = list(H2B_CAL_SEEDS) + args.seeds
+    else:
+        run_seeds = args.seeds
+    for seed in run_seeds:
       for profile in args.profiles:
         command=jnp.asarray(PROFILES[profile],dtype=jnp.float32)
         for name,policy in policies.items():
@@ -1495,7 +2020,7 @@ def run(args):
                         ),
                 })
 
-                if args.h2a:
+                if args.h2a or args.h2b:
                     model = env.mj_model
 
                     def limit_excess(values, limits, mask):
@@ -1547,6 +2072,53 @@ def run(args):
 
                 return next_state,diag
             step_fn=jax.jit(one_step)
+            if args.h2b:
+                if seed in H2B_CAL_SEEDS:
+                    group = h2b_calibrate(args, env, sampler, step_fn, command,
+                                          seed, profile, jax, jnp, np)
+                    session['calibration'].append(group)
+                    if group['blocked'] is not None:
+                        session['status'] = 'M470_H2B_CALIBRATION_BLOCKED'
+                    h2b_write_progress(args.output, session)
+                    print('M470_H2B_CALIBRATION_GROUP', seed, profile,
+                          group['blocked'], flush=True)
+                    if group['blocked'] is not None:
+                        raise RuntimeError('M470_H2B_CALIBRATION_NO_GO')
+                    if len(session['calibration']) == 6:
+                        digest = h2b_freeze_reference(reference_path, session['calibration'])
+                        session['reference_sha256'] = digest
+                        h2b_write_progress(args.output, session)
+                        print('M470_H2B_REFERENCE_FROZEN', digest, flush=True)
+                else:
+                    if len(session['calibration']) != 6 or session['reference_sha256'] is None:
+                        raise RuntimeError('H2B_EVALUATION_BEFORE_FREEZE')
+                    if sha256(reference_path) != session['reference_sha256']:
+                        raise RuntimeError('H2B_REFERENCE_CHANGED')
+                    frozen = json.loads(reference_path.read_text(encoding='utf8'))
+                    group = h2b_evaluate_group(args, env, sampler, step_fn, command,
+                                               seed, profile, frozen['bins'], jax, jnp, np)
+                    results.append(group)
+                    if group['blocked'] is not None:
+                        reason = group['blocked']['reason']
+                        session['status'] = ('M470_H2B_REFERENCE_INCONCLUSIVE'
+                            if reason == 'REFERENCE_UNAVAILABLE' else 'M470_H2B_EVALUATION_BLOCKED')
+                    h2b_write_progress(args.output, session)
+                    print('M470_H2B_EVALUATION_GROUP', seed, profile,
+                          group['blocked'], flush=True)
+                    if group['blocked'] is not None:
+                        raise RuntimeError('M470_H2B_BOUNDED_STOP')
+                continue
+            if args.h2b:
+                if len(session['calibration']) != 6 or len(results) != 6:
+                    raise RuntimeError('H2B_INCOMPLETE_GROUPS')
+                if sha256(reference_path) != session['reference_sha256']:
+                    raise RuntimeError('H2B_REFERENCE_CHANGED')
+                if sha256(args.checkpoint_c) != BASE_SHA:
+                    raise RuntimeError('H2B_BASELINE_CHANGED')
+                session['status'] = 'M470_H2B_EVALUATION_COMPLETED'
+                h2b_write_progress(args.output, session)
+                print(session['status'], args.output, flush=True)
+                return
             if args.h2a:
                 result = h2a_evaluate_group(
                     args,
@@ -1774,6 +2346,17 @@ def run(args):
                 print('M463_GATE3_RESULT',name,seed,profile,direction,
                     'nominal',off['steps'],'pushed',last,'terminated',terminated,
                     'recovered',recovery['recovered'],flush=True)
+    if args.h2b:
+        if len(session['calibration']) != 6 or len(results) != 6:
+            raise RuntimeError('H2B_INCOMPLETE_GROUPS')
+        if sha256(reference_path) != session['reference_sha256']:
+            raise RuntimeError('H2B_REFERENCE_CHANGED')
+        if sha256(args.checkpoint_c) != BASE_SHA:
+            raise RuntimeError('H2B_BASELINE_CHANGED')
+        session['status'] = 'M470_H2B_EVALUATION_COMPLETED'
+        h2b_write_progress(args.output, session)
+        print(session['status'], args.output, flush=True)
+        return
     if args.h2a:
         if len(results) != 6:
             raise RuntimeError(
@@ -1838,7 +2421,8 @@ def main():
     p.add_argument('--checkpoint-c',type=Path,required=True)
     p.add_argument('--checkpoint-p', type=Path)
     p.add_argument('--report-p', type=Path)
-
+    p.add_argument('--h2b', action='store_true',
+                   help='Support-aware DCM command residual, frozen C401M')
     p.add_argument(
         '--h2a',
         action='store_true',
@@ -1881,6 +2465,30 @@ def main():
     if args.max_steps>5000 or args.max_steps<350:p.error('max steps must be in [350,5000]')
     count=len(args.seeds)*len(args.profiles)*len(args.directions)*2
     if count>args.max_cases or args.max_cases>300:p.error(f'{count} cases requested, max-cases={args.max_cases}')    
+    if args.h2a and args.h2b:
+        p.error('H2A and H2B are mutually exclusive')
+    if args.h2b:
+        if (args.seeds != list(H2B_DEV_SEEDS)
+                or args.profiles != list(H2B_PROFILES)
+                or args.directions != ['left', 'right']
+                or args.push_step != 300 or args.push_magnitude != 0.50
+                or args.second_push_step != 335 or args.second_push_magnitude != 0.35
+                or args.max_steps != 1000):
+            p.error('M470_H2B_FROZEN_PROTOCOL_MISMATCH')
+        if args.checkpoint_p is not None or args.report_p is not None:
+            p.error('H2B uses frozen C401M only')
+        if args.mode == 'plan':
+            print('M470_H2B_PLAN', json.dumps({
+                'calibration_seeds': list(H2B_CAL_SEEDS), 'evaluation_seeds': args.seeds,
+                'calibration_trajectories': 6, 'logical_trajectories': 60,
+                'max_physical_transitions': 49014, 'training': False,
+                'governor_config': H2B_CONFIG, 'output': str(args.output),
+            }))
+            return
+        if not args.checkpoint_c.is_file():
+            p.error('Missing frozen C401M checkpoint')
+        run(args)
+        return
     if args.h2a:
         if (
             args.seeds != [7331, 7357]
