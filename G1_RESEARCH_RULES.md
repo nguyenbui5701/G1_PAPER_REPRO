@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.63  
+**Version:** 1.2.64  
 **Ngày cập nhật:** 2026-11-24 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -701,6 +701,14 @@ A: four separate jitted vmapped direct executions OFF1/OFF2/ON1/ON2 on exact sam
 
 Decision H3_M1_1_CORRECTED_FAILURE_CONFIRMED / CAUSAL_DIAGNOSTIC_SOURCE_LANDED / OWNER_STATIC_AND_EXPLICIT_DIAGNOSTIC_GO_PENDING / ALL_PPO_HOLD.
 
+### M4.70-H3-M1-1 — EXPLICIT OWNER GO FOR ONE CAUSAL DIAGNOSTIC ONLY (v1.2.64; 2026-11-24)
+
+Owner explicitly approved "GO H3-M1-1 causal diagnostic only — đọc Rules v1.2.63, kiểm tra lại toàn bộ source theo rules và cung cấp một khối lệnh pull + static preflight + A/B/C diagnostic, tối đa 54 control transitions, tuyệt đối không PPO." One diagnostic-only CUDA job authorized, A only; 0 PPO steps/0 optimizer updates, no automatic retry. Reviewed AGENTS and Rules v1.2.63 at 9c8c559f0f10625817b1a045fcbd9c828b7da00d, existing runner blob7e7ec159fdf837e5d4179cc20f6000e8598a90c7, env b83ec0a031ea4184c48a1a189da9f87fcfb104d4, instrumenter05d6349fc4cbe7f1ce92e14ec95438d79dcb4bda, evaluator65f0b46cc0b61561e8f75864ed9348be60a7919c. Reviewed pinned G1 reset, observation103, termination, reward order, mjx_env.init/forward, G1 randomizer, wrapper/EpisodeWrapper/actor_step, H3 context/reducer and hard execution interlock. Verified source has four direct calls, one audit step, one wrapped actor_step, nine cases, action_repeat1, no train call in diagnostic function, all 8 fields in production env, and redundant H3 block before train with diagnostic return. No new executable edits or tolerance changes. Local m462_ppo_warmstart_run.py bootstrap unavailable through repository connector (404); rely on existing local preflight, not a claimed full runtime verification. Actual integrated Python compile/AST and CLI test on owner machine before CUDA. No SA GPU/PPO/actual integrated Python execution.
+
+One fail-closed command: exact branch and ff-only sync, four source Git blobs and SHA logs, frozen C401M SHA1ccf579ea35d4518713b00ea20d77db8463bc469b7de903b8f10f457b3dc90b8, typed restore report SHA9c46427c16aa482730e45bc9f79c53f6cb18ec3a267d1fc3253faab695916e81, upstream clean PIN9bcbe736177472ba35d60773e3030a36e37962b7, same launcher g1_m463. Offline python3 compile and actual CLI parser dispatch tests with run replaced by a recording stub (never GPU): valid H3 plan, legacy plan, only diagnostic smoke3 accepted for H3 execution, exact rejection of normal H3 smoke3/longtrain/invalid mode/flag conflicts. Verify no JAX import. Static tests not a separate experiment. Then exactly one runner invocation --mode smoke3 --stage easy_repeat_support --h3-m1 --h3-diagnostic-only --checkpoint frozen C401M --restore-report existing typed restore --output-dir fresh timestamp. Mode name is config reuse only; train_steps_target0, rollouts_target0, 54 control transitions max (A36/B9/C9, plus forward-only initialization). Keep all v1.2.63 fixture/case/RNG/action checks and legacy byte checks. No training through diagnostic; historical exact physics FAIL preserved. If finite numerical inequality A, record and continue causal evidence B/C as already defined; any hard assertion or nonfinite/VRAM>=95%/sampler failure stops. No tolerance adjustment. Preserve combined log and partial report; postrun exact source and frozen input immutability, report SHA. Successful process requires report status M470_H3_DIAGNOSTIC_COMPLETE_PPO_HOLD, diagnostic_complete true, passed false, training_authorized false, training_performed false, empty report_history/checkpoints, steps_observed0, run_steps_observed0, exact54 diagnostic transitions and memory gates. These are diagnostic completion, NOT original physics or training GO. If failure no retry or further experiments; owner sends log/report. H3 Smoke3/+10M and H2C/B HOLD. Rules-only commit.
+
+Decision H3_CAUSAL_DIAGNOSTIC_OWNER_GO_ONE_JOB_PENDING / ALL_PPO_HOLD.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -962,6 +970,9 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-24)
+
+**M470-H3 CAUSAL DIAGNOSTIC GO (v1.2.64; 2026-11-24):** explicit owner GO one A/B/C diagnostic only, max54 control transitions, 0 PPO/optimizer. Runner7e7ec159 and other pins unchanged, source/API review complete with local bootstrap unavailable remotely; compile/CLI stub preflight in same owner command. Historical exact gate FAIL preserved, diagnostic completion cannot authorize PPO. Execution pending, no retry; all PPO/H2C/B HOLD.
+
 
 **M470-H3 CAUSAL DIAGNOSTIC REDESIGN (v1.2.63; 2026-11-24):** complete corrected log/report hashes7dc95eaa/d2053b17, shared snapshot PASS, qpos310/324 mismatch maxabs.00107265, 0 PPO, peak723MiB, immutable baseline PASS. Owner approved source redesign at 72120c48f1432cd75b9bc89abbd74c8a7c62f190, runner only. A same-treatment controls / B same-postphysics actual reward / C actual wrapped DR, 54 diagnostic transitions max. New --h3-diagnostic-only and hard H3 PPO HOLD, no gate bypass. Source review and extracted guard/host arithmetic tests only; actual AST/CUDA pending. Fresh explicit diagnostic-only GO required. +10M/H2C/B HOLD.
 
@@ -1403,6 +1414,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-24 | H3 causal diagnostic explicit GO | Rules v1.2.63, source/API/interlock reviewed, runner7e7ec159 and all source pins unchanged | v1.2.64 one diagnostic-only job max54 control transitions, 0 PPO, owner execution pending | 1.2.64 |
+
 | 2026-11-24 | H3-M1-1 full failure evidence and causal diagnostic source redesign | log7dc95eaa/reportd2053b17, qpos310/324 maxabs.00107265, 0 PPO, source 72120c48f1432cd75b9bc89abbd74c8a7c62f190 runner only | v1.2.63 A/B/C diagnostic source landed, 54 transitions max, hard PPO HOLD, static and separate diagnostic GO pending | 1.2.63 |
 
 | 2026-11-24 | H3-M1-1 corrected qpos stop / full SA gate audit | pasted traceback PHYSICS .qpos line313; exact source and v1.2.7/v1.2.9 history reviewed, full corrected artifacts pending | v1.2.62 exact gate FAIL, attribution INCONCLUSIVE, redesign pending approval; no source edit or execution | 1.2.62 |
@@ -1594,6 +1607,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.64 — 2026-11-24:** Record owner GO for one causal diagnostic A/B/C only, exact source unchanged, integrated offline compile/CLI preflight, max54 control transitions and hard PPO HOLD; no runtime PASS claimed.
 
 - **v1.2.63 — 2026-11-24:** Accept full corrected failure artifacts; implement owner-approved causal diagnostic A/B/C in existing runner with coherent fixture and hard H3 PPO interlock. Preserve exact physics failure, no tolerance widening or new execution GO. Source review and extracted snippet tests only.
 
