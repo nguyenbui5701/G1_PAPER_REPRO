@@ -1707,6 +1707,433 @@ def h2b_freeze_reference(path, calibration):
     return digest
 
 
+# M470-H3-M1-3: frozen three-policy, original-source controlled screen.
+# Isolated from the legacy and H2 evaluators; no optimizer or governor.
+H3_EVAL_SEEDS = (7331, 7357, 7601, 7613)
+H3_EVAL_PROFILES = ('stand', 'forward_fast', 'turn_left')
+H3_EVAL_POLICIES = ('C', 'OLD', 'H3')
+H3_EVAL_LOGICAL = 180
+H3_EVAL_PHYSICAL = 134424
+H3_EVAL_SHA = 'aaa4e14b0142d83843892105e47cfe25aed655bc71c20e04ac4ac4239dbb75a4'
+H3_EVAL_REPORT_SHA = '84c285315e109ca8716476b0f527873046b441d35e3fe963570e5f2019fe3530'
+H3_EVAL_MANIFEST_SHA = 'b7e99cf8a440ce2991d972b4edba93c0c709589afe73290acf2308c7dce6bcb5'
+H3_EVAL_FULLSTATE_SHA = '2a2fba49a6ceb940dd1ee8c72dd1858d288172fbd022acd5bedd625ff694dc68'
+H3_EVAL_OLD_REPORT_SHA = '04f7c71b3dd4b9d24e06b13991a9e4bb4e6c482d217929a74aa40537e9b62f74'
+H3_EVAL_FLAGS = ('cause_inverted_torso', 'cause_foot_foot',
+                'cause_left_foot_right_shin', 'cause_right_foot_left_shin',
+                'cause_nan_qpos', 'cause_nan_qvel')
+H3_EVAL_LIMITS = {'h2a_joint_limit_excess': .001,
+                 'h2a_ctrl_limit_excess': .001,
+                 'h2a_force_limit_excess': .1}
+
+
+def h3_require(ok, label):
+    if not ok:
+        raise RuntimeError('M470_H3_EVAL_'+label)
+
+
+def h3_validate_protocol(args):
+    h3_require(args.h3_m1_eval and not args.h2a and not args.h2b, 'MODE_CONFLICT')
+    h3_require(tuple(args.seeds)==H3_EVAL_SEEDS
+               and tuple(args.profiles)==H3_EVAL_PROFILES
+               and tuple(args.directions)==('left','right')
+               and (args.push_step,args.push_magnitude,args.second_push_step,
+                    args.second_push_magnitude,args.max_steps,args.max_cases)
+                   ==(300,.50,335,.35,1000,H3_EVAL_LOGICAL), 'FROZEN_PROTOCOL')
+    h3_require(all(p is not None for p in
+                   (args.checkpoint_c,args.checkpoint_p,args.report_p,
+                    args.checkpoint_h3,args.report_h3)), 'MISSING_INPUT')
+    h3_require(36*(1000+2*(701+666))==H3_EVAL_PHYSICAL,'BUDGET_FORMULA')
+
+
+def h3_read_inputs(args):
+    """Byte-pinned evidence; OLD10M still uses the unmodified legacy validator."""
+    from m463_push_ppo_train import H3_SPEC,H3_FP,h3_audit_counts,m470_fingerprint
+    h3_validate_protocol(args)
+    manifest=args.checkpoint_h3.parent/'m470_fullstate_step_010485760.json'
+    pins={'C_policy':(args.checkpoint_c,BASE_SHA),
+          'OLD_policy':(args.checkpoint_p,M470_10M_SHA),
+          'OLD_report':(args.report_p,H3_EVAL_OLD_REPORT_SHA),
+          'H3_policy':(args.checkpoint_h3,H3_EVAL_SHA),
+          'H3_report':(args.report_h3,H3_EVAL_REPORT_SHA),
+          'H3_manifest':(manifest,H3_EVAL_MANIFEST_SHA)}
+    for k,(p,expected) in pins.items():
+        h3_require(p.is_file() and not p.is_symlink() and sha256(p)==expected,'INPUT_'+k)
+    old=read_m463_smoke_report(args.report_p,args.checkpoint_p)
+    r=json.loads(args.report_h3.read_bytes())
+    m=json.loads(manifest.read_bytes())
+    h3_require(r['status']=='M463_COVERAGE_LONGTRAIN_PASS'
+               and r['experiment_design']=='INDEPENDENT_C401M_SINGLE_PROCESS'
+               and r['stage']=='easy_repeat_support' and r['independent_budget']=='10M'
+               and r['trained_from']=='C401M_WEIGHTS_ONLY_ADAM_STARTED_ONCE'
+               and r['source_commit']==PIN and r['source_checkpoint_sha256']==BASE_SHA
+               and r['training_seed']==1 and r['cumulative_steps_start']==0
+               and r['resume_fullstate_sha256'] is None
+               and r['train_steps_target']==r['steps_observed']==r['run_steps_observed']==10485760
+               and r['rollouts_target']==40 and r['rollouts_per_epoch']==8
+               and r['hardware_scaled_config']==old['hardware_scaled_config']
+               and m470_fingerprint(r['hardware_scaled_config'])==H3_FP
+               and r['h3_m1_enabled'] is True and r['h3_m1_spec']==H3_SPEC
+               and r['h1_m1_enabled'] is False and r['h1_m2_enabled'] is False
+               and r['training_performed'] is True and r['weights_finite'] is True
+               and r['final_tensor_count']==25 and r['callback_vs_final_equal'] is True
+               and r['coverage_gate_pass'] is True and r['memory_gate_pass'] is True
+               and r['eval_source_reward_unchanged'] is True
+               and r['PD_termination_source_unchanged'] is True
+               and r['train_reward_config']==old['train_reward_config']
+               and r['gpu_total_mib']==12288 and 0<r['gpu_peak_mib']<.95*12288
+               and r['gpu_monitor_errors']==[], 'H3_REPORT_CONTRACT')
+    a=r['h3_independent_acceptance_basis']
+    h3_require(a['old10m_report_sha256']==H3_EVAL_OLD_REPORT_SHA
+               and a['old10m_policy_sha256']==M470_10M_SHA
+               and a['longtrain_brax_comparison']['normalized_generated_matches_old10m'] is True
+               and a['historical_exact_gate']=='FAILED_85891a1'
+               and a['diagnostic_control_transitions_reexecuted']==0
+               and a['independent_executable_exact_equal'] is False,'H3_COMPARATOR')
+    audit=h3_audit_counts(r['coverage']['counts'])
+    h3_require(audit['passed'] and audit==r['h3_m1_training_transition_audit'],'H3_AUDIT')
+    steps=list(range(2097152,10485761,2097152))
+    h3_require([x['steps'] for x in r['checkpoints']]==steps
+               and [x['steps'] for x in r['fullstate_checkpoints']]==steps
+               and r['checkpoints'][-1]['file']==args.checkpoint_h3.name
+               and r['checkpoints'][-1]['sha256']==H3_EVAL_SHA
+               and r['fullstate_checkpoints'][-1]['sha256']==H3_EVAL_FULLSTATE_SHA
+               and m['fullstate_sha256']==H3_EVAL_FULLSTATE_SHA
+               and m['cumulative_steps']==10485760 and m['parent_resume_sha256'] is None
+               and m['h3_m1_enabled'] is True and m['h3_m1_spec']==H3_SPEC
+               and m['source_checkpoint_sha256']==BASE_SHA
+               and m['runner_sha256']==r['runner_sha256']
+               and m['config_fingerprint']==H3_FP
+               and m['instrumented_brax_sha256']==r['instrumented_brax']['instrumented_sha256'],
+               'H3_CHECKPOINT_MANIFEST')
+    return {k:expected for k,(_,expected) in pins.items()}
+
+
+def h3_write(path, report, initial=False):
+    # Compact raw scalar rows, shared prefixes stored only once.
+    path.parent.mkdir(parents=True,exist_ok=True)
+    tmp=path.with_name(path.name+'.tmp')
+    if initial:
+        h3_require(not path.exists() and not tmp.exists(),'OUTPUT_EXISTS')
+        target=path
+    else:
+        target=tmp
+    with target.open('x',encoding='utf8') as f:
+        json.dump(report,f,ensure_ascii=False,allow_nan=False,separators=(',',':'))
+        f.write('\n')
+        f.flush()
+        os.fsync(f.fileno())
+    if not initial:
+        os.replace(tmp,path)
+
+
+def h3_gpu_check(monitor):
+    g=monitor.snapshot()
+    h3_require(g['total_mib']==12288 and g['peak_used_mib'] is not None
+               and 0<g['peak_used_mib']<.95*12288 and g['samples']>0
+               and not g['sampler_errors'],'GPU_GATE')
+    return g
+
+
+def h3_group(args,env,step_fn,jax,jnp,np,session,name,seed,profile):
+    """One nominal rollout, two single suffixes, two double suffixes at most."""
+    group={'policy':name,'seed':seed,'profile':profile,'command':list(PROFILES[profile]),
+           'nominal_frames':[],'directions':{},'complete':False}
+    session['groups'].append(group)
+    start=session['physical_transitions_attempted']
+    def clone(st):
+        return jax.tree_util.tree_map(lambda x:x,st)
+    def advance(st,first,last,rows,capture_step=None):
+        snap=None
+        for i in range(first,last+1):
+            h3_require(session['physical_transitions_attempted']<H3_EVAL_PHYSICAL,'PHYSICAL_BUDGET')
+            session['physical_transitions_attempted']+=1
+            st,diag=step_fn(st)
+            raw=jax.device_get(diag)
+            h3_require(bool(raw['h2a_state_finite']) and bool(raw['h3_finite']),'NONFINITE_STATE')
+            row={}
+            for k,v in raw.items():
+                a=np.asarray(v)
+                h3_require(a.ndim==0 and np.isfinite(a).all(),'NONFINITE_OR_NONSCALAR_'+k)
+                row[k]=float(a)
+            h3_require(row['done'] in (0.,1.) and
+                       bool(row['done'])==any(bool(row[k]) for k in H3_EVAL_FLAGS),
+                       'TERMINATION_FLAGS')
+            h3_require(all(row[k] in (0.,1.) for k in ('lf_ground_contact','rf_ground_contact')),
+                       'CONTACT_SCHEMA')
+            cols=sorted(row)
+            if session['frame_columns'] is None:
+                session['frame_columns']=cols
+            h3_require(cols==session['frame_columns'],'FRAME_SCHEMA')
+            rows.append([row[k] for k in cols])
+            session['physical_transitions_recorded']+=1
+            if row['done']:
+                break
+            if i==capture_step:
+                snap=clone(st)
+            if i%100==0:
+                session['gpu']=h3_gpu_check(args.h3_monitor)
+        return snap
+    def kick(snapshot,direction,magnitude,step):
+        st=clone(snapshot)
+        heading=yaw_from_root_quat(jax.device_get(st.data.qpos[3:7]))
+        requested=new_body_delta(direction,heading,magnitude)
+        before=np.asarray(jax.device_get(st.data.qvel))
+        qvel=st.data.qvel.at[:2].add(jnp.asarray(requested,dtype=st.data.qvel.dtype))
+        after=np.asarray(jax.device_get(qvel))
+        actual=(after[:2].astype(np.float64)-before[:2].astype(np.float64))
+        h3_require(np.isfinite(actual).all() and np.array_equal(before[2:],after[2:])
+                   and np.allclose(actual,requested,atol=2e-6,rtol=0),'ACTUAL_KICK')
+        return st.replace(data=st.data.replace(qvel=qvel)), {
+            'exposed':True,'step':step,'heading_rad':heading,
+            'requested_world_dqvel_xy_mps':list(requested),
+            'actual_world_dqvel_xy_mps':actual.tolist(),
+            'actual_magnitude_mps':float(np.linalg.norm(actual)),
+            'full_state_rng_fork_by_construction':True}
+    st=env.reset(jax.random.PRNGKey(seed))
+    h3_require(st.obs['state'].shape==(103,) and st.obs['privileged_state'].shape==(216,)
+               and not bool(jax.device_get(st.done)), 'RESET_SCHEMA')
+    snapshot=advance(st,1,1000,group['nominal_frames'],299)
+    for direction in args.directions:
+        item={'first':{'exposed':False,'step':300,'reason':'nominal_terminated_before_push'},
+              'second':{'exposed':False,'step':335,'reason':'first_not_exposed'},
+              'single_suffix':[],'double_suffix':[]}
+        group['directions'][direction]=item
+        if snapshot is None:
+            continue
+        first,item['first']=kick(snapshot,direction,.50,300)
+        second_snapshot=advance(first,300,1000,item['single_suffix'],334)
+        item['second']['reason']='single_terminated_before_second'
+        if second_snapshot is not None:
+            second,item['second']=kick(second_snapshot,direction,.35,335)
+            advance(second,335,1000,item['double_suffix'])
+    group['physical_transitions']=session['physical_transitions_attempted']-start
+    h3_require(group['physical_transitions']<=3734,'GROUP_BUDGET')
+    group['complete']=True
+    session['logical_trajectories_completed']+=5
+    return group
+
+
+def h3_decode(group,columns):
+    """Reconstruct logical full traces; never count reused prefixes as physical."""
+    def rows(values):
+        return [dict(zip(columns,row)) for row in values]
+    nom=rows(group['nominal_frames'])
+    h3_require(bool(nom),'EMPTY_NOMINAL')
+    traces={('nominal','none'):(nom,True)}
+    for d in ('left','right'):
+        item=group['directions'][d]
+        f=bool(item['first']['exposed'])
+        e=bool(item['second']['exposed'])
+        single=nom[:299]+rows(item['single_suffix']) if f else nom
+        double=single[:334]+rows(item['double_suffix']) if e else single
+        h3_require((not e or f) and (not f or len(nom)>=299)
+                   and (not e or len(single)>=334),'FORK_LENGTH')
+        for trace in (single,double):
+            h3_require(0<len(trace)<=1000 and
+                       (len(trace)==1000 or bool(trace[-1]['done'])) and
+                       not any(bool(x['done']) for x in trace[:-1]),'TRACE_END')
+        traces[('single',d)]=(single,f)
+        traces[('double',d)]=(double,e)
+    h3_require(len(nom)<=1000 and (len(nom)==1000 or bool(nom[-1]['done']))
+               and not any(bool(x['done']) for x in nom[:-1]),'NOMINAL_END')
+    return traces
+
+
+def h3_recovery(control,trace,step,window,exposed):
+    a,b=control[step-1:step-1+window],trace[step-1:step-1+window]
+    if not exposed or len(a)!=window or len(b)!=window or a[-1]['done'] or b[-1]['done']:
+        return {'recovered':False,'comparable':False,'recovery_s':None,
+                'reason':'nonexposed_or_terminated_within_window',
+                'window_steps':window,'n_common_steps':min(len(a),len(b))}
+    return {**matched_off_recovery(a,b,window), 'comparable':True}
+
+
+def h3_summary(trace,exposed,kind,control):
+    step={'nominal':None,'single':300,'double':335}[kind]
+    out=aggregate_frames(trace,bool(trace[-1]['done']),len(trace),1000,step)
+    out['exposed']=exposed
+    out['survived']=bool(exposed and out['completed'])
+    out['full_observed_safety_max']={k:max(f[k] for f in trace) for k in H3_EVAL_LIMITS}
+    if step is not None:
+        for sec,window in ((2,100),(5,250)):
+            out['recovery_'+str(sec)+'s']=h3_recovery(control,trace,step,window,exposed)
+            a,b=control[step-1:],trace[step-1:]
+            # A terminal frame at the last required tick is not a full valid window.
+            out['tracking_'+str(sec)+'s']=(fixed_window_tracking(a,b,window)
+                if exposed and len(a)>=window and len(b)>=window
+                and not a[window-1]['done'] and not b[window-1]['done'] else
+                {'comparable':False,'reason':'nonexposed_or_early_termination','window_steps':window})
+    return out
+
+
+def h3_tracking_limit(old,new):
+    return new<=old+(.0005 if old<.01 else .05*old)
+
+
+def h3_standing(trace,first):
+    x=trace[first-1:]
+    h3_require(len(x)==1001-first,'STANDING_WINDOW')
+    n=len(x)
+    mean=lambda k:sum(f[k] for f in x)/n
+    return {'first_step':first,'last_step':1000,'samples':n,
+            'pose_l1_mean':mean('h3_pose_l1'),
+            'swing_fraction':sum((2-f['lf_ground_contact']-f['rf_ground_contact'])/2 for f in x)/n,
+            'xy_rmse':math.sqrt(sum(f['xy_err']**2 for f in x)/n),
+            'yaw_rmse':math.sqrt(sum(f['yaw_err']**2 for f in x)/n),
+            'contact_transitions':{k:sum(a[k]!=b[k] for a,b in zip(x,x[1:]))
+                                   for k in ('lf_ground_contact','rf_ground_contact')},
+            'root_xy_path_m':sum(math.hypot(b['h3_root_x']-a['h3_root_x'],
+                                            b['h3_root_y']-a['h3_root_y'])
+                                 for a,b in zip(x,x[1:]))}
+
+
+def h3_decide(session):
+    groups={(g['seed'],g['profile'],g['policy']):g for g in session['groups']}
+    expected={(s,p,n) for s in H3_EVAL_SEEDS for p in H3_EVAL_PROFILES for n in H3_EVAL_POLICIES}
+    h3_require(set(groups)==expected and len(session['groups'])==36
+               and all(g['complete'] for g in groups.values()),'GROUP_COMPLETENESS')
+    h3_require(session['logical_trajectories_completed']==180
+               and session['physical_transitions_attempted']==session['physical_transitions_recorded']
+               ==sum(g['physical_transitions'] for g in groups.values())
+               and session['physical_transitions_recorded']<=H3_EVAL_PHYSICAL,'FINAL_BUDGET')
+    summaries=[]
+    paired=[]
+    hard=[]
+    primary={'survival':{'OLD':0,'H3':0},'recovery5':{'OLD':0,'H3':0}}
+    moving={p:{'OLD':0,'H3':0} for p in H3_EVAL_PROFILES if p!='stand'}
+    standing={k:0 for k in ('nominal','single','double')}
+    nominal={n:0 for n in H3_EVAL_POLICIES}
+    for seed in H3_EVAL_SEEDS:
+        for profile in H3_EVAL_PROFILES:
+            traces={n:h3_decode(groups[(seed,profile,n)],session['frame_columns']) for n in H3_EVAL_POLICIES}
+            for kind,d in [('nominal','none')]+[(k,d) for d in ('left','right') for k in ('single','double')]:
+                row={'seed':seed,'profile':profile,'kind':kind,'direction':d,'policies':{}}
+                for n in H3_EVAL_POLICIES:
+                    trace,exposed=traces[n][(kind,d)]
+                    control=traces[n][('single',d) if kind=='double' else ('nominal','none')][0]
+                    summary=h3_summary(trace,exposed,kind,control)
+                    row['policies'][n]=summary
+                    if kind=='nominal':
+                        nominal[n]+=int(summary['survived'])
+                o,h=row['policies']['OLD'],row['policies']['H3']
+                old_t,new_t=traces['OLD'][(kind,d)][0],traces['H3'][(kind,d)][0]
+                key=[seed,profile,kind,d]
+                n=min(len(old_t),len(new_t))
+                safety={}
+                for k,tol in H3_EVAL_LIMITS.items():
+                    x=max(f[k] for f in old_t[:n]); y=max(f[k] for f in new_t[:n])
+                    safety[k]={'OLD':x,'H3':y,'tolerance':tol,'pass':y<=x+tol}
+                    if not safety[k]['pass']:
+                        hard.append({'case':key,'gate':k})
+                flags=lambda summary:{k for k,v in summary.get('terminal_source_flags',{}).items() if v}
+                new_flags=sorted(flags(h)-flags(o))
+                if new_flags:
+                    hard.append({'case':key,'gate':'new_critical_terminal_flags','flags':new_flags})
+                lost=o['survived'] and not h['survived']
+                if lost and (kind=='single' or (kind=='double' and profile!='stand')):
+                    hard.append({'case':key,'gate':'lost_survival'})
+                comparison={'case':key,'common_prefix_samples':n,'safety':safety,
+                            'new_critical_terminal_flags':new_flags,
+                            'survival':{n:row['policies'][n]['survived'] for n in H3_EVAL_POLICIES}}
+                if kind!='nominal':
+                    comparison['recovery5']={n:row['policies'][n]['recovery_5s']['recovered'] for n in H3_EVAL_POLICIES}
+                if kind=='nominal':
+                    for k in ('xy_tracking_rmse_mps','yaw_tracking_rmse_radps'):
+                        if not h3_tracking_limit(o[k],h[k]):
+                            hard.append({'case':key,'gate':'nominal_'+k})
+                if kind=='double':
+                    if profile=='stand':
+                        for n in ('OLD','H3'):
+                            primary['survival'][n]+=int(row['policies'][n]['survived'])
+                            primary['recovery5'][n]+=int(comparison['recovery5'][n])
+                    else:
+                        for n in ('OLD','H3'):
+                            moving[profile][n]+=int(comparison['recovery5'][n])
+                if profile=='stand':
+                    if o['survived'] and h['survived']:
+                        first={'nominal':101,'single':400,'double':435}[kind]
+                        x,y=h3_standing(old_t,first),h3_standing(new_t,first)
+                        standing[kind]+=1
+                        tests={k:h3_tracking_limit(x[k],y[k]) for k in ('pose_l1_mean','xy_rmse','yaw_rmse')}
+                        tests['swing_fraction']=y['swing_fraction']<=x['swing_fraction']+.02
+                        comparison['standing']={'OLD':x,'H3':y,'checks':tests}
+                        for k,v in tests.items():
+                            if not v:
+                                hard.append({'case':key,'gate':'standing_'+k})
+                    else:
+                        comparison['standing']={'comparable':False,'reason':'not_common_full_survivors'}
+                summaries.append(row)
+                paired.append(comparison)
+    for n,count in nominal.items():
+        if count!=12:
+            hard.append({'policy':n,'gate':'nominal_12_of_12','observed':count})
+    for p,v in moving.items():
+        if v['H3']<v['OLD']:
+            hard.append({'profile':p,'gate':'moving_double_recovery5_net_loss'})
+    ceiling=[]
+    primary_pass=True
+    for k,v in primary.items():
+        v['gain']=v['H3']-v['OLD']
+        v['pass']=v['gain']>=2
+        if v['OLD']>6:
+            ceiling.append(k)
+        primary_pass=primary_pass and v['pass']
+    missing=[k for k,v in standing.items() if v<(4 if k=='nominal' else 1)]
+    # A safety failure is never masked by a primary ceiling or missing window.
+    decision=('NO_GO' if hard else 'INCONCLUSIVE' if ceiling else
+              'NO_GO' if not primary_pass else 'INCONCLUSIVE' if missing else 'DEV_PASS')
+    return {'decision':decision,'primary_stand_double':primary,'primary_ceiling':ceiling,
+            'moving_double_recovery5':moving,'nominal_survivors':nominal,
+            'standing_common_windows':standing,'missing_standing_windows':missing,
+            'hard_failures':hard,'paired_cases':paired,'logical_outcomes':summaries,
+            'promotion_authorized':False,'further_training_authorized':False}
+
+
+def h3_run(args):
+    import shutil
+    from m462_ppo_warmstart_run import GPUMonitor,sample_gpu
+    pins=h3_read_inputs(args)
+    args.output.parent.mkdir(parents=True,exist_ok=True)
+    h3_require(shutil.disk_usage(args.output.parent).free>=2*1024**3,'DISK_RESERVE')
+    g=sample_gpu()
+    h3_require(g['total_mib']==12288 and 0<=g['used_mib']<.95*12288,'GPU_PREFLIGHT')
+    report={'status':'M470_H3_EVAL_IN_PROGRESS','source_commit':PIN,
+            'brax_train_sha256':TRAIN_SHA,'evaluator_sha256':sha256(Path(__file__)),
+            'input_sha256':pins,'seeds':args.seeds,'profiles':args.profiles,
+            'directions':args.directions,'push_step':300,'push_magnitude_mps':.50,
+            'second_push_step':335,'second_push_magnitude_mps':.35,'max_steps':1000,
+            'dt_s':.02,'training_performed':False,'deterministic_actor':True,
+            'domain_randomization_enabled':False,'random_source_push_enabled':False,
+            'original_reward_PD_termination':True,'expected_logical_trajectories':180,
+            'max_physical_transitions':H3_EVAL_PHYSICAL,'physical_transitions_attempted':0,
+            'physical_transitions_recorded':0,'logical_trajectories_completed':0,
+            'frame_columns':None,'groups':[],'gpu_initial':g,'promotion_authorized':False}
+    h3_write(args.output,report,initial=True)
+    monitor=GPUMonitor()
+    args.h3_monitor=monitor
+    args.h3_session=report
+    try:
+        with monitor:
+            run(args)
+        report['gpu']=h3_gpu_check(monitor)
+        h3_require(h3_read_inputs(args)==pins,'INPUT_IMMUTABILITY')
+        h3_require(report['logical_trajectories_completed']==180
+                   and report['physical_transitions_attempted']<=H3_EVAL_PHYSICAL,
+                   'FINAL_CONTRACT')
+        report['status']='M470_H3_EVAL_COMPLETED'
+        h3_write(args.output,report)
+        print('M470_H3_EVAL_COMPLETED',report['decision']['decision'],
+              report['logical_trajectories_completed'],report['physical_transitions_attempted'],
+              flush=True)
+    except BaseException as e:
+        report['status']='M470_H3_EVAL_FAILED'
+        report['error']=type(e).__name__+': '+str(e)
+        report['gpu']=monitor.snapshot()
+        h3_write(args.output,report)
+        raise
+
+
 def run(args):
     if args.output.exists():raise FileExistsError('Refuse to overwrite output: '+str(args.output))
     # Use the same pinned runner environment; apply compatibility BEFORE JAX import.
@@ -1726,6 +2153,10 @@ def run(args):
     from mujoco_playground import locomotion
     from mujoco_playground._src import collision
     if jax.default_backend()!='gpu':raise RuntimeError('M463_GATE3_REQUIRES_GPU')
+    if args.h3_m1_eval:
+        h3_require(jax.__version__=='0.4.35' and jax.process_count()==1
+                   and jax.local_device_count()==1,'RUNTIME_PIN')
+        args.h3_session['jax_version']=jax.__version__
     if sha256(inspect.getfile(ppo.train))!=TRAIN_SHA:raise RuntimeError('M462_PINNED_BRAX_SOURCE_MISMATCH')
     paper=build_paper_config()
     if sha256(args.checkpoint_c)!=BASE_SHA:raise RuntimeError('M462_FROZEN_401M_SHA_MISMATCH')
@@ -1749,6 +2180,9 @@ def run(args):
         raise RuntimeError('M462_EVAL_PINNED_SOURCE_PUSH_CONFIG_CHANGED')
     if float(cfg.reward_config.scales.base_height)!=0.:
         raise RuntimeError('M462_EVAL_SOURCE_REWARD_CONFIG_CHANGED')
+    if args.h3_m1_eval:
+        old_reward=json.loads(args.report_p.read_bytes())['train_reward_config']
+        h3_require(cfg.reward_config.to_dict()==old_reward,'ORIGINAL_REWARD_CONFIG')
     cfg.push_config.enable=False
     env=locomotion.load(ENV,config=cfg)
     if env.action_size!=29:raise RuntimeError('M462_ACTION_DIM_CHANGED')
@@ -1780,6 +2214,9 @@ def run(args):
         policies['P'] = load_policy(
             args.checkpoint_p
         )
+    if args.h3_m1_eval:
+        policies['OLD']=policies.pop('P')
+        policies['H3']=load_policy(args.checkpoint_h3)
     results=[]
     if args.h2b:
         reference_path = args.output.with_suffix('.reference.json')
@@ -2020,7 +2457,7 @@ def run(args):
                         ),
                 })
 
-                if args.h2a or args.h2b:
+                if args.h2a or args.h2b or args.h3_m1_eval:
                     model = env.mj_model
 
                     def limit_excess(values, limits, mask):
@@ -2041,7 +2478,7 @@ def run(args):
                         )
 
                     diag.update({
-                        'h2a_action': action,
+                        **({} if args.h3_m1_eval else {'h2a_action': action}),
 
                         'h2a_joint_limit_excess': limit_excess(
                             d.qpos[7:],
@@ -2070,8 +2507,29 @@ def run(args):
                         ),
                     })
 
+                if args.h3_m1_eval:
+                    diag.update({
+                        'h3_pose_l1': jnp.sum(jnp.abs(d.qpos[7:]-env._default_pose)),
+                        'h3_root_x': d.qpos[0], 'h3_root_y': d.qpos[1],
+                        'h3_finite': (jnp.isfinite(d.qacc).all()
+                            & jnp.isfinite(d.sensordata).all()
+                            & jnp.isfinite(state.obs['state']).all()
+                            & jnp.isfinite(state.obs['privileged_state']).all()
+                            & jnp.isfinite(next_state.obs['state']).all()
+                            & jnp.isfinite(next_state.obs['privileged_state']).all()
+                            & jnp.isfinite(next_state.reward)),
+                    })
                 return next_state,diag
             step_fn=jax.jit(one_step)
+            if args.h3_m1_eval:
+                session=args.h3_session
+                g=h3_group(args,env,step_fn,jax,jnp,np,session,name,seed,profile)
+                session['gpu']=h3_gpu_check(args.h3_monitor)
+                h3_write(args.output,session)
+                print('M470_H3_EVAL_GROUP',name,seed,profile,g['physical_transitions'],
+                      session['logical_trajectories_completed'],
+                      session['physical_transitions_attempted'],flush=True)
+                continue
             if args.h2b:
                 if seed in H2B_CAL_SEEDS:
                     group = h2b_calibrate(args, env, sampler, step_fn, command,
@@ -2335,6 +2793,9 @@ def run(args):
                 print('M463_GATE3_RESULT',name,seed,profile,direction,
                     'nominal',off['steps'],'pushed',last,'terminated',terminated,
                     'recovered',recovery['recovered'],flush=True)
+    if args.h3_m1_eval:
+        args.h3_session['decision']=h3_decide(args.h3_session)
+        return
     if args.h2b:
         if len(session['calibration']) != 6 or len(results) != 6:
             raise RuntimeError('H2B_INCOMPLETE_GROUPS')
@@ -2410,6 +2871,9 @@ def main():
     p.add_argument('--checkpoint-c',type=Path,required=True)
     p.add_argument('--checkpoint-p', type=Path)
     p.add_argument('--report-p', type=Path)
+    p.add_argument('--h3-m1-eval',action='store_true')
+    p.add_argument('--checkpoint-h3',type=Path)
+    p.add_argument('--report-h3',type=Path)
     p.add_argument('--h2b', action='store_true',
                    help='Support-aware DCM command residual, frozen C401M')
     p.add_argument(
@@ -2454,6 +2918,22 @@ def main():
     if args.max_steps>5000 or args.max_steps<350:p.error('max steps must be in [350,5000]')
     count=len(args.seeds)*len(args.profiles)*len(args.directions)*2
     if count>args.max_cases or args.max_cases>300:p.error(f'{count} cases requested, max-cases={args.max_cases}')    
+    if args.h3_m1_eval:
+        try:
+            h3_validate_protocol(args)
+        except RuntimeError as e:
+            p.error(str(e))
+        if args.mode=='plan':
+            print('M470_H3_EVAL_PLAN',json.dumps({
+                'policies':list(H3_EVAL_POLICIES),'seeds':args.seeds,
+                'profiles':args.profiles,'directions':args.directions,
+                'logical_trajectories':180,'max_physical_transitions':134424,
+                'training_performed':False,'output':str(args.output)}))
+            return
+        h3_run(args)
+        return
+    if args.checkpoint_h3 is not None or args.report_h3 is not None:
+        p.error('H3 inputs require --h3-m1-eval')
     if args.h2a and args.h2b:
         p.error('H2A and H2B are mutually exclusive')
     if args.h2b:
