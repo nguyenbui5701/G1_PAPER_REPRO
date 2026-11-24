@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.43  
+**Version:** 1.2.44  
 **Ngày cập nhật:** 2026-11-23 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -497,6 +497,16 @@ Owner explicitly approved `GO H2A1 — triển khai Runtime và Controlled Recov
 
 Current `H2A1_OWNER_GO_ONE_CONTROLLED_EVAL_EXECUTION_PENDING`. Owner returns combined log, raw JSON if produced, VRAM sampling evidence. No performance result claimed.
 
+### M4.70-H2A1 — PREFIX NOMINAL INTERFERENCE NO-GO; BOUNDED H2A1 CLOSED (v1.2.44; 2026-11-24)
+
+**Owner evidence:** `m470_h2a1_20261124_152346_276280059.log` SHA256 `249676c90d955e4d98f3ca33226e486f4360a9afe1507976e082cd008e1447a3`, matching JSON SHA256 `7e453e0200518a019a57ba3e16e54b6e4047281b8ec4945098572df096695151`, VRAM CSV SHA256 `f2e65d30946ce5a857879f74cf32c3252a2981476ffc04efa9a66d34880db3ea`. All three files read directly in full by SA. Owner synced exact v1.2.43 HEAD `3770564cdfbe2dcacc9e125330d0ee87130bd779`, evaluator blob `e26043088bee558015b8592b6ef86dd85bf546b1`; source/frozen inputs PASS, process-local NVCC, PAPER_CONFIG_VERIFIED=YES, JAX0.4.35, report source/Brax/C401M labels match frozen provenance. GPU evaluation reached actual transitions, first group completed. Four JAX overflow-in-cast warnings and one HLO int-literal parse diagnostic occurred, did not stop execution; internal cause unresolved, do not claim harmless. 87 VRAM samples, peak705/12288 MiB (5.7373%). Full exported JSON finite, all actual frame action lengths29 and state_finite true. JSON status M470_H2A_EVALUATION_BLOCKED, completed_groups1/6, 10/60 reconstructible logical trajectories, 5915 executed physical transitions including one transition in next group's prefix. EXIT_CODE=1, TEE_EXIT_CODE=0, expected RuntimeError M470_H2A_PREFIX_GATE_NO_GO after JSON write. End-of-job full evidence validator and post-execution immutability rehash not reached; preflight checkpoint bytes checked by owner, no SA independent binary rehash. No training.
+
+**Direct cause:** group7331/forward_fast, goal [0.6000000238418579,0,0]. Step1 pre-action noisy sensor XY error .6552790577740099 m/s, tilt1.5096265761316556deg, risk_high true, governor NORMAL, command unchanged; post-step actual XY error .6754753589630127, vx−.035365890711545944, vy−.22929713129997253, height .7562505006790161, torso tilt3.8166863918304443deg, done false. Step2 pre-action noisy sensor error .68153566019906, tilt3.3223114094572153deg, risk_high true, mode RECOVERY, high2, age1, proposed effective [.5520272969231811,−.014093171111785395,0]. Prefix guard blocks BEFORE second action/physics transition; no command intervention applied in this blocked group, no push (scheduled300), no observed fall. Exact source re-read confirms guard precedes step_fn. This is startup tracking transient misclassified by velocity-error OR tilt detector, not a runtime crash or demonstrated failure of physical corrective action. Large goal-relative error is not sufficient to distinguish commanded acceleration from perturbation. Do not assert that robot had already accelerated successfully or that noise alone caused activation.
+
+**Partial completed 7331/stand evidence only (not full H2A1 efficacy):** Shared299 prefix no intervention; ON/OFF nominal raw suffixes exactly equal, 1000/1000 each, XY RMSE .08070958238930626, yaw .20203891929857176, no timeout. Both arms single-left1000, single-right1000, double-left1000, both double-right failed foot–foot OFF372/ON373. All four double cases exposed to second kick, matching declared first/second deltas by direction. Recovery-by2s none; recovery-by5s single-left true3.9s and double-left true4.12s in both; right cases false. Left branches governor never intervened, single-right ON first intervention353 total79 intervention ticks, double-right ON first344 total30, no timeouts. Single-right full horizon XY RMSE .143599→.151113 (yaw .209744→.209474); double-right full episode RMSE descriptive only due one-step unequal lengths. Double-right poststep joint-limit excess .036780→.062460 rad, increase ~.02568 exceeds predeclared .001 comparison tolerance; no new terminal category. Nominal ctrl-limit excess .111389 already present in both, not hardware safety certificate. All ten trace lengths, consecutive frame indices, completion flags, RMSE, intervention count and summary limit maxima independently reconciled. No full denominator comparison or inference about unseen groups; partial survival gain0 and 5s recovery gain0 on two double cases, not full 12-case scores.
+
+**FINAL DECISION:** `H2A1_NOMINAL_INTERFERENCE_NO_GO / H2A1_BOUNDED_EVALUATION_CLOSED`. One approved job consumed; prescribed prefix stop operated correctly. Runtime exercised successfully within observed scope, not full60 EVIDENCE PASS. H2A2 not eligible, no rerun, threshold adjustment, warm-up mask or removal of prefix gate to make current protocol pass; no PPO. Preserve all artifacts, exact controller and frozen C401M. A future separate H2B design may first address causal state/command-transition discrimination and a physics-guided support/corrective-step objective with sensor-feasible observables, no kick oracle or blind time gate. Current evidence does not establish command interface fundamentally incapable; it rejects current detector/combined governor under nominal contract. Separate owner roadmap/finite protocol authorization required before any new source edit or evaluation; do not automatically implement H2B. H1 CLOSED, M1/M2/+100M NO-PROMOTE, +400M/B HOLD, PPO budget0. SA Rules-only update.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -758,6 +768,9 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-23)
+
+**M470-H2A1 NOMINAL INTERFERENCE NO-GO (v1.2.44; 2026-11-24):** Full owner log/JSON/VRAM audited; 7331/stand completed10 logical trajectories, next forward_fast prefix blocked at step2 before action/push due noisy velocity errors .6553/.6815 >.45 with low tilt. 5915 actual transitions, finite, peak705/12288, EXIT1 expected prefix stop; post-run immutability gate not reached. Stand partial double survival/recovery tied, double-right joint excess increased. **H2A1 CLOSED / H2A2 NOT ELIGIBLE**, original GO consumed, no threshold tuning/retry/PPO. Separate owner-approved H2B design pending; no claim command interface fundamentally incapable. H1 CLOSED; +400M/B HOLD.
+
 
 **M470-H2A1 EXPLICIT OWNER GO (v1.2.43; 2026-11-24):** Exactly one integrated pinned CUDA/MJX H2A1 evaluation on frozen C401M, reviewed evaluator e2604308, six groups/60 logical trajectories, fixed world kicks300/.50 and335/.35, supervisor OFF/ON, zero PPO. Runtime checks integrated, raw evidence and VRAM/log required; prefix interference stops with blocked evidence, no retuning/retry. **EXECUTION PENDING**, H2A2/H2B conditional, Branch B HOLD; H1 CLOSED.
 
@@ -1139,6 +1152,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-24 | H2A1 owner controlled evaluation stopped by nominal gate | Three full files audited; 10/60 logical,5915 physical; 7331/forward_fast step2 PREPUSH_INTERVENTION on startup error; partial stand tied double outcomes, new joint-limit excess regression | v1.2.44 H2A1 NO-GO/CLOSED, H2A2 not eligible, no rerun/tuning/PPO; new design requires owner approval | 1.2.44 |
+
 | 2026-11-24 | H2A1 explicit owner GO | Reviewed v1.2.42 evaluator and pinned launcher/config, fixed six-group protocol | v1.2.43 one integrated 60-logical-trajectory CUDA/MJX job; no PPO, execution pending, stop on failure | 1.2.43 |
 
 | 2026-11-24 | H2A0 owner correction review PASS | b2b07fe parent722e42e, M463 −2 only, e2604308 blob, duplicate guard removed, governor unchanged | v1.2.42 source review PASS; H2A1 ready pending separate explicit owner GO, no GPU/PPO | 1.2.42 |
@@ -1288,6 +1303,8 @@ PY
 | 2026-11-21 | Research governance | Khóa mục tiêu push → fall → get-up → resume; định nghĩa thước đo và cổng nghiệm thu | RULES ACTIVE; GET-UP NOT IMPLEMENTED | 1.0.0 |
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.44 — 2026-11-24:** Audited H2A1 log, partial raw JSON and VRAM. Expected prefix gate stop at 7331/forward_fast step2 caused by startup velocity error, not CUDA failure. Documented completed stand cases and safety regression; bounded H2A1 closed NO-GO, no retry or tuning, H2A2 not eligible; separate design approval required. Rules only.
 
 - **v1.2.43 — 2026-11-24:** Record explicit H2A1 GO, one integrated runtime/controlled evaluation on exact reviewed evaluator and frozen C401M, raw evidence/VRAM checks and stopping rule, no protocol changes, GPU/PPO not executed by SA. Rules only.
 
