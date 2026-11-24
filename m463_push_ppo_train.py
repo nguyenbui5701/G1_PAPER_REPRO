@@ -2188,7 +2188,7 @@ H4X_SPEC = {'id':H4X_ID,'training':10485760,'optimizer':1600,'evaluation':6000,
             'train_reset_calls':3,'total_physical':10491760,
             'output_cap':512*H4X_MIB,'policy_cap':64*H4X_MIB,
             'fullstate_cap':128*H4X_MIB,'other_cap':128*H4X_MIB,
-            'disk_reserve':2*1024**3}
+            'disk_reserve':2*1024**3,'external_log_reserve':16*H4X_MIB}
 H4X_COUNTERS = {'training':0,'optimizer':0,'evaluation':0,
                 'train_reset_lanes':0,'eval_reset_lanes':0}
 
@@ -2272,8 +2272,19 @@ def h4x_validate_cli(a):
     h4x_file_pin(a.restore_report,H3_CAUSAL_RESTORE_SHA)
     if a.h4_arm=='candidate':
         h4x_file_pin(a.h4_control_report,auth['evidence_sha256'])
+        h4x_require(a.h4_control_report.resolve()==root/H4X_PATHS['control']/'report.json','CONTROL_PATH')
         prior_control=json.loads(a.h4_control_report.read_bytes())
+        prior_auth=prior_control['h4x_authorization']
+        h4x_require(prior_auth=={**auth,'arm':'control','output':H4X_PATHS['control'],
+                    'evidence_sha256':H4X_CAUSAL_SHA},'CONTROL_AUTHORIZATION_CONTRACT')
+        for name,value in (('attempt.json',{'authorization':prior_auth,'reserved':True}),
+                           ('dispatch.started.json',{'authorization':prior_auth}),
+                           ('attempt_result.json',{'status':'COMPLETE','authorization':prior_auth})):
+            marker=a.h4_control_report.parent/name
+            h4x_require(marker.is_file() and not marker.is_symlink() and
+                        json.loads(marker.read_bytes())==value,'CONTROL_ATTEMPT '+name)
         h4x_verify_operational(prior_control)
+        h4_read_control(a.h4_control_report,auth['evidence_sha256'],prior_control['h4_common_contract'])
     return auth
 
 
@@ -2298,12 +2309,15 @@ def h4x_storage(out,extra=0,kind='other',initial=False):
             h4x_require(size<=H4X_SPEC[k+'_cap'],'ARTIFACT_SIZE')
         sizes[k]+=size
     sizes[kind]+=extra
+    # Leave bounded space for the launcher log outside the exclusive output.
+    # The future GO launcher must enforce this external cap.
+    sizes['other']+=H4X_SPEC['external_log_reserve']
     h4x_require(extra<=H4X_SPEC[kind+'_cap'] and
                 sizes['policy']<=2*H4X_SPEC['policy_cap'] and
                 sizes['fullstate']<=2*H4X_SPEC['fullstate_cap'] and
                 sizes['other']<=H4X_SPEC['other_cap'] and
                 sum(sizes.values())<=H4X_SPEC['output_cap'],'STORAGE_CAP')
-    h4x_require(free>=H4X_SPEC['disk_reserve']+extra,'DISK_RESERVE')
+    h4x_require(free>=H4X_SPEC['disk_reserve']+extra+H4X_SPEC['external_log_reserve'],'DISK_RESERVE')
 
 
 def h4x_write_json(path,value,exclusive=False):
@@ -2413,7 +2427,23 @@ class H4XBudget:
             r['complete']=True
 
 
+def h4x_normalizer_expected(np,value,dtype,rollouts):
+    h4x_require(type(rollouts) is int and 0<=rollouts<=40,'NORMALIZER_ROLLOUTS')
+    target=np.asarray(value,dtype=np.dtype(dtype))
+    h4x_require(target.dtype.kind in 'fiu' and np.isfinite(target).all(),'NORMALIZER_DTYPE')
+    for _ in range(rollouts):
+        target=np.add(target,np.asarray(262144,dtype=target.dtype),dtype=target.dtype)
+    return target
+
+
 def h4x_verify_operational(report):
+    import numpy as np
+    h4x_require(report['h4x_exploratory'] is True,'EXPLORATORY_REPORT')
+    auth=report['h4x_authorization']
+    h4x_require(auth['id']==H4X_ID and auth['arm']==report['h4_arm'] and
+                auth['output']==H4X_PATHS[auth['arm']] and
+                auth['generated_sha256']==report['h4_common_contract']['generated_brax_sha256'],
+                'REPORT_AUTHORIZATION')
     r=report['h4x_operational']
     h4x_require(r['spec']==H4X_SPEC and r['complete'] is True,'OPERATIONAL_CONTRACT')
     replay={}
@@ -2424,17 +2454,44 @@ def h4x_verify_operational(report):
     evals=[]
     resets=[]
     epochs=[]
+    pending_eval=None
+    previous_eval=None
+    initial=next(row for row in r['events'] if row['event']=='initial')
+    dtype=initial['normalizer_dtype']
+    def counters(row,n):
+        h4x_require(row['steps']==n*1310720 and row['adam']==n*200 and
+                    row['normalizer_dtype']==dtype and
+                    row['normalizer']==h4x_normalizer_expected(np,initial['normalizer'],dtype,n*5).item(),
+                    'REPORT_COUNTER')
     for row in r['events']:
         event=row['event']
         budget.advance(event,{k:v for k,v in row.items() if k!='event'})
         if event=='reset_before':
+            h4x_require(row['dr_sha256']==initial['dr_sha256'] and len(row['keys_sha256'])==64,'REPORT_RESET')
             resets.append(row['keys_sha256'])
+        if event=='reset_after':
+            h4x_require(row['finite'] is True,'REPORT_RESET_FINITE')
         if event=='epoch':
+            counters(row,chunk)
             epochs.append(row['key'])
             previous=None
         if event=='eval_before':
+            h4x_require(row['step']==chunk*1310720 and
+                        (previous_eval is None or row['key']==previous_eval),'REPORT_EVAL_PRE')
             evals.append(row['step'])
+            pending_eval=row
+        if event=='eval_after':
+            h4x_require(pending_eval is not None and row['step']==pending_eval['step'] and
+                        row['key']==pending_eval['expected_next_key'] and row['finite_metrics'] is True,
+                        'REPORT_EVAL_POST')
+            previous_eval=row['key']
+        if event=='chunk_ledger':
+            h4x_require(row['chunk']==chunk and row['passed'] is True,'REPORT_LEDGER')
+        if event=='finish':
+            counters(row,8)
         if event=='chunk_before':
+            counters(row,chunk)
+            h4x_require(row['expected_normalizer']==h4x_normalizer_expected(np,initial['normalizer'],dtype,(chunk+1)*5).item(),'REPORT_EXPECTED_NORMALIZER')
             h4x_require(row['chunk']==chunk+1 and row['steps']==chunk*1310720
                         and row['adam']==chunk*200,'REPORT_PRE_COUNTER')
             if previous is not None:
@@ -2445,6 +2502,7 @@ def h4x_verify_operational(report):
             after=row
         if event=='chunk_after':
             chunk+=1
+            counters(row,chunk)
             h4x_require(after is not None and row['chunk']==chunk and row['finite'] is True
                         and row['steps']==chunk*1310720 and row['adam']==chunk*200
                         and row['key']==after['expected_next_key']
@@ -2452,7 +2510,7 @@ def h4x_verify_operational(report):
             previous=row
     h4x_require(replay==r and chunk==8 and len(resets)==3 and len(epochs)==2
                 and evals==[0,*H4_EDGES],'REPORT_OPERATIONAL_REPLAY')
-    initial=next(row for row in r['events'] if row['event']=='initial')
+    counters(initial,0)
     h4x_require(initial['restored_leaves']==25 and initial['adam']==0
                 and initial['steps']==0 and len(initial['dr_sha256'])==64,'REPORT_INITIAL')
     return initial['dr_sha256']
@@ -2520,9 +2578,7 @@ def h4x_audit_callback(jax,np,monitor,report,persist,args,auth,control_dr):
                     steps.dtype.kind in 'iu' and int(steps[0])==chunk*1310720,'STATE_STEPS')
         ac=array(adam[0].count)
         h4x_require(ac.shape==(1,) and ac.dtype.kind in 'iu' and int(ac[0])==chunk*200,'ADAM_COUNT')
-        target=initial_count.copy()
-        for _ in range(chunk*5):
-            target=np.add(target,np.asarray(262144,dtype=target.dtype),dtype=target.dtype)
+        target=h4x_normalizer_expected(np,initial_count,initial_count.dtype,chunk*5)
         same(count,target,'NORMALIZER_COUNT')
         if chunk==0:
             h4x_require(all(not np.any(array(v)) for v in
@@ -2590,9 +2646,7 @@ def h4x_audit_callback(jax,np,monitor,report,persist,args,auth,control_dr):
             key=carry[2][0]
             for _ in range(5):
                 key=jax.random.split(key,3)[2]
-            target=initial_count.copy()
-            for _ in range((chunk+1)*5):
-                target=np.add(target,np.asarray(262144,dtype=target.dtype),dtype=target.dtype)
+            target=h4x_normalizer_expected(np,initial_count,initial_count.dtype,(chunk+1)*5)
             pending={'key':key[None,:],'normalizer':target}
             row={**state_check(carry[0],chunk),'chunk':chunk+1,'key':key_list(carry[2]),
                  'expected_next_key':key_list(pending['key']),
@@ -3513,7 +3567,9 @@ def _run_impl(args,h4x=None):
         from brax.envs.wrappers import training as brax_wrapper
         from m463_instrument_brax import h4c_git_blob
         wrapper_file=Path(inspect.getfile(brax_wrapper)).resolve()
-        h4x_require(h4c_git_blob(wrapper_file.read_bytes())=='2c09c8268a29d14c832dd07050575e4541ee98af','EPISODE_WRAPPER_PIN')
+        ppo_root=Path(inspect.getfile(api['ppo'].train)).resolve().parents[3]
+        h4x_require(wrapper_file==ppo_root/'envs/wrappers/training.py' and
+                    h4c_git_blob(wrapper_file.read_bytes())=='2c09c8268a29d14c832dd07050575e4541ee98af','EPISODE_WRAPPER_PIN')
         for name,path in h4x['pins'].items():
             module=sys.modules.get(name)
             h4x_require(module is not None and Path(module.__file__).resolve()==Path(path),'IMPORTED_ORIGIN '+name)
@@ -3972,6 +4028,7 @@ def _run_impl(args,h4x=None):
             h4x_require(h4x_authorization()==h4x['authorization'] and h4x_bootstrap(args)==h4x['pins']
                         and h4c_dependency_pins(api)==h4x['brax_dependencies'],'FINAL_IMMUTABILITY')
             h4x_file_pin(args.h4_exploratory_causal_report,H4X_CAUSAL_SHA)
+            h4x_require(h4c_git_blob(wrapper_file.read_bytes())=='2c09c8268a29d14c832dd07050575e4541ee98af','FINAL_WRAPPER_PIN')
             read_restore_gate(args.restore_report,args.checkpoint)
             if h4_arm=='candidate':
                 h4x_file_pin(args.h4_control_report,h4x['authorization']['evidence_sha256'])

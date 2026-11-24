@@ -511,6 +511,11 @@ def build_instrumented_ppo(pinned_ppo_module, output:Path, *, enable_resume=Fals
     else:
         patched,original_sha=make_patched_source(p.read_bytes(),
             enable_resume=enable_resume, enable_h3=enable_h3, enable_h4=enable_h4)
+    if enable_h4x:
+        from m463_push_ppo_train import h4x_storage
+        if output.exists() or output.is_symlink():
+            raise RuntimeError('M470_H4X_GENERATED_EXISTS')
+        h4x_storage(output.parent,len(patched.encode('utf8')))
     if output.exists():
         if output.read_text('utf8')!=patched:
             raise RuntimeError('M463_REFUSE_TO_OVERWRITE_DIFFERENT_PATCH')
