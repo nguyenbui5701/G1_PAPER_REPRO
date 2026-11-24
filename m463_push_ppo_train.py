@@ -830,9 +830,8 @@ def h4_static_regression(brax_train_path):
 
 
 
-# H4-M1-1B one authorized diagnostic only; production remains locked.
-H4R_EXECUTION_AUTHORIZED = True
-H4R_AUTHORIZED_RUN = 'm463_runs/m470_h4_m1_1b_numerical_v1288'
+# H4-M1-1B separate diagnostic; production and readiness remain locked.
+H4R_EXECUTION_AUTHORIZED = False
 H4R_SPEC = {'num_envs':16,'batch_size':2,'num_minibatches':8,
             'unroll_length':32,'num_updates_per_batch':5,'seed':1,
             'rollouts_per_path':20,'rollouts_per_chunk':5,'ticks':640,
@@ -1130,8 +1129,6 @@ def h4r_run(args):
                  H4_EXECUTION_AUTHORIZED is False,'EXECUTION_HOLD')
     import shutil
     import traceback
-    h4r_require(args.output_dir.resolve()==(Path(__file__).resolve().parent/H4R_AUTHORIZED_RUN).resolve(),
-                 'ONE_RUN_PATH')
     h4r_require(not args.output_dir.exists() and args.output_dir.parent.is_dir(),'OUTPUT')
     h4r_require(shutil.disk_usage(args.output_dir.parent).free>=2*1024**3,'DISK')
     args.output_dir.mkdir(exist_ok=False)
@@ -1194,8 +1191,7 @@ def h4r_run(args):
             h4r_require(env_cfg.to_dict()['reward_config']==reward,'REWARD_UNCHANGED')
             env=CoverageJoystick(config=env_cfg,stage='easy_repeat_support',h4_arm='control')
             h4r_require(env.action_size==29 and float(env.dt)==.02,'ENV_CONFIG')
-            mod,meta=build_h4_readiness_ppo(api['ppo'],args.output_dir/'h4_readiness_generated.py',
-                                         authorize=H4R_EXECUTION_AUTHORIZED)
+            mod,meta=build_h4_readiness_ppo(api['ppo'],args.output_dir/'h4_readiness_generated.py')
             report['generated']=meta
             factory=functools.partial(api['networks'].make_ppo_networks,**cfg.pop('network_factory'))
             audit=h4r_audit_callback(api,args,report,persist,gpu_check)
@@ -2666,7 +2662,7 @@ def main():
                    help='Exact OLD10M comparator report and adjacent frozen artifacts')
     p.add_argument('--h4-arm',choices=['control','candidate'],help='H4 design plan only; execution HOLD')
     p.add_argument('--h4-control-report',type=Path,help='Future pinned matched control; execution HOLD')
-    p.add_argument('--h4-readiness',action='store_true',help='Isolated readiness diagnostic; one authorized output only')
+    p.add_argument('--h4-readiness',action='store_true',help='Isolated readiness plan; execution HOLD')
     p.add_argument('--h4-readiness-reward-report',type=Path)
     a=p.parse_args()
     try:
@@ -2676,8 +2672,8 @@ def main():
         p.error(str(exc))
     if a.h4_readiness:
         if a.mode=='plan':
-            print('M470_H4R_PLAN_NO_GPU',json.dumps({'spec':H4R_SPEC,'execution_authorized':H4R_EXECUTION_AUTHORIZED,
-                 'authorized_run':H4R_AUTHORIZED_RUN,'production_authorized':False},sort_keys=True))
+            print('M470_H4R_PLAN_NO_GPU',json.dumps({'spec':H4R_SPEC,'execution_authorized':False,
+                 'production_authorized':False},sort_keys=True))
             return
         return h4r_run(a)
     if a.h4_arm is not None and a.mode=='plan':
