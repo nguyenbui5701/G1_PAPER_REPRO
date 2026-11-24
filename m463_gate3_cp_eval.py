@@ -2919,12 +2919,492 @@ def run(args):
     print('M463_GATE3_DONE',args.output,'cases',len(results),flush=True)
 
 
+
+# H4-M1-1: isolated non-training technical validation. Never call ppo.train.
+H4_TECH_SPEC={'lanes':4,'ticks':640,'unroll':32,'arms':['control','candidate'],
+              'reset_seed':913811,'dr_seed':913812,'actor_seed':913813,
+              'fixture_physical':4,'max_physical':5124,
+              'synthetic_boundary_keys':32,'synthetic_step_max':160,
+              'synthetic_scan_steps':40}
+H4_TECH_REWARD_SHA='84c285315e109ca8716476b0f527873046b441d35e3fe963570e5f2019fe3530'
+H4_TECH_ACTING_BLOB='ec6f81d3e3c48e96a22f7df292fb1a98b63f938d'
+
+
+def h4t_require(ok,label):
+    if not bool(ok):
+        raise RuntimeError('M470_H4_TECH_'+label)
+
+
+def h4t_inputs(args):
+    pins={}
+    for name,p,expected in (
+        ('C401M',args.checkpoint_c,BASE_SHA),
+        ('reward_reference',args.h4_reward_report,H4_TECH_REWARD_SHA)):
+        h4t_require(p is not None and p.is_file() and not p.is_symlink(),'INPUT_'+name)
+        pins[name]=sha256(p)
+        h4t_require(pins[name]==expected,'SHA_'+name)
+    return pins
+
+
+def h4t_carry(jax,jp,np):
+    # Exact integer carry and RNG, on real JAX/pmap. No model/optimizer.
+    def step(c,_):
+        x, key, nested=c
+        key,sub=jax.random.split(key)
+        bits=jax.random.bits(sub,(),dtype=jp.uint32)
+        n=nested['n']+1
+        return (x+bits,key,{'n':n,'v':nested['v']+jp.arange(3,dtype=jp.int32)*n}), n
+    def scan(c,length):
+        return jax.lax.scan(step,c,(),length=length)
+    init=(jp.zeros((1,),jp.uint32),jax.random.split(jax.random.PRNGKey(913810),1),
+          {'n':jp.zeros((1,),jp.int32),'v':jp.zeros((1,3),jp.int32)})
+    full,mfull=jax.pmap(lambda c:scan(c,20))(init)
+    short=jax.pmap(lambda c:scan(c,5))
+    c=init
+    chunks=[]
+    for _ in range(4):
+        c,m=short(c)
+        chunks.append(m)
+    def host(v):
+        return np.asarray(jax.device_get(v))
+    h4t_require(jax.tree_util.tree_structure(c)==jax.tree_util.tree_structure(full),'CARRY_TREE')
+    for x,y in zip(jax.tree_util.tree_leaves(c),jax.tree_util.tree_leaves(full)):
+        h4t_require(np.array_equal(host(x),host(y)),'CARRY_EXACT')
+    h4t_require(np.array_equal(host(jp.concatenate(chunks,axis=1)),host(mfull)),'CARRY_METRIC_ROWS')
+    h4t_require(float(jp.mean(mfull))==float(jp.mean(jp.stack([jp.mean(x) for x in chunks]))),'CARRY_METRIC_MEAN')
+    return {'exact_nested_integer_rng_carry':True,'exact_metric_rows_and_mean':True,
+            'synthetic_scan_steps':40,'actual_optimizer_tested':False}
+
+
+def h4t_scheduler_fixtures(jax,jp,np):
+    """Actual CoverageJoystick scheduler with a synthetic, non-physics base step.
+    No modifications to installed modules on disk; mock scope ends before MJX.
+    """
+    from unittest.mock import patch
+    from flax import struct
+    from mujoco_playground._src import mjx_env
+    import m463_coverage_env as ce
+
+    @struct.dataclass
+    class Data:
+        qpos: object
+        qvel: object
+        support: object
+        terminal: object
+
+    def reset(self,key):
+        z=jp.asarray(0,jp.int32)
+        data=Data(jp.zeros(36,jp.float32).at[3].set(1.),
+                  jp.zeros(35,jp.float32),jp.asarray(3,jp.int32),z)
+        obs={'state':jp.zeros(103,jp.float32),'privileged_state':jp.zeros(216,jp.float32)}
+        return mjx_env.State(data,obs,jp.asarray(0.,jp.float32),jp.asarray(0.,jp.float32),
+             {'reward/lin_vel_z':jp.asarray(0.,jp.float32),
+              'reward/feet_clearance':jp.asarray(0.,jp.float32)},
+             {'rng':key,'command':ce.COMMANDS[0],'step':z,'steps':z})
+    def base_step(self,state,action):
+        # Deliberately synthetic dynamics, reward and refresh. Tests only
+        # scheduler's handling of source-returned events, not physics fidelity.
+        info=dict(state.info)
+        info['rng'],_=jax.random.split(info['rng'])
+        obs=dict(state.obs)
+        obs['state']=obs['state'].at[9:12].set(info['command'])
+        obs['privileged_state']=obs['privileged_state'].at[9:12].set(info['command'])
+        refresh=info['step']>=500
+        info['command']=jp.where(refresh,ce.COMMANDS[3],info['command'])
+        info['step']=jp.where(refresh | (state.data.terminal>0),0,info['step']+1)
+        return state.replace(info=info,obs=obs,done=state.data.terminal.astype(jp.float32))
+    def collision(data,geom,floor):
+        return (data.support & jp.asarray(1<<int(geom),jp.int32))>0
+    def make(arm):
+        env=object.__new__(ce.CoverageJoystick)
+        env._h4_arm=arm
+        env._h3_m1=env._h1_m1=env._h1_m2=False
+        env._m463_stage='easy_repeat_support'
+        env._m463_min_mag,env._m463_max_mag,env._m463_repeat_probability=ce.STAGES[env._m463_stage]
+        env._feet_geom_id=(0,1)
+        env._floor_geom_id=2
+        return env
+    action=jp.zeros(29,jp.float32)
+    calls=0
+    def scalar(st,k):
+        return int(np.asarray(st.info[k]))
+    def expect(st,**kw):
+        for k,v in kw.items():
+            h4t_require(scalar(st,k)==v,'FIXTURE_'+k)
+    def exact(a,b):
+        h4t_require(jax.tree_util.tree_structure(a)==jax.tree_util.tree_structure(b),'FIXTURE_TREE')
+        for x,y in zip(jax.tree_util.tree_leaves(a),jax.tree_util.tree_leaves(b)):
+            h4t_require(np.array_equal(np.asarray(x),np.asarray(y)),'FIXTURE_CONTROL_DRIFT')
+    with patch.object(ce.joystick.Joystick,'reset',reset),patch.object(
+            ce.joystick.Joystick,'step',base_step),patch.object(ce,'geoms_colliding',collision):
+        legacy,control,candidate=map(make,(None,'control','candidate'))
+        keys=jax.random.split(jax.random.PRNGKey(913814),32)
+        def boundary(env):
+            return jax.jit(jax.vmap(lambda k:env.step(env.reset(k),action)))(keys)
+        l,c,b=map(boundary,(legacy,control,candidate))
+        calls+=96
+        exact(l,c.replace(info={k:c.info[k] for k in l.info}))
+        counts=[0]*4
+        for i,key in enumerate(keys):
+            _,ks,kd,kp,kt,*_=jax.random.split(key,8)
+            disabled=bool(jax.random.bernoulli(ks,p=.20))
+            pick=float(jax.random.uniform(jax.random.fold_in(ks,41),()))
+            cls=0 if disabled else 1 if pick<.5 else 2 if pick<.7 else 3
+            age=int(jax.random.randint(jax.random.fold_in(kt,42),(),240,301)) if cls>=2 else int(jax.random.randint(kt,(),12,25))
+            direction=int(jax.random.randint(jax.random.fold_in(kd,43),(),2,4)) if cls>=2 else int(jax.random.randint(kd,(),0,6))
+            h4t_require(int(b.info['h4_class'][i])==cls and int(b.info['m463_next'][i])==age
+                         and int(b.info['m463_direction'][i])==direction,'FIXTURE_ASSIGNMENT')
+            h4t_require(int(b.info['h4_assigned'][i])==int(not disabled),'FIXTURE_ASSIGNED')
+            counts[cls]+=1
+        h4t_require(not np.any(np.asarray(b.info['h4_bad'])),'FIXTURE_BOUNDARY_BAD')
+        fn=jax.jit(lambda st:candidate.step(st,action))
+        def state(age=240,cls=3,support=3,terminal=0,**fields):
+            st=candidate.reset(jax.random.PRNGKey(913815))
+            info=dict(st.info)
+            defaults={'steps':age,'step':age,'m463_age':age,'m463_next':age,
+                      'm463_direction':2,'m463_phase_target':0,'h4_class':cls,
+                      'h4_first_pending':1}
+            defaults.update(fields)
+            for k,v in defaults.items():
+                info[k]=jp.asarray(v,dtype=info[k].dtype)
+            return st.replace(info=info,data=st.data.replace(
+                support=jp.asarray(support,jp.int32),terminal=jp.asarray(terminal,jp.int32)))
+        labels=[]
+        def check(label,st,**expected):
+            nonlocal calls
+            h4t_require(calls<160,'FIXTURE_BUDGET')
+            out=fn(st);calls+=1
+            expect(out,h4_bad=0,**expected)
+            labels.append(label)
+            return out
+        single=check('mature_single_first',state(cls=2),m463_event=1,m463_repeat=0,
+                     h4_repeat_assigned=0,h4_tail_kind=1,h4_tick_age=0)
+        h4t_require(.45<=float(single.info['m463_magnitude'])<=.55,'FIXTURE_FIRST_MAG')
+        first=check('mature_double_first',state(age=300),m463_event=1,h4_repeat_assigned=1,
+                    h4_repeat_pending=1,h4_tail_kind=1,h4_tick_age=0)
+        h4t_require(330<=scalar(first,'m463_next')<=332,'FIXTURE_REPEAT_TARGET')
+        for side in (1,2):
+            common=dict(m463_direction=side+1,m463_push_count=1,m463_last_event_age=300,
+                        m463_next=330,h4_first_pending=0,h4_repeat_pending=1,
+                        h4_first_age=300,h4_first_mag=.50,h4_first_motion=0,
+                        h4_tail_kind=1,h4_tail_age=34,h4_tail_same=1,h4_tail_motion=0)
+            match=check('repeat_match_'+str(side),state(age=335,support=side,**common),
+                    m463_event=1,m463_repeat=1,m463_repeat_side_matched=1,h4_event_qual=side,
+                    h4_close_repeat=1,h4_tick_age=0,h4_tail_kind=2,h4_repeat_pending=0)
+            h4t_require(.30<=float(match.info['m463_magnitude'])<=.40,'FIXTURE_REPEAT_MAG')
+            check('repeat_wait_'+str(side),state(age=330,support=3,**common),
+                    m463_event=0,h4_repeat_due=1,h4_repeat_pending=1)
+            check('repeat_fallback_'+str(side),state(age=338,support=3,**common),
+                    m463_event=1,m463_repeat_side_fallback=1,h4_event_qual=0,h4_close_repeat=1)
+        check('terminal_first',state(terminal=1),m463_event=1,h4_event_terminal=1,
+              h4_repeat_closed=1,h4_tail_kind=0)
+        check('unreached_first_terminal',state(terminal=1,m463_next=300),
+              m463_event=0,h4_first_closed=1,h4_first_pending=0)
+        for w in (10,25,50,100,250):
+            common=dict(m463_push_count=2,m463_next=2**30,h4_first_pending=0,
+                        h4_tail_kind=2,h4_tail_cell=1,h4_tail_age=w-1,
+                        h4_tail_same=1,h4_tail_motion=0)
+            check('tail_'+str(w),state(age=400,**common),
+                  h4_tick_age=w,h4_tick_kind=2,h4_tick_survived=1,
+                  h4_close_complete=int(w==250),h4_tail_kind=0 if w==250 else 2)
+            if w==250:
+                check('terminal_at_250',state(age=400,terminal=1,**common),
+                      h4_tick_age=250,h4_tick_survived=0,h4_close_terminal=1,h4_close_complete=0)
+        fresh=check('source_refresh',state(age=500,m463_push_count=2,m463_next=2**30,
+                    h4_first_pending=0,h4_tail_kind=2,h4_tail_same=1,h4_tail_motion=0),
+                    h4_refresh=1,h4_changed=1,h4_tick_same=1)
+        # The synthetic base step does not implement EpisodeWrapper's steps.
+        fresh=fresh.replace(info=dict(fresh.info,steps=jp.asarray(501,jp.int32)))
+        check('command_mismatch_next',fresh,h4_command_mismatch=1,h4_tick_same=0)
+    return {'synthetic_calls':calls,'boundary_class_counts':counts,
+            'control_legacy_exact_on_shared_synthetic_inputs':True,'case_labels':labels,
+            'physics_performed':False}
+
+
+def h4t_actual(args,r,monitor,persist):
+    import ast
+    import copy
+    from train import check_source,build_paper_config
+    from paper_config import BASE,ENV,PIN as SOURCE_PIN
+    check_source()
+    h4t_require(SOURCE_PIN==PIN,'SOURCE_PIN')
+    sys.path.insert(0,str(BASE/'G1_M4_0_G1_PPO_ONE_UPDATE_SMOKE_V1'))
+    from nvcc_compat import apply
+    print('M470_H4_TECH_NVCC',apply(),flush=True)
+    import jax
+    import jax.numpy as jp
+    import numpy as np
+    from flax import serialization
+    from brax.training.acme import running_statistics
+    from brax.training.agents.ppo import networks
+    from brax.training.types import Transition
+    from mujoco_playground import locomotion
+    from mujoco_playground._src import wrapper
+    import m463_coverage_env as ce
+    from m463_instrument_brax import EXT_FIELDS,H4_EXT_FIELDS,H4_METRICS_SOURCE
+    from m463_push_ppo_train import H4_EXECUTION_AUTHORIZED
+    h4t_require(H4_EXECUTION_AUTHORIZED is False,'TRAIN_HOLD')
+    h4t_require(jax.default_backend()=='gpu' and jax.__version__=='0.4.35'
+                 and jax.process_count()==1 and jax.local_device_count()==1,'GPU_RUNTIME')
+    r['brax_source']=h3_verify_brax_train_source(networks)
+    r['jax_version']=jax.__version__
+    # Exact pinned actor_step body, without importing acting.py's unrelated
+    # legacy brax.v1 dependency (previous dm_env failure). No replacement body.
+    acting=Path(r['brax_source']['path']).parents[2]/'acting.py'
+    raw=acting.read_bytes()
+    blob=hashlib.sha1(('blob '+str(len(raw))+'\0').encode()+raw).hexdigest()
+    h4t_require(blob==H4_TECH_ACTING_BLOB,'ACTING_SOURCE_PIN')
+    tree=ast.parse(raw)
+    fn=next(x for x in tree.body if isinstance(x,ast.FunctionDef) and x.name=='actor_step')
+    mod=ast.Module(body=[ast.ImportFrom(module='__future__',names=[ast.alias(name='annotations')],level=0),fn],type_ignores=[])
+    ns={'Transition':Transition}
+    exec(compile(ast.fix_missing_locations(mod),str(acting),'exec'),ns)
+    actor_step=ns['actor_step']
+    r['actor_step_blob']=blob
+    r['actor_step_module_imported']=False
+    r['carry']=h4t_carry(jax,jp,np)
+    r['scheduler_fixtures']=h4t_scheduler_fixtures(jax,jp,np)
+    h3_gpu_check(monitor)
+    persist()
+    print('M470_H4_TECH_CARRY_AND_FIXTURES_PASS',flush=True)
+
+    paper=build_paper_config()
+    cfg=locomotion.get_default_config(ENV)
+    reward=json.loads(args.h4_reward_report.read_bytes())['train_reward_config']
+    h4t_require(cfg.reward_config.to_dict()==reward and bool(cfg.push_config.enable)
+                 and list(cfg.push_config.interval_range)==[5.,10.]
+                 and list(cfg.push_config.magnitude_range)==[.1,2.],'SOURCE_CONFIG')
+    cfg.push_config.enable=False
+    randomizer=locomotion.get_domain_randomizer(ENV)
+    h4t_require(randomizer is not None,'DR')
+    obs_shape={'state':(103,),'privileged_state':(216,)}
+    nets=networks.make_ppo_networks(obs_shape,29,
+           preprocess_observations_fn=running_statistics.normalize,**dict(paper.network_factory))
+    norm_template=running_statistics.init_state({k:jp.zeros(v,jp.float32) for k,v in obs_shape.items()})
+    from m462_typed_orbax_stage import checkpoint_parts
+    n,p,v=checkpoint_parts(serialization.msgpack_restore(args.checkpoint_c.read_bytes()))
+    norm=serialization.from_state_dict(norm_template,n)
+    actor=serialization.from_state_dict(nets.policy_network.init(jax.random.PRNGKey(11)),p)
+    critic=serialization.from_state_dict(nets.value_network.init(jax.random.PRNGKey(17)),v)
+    leaves=jax.tree_util.tree_leaves((norm,actor,critic))
+    h4t_require(len(leaves)==25 and all(np.isfinite(np.asarray(jax.device_get(x))).all() for x in leaves),'POLICY')
+    policy=networks.make_inference_fn(nets)((norm,actor),deterministic=True)
+    fields=('truncation',)+EXT_FIELDS+H4_EXT_FIELDS
+    reducer_ns={'jnp':jp}
+    exec(compile('def reduce(extras):\n    unroll_length=32\n    coverage={}\n'+H4_METRICS_SOURCE+'    return coverage\n',
+                 '<exact H4 metrics source>','exec'),reducer_ns)
+    reduce=jax.jit(reducer_ns['reduce'])
+    keys=jax.random.split(jax.random.PRNGKey(H4_TECH_SPEC['reset_seed']),4)
+    dr_keys=jax.random.split(jax.random.PRNGKey(H4_TECH_SPEC['dr_seed']),4)
+    cols=list(fields)+['done','prev_done','wrapper_steps','physical_finite','reset_data_obs_equal']
+    r['columns']=cols
+    def host(v):
+        return np.asarray(jax.device_get(v))
+    def make(arm):
+        env=ce.CoverageJoystick(stage='easy_repeat_support',config=copy.deepcopy(cfg),h4_arm=arm)
+        h4t_require(env.action_size==29 and float(env.dt)==.02,'ENV_CONFIG')
+        return wrapper.wrap_for_brax_training(env,episode_length=1000,action_repeat=1,
+               randomization_fn=functools.partial(randomizer,rng=dr_keys))
+    def step(env,carry,_):
+        st,key=carry
+        key,sub=jax.random.split(key)
+        prev=st.done
+        nxt,tr=actor_step(env,st,policy,sub,extra_fields=fields)
+        extra=tr.extras['state_extras']
+        finite=jp.ones((4,),dtype=jp.bool_)
+        for leaf in (nxt.data.qpos,nxt.data.qvel,nxt.data.qacc,nxt.data.ctrl,
+                     nxt.data.actuator_force,nxt.data.sensordata,nxt.obs['state'],
+                     nxt.obs['privileged_state'],tr.reward,tr.action):
+            finite=finite & jp.all(jp.isfinite(leaf).reshape((4,-1)),axis=1)
+        equal=jp.ones((4,),dtype=jp.bool_)
+        for x,y in [(nxt.data.qpos,nxt.info['first_state'].qpos),
+                    (nxt.data.qvel,nxt.info['first_state'].qvel),
+                    (nxt.obs['state'],nxt.info['first_obs']['state']),
+                    (nxt.obs['privileged_state'],nxt.info['first_obs']['privileged_state'])]:
+            equal=equal & jp.all((x==y).reshape((4,-1)),axis=1)
+        row={**extra,'done':nxt.done,'prev_done':prev,'wrapper_steps':nxt.info['steps'],
+             'physical_finite':finite,'reset_data_obs_equal':equal}
+        return (nxt,key),row
+    def checked(carry,rows,n):
+        data={k:host(v) for k,v in rows.items()}
+        h4t_require(all(v.shape==(n,4) and np.isfinite(v).all() for v in data.values()),'ROW_SCHEMA')
+        h4t_require(np.all(data['physical_finite']) and not np.any(data['h4_bad'])
+                     and not np.any(data['truncation']),'FINITE_OR_BAD')
+        h4t_require(np.array_equal(data['done'],data['h4_source_terminal']),'DONE')
+        h4t_require(np.all(data['reset_data_obs_equal'][data['done']>0]),'AUTORESET_DATA_OBS')
+        h4t_require(np.array_equal(data['wrapper_steps'],data['h4_age']+1),'WRAPPER_AGE')
+        h4t_require(np.all(data['h4_boundary'][data['prev_done']>0]==1),'NATURAL_BOUNDARY')
+        h4t_require(np.all(data['h4_tick_age'][data['m463_event']>0]==0),'EVENT_NOT_TAIL')
+        h4t_require(np.all(data['h4_tick_survived'][data['done']>0]==0),'TERMINAL_NOT_SURVIVED')
+        return data
+    def charge(n):
+        h4t_require(r['physical_attempted']+n<=H4_TECH_SPEC['max_physical'],'BUDGET')
+        r['physical_attempted']+=n
+        persist()
+    for arm in H4_TECH_SPEC['arms']:
+        env=make(arm)
+        initial=jax.jit(env.reset)(keys)
+        carry=(initial,jax.random.PRNGKey(H4_TECH_SPEC['actor_seed']))
+        unroll=jax.jit(lambda c:jax.lax.scan(lambda c,x:step(env,c,x),c,(),length=32))
+        record={'arm':arm,'rows':[],'rollout_counts':[],'chunk_keys':[]}
+        r['natural'].append(record)
+        for i in range(20):
+            charge(128)
+            carry,rows=unroll(carry)
+            data=checked(carry,rows,32)
+            counts={k:float(host(v)) for k,v in reduce({k:rows[k].T for k in fields}).items()}
+            h4t_require(counts['m463_h4_bad_per_rollout']==0,'METRIC_BAD')
+            for k,m in [('first_events',(data['m463_event']>0)&(data['m463_repeat']==0)),
+                        ('repeat_events',data['m463_repeat']>0),
+                        ('close_complete',data['h4_close_complete']>0),
+                        ('close_repeat',data['h4_close_repeat']>0)]:
+                h4t_require(counts['m463_h4_'+k+'_per_rollout']==int(m.sum()),'METRIC_COUNT_'+k)
+            record['rows'].extend(np.stack([data[k] for k in cols],axis=-1).tolist())
+            record['rollout_counts'].append(counts)
+            r['physical_recorded']+=128
+            if (i+1)%5==0:
+                record['chunk_keys'].append(host(carry[1]).tolist())
+                h3_gpu_check(monitor)
+                persist()
+                print('M470_H4_TECH_CHUNK',arm,i+1,r['physical_recorded'],flush=True)
+        pending={k:host(carry[0].info[k]).tolist() for k in (
+            'h4_first_pending','h4_repeat_pending','h4_tail_kind','h4_class',
+            'h4_repeat_origin_motion','m463_direction')}
+        record['pending_at_end']=pending
+        record['audit']=h4t_natural_audit(record,cols)
+        persist()
+        # Separate deliberate scheduler-state fixtures on real reset physics.
+        # No pose, command, reward, model, policy or source RNG edit.
+        if arm=='candidate':
+            st=initial
+            info=dict(st.info)
+            pre=host(info['command'])
+            motion=np.argmin(np.abs(pre[:,None,:]-host(ce.COMMANDS)[None,:,:]).sum(axis=-1),axis=-1)
+            vals={'steps':[300,300,338,338],'m463_age':[300,300,338,338],
+                  'm463_next':[300,300,330,330],'m463_direction':[2,3,2,3],
+                  'm463_phase_target':[0,0,0,0],'h4_class':[2,3,3,3],
+                  'm463_push_count':[0,0,1,1],'m463_last_event_age':[-1,-1,300,300],
+                  'h4_first_pending':[1,1,0,0],'h4_repeat_pending':[0,0,1,1],
+                  'h4_first_age':[-1,-1,300,300],'h4_first_mag':[0,0,.5,.5],
+                  'h4_first_motion':[-1,-1,int(motion[2]),int(motion[3])],
+                  'h4_tail_kind':[0,0,1,1],'h4_tail_age':[0,0,37,37],
+                  'h4_tail_same':[0,0,1,1],'h4_tail_motion':[-1,-1,int(motion[2]),int(motion[3])]}
+            for k,val in vals.items():
+                info[k]=jp.asarray(val,dtype=info[k].dtype)
+            st=st.replace(info=info)
+            charge(4)
+            c,rows=jax.jit(lambda c:jax.lax.scan(lambda c,x:step(env,c,x),c,(),length=1))(
+                (st,jax.random.PRNGKey(H4_TECH_SPEC['actor_seed'])))
+            d=checked(c,rows,1)
+            h4t_require(np.array_equal(d['m463_event'][0],[1,1,1,1])
+                         and np.array_equal(d['m463_repeat'][0],[0,0,1,1]),'REAL_FIXTURE_EVENT')
+            h4t_require(np.all((d['m463_magnitude'][0,:2]>=.45)&(d['m463_magnitude'][0,:2]<=.55))
+                         and np.all((d['m463_magnitude'][0,2:]>=.30)&(d['m463_magnitude'][0,2:]<=.40)),
+                         'REAL_FIXTURE_MAG')
+            h4t_require(np.all(d['m463_repeat_gap'][0,2:]==38),'REAL_FIXTURE_GAP')
+            r['real_fixture_rows']=np.stack([d[k] for k in cols],axis=-1).tolist()
+            r['physical_recorded']+=4
+            persist()
+    h4t_require(r['physical_attempted']==r['physical_recorded']==5124,'FINAL_BUDGET')
+
+
+def h4t_natural_audit(record,cols):
+    """Independent host event/tail reconciliation on raw natural rows."""
+    import numpy as np
+    x=np.asarray(record['rows'])
+    h4t_require(x.shape==(640,4,len(cols)),'NATURAL_ROWS')
+    idx={k:i for i,k in enumerate(cols)}
+    def col(k):
+        return x[:,:,idx[k]]
+    def count(k):
+        return int(col(k).sum())
+    event=col('m463_event')>0
+    repeat=col('m463_repeat')>0
+    p=record['pending_at_end']
+    first=int((event&~repeat).sum())
+    second=int(repeat.sum())
+    h4t_require(count('h4_assigned')==first+count('h4_first_closed')+sum(p['h4_first_pending']),'FIRST_LEDGER')
+    h4t_require(count('h4_repeat_assigned')==second+count('h4_repeat_closed')+sum(p['h4_repeat_pending']),'REPEAT_LEDGER')
+    h4t_require(first+second==sum(count(k) for k in ('h4_event_terminal','h4_close_repeat',
+        'h4_close_terminal','h4_close_complete','h4_close_boundary'))+sum(v>0 for v in p['h4_tail_kind']),'TAIL_LEDGER')
+    h4t_require(count('h4_close_repeat')==second and count('h4_close_boundary')==0,'TAIL_CLOSURE')
+    h4t_require(count('h4_close_complete')==int(((col('h4_tick_age')==250)&(col('h4_tick_survived')>0)).sum()),'TAIL_COMPLETE')
+    for lane in range(4):
+        tail=0
+        kind=0
+        for tick in range(640):
+            def v(k):return int(x[tick,lane,idx[k]])
+            if v('h4_boundary'):
+                h4t_require(kind==0,'STALE_TAIL')
+            if v('m463_event'):
+                h4t_require(v('h4_tick_age')==0 and v('h4_close_repeat')==int(kind>0),'EVENT_TAIL')
+                tail=0
+                kind=0 if v('done') else 2 if v('m463_repeat') else 1
+            elif kind:
+                tail+=1
+                h4t_require(v('h4_tick_age')==tail and v('h4_tick_kind')==kind
+                             and v('h4_tick_survived')==int(not v('done')),'RAW_TAIL')
+                if v('done') or tail==250:
+                    kind=tail=0
+            else:
+                h4t_require(v('h4_tick_age')==0 and v('h4_tick_kind')==0,'NO_TAIL')
+            h4t_require(v('h4_tail_kind')==kind and v('h4_tail_age')==tail,'TAIL_STATE')
+        h4t_require(kind==p['h4_tail_kind'][lane],'PENDING_TAIL')
+    cls=col('h4_class')
+    h4t_require(not np.any(event&(cls==0)) and not np.any(repeat&(cls==2)),'CLASS_EVENT')
+    if record['arm']=='control':
+        h4t_require(not np.any(cls>=2),'CONTROL_CLASS')
+    mature=event&(cls>=2)&~repeat
+    h4t_require(np.all((col('h4_age')[mature]>=240)&(col('h4_age')[mature]<=308)),'MATURE_AGE')
+    return {'first':first,'repeat':second,'natural_terminals':count('h4_source_terminal'),
+            'natural_boundaries':count('h4_boundary'),'refresh':count('h4_refresh'),
+            'mature_first':int(mature.sum()),'mature_repeat':count('h4_mature_repeat'),
+            'qualified_stand_repeats':int((col('h4_event_qual')>0).sum()),
+            'tail_250_executed':int((col('h4_tick_age')==250).sum()),
+            'tail_250_survived':count('h4_close_complete'),'ledger_pass':True}
+
+
+def h4t_run(args):
+    import shutil
+    from m462_ppo_warmstart_run import GPUMonitor,sample_gpu
+    pins=h4t_inputs(args)
+    h4t_require(not args.output.exists(),'OUTPUT_EXISTS')
+    args.output.parent.mkdir(parents=True,exist_ok=True)
+    h4t_require(shutil.disk_usage(args.output.parent).free>=2*1024**3,'DISK')
+    gpu=sample_gpu()
+    h4t_require(gpu['total_mib']==12288 and 0<=gpu['used_mib']<.95*12288,'GPU_PREFLIGHT')
+    r={'status':'M470_H4_TECH_IN_PROGRESS','spec':H4_TECH_SPEC,'input_sha256':pins,
+       'evaluator_sha256':sha256(Path(__file__)),'source_commit':PIN,'gpu_initial':gpu,
+       'physical_attempted':0,'physical_recorded':0,'natural':[],
+       'training_performed':False,'ppo_steps':0,'optimizer_updates':0,
+       'promotion_authorized':False,'efficacy_evaluated':False}
+    h3_write(args.output,r,initial=True)
+    def persist():h3_write(args.output,r)
+    monitor=GPUMonitor()
+    try:
+        with monitor:
+            h4t_actual(args,r,monitor,persist)
+        r['gpu']=h3_gpu_check(monitor)
+        h4t_require(h4t_inputs(args)==pins,'INPUT_IMMUTABILITY')
+        r['status']='M470_H4_TECH_COMPLETED'
+        persist()
+        print('M470_H4_TECH_COMPLETED',r['physical_recorded'],flush=True)
+    except BaseException as exc:
+        r['status']='M470_H4_TECH_FAILED'
+        r['error']=type(exc).__name__+': '+str(exc)
+        r['gpu']=monitor.snapshot()
+        persist()
+        raise
+
+
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--mode',choices=('plan','run'),required=True)
     p.add_argument('--checkpoint-c',type=Path,required=True)
     p.add_argument('--checkpoint-p', type=Path)
     p.add_argument('--report-p', type=Path)
+    p.add_argument('--h4-technical',action='store_true')
+    p.add_argument('--h4-reward-report',type=Path)
     p.add_argument('--h3-m1-eval',action='store_true')
     p.add_argument('--checkpoint-h3',type=Path)
     p.add_argument('--report-h3',type=Path)
@@ -2946,6 +3426,21 @@ def main():
     p.add_argument('--max-steps',type=int,default=1000)
     p.add_argument('--max-cases',type=int,default=120)
     args=p.parse_args()
+    if args.h4_technical:
+        if (args.h3_m1_eval or args.h2a or args.h2b or args.checkpoint_p is not None
+                or args.report_p is not None or args.checkpoint_h3 is not None
+                or args.report_h3 is not None or args.h4_reward_report is None
+                or any(getattr(args,k)!=p.get_default(k) for k in (
+                    'seeds','profiles','directions','push_step','push_magnitude',
+                    'second_push_step','second_push_magnitude','max_steps','max_cases'))):
+            p.error('M470_H4_TECH_FROZEN_FLAGS')
+        if args.mode=='plan':
+            print('M470_H4_TECH_PLAN',json.dumps(H4_TECH_SPEC,sort_keys=True))
+            return
+        h4t_run(args)
+        return
+    if args.h4_reward_report is not None:
+        p.error('M470_H4_TECH_REPORT_REQUIRES_FLAG')
     try:
         args.seeds=[int(x.strip()) for x in args.seeds.split(',') if x.strip()]
         args.profiles=parse_items(args.profiles,PROFILES,'profiles')
