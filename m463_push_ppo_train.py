@@ -1347,7 +1347,8 @@ def h4r_static_regression(brax_train_path,technical_report):
     for row in control['rollout_counts']:
         for k,v in row.items():
             if k.endswith('_per_rollout'):
-                m[k]=m.get(k,0.)+4*float(v)/20
+                m[k]=m.get(k,0)+4*int(v)
+    m={k:np.float32(v/20) for k,v in m.items()}
     m['h4r_nonfinite_per_rollout']=0.
     m['m463_events_per_rollout']=m['m463_h4_first_events_per_rollout']+m['m463_h4_repeat_events_per_rollout']
     m['m463_repeat_per_rollout']=m['m463_h4_repeat_events_per_rollout']
