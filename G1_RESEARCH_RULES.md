@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.55  
+**Version:** 1.2.56  
 **Ngày cập nhật:** 2026-11-24 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -631,6 +631,14 @@ Instrumenter uses conditional H3_EXT_FIELDS and H3_METRICS_SOURCE only with enab
 
 Decision H3_M1_0_DETAILED_DESIGN_COMPLETE / OWNER_EDIT_AND_STATIC_PENDING / ALL_EXECUTION_HOLD. No technical runtime or efficacy PASS.
 
+### M4.70 — OWNER REDELEGATES SOURCE EDIT/PUSH TO SA; H3-M1-0 SOURCE LANDED (v1.2.56; 2026-11-24)
+
+Owner explicitly stated "từ đây bạn có thể sửa code và push lên code luôn giúp tôi, tôi chỉ pull về và chạy theo lệnh". This supersedes the manual-owner-only executable source restriction of v1.2.24/v1.2.55 for subsequent explicitly in-scope approved tasks, until owner revokes. SA may edit existing experiment files and commit/push directly to experiment/b1-hardware-scaled after reading Rules, checking exact HEAD/blob pins, minimal EDIT-FIRST scope, review and available tests. No force push, main/tags/pinned upstream/checkpoint mutation, destructive reset, broad refactor or unauthorized execution. Owner retains local CUDA/MJX/PPO execution and separate budget GO; pull and run only supplied commands. Update AGENTS to reflect delegated workflow. Historical decisions preserved.
+
+H3-M1-0 integrated exact v1.2.55 handoff code blocks on pinned source in isolated commit 3cc9f578fd120d1d743c3b9f8a7421413c0f2689 (parent f8e19605c3492f052d5fc25b7c3c617a247ea0d1): m463_coverage_env.py blob b83ec0a031ea4184c48a1a189da9f87fcfb104d4 +61/-4; m463_instrument_brax.py 05d6349fc4cbe7f1ce92e14ec95438d79dcb4bda +69/-5; m463_push_ppo_train.py a7b91650bc3fb315542ec0f311411cfdf722a93e +122/-3. Exact one-match source anchors, Git compare checked, source modes preserved; evaluator unchanged blob65f0b46cc0b61561e8f75864ed9348be60a7919c. H3 opt-in only, default disabled, original stand scale -1, 50%/100 ticks actual-event/boundary-corrected, terminal original, eight optional extras, original PPO semantics. No GPU/JAX/PPO. Detached source commit assembled via GitHub connector; actual edited-source Python AST/static gate not executed by SA (isolated runtime cannot fetch repository), previous design-snippet PASS remains design-only. Owner must run §3 of existing H3_M1_0_SOURCE_DESIGN.md on exact pulled source, return timestamped log and SHA/status; no manual edits necessary. Technical runtime, smoke3, independent10M and evaluation still HOLD until review and explicit GO. Rollback via reviewed revert commit, not reset. No new runner or evaluation code.
+
+Decision H3_M1_0_SOURCE_LANDED / OWNER_STATIC_EVIDENCE_PENDING / ALL_GPU_PPO_HOLD. H2C and Branch B HOLD.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -892,6 +900,9 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-24)
+
+**M470-H3-M1-0 SOURCE LANDED / SA SOURCE DELEGATION (v1.2.56; 2026-11-24):** Owner delegates source edit/push to SA on experiment branch, owner pulls and executes locally. Exact H3 handoff integrated at 3cc9f578fd120d1d743c3b9f8a7421413c0f2689, three source files only, evaluator unchanged. Git source review, actual static gate pending owner log; all CUDA/GPU/PPO HOLD separate GO. No manual edits needed. H2C/B HOLD.
+
 
 **M470-H3-M1-0 DETAILED OWNER SOURCE HANDOFF (v1.2.55; 2026-11-24):** H3_M1_0_SOURCE_DESIGN.md SHA bdfa53ca326a217a8de87be4d1b7b4ddd4dff19d97702528d4245a21f7fd5812; proposed pure helper/reducer/audit/CLI snippets PASS NumPy, no actual edited source/runtime test. Owner manually edits only coverage env/instrumenter/runner, H3 flag and eight opt-in scalar extras, strict legacy isolation, static log then source review. Evaluator unchanged now, standing preservation contract locked, candidate-specific code later. All GPU/PPO execution HOLD separate GO, H2C/B HOLD.
 
@@ -1309,6 +1320,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-24 | H3-M1-0 delegated source landing | Owner redelegated edits, exact handoff three files at 3cc9f578fd120d1d743c3b9f8a7421413c0f2689, diff reviewed, prior design static only | v1.2.56 source landed; owner actual static pending; GPU/PPO HOLD | 1.2.56 |
+
 | 2026-11-24 | H3-M1-0 detailed source handoff | Pinned three source blobs, handoff SHA bdfa53ca, proposed helper/reducer/audit/CLI NumPy synthetic PASS, evaluator unchanged | v1.2.55 design complete, owner edit/static pending; no JAX/GPU/PPO/source changes by SA | 1.2.55 |
 
 | 2026-11-24 | H3-R0 owner approved paper-first reward design | Paper/source and recorded RC1 audit, OLD10M report SHA04f7c71b and exact fingerprint420ecb37, scheduler reward timing and evaluator hard pin reviewed | v1.2.54 select one H3-M1 50%/100-tick train-only stand penalty relaxation, H3-M1-0 ready, all execution HOLD, H2C HOLD | 1.2.54 |
@@ -1483,6 +1496,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.56 — 2026-11-24:** Owner reauthorizes SA source edit and push for approved experiment tasks; H3-M1-0 three-file source landing, actual static gate pending, no GPU/PPO GO. AGENTS updated, preserve all historical gates.
 
 - **v1.2.55 — 2026-11-24:** Locked H3-M1-0 detailed owner source handoff and opt-in actual PPO telemetry/static gates, evaluator implementation deferred pending candidate SHA with predeclared standing preservation contract. No runtime/efficacy PASS or execution GO, Rules-only.
 
