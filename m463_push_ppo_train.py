@@ -1087,12 +1087,15 @@ def h4r_audit_callback(api,args,report,persist,gpu_check):
     return callback
 
 
-def h4r_bootstrap_pins(args):
+def h4r_bootstrap_pins(args,*,h4cc=False):
     from importlib.machinery import PathFinder
     root=Path(__file__).resolve().parent
     compat=root.parent/'G1_M4_0_G1_PPO_ONE_UPDATE_SMOKE_V1'
     paths={}
-    for name,expected in H4R_LOCAL_SHA.items():
+    local_pins=dict(H4R_LOCAL_SHA)
+    if h4cc:
+        local_pins['m463_coverage_env']='d131e0bd14f6f1c8730eef5aaac32a6ef11e30ca19b7efb0a0751d1822991d01'
+    for name,expected in local_pins.items():
         search=[str(compat),*sys.path] if name=='nvcc_compat' else sys.path
         spec=PathFinder.find_spec(name,search)
         h4r_require(spec is not None and spec.origin is not None,'MODULE_MISSING '+name)
@@ -2357,11 +2360,11 @@ def h4x_generated_guard(audit,generated_file):
     h4x_write_json(out/'dispatch.started.json',{'authorization':auth},exclusive=True)
 
 
-def h4x_bootstrap(args):
+def h4x_bootstrap(args,*,h4cc=False):
     from types import SimpleNamespace
     proxy=SimpleNamespace(checkpoint=args.checkpoint,restore_report=args.restore_report,
                           h4_readiness_reward_report=args.h4_exploratory_reward_report)
-    pins=h4r_bootstrap_pins(proxy)
+    pins=h4r_bootstrap_pins(proxy,h4cc=h4cc)
     # Exact launcher overlay resolution before JAX is imported.
     from importlib import metadata
     from importlib.machinery import PathFinder
@@ -3895,7 +3898,7 @@ def _run_impl(args,h4x=None):
         for name,path in h4x['pins'].items():
             module=sys.modules.get(name)
             h4x_require(module is not None and Path(module.__file__).resolve()==Path(path),'IMPORTED_ORIGIN '+name)
-        h4x_require(h4x_bootstrap(args)==h4x['pins'],'BOOTSTRAP_IMMUTABILITY')
+        h4x_require(h4x_bootstrap(args,h4cc=cc_arm is not None)==h4x['pins'],'BOOTSTRAP_IMMUTABILITY')
     if jax.default_backend()!='gpu':raise RuntimeError('M463_GPU_REQUIRED')
     if (h3_acceptance is not None or h4_arm is not None) and (jax.process_count() != 1 or jax.local_device_count() != 1
             or gpu_initial['total_mib'] != 12288
@@ -4368,7 +4371,7 @@ def _run_impl(args,h4x=None):
                     ref=h4cc_read_final_report(args.h4cc_ref_report,h4x['authorization']['evidence_sha256'],'ref',h4_contract)
                     h4x_require(h4cc_matched_nominal(ref['h4_final_counts'],report['h4_final_counts']),'CCRC_MATCHED_NOMINAL')
                     report['h4cc_exposure_decision']=h4cc_exposure_decision(ref['h4cc_final_counts'],report['h4cc_final_counts'])
-            h4x_require((h4cc_authorization() if cc_arm is not None else h4x_authorization())==h4x['authorization'] and h4x_bootstrap(args)==h4x['pins']
+            h4x_require((h4cc_authorization() if cc_arm is not None else h4x_authorization())==h4x['authorization'] and h4x_bootstrap(args,h4cc=cc_arm is not None)==h4x['pins']
                         and h4c_dependency_pins(api)==h4x['brax_dependencies'],'FINAL_IMMUTABILITY')
             h4x_file_pin(args.h4_exploratory_causal_report,H4X_CAUSAL_SHA)
             h4x_require(h4c_git_blob(wrapper_file.read_bytes())=='2c09c8268a29d14c832dd07050575e4541ee98af','FINAL_WRAPPER_PIN')
@@ -4742,7 +4745,7 @@ def h4cc_run(args):
     out.mkdir(exist_ok=False)
     h4x_write_json(out/'attempt.json',{'authorization':auth,'reserved':True},exclusive=True)
     try:
-        pins=h4x_bootstrap(args)
+        pins=h4x_bootstrap(args,h4cc=True)
         _run_impl(args,h4x={'authorization':auth,'pins':pins})
         h4x_write_json(out/'attempt_result.json',{'status':'COMPLETE','authorization':auth},exclusive=True)
     except BaseException as exc:
