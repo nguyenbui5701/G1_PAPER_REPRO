@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.133  
+**Version:** 1.2.134  
 **Ngày cập nhật:** 2026-11-25 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -1474,6 +1474,14 @@ Owner explicit GO integration and offline static only. Retrieved full Rules v1.2
 
 **Actual focused host tests this turn:** compiled extracted seven changed integration helpers, exact function text FNV32 fingerprints matched fetched source (not full-source cryptographic compile); authorization1 positive/8 negative; reservation/JSON roundtrip/overwrite/nonfinite/64MiB cap/Git blob compare with git hash-object; changed mock replay5 lanes using actual SHA-pinned archive rows2136 attempted=recorded,666 rich,10 suffixes; final rich-key mutation, event mismatch immediate STOP at attempted386/recorded385, rich per-record cap STOP295/294, suffix cap334; new metadata cap rejects oversized report and preserves previous bytes. Updated validate_core/pack_capture exact function fingerprint2/2 and joint-actuation force margin + existing affected pack fixtures PASS; native-kick/yaw/body_delta/tree_equal four exact function fingerprints, left/right qvel-only mock and obs/RNG preservation PASS. Exact extracted enter_runtime fingerprint, five mocked scenarios valid once/second dispatch denied, wrong provenance consumes marker, bad marker/mode/seed rejected. Actual tests used Python/NumPy, temporary files and mock callbacks, zero simulation, JAX, actual actor inference, evaluation, PPO, optimizer, checkpoint save or GPU calls. Unchanged host COM/contact core fixtures not redundantly rerun except changed pack regression. Full source compile and actual CLI/provenance test not yet done: container cannot resolve GitHub network/direct checkout and has no labrobot shell, connector fetch exposes text rather than executable local file. Do NOT represent extracted compile or mocks as full evaluator static PASS. Owner next runs read-only local full static command at pinned HEAD, verifies full compile, old function AST/byte preservation, actual CLI plan/HOLD/conflict, all source/archive/artifact/dependency/external pins and schema/report cap arithmetic, no runtime imports. Inspect returned log before static approval; no marker or execution GO at this stage. If any static pin/compile/CLI fails STOP, preserve log, fix only implicated source, no simulation. H4-M3-1 INTEGRATION STAGED / OWNER FULL STATIC PENDING; all execution/holdout/readiness/production/promotion/Branch B HOLD.
 
+### M4.70-H4-M3-1 — ACTUAL FULL STATIC ACCEPTED / H4-M3-2 EXECUTION HOLD (v1.2.134; 2026-11-25)
+
+SA reviewed actual uploaded owner log m463_runs/m470_h4_m3_1_full_static_20261125_204721_773573731.log,3364 bytes, independently SHA256 edfba1d62396df1c48bb051c49fc96c01fa2479f22cf528da4f62c0a6570a80f. Exact local full evaluator compile, legacy AST/source preservation, all seven execution flags false, actual CLI5/5, 42 local input pins, archived H3 path m463_runs/m470_h3_m1_3_corrected_20261124_192702_101671859/report.json, installed five MJX3.2.7 source blobs and NVCC file metadata, report-bound88612 bytes per rich record, zero runtime imports and final full static marker all present; no traceback or failure. Independently recomputed canonical nine-file source map digest 35c768734069e3fd68903d4b98a546067747ed408e80c9bc2fbba8eba4c731c3, external source digest ba903059d74fca008880462d02506c7b637d0c510c78da50154efa836eab2ab2, and plan spec digest cfe8466c12033aaf41006965b34f778fd476e7d86749f5556e03f6d297106143 from actual log/source. Fetched exact evaluator blob71711dec69336bc67f89530396a8199480cacbed at93f8b7d8e1b99a06cef602171dc10fc7ef64a0b6 and independently hashed its content SHA256 cb723999b3b98a57ca5a65d549cb95219c0937ed17e545c96843f015a9ff00c0 matching owner map. Other eight source hashes match approved historical map; external five blobs match pinned types/forward/support/smooth/sensor, actual NVCC SHA c92cd0f79e04acc409c4d0d52c7b1cc2c5b71822aafbd1e4d957a949f5044e8f. Owner local actual artifact/runtime file bytes validated by local static reader, SA independently validates log and source/digest consistency, not direct labrobot binary access. Full static accepted; no rerun of already accepted tests on unchanged source. No actual model/telemetry availability or numerical trajectory equivalence claim; these require bounded runtime. No scientific mechanism attribution or readiness claim.
+
+H4M3_STATIC_APPROVED: 35c768734069e3fd68903d4b98a546067747ed408e80c9bc2fbba8eba4c731c3 edfba1d62396df1c48bb051c49fc96c01fa2479f22cf528da4f62c0a6570a80f m463_runs/m470_h4_m3_1_full_static_20261125_204721_773573731.log
+
+Static approval marker is evidence only; no active execution marker. H4-M3-1 CLOSED / STATIC PASS. H4-M3-2 separate explicit owner GO required before one-use Rules-only authorization, verify exact source/plan/external/archive/checkpoint pins and bootstrap, fixed five lane order CCRC7357L/7601R/7613L,C7357L,REF7331L, same native actor/inference and original Joystick, DR/source random push OFF, command stand, exact prefix334 and single/double335..385 or termination, first300/.50 second335/.35. Expected2136 physical/666 rich, caps2180/710,5 reset/10 suffix, report64MiB/2GiB reserve, 16MiB combined bounded launcher with process-group kill on overflow, no retry, no padding. Source identity unchanged; no new pilot or repeat static. On any mismatch/finite/availability-required/provenance/budget/GPU/storage/ledger failure STOP preserve partial, optional COM/contact unavailable explicitly limits attribution. No efficacy evaluation, no optimizer/checkpoint saves/PPO, no gate changes, no production/readiness/promotion/independent holdout/Branch B. This review zero physical transitions and no actual inference or simulation. Only Rules changed.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -1735,6 +1743,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-25)
+
+**H4-M3-1 ACTUAL FULL STATIC PASS / CLOSED (v1.2.134):** owner log edfba1d6..., actual full compile/legacy/CLI5/5/local42 pins/installed MJX/zero runtime imports PASS, independent source/spec/external digests match, approved static marker only. H4-M3-2 separate bounded diagnostic GO required, all actual execution HOLD, no source or gate changes.
 
 **H4-M3-1 HELD INTEGRATION STAGED / OWNER FULL STATIC PENDING (v1.2.133):** evaluator blob71711dec69336bc67f89530396a8199480cacbed; distinct dispatcher, marker/session, runtime pins, JIT capture and fixed lanes, report64MiB; new extracted host/authorization/reservation/kick/ledger/pack tests PASS, old h3_group/readers exact. Full evaluator compile/actual CLI/local artifact+runtime source pins pending owner read-only log. No approval/active marker, all runtime HOLD, zero physical/inference/evaluation/PPO.
 
@@ -2358,6 +2368,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-25 | H4-M3-1 actual full static acceptance | owner log edfba1d6..., compile/CLI5/5/42 input pins/installed dependency, independent digests | v1.2.134 CLOSED STATIC PASS, H4-M3-2 execution HOLD | 1.2.134 |
+
 | 2026-11-25 | H4-M3-1 held integration | existing dispatcher/one-use/bootstrap/fixed lanes and report interlocks, new exact extracted host regression and legacy preservation | v1.2.133 INTEGRATION STAGED; owner full static pending, all execution HOLD | 1.2.133 |
 
 | 2026-11-25 | H4-M3-1 held core implementation | evaluator only, exact archive and mock host replay/telemetry fixtures, legacy byte reverse | v1.2.132 CORE STAGED; full source compile and dispatcher/provenance integration pending; all execution HOLD | 1.2.132 |
@@ -2689,6 +2701,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.134 — 2026-11-25:** Accept actual H4-M3-1 full static owner evidence and independent SHA checks; pin static approval only, close implementation, keep H4-M3-2 and all execution HOLD pending distinct GO.
 
 - **v1.2.133 — 2026-11-25:** Record held diagnostic integration and actual focused host regression; full exact-source compile/CLI/local artifact and installed runtime pins pending owner static log; no static approval or active execution marker.
 
