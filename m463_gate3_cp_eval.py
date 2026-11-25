@@ -4029,6 +4029,11 @@ def h4cc_tech_audit(report,*,partial=False):
     commands=[stand,[.2,0.,0.],[.6,0.,0.],[.4,0.,.8],[.4,0.,-.8],[0.,.35,0.]]
     # Compare exact float32 values by accepting only their canonical encodings.
     import struct
+    import re
+    def valid_key(x):
+        return isinstance(x,list) and len(x)==2 and all(type(v) is int and 0<=v<2**32 for v in x)
+    def valid_sha(x):
+        return isinstance(x,str) and re.fullmatch(r'[0-9a-f]{64}',x) is not None
     commands=[[struct.unpack('f',struct.pack('f',v))[0] for v in c] for c in commands]
     total=0; distinct_release=0; broad=0; no_refresh_completed=0; terminal_lanes=0
     for index,fixture in enumerate(H4CC_TECH_FIXTURES):
@@ -4038,7 +4043,9 @@ def h4cc_tech_audit(report,*,partial=False):
         for arm,lane in zip(('ref','ccrc'),pair):
             h4cc_tech_require(lane['arm']==arm and lane['fixture']==list(fixture)
                 and lane['metadata']==h4cc_tech_fixture_values(fixture)
-                and lane['prior_actual_pushes']==0 and lane['initial_command']==stand,'LANE_ID')
+                and lane['prior_actual_pushes']==0 and lane['initial_command']==stand
+                and lane['native_reset_command'] in commands and valid_key(lane['initial_rng'])
+                and valid_sha(lane['initial_sha256']) and valid_sha(lane['model_sha256']),'LANE_ID')
             rows=lane['rows']
             h4cc_tech_require(1<=len(rows)<=252,'LANE_LENGTH')
             total+=len(rows)
@@ -4052,12 +4059,16 @@ def h4cc_tech_audit(report,*,partial=False):
                     and row['rng_before']==last_key and row['source_clock']==source_clock
                     and row['pre']==command and row['actor']==actor and row['critic']==critic,'CARRY')
                 req(row['finite'] is True and row['rng_after']==row['expected_rng']
-                    and row['native_draw'] in commands,'FINITE_RNG')
+                    and row['native_draw'] in commands
+                    and all(valid_key(row[k]) for k in ('rng_before','rng_after','expected_rng'))
+                    and all(valid_sha(row[k]) for k in ('pre_sha256','post_sha256',
+                        'action_sha256','physics_sha256')),'FINITE_RNG')
                 req(all(type(m[k]) is int and m[k] in (0,1) for k in (
                     'event','repeat','terminal','refresh','bad','cc_bad','start',
                     'event_terminal','tick','tick_same','tick_survived','tail_terminal',
                     'completed','cc_refresh','sample_same','sample_different','deferred',
-                    'published','terminal_restored','active','pending_valid','boundary','truncation')),
+                    'published','terminal_restored','active','pending_valid','boundary','truncation',
+                    'source_terminal','mature','side_matched','side_fallback')),
                     'FLAGS')
                 terminal=bool(m['terminal']); refresh=source_clock>=500
                 start=(i==0 and cls==3); tick=active and i>0
@@ -4159,6 +4170,151 @@ def h4cc_tech_audit(report,*,partial=False):
         'different_draw_release_followed_by_action':distinct_release,'broad_pairs':broad,
         'no_refresh_completed':no_refresh_completed,'terminal_lanes':terminal_lanes,
         'physical_transitions':total}
+
+
+def h4cc_tech_static_regression():
+    """Synthetic report-replay and marker tests only; no physical calls."""
+    import copy
+    import struct
+    passed=[]
+    def check(label,ok):
+        h4cc_tech_require(ok,'STATIC '+label)
+        passed.append(label)
+    def reject(label,fn):
+        try:
+            fn()
+        except RuntimeError as exc:
+            h4cc_tech_require(str(exc).startswith('M470_H4CC_TECH_'),'STATIC_WRONG_EXCEPTION')
+            passed.append(label)
+        else:
+            raise RuntimeError('M470_H4CC_TECH_STATIC_ACCEPTED '+label)
+    stand=[0.,0.,0.]
+    move=[struct.unpack('f',struct.pack('f',.6))[0],0.,0.]
+    def h(*x):return hashlib.sha256(repr(x).encode()).hexdigest()
+    def build(*,different=True,terminal_at=None):
+        # Independent synthetic trace: constant reset, fixed event and refresh
+        # index, not a real RNG draw, state-machine call, or source execution.
+        lanes=[]
+        for fixture in H4CC_TECH_FIXTURES:
+            seed,cls,direction,first,target,age,clock=fixture
+            refresh_i=500-clock
+            draw=move if different else stand
+            support=0 if seed==4102 else direction-1
+            side=direction-1 if cls==3 and support==direction-1 else 0
+            for arm in ('ref','ccrc'):
+                treatment=(arm=='ccrc' and cls==3)
+                initial=h(seed,'reset')
+                lane={'fixture':list(fixture),'arm':arm,'metadata':h4cc_tech_fixture_values(fixture),
+                    'prior_actual_pushes':0,'initial_command':stand,'native_reset_command':stand,
+                    'initial_rng':[seed,0],'initial_sha256':initial,'model_sha256':h(seed,'model'),
+                    'rows':[]}
+                prev=initial;pre=obs=stand
+                stop=terminal_at if terminal_at is not None else 251
+                for i in range(stop+1):
+                    terminal=terminal_at==i
+                    target_event=(cls==3 and i==0)
+                    tail=(cls==3 and 1<=i<=250)
+                    refresh=i==refresh_i
+                    scope=target_event or tail
+                    kept=cls==3 and i<250 and not terminal
+                    publish=treatment and i==250 and not terminal and refresh_i<=i
+                    restored=treatment and tail and terminal and refresh_i<i
+                    deferred=treatment and scope and refresh and not terminal
+                    valid=treatment and kept and refresh_i<=i
+                    if treatment:
+                        post=draw if publish or restored or (refresh and terminal) or i>250 and refresh_i<=i else stand
+                    else:
+                        post=draw if refresh_i<=i else stand
+                    next_obs=stand if terminal else post if treatment and (kept or publish) else pre
+                    m={'event':int(i==0),'repeat':int(i==0),'terminal':int(terminal),
+                        'source_terminal':int(terminal),'mature':int(target_event),'refresh':int(refresh),
+                        'bad':0,'cc_bad':0,'boundary':0,'truncation':0,'age':age+i,
+                        'wrapper_steps':age+i+1,'gap':age-first if i==0 else 0,
+                        'direction':direction,'support':support,'side_target':direction-1 if i==0 else 0,
+                        'side_matched':int(i==0 and support==direction-1),
+                        'side_fallback':int(i==0 and support!=direction-1),
+                        'event_qual':side if i==0 else 0,'event_side':side,
+                        'start':int(target_event),'event_terminal':int(target_event and terminal),
+                        'tick':int(tail),'tick_age':i if tail else 0,'tick_side':side if tail else 0,
+                        'tick_same':int(tail and (treatment or not different or i<=refresh_i)),
+                        'tick_survived':int(tail and not terminal),'tail_terminal':int(tail and terminal),
+                        'completed':int(tail and i==250 and not terminal),
+                        'cc_refresh':int(scope and refresh),'sample_same':int(scope and refresh and not different),
+                        'sample_different':int(scope and refresh and different),'deferred':int(deferred),
+                        'published':int(publish),'terminal_restored':int(restored),'active':int(kept),
+                        'pending_valid':int(valid)}
+                    post_sha=h(seed,i,post,next_obs,terminal)
+                    row={'tick':i,'metrics':m,'pre_sha256':prev,'post_sha256':post_sha,
+                        'rng_before':[seed,i],'rng_after':[seed,i+1],'expected_rng':[seed,i+1],
+                        'source_clock':clock+i if i<=refresh_i else i-refresh_i-1,
+                        'next_source_clock':0 if terminal or refresh else
+                            clock+i+1 if i<refresh_i else i-refresh_i,
+                        'pre':pre,'actor':obs,'critic':obs,'post':post,'next_actor':next_obs,
+                        'next_critic':next_obs,'native_draw':draw,'held':stand,
+                        'pending':draw if valid else stand,'finite':True,'reset_data_obs_equal':terminal,
+                        'magnitude':.35 if i==0 else 0.,'delta':[0.,.35 if direction==2 else -.35] if i==0 else stand[:2],
+                        'action_sha256':h(seed,i,obs),'physics_sha256':h(seed,i,pre,obs,terminal)}
+                    lane['rows'].append(row)
+                    pre,obs,prev=post,next_obs,post_sha
+                lane['physical_attempted']=lane['physical_recorded']=len(lane['rows'])
+                lanes.append(lane)
+        total=sum(len(l['rows']) for l in lanes)
+        return {'spec':copy.deepcopy(H4CC_TECH_SPEC),'lanes':lanes,
+            'physical_transitions_attempted':total,'physical_transitions_recorded':total,
+            'reset_lanes_attempted':8,'reset_lanes_recorded':8}
+    # Metadata arithmetic is predeclared, not a physical first push.
+    check('fixture_schedule',all(h4cc_tech_fixture_values(f)['m463_next']+8==f[5]
+                                for f in H4CC_TECH_FIXTURES))
+    check('budget',len(H4CC_TECH_FIXTURES)*2*H4CC_TECH_SPEC['max_lane_steps']==2016)
+    a,b,c='a'*64,H4CC_TECH_GENERATED_SHA,'c'*64
+    approved='H4CC_APPROVED_TECH_STATIC_SHA256: '+c+'\n'
+    marker='H4CC_TECH_ACTIVE_GO: '+H4CC_TECH_ID+' '+a+' '+b+' '+c
+    check('marker_valid',h4cc_tech_parse_marker(approved+marker)['source_sha256']==a)
+    for label,value in (('marker_missing',approved),('marker_duplicate',approved+marker+'\n'+marker),
+        ('marker_unapproved',marker),('marker_wrong_generated',approved+marker.replace(b,'d'*64)),
+        ('marker_wrong_static',approved+marker[:-64]+'d'*64),
+        ('marker_approval_duplicate',approved+approved+marker),
+        ('marker_h4x_conflict',approved+marker+'\nH4X_ACTIVE_GO: x'),
+        ('marker_train_conflict',approved+marker+'\nH4CC_ACTIVE_GO: x'),
+        ('marker_eval_conflict',approved+marker+'\nH4CC_EVAL_ACTIVE_GO: x')):
+        reject(label,lambda value=value:h4cc_tech_parse_marker(value))
+    report=build()
+    audit=h4cc_tech_audit(report)
+    check('full_replay',audit['passed'] and audit['physical_transitions']==2016
+        and audit['different_draw_release_followed_by_action']==2
+        and audit['no_refresh_completed']==1 and audit['broad_pairs']==1)
+    check('same_draw_inconclusive',h4cc_tech_audit(build(different=False))['decision']=='INCONCLUSIVE')
+    for i in (0,1,200,250):
+        audit=h4cc_tech_audit(build(terminal_at=i))
+        check('terminal_'+str(i),audit['decision']=='INCONCLUSIVE' and audit['terminal_lanes']==8
+              and audit['physical_transitions']==8*(i+1))
+    # Partial replay must not require completion or report PASS.
+    partial=copy.deepcopy(report);partial['lanes']=partial['lanes'][:2]
+    partial['lanes'][1]['rows']=partial['lanes'][1]['rows'][:166]
+    partial['lanes'][1]['physical_attempted']=partial['lanes'][1]['physical_recorded']=166
+    partial['reset_lanes_attempted']=partial['reset_lanes_recorded']=2
+    partial['physical_transitions_attempted']=partial['physical_transitions_recorded']=252+166
+    check('partial_replay',not h4cc_tech_audit(partial,partial=True)['passed'])
+    reject('partial_not_final',lambda:h4cc_tech_audit(partial))
+    def bad(label,mutate):
+        r=copy.deepcopy(report);mutate(r)
+        reject(label,lambda:h4cc_tech_audit(r))
+    bad('attempted_mismatch',lambda r:r.update(physical_transitions_attempted=2017))
+    bad('reset_overflow',lambda r:r.update(reset_lanes_attempted=9))
+    bad('wrong_seed',lambda r:r['lanes'][0]['fixture'].__setitem__(0,4105))
+    bad('rng_mismatch',lambda r:r['lanes'][1]['rows'][165].update(rng_after=[0,0]))
+    bad('wrong_pending',lambda r:r['lanes'][1]['rows'][165].update(pending=stand))
+    bad('early_release',lambda r:r['lanes'][1]['rows'][165].update(post=move))
+    bad('late_release',lambda r:r['lanes'][1]['rows'][250].update(next_actor=stand))
+    bad('bad_actor',lambda r:r['lanes'][1]['rows'][251].update(actor=stand))
+    bad('bad_support',lambda r:r['lanes'][0]['rows'][0]['metrics'].update(side_matched=0))
+    bad('bad_tick_side',lambda r:r['lanes'][1]['rows'][10]['metrics'].update(tick_side=0))
+    bad('nonfinite',lambda r:r['lanes'][1]['rows'][1].update(finite=False))
+    bad('extra_push',lambda r:r['lanes'][1]['rows'][2]['metrics'].update(event=1))
+    bad('pair_mismatch',lambda r:r['lanes'][7]['rows'][2].update(physics_sha256=h('bad')))
+    bad('model_mismatch',lambda r:r['lanes'][7].update(model_sha256=h('bad')))
+    bad('terminal_then_step',lambda r:r['lanes'][1]['rows'][200]['metrics'].update(terminal=1))
+    return {'passed':True,'fixtures':passed,'count':len(passed),'physical_transitions':0}
 
 def h4cc_tech_read_report(path,expected_sha,source,generated):
     import m463_push_ppo_train as t
