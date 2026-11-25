@@ -523,13 +523,15 @@ def make_patched_source(raw, *, require_pin=True, enable_resume=False, enable_h3
     return s, actual_sha
 
 
-def build_instrumented_ppo(pinned_ppo_module, output:Path, *, enable_resume=False, enable_h3=False, enable_h4=False, enable_h4x=False):
+def build_instrumented_ppo(pinned_ppo_module, output:Path, *, enable_resume=False, enable_h3=False, enable_h4=False, enable_h4x=False, enable_h4cc=False):
     import inspect
     p=Path(inspect.getfile(pinned_ppo_module.train))
+    if enable_h4cc and not enable_h4x:
+        raise RuntimeError('M470_H4CC_BUILDER_CONTRACT')
     if enable_h4x:
         if not enable_resume or not enable_h4 or enable_h3:
             raise RuntimeError('M470_H4X_BUILDER_CONTRACT')
-        patched,original_sha=make_h4_exploratory_source(p.read_bytes())
+        patched,original_sha=make_h4_exploratory_source(p.read_bytes(),enable_h4cc=enable_h4cc)
     else:
         patched,original_sha=make_patched_source(p.read_bytes(),
             enable_resume=enable_resume, enable_h3=enable_h3, enable_h4=enable_h4)
@@ -553,7 +555,7 @@ def build_instrumented_ppo(pinned_ppo_module, output:Path, *, enable_resume=Fals
     return mod,{'original_brax_sha256':original_sha,
                 'instrumented_file':str(output.resolve()),
                 'instrumented_sha256':sha256(patched.encode('utf8')),
-                'extra_fields':list(EXT_FIELDS + (H3_EXT_FIELDS if enable_h3 else ()) + (H4_EXT_FIELDS if enable_h4 else ()))}
+                'extra_fields':list(EXT_FIELDS + (H3_EXT_FIELDS if enable_h3 else ()) + (H4_EXT_FIELDS if enable_h4 else ()) + (H4CC_EXT_FIELDS if enable_h4cc else ()))}
 
 
 # Readiness-only source. Never change the production H4 generator or hold.
