@@ -4767,6 +4767,7 @@ def h4cc_tech_actual(args,r,monitor,persist,*,rss=False):
                     names=ce.H4M6_REWARD_NAMES
                     row.update(rss={k:scalar(nxt.info['h4m6_'+k]) for k in ce.H4M6_INT_FIELDS},
                         reward_names=list(names),raw_rewards=vec(nxt.info['h4m6_raw_rewards']),
+                        reward_native_types=['bool' if k in ce.H4M6_BOOL_REWARD_NAMES else 'float32' for k in names],
                         weighted_rewards=[float(host(nxt.metrics['reward/'+k])[0]) for k in names],
                         reward_scales=[float(cfg.reward_config.scales[k]) for k in names],
                         reward=float(host(nxt.reward)[0]),
@@ -7176,7 +7177,15 @@ def h4m5_dispatch(args):
 
 
 # H4-M6: independent held technical and development comparison contracts.
-H4M6_TECH_OUTPUT=Path('m463_runs/m470_h4_m6_tech_v1/report.json')
+H4M6_TECH_OUTPUT=Path('m463_runs/m470_h4_m6_tech_v2/report.json')
+H4M6_V1_STOP_PINS={
+    'm463_runs/m470_h4_m6_tech_v1/report.json':'733ba14afd9fcba1d6ad17aeafb5ad9f54e24fd5d515595efe4d7b5ccfba18cc',
+    'm463_runs/m470_h4_m6_tech_v1/attempt.json':'4bec71aac36e1b7e47b13d932e645eba6d2087d3e6ad3a602b501e465eafb1a1',
+    'm463_runs/m470_h4_m6_tech_v1/dispatch.started.json':'e84dd853850fb1eba2e8867f4b30c006a4a562d69a3afffad63f21996f3cbdd9',
+    'm463_runs/m470_h4_m6_tech_v1/attempt_result.json':'a1219208982cd65237941304893206309fdb8f23ec98248b55578bc5f09d2bc9',
+    'm463_runs/m470_h4_m6_2_technical_20261126_001405_1795626845670742063.log':'6858491e87977eb9b206755e5bd86f22e812fca1e626faf5e0bad0f6677ee700',
+    'm463_runs/m470_h4_m6_1_full_static_20261126_000627_892520238.log':'4969f7e244cfe2eb37a57dcff0af44b0344f03917591c8c543f8bf9782d9ef93',
+}
 H4M6_DEV_OUTPUT=Path('m463_runs/m470_h4_m6_dev_v1/report.json')
 H4M6_RICH_OUTPUT=Path('m463_runs/m470_h4_m6_dev_v1/mechanism.json')
 H4M6_TECH_FIXTURES=H4CC_TECH_FIXTURES
@@ -7232,6 +7241,10 @@ def h4m6_tech_inputs(args,auth):
               'restore':t.H3_CAUSAL_RESTORE_SHA,'static':auth['static_sha256']}
     for k,p in paths.items():
         t.h4x_file_pin(p,expected[k])
+    for rel,expected_sha in H4M6_V1_STOP_PINS.items():
+        old=root/rel
+        h4m6_eval_require(old.absolute()==old.resolve(),'TECH_V1_ARCHIVE_PATH')
+        t.h4x_file_pin(old,expected_sha)
     h4m6_eval_require(auth['phase']=='tech' and args.output.resolve()==root/H4M6_TECH_OUTPUT,'TECH_PATH')
     pins=t.h4x_bootstrap(SimpleNamespace(checkpoint=paths['C401M'],
         restore_report=paths['restore'],h4_exploratory_reward_report=paths['reward']),
@@ -7242,7 +7255,8 @@ def h4m6_tech_inputs(args,auth):
     gen,original=make_h4m6_source(Path(external['training']['brax.training.agents.ppo.train']['path']).read_bytes())
     h4m6_eval_require(original==TRAIN_SHA and hashlib.sha256(gen.encode()).hexdigest()==auth['generated_sha256'],'GENERATED_PIN')
     return {'input_sha256':expected,'input_paths':{k:str(p.resolve()) for k,p in paths.items()},
-            'bootstrap':pins,'source_sha256':auth['source_sha256'],'external':external}
+            'bootstrap':pins,'source_sha256':auth['source_sha256'],'external':external,
+            'v1_stop_sha256':dict(H4M6_V1_STOP_PINS),'reward_scale_contract':'native_bool_float32_v2'}
 
 def h4m6_runtime_gate(phase):
     # No source flag; current Rules has neither approval nor active marker.
@@ -7389,6 +7403,29 @@ def h4m6_read_technical(path,expected_sha,auth):
                 and row['reward_scales']==[float(reward[k]) for k in row['reward_names']],'TECH_FROZEN_REWARD')
     return r
 
+def h4m6_verify_reward_scale(names,raw,scales,w,np):
+    """Replay pinned native bool/float32 reward types, not the promoted stack type."""
+    boolean_names=('termination','collision')
+    for i,name in enumerate(names):
+        a,s,b=raw[i],scales[i],w[i]
+        if name in boolean_names:
+            # A native predicate is exactly False/True, not an arbitrary float.
+            if a.tobytes() not in (np.float32(0).tobytes(),np.float32(1).tobytes()):
+                return False
+            if a==0:
+                # Native lowering may select +0 or multiply to -0. Only the
+                # inactive boolean term has no source-specified zero sign.
+                if b!=0:
+                    return False
+                continue
+            expected=s
+        else:
+            expected=np.float32(a*s)
+        if expected.tobytes()!=b.tobytes():
+            return False
+    return True
+
+
 def h4m6_technical_audit(report,*,partial=False):
     """Pure replay: exact same-trajectory paired reward isolation, no physics."""
     import numpy as np
@@ -7454,11 +7491,13 @@ def h4m6_technical_audit(report,*,partial=False):
             names=row['reward_names']; raw=f32(row['raw_rewards']); w=f32(row['weighted_rewards'])
             scales=f32(row['reward_scales'])
             req(len(names)==24 and len(set(names))==24 and 'stand_still' in names
-                and 'termination' in names and raw.shape==w.shape==scales.shape==(24,)
+                and 'termination' in names and 'collision' in names
+                and row['reward_native_types']==['bool' if k in ('termination','collision') else 'float32' for k in names]
+                and raw.shape==w.shape==scales.shape==(24,)
                 and np.isfinite(raw).all() and np.isfinite(w).all() and np.isfinite(scales).all(),'TECH_REWARD_SCHEMA')
             idx=names.index('stand_still')
             req(scales[idx]==-1 and scales[names.index('termination')]==-100
-                and bits(raw*scales,w),'TECH_REWARD_SCALE')
+                and h4m6_verify_reward_scale(names,raw,scales,w,np),'TECH_REWARD_SCALE')
             req(all(np.isfinite(float(e[x])) for x in ('factor','raw_stand','shadow_stand',
                 'actual_stand','shadow_relief','delivered_relief','base_reward','expected_reward')),'TECH_FINITE')
             factor=np.float32(1)-np.float32(.5)*np.float32(51-k)/np.float32(50) if e['eligible'] else np.float32(1)
@@ -7481,7 +7520,7 @@ def h4m6_technical_audit(report,*,partial=False):
                 req(k<len(ref['rows']),'TECH_PAIRED_LENGTH')
                 b=ref['rows'][k]; be=b['rss']
                 for key in ('pre_sha256','post_sha256','physics_sha256','action_sha256','rng_before',
-                    'rng_after','native_draw','metrics','reward_names','reward_scales','post','next_actor','next_critic'):
+                    'rng_after','native_draw','metrics','reward_names','reward_native_types','reward_scales','post','next_actor','next_critic'):
                     req(row[key]==b[key],'TECH_PAIRED_NONREWARD '+key)
                 req(all(bits(row['raw_rewards'][j],b['raw_rewards'][j]) and
                     bits(row['weighted_rewards'][j],b['weighted_rewards'][j])
