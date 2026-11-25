@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.106  
+**Version:** 1.2.107  
 **Ngày cập nhật:** 2026-11-25 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -1173,6 +1173,14 @@ Owner explicit GO for H4-M1-3 implementation and focused offline static regressi
 
 **Next / owner-local focused offline gate only:** fast-forward to reviewed experiment branch, confirm exact evaluator Git blob and no source drift; compile full evaluator in memory, run H4 plan exact dev protocol and ensure --mode run rejected with EXECUTION_HOLD before runtime, reject wrong seed/budget/mode/legacy path, verify h4e_read_inputs on actual frozen local files without importing JAX/MJX/PPO (all report/policy/fullstate/manifest/markers/generated/helper SHA), check legacy H3 plan unchanged and preserve stdout. Do not rerun accepted training/static suites or actual simulation. Review actual owner evidence before separate explicit H4-M1-3 execution GO; if gate fails STOP, no rerun or relaxed provenance. All actual evaluation, independent holdout8641/8647/8663/8669, historical readiness FAIL, production/promotion, H2C/B HOLD. H4 training closed, no active H4X marker, no new PPO.
 
+### M4.70-H4-M1-3 — ACTUAL OWNER OFFLINE STATIC / LOCAL PROVENANCE PASS / SEPARATE EXECUTION GO PENDING (v1.2.107; 2026-11-25)
+
+Owner submitted m470_h4_m1_3_static_20261125_111416_904251802.log, 8294 bytes, independently computed SHA256 0e99f14e404f5875f68b73448fc5b2c367e973f422f2199b7763346864d98c9c. Read complete log; exact HEAD012be86eaccf8b714b14dc6cba630dee38d5780e, reviewed current Rules v1.2.106 and held evaluator blob72859117bf990f106a6adebec42d1b0493ade220 on experiment branch. Owner actual full-source compile, constants/hold, frozen protocol, local provenance, legacy H3 plan, CLI interlocks and zero simulation/PPO markers PASS; complete final H4_M1_3_OFFLINE_STATIC_PASS and OFFLINE VALIDATION COMPLETE. All five CLI errors expected: EXECUTION_HOLD, FROZEN_PROTOCOL twice (holdout seeds and changed cap), MODE_CONFLICT, LEGACY_INPUT_CONFLICT. SA independently parsed plan JSON and confirmed exact CTRL/CAND, dev7331/7357/7601/7613, stand/forward_fast/turn_left, left/right, logical120, physical89616, training false, authorization false, frozen output. H3 plan C/OLD/H3 logical180/physical134424 unchanged. No evidence of actual controlled evaluation or runtime bootstrap in this log.
+
+**Provenance:** owner local guard checked 23 SHA256 pins: eight Control, eight Candidate, seven helper sources. SA compared reported 16 artifact digests with held evaluator constants and independently compared seven helper pins against previously uploaded Candidate report h4_common_contract.source_digests; Candidate report and attempt_result bytes rehashed and match. Actual binary checkpoint/fullstate and other owner-only artifact bytes remain local, accepted on owner-local guard evidence, not independent SA binary validation. No change to frozen source, policy, reports or acceptance thresholds. No rerun of accepted offline static or training regressions needed unless corresponding bytes change.
+
+**Decision:** H4-M1-3 implementation and actual offline gate CLOSED/PASS; READY_FOR_EXPLICIT_H4_M1_3_EXECUTION_GO. This review is not execution authorization. H4_EVAL_EXECUTION_AUTHORIZED=False, zero active H4X training markers; no executable changes. On separate owner GO, re-review exact runtime bootstrap and minimally unlock one fixed development evaluation on final CTRL/CAND only; retain exclusive output reservation, source/provenance and GPU/disk/finite/physical limits, 24 groups/120 logical/89616 max physical control transitions, unchanged push schedule, all v1.2.76/97/106 efficacy/preservation/paired gates, no C401M rerun, no intermediate selection, no PPO, checkpoint save, package install, retry or threshold relaxation. Preserve partial evidence on failure. Independent holdout, production, promotion, readiness (historical FAIL), H2C/B HOLD; no automatic holdout after DEV_PASS. SA new simulation/PPO/evaluation/save0.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -1434,6 +1442,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-25)
+
+**H4-M1-3 ACTUAL OFFLINE PASS (v1.2.107):** exact owner HEAD012be86e, log0e99f14e (8294 bytes), full compile and local 23-pin provenance PASS, H4/H3 plans and negative CLI gates PASS. Implementation/offline closed; ready for separate explicit one-run development GO only; evaluator unchanged and execution HOLD. No simulation/PPO; independent holdout/readiness/production/promotion HOLD.
 
 **H4-M1-3 HELD IMPLEMENTATION (v1.2.106):** evaluator blob72859117bf990f106a6adebec42d1b0493ade220, shared H3 fork/decision with fixed CTRL/CAND final pins,120 logical/89616 cap, H4 flag False. SA extracted decision15/protocol22/provenance13 synthetic tests PASS; exact full local compile/CLI and actual frozen artifacts pending owner offline gate. No simulation/PPO/eval; separate execution GO required; holdout/readiness/production/promotion HOLD.
 
@@ -2003,6 +2013,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-25 | H4-M1-3 actual offline review | owner log0e99f14e, full compile, 23-pin provenance, H4/H3 plans and interlocks PASS | v1.2.107 offline CLOSED/PASS; separate explicit evaluation GO pending; execution HOLD | 1.2.107 |
+
 | 2026-11-25 | H4-M1-3 held evaluator implementation | evaluator72859117; exact extracted functions, 50 synthetic tests PASS, source diff only evaluator | v1.2.106 source staged; owner exact offline gate pending; execution HOLD | 1.2.106 |
 
 | 2026-11-25 | H4-M1-2B actual Candidate review | report9c49c3cb/log4811c001; actual10485760/1600+6000; 22409 push, nominal2364744, all floors PASS | v1.2.105 TECH/EXPOSURE PASS; relock, matched pair frozen, H4-M1-3 offline preparation only | 1.2.105 |
@@ -2280,6 +2292,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.107 — 2026-11-25:** Accept owner exact-checkout full compile, 23-pin local provenance and CLI interlock evidence; close offline gate, separate explicit bounded development evaluation GO pending; Rules-only, all execution HOLD.
 
 - **v1.2.106 — 2026-11-25:** Land held H4 matched development evaluator using shared H3 fork/gates, frozen CTRL/CAND provenance and exact cap; 50 extracted synthetic checks PASS, full exact-checkout compile/CLI and actual local input verification pending, all execution HOLD.
 
