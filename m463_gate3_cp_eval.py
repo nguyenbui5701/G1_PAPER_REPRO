@@ -2574,6 +2574,8 @@ def h4e_run(args):
 
 
 def run(args):
+    if getattr(args,'h4m4_feasibility',False):
+        h4m4_authorization()
     placement=bool(getattr(args,'h4m3_placement',False))
     if placement:
         h4m3_enter_runtime(args)
@@ -5602,6 +5604,253 @@ def h4m3_static_archive_check(current_path,historical_path):
             'simulation_calls':0,'inference_calls':0}
 
 
+
+# H4-M4-1: held support-conditioned action-residual diagnostic.
+# Pure helpers only; a separate integration/static approval is mandatory.
+H4M4_OUTPUT=Path('m463_runs/m470_h4_m4_feasibility_v1/report.json')
+H4M4_REPORT_SHA='329ff0564d47e05e2360fdf95350928895cf515e8cec6ca9aa2182133319258b'
+H4M4_PREVIOUS_BLOB='71711dec69336bc67f89530396a8199480cacbed'
+H4M4_CAP=2337
+H4M4_RICH_CAP=867
+H4M4_RECORD_CAP=(60*1024**2)//H4M4_RICH_CAP
+H4M4_SUBSET=(0,1,3)
+H4M4_WEIGHTS=(.25,.5,.75,1.,1.,1.,1.,.75,.5,.25)
+H4M4_VECTORS=((-0.277561,1.,.671888),(-.039760,-1.,.727860),
+    (-.238374,1.,.743982),(-.657469,1.,.903112),(-.139246,1.,.008200))
+H4M4_JOINTS=('hip_pitch','hip_roll','hip_yaw','knee','ankle_pitch','ankle_roll')
+
+
+def h4m4_require(ok,label):
+    if not ok:
+        raise RuntimeError('M470_H4M4_'+label)
+
+
+def h4m4_plan():
+    return {'id':'H4-M4-FEASIBILITY-V1','lanes':H4M3_LANES,
+        'archives':[*H4M3_ARCHIVES,H4M4_REPORT_SHA],
+        'policy_sha256':H4M3_POLICIES,'fork_after_tick':335,
+        'first_push':[300,.5],'second_push':[335,.35],'end_tick':385,
+        'arms':['baseline','sham','treatment'],'subset':list(H4M4_SUBSET),
+        'directions':H4M4_VECTORS,'pulse_first':336,'pulse_last':345,
+        'weights':H4M4_WEIGHTS,'peak_action_residual':.2,'action_scale':.5,
+        'max_physical':H4M4_CAP,'fixed_control_physical':2087,
+        'max_rich_records':H4M4_RICH_CAP,'max_resets':5,'max_suffixes':15,
+        'report_cap':64*1024**2,'record_cap':H4M4_RECORD_CAP,
+        'log_cap':16*1024**2,'safety':dict(H3_EVAL_LIMITS),
+        'geometry':{'delta':.1,'grid_count':11,'min_gap':.005,'min_z':.005,
+            'direction_atol':5e-6,'jacobian_eps':1e-5,'jacobian_atol':1e-6},
+        'endpoints':{'placement_tick':354,'momentum_tick':365,'D_gain':.02,
+            'load_threshold':.05,'load_samples':3,'C_load_onset_max':350,
+            'velocity_gain':.1,'positive_velocity_tolerance':.1,
+            'positive_H_tolerance':.5,'min_dose_ticks':3,'min_dose_sum':.4},
+        'training_performed':False,'efficacy_evaluated':False,
+        'optimizer_updates':0,'checkpoint_saves':0,'execution_authorized':False}
+
+
+def h4m4_authorization():
+    # Deliberately fail closed during staged implementation. No runtime path.
+    raise RuntimeError('M470_H4M4_EXECUTION_HOLD')
+
+
+def h4m4_leg_spec(side):
+    h4m4_require(side in ('left','right'),'LEG_SIDE')
+    s=1 if side=='left' else -1
+    return {'offsets':[[0,s*.064452,-.1027],[0,s*.052,-.030465],
+        [.025001,0,-.12412],[-.078273,s*.0021489,-.17734],
+        [0,-s*.000094445,-.30001],[0,0,-.017558]],
+        'quats':[[1,0,0,0],[.996179,0,-.0873386,0],[1,0,0,0],
+        [.996179,0,.0873386,0],[1,0,0,0],[1,0,0,0]],
+        'axes':[[0,1,0],[1,0,0],[0,0,1],[0,1,0],[0,1,0],[1,0,0]],
+        'qpos0':[0.]*6,'foot_pos':[.04,0,-.029],'halfsize':[.09,.03,.008],
+        'indices':list(range(0 if side=='left' else 6,6 if side=='left' else 12))}
+
+
+def h4m4_quat_matrix(q,np):
+    q=np.asarray(q,dtype=np.float64)
+    h4m4_require(q.shape==(4,) and np.isfinite(q).all()
+        and np.linalg.norm(q)>1e-8,'QUAT')
+    w,x,y,z=q/np.linalg.norm(q)
+    return np.array([[1-2*(y*y+z*z),2*(x*y-w*z),2*(x*z+w*y)],
+        [2*(x*y+w*z),1-2*(x*x+z*z),2*(y*z-w*x)],
+        [2*(x*z-w*y),2*(y*z+w*x),1-2*(x*x+y*y)]])
+
+
+def h4m4_fk(qpos,leg,np):
+    qpos=np.asarray(qpos,dtype=np.float64)
+    h4m4_require(qpos.shape==(36,) and np.isfinite(qpos).all(),'FK_QPOS')
+    root=qpos[:3].copy(); R=h4m4_quat_matrix(qpos[3:7],np)
+    anchors=[]; axes=[]
+    for p,q,a,t,ref in zip(leg['offsets'],leg['quats'],leg['axes'],
+                           qpos[7+np.asarray(leg['indices'])],leg['qpos0']):
+        a=np.asarray(a,dtype=np.float64)
+        h4m4_require(abs(np.linalg.norm(a)-1)<1e-8,'FK_AXIS')
+        root=root+R@p; R=R@h4m4_quat_matrix(q,np)
+        anchors.append(root.copy()); axes.append(R@a)
+        x,y,z=a; K=np.array([[0,-z,y],[z,0,-x],[-y,x,0]])
+        theta=t-ref
+        R=R@(np.eye(3)+np.sin(theta)*K+(1-np.cos(theta))*(K@K))
+    foot=root+R@leg['foot_pos']
+    J=np.cross(np.asarray(axes),foot-np.asarray(anchors)).T
+    h4m4_require(np.isfinite(J).all() and np.isfinite(foot).all(),'FK_FINITE')
+    return foot,R,J
+
+
+def h4m4_box_gap(p,R,half,q,S,other,np):
+    axes=[*R.T,*S.T,*[np.cross(a,b) for a in R.T for b in S.T]]
+    gaps=[]
+    for a in axes:
+        n=np.linalg.norm(a)
+        if n>1e-10:
+            a=a/n
+            gaps.append(abs((q-p)@a)-np.asarray(half)@abs(R.T@a)
+                        -np.asarray(other)@abs(S.T@a))
+    return float(max(gaps))
+
+
+def h4m4_geometry(qpos,legs,manifest,direction,lane_index,np):
+    support=H4M3_LANES[lane_index][2]
+    recovery='right' if support=='left' else 'left'
+    rec=legs[recovery]; sup=legs[support]
+    p,R,J=h4m4_fk(qpos,rec,np); q,S,_=h4m4_fk(qpos,sup,np)
+    e=np.r_[np.asarray(direction,dtype=np.float64),0.]
+    h4m4_require(e.shape==(3,) and np.isfinite(e).all()
+        and abs(np.linalg.norm(e)-.35)<2e-6,'PUSH_VECTOR')
+    e=e/np.linalg.norm(e)
+    ids=np.asarray(rec['indices'])[list(H4M4_SUBSET)]
+    JS=J[:,list(H4M4_SUBSET)]; g=JS.T@e; h=JS[2]
+    h4m4_require(h@h>1e-8,'VERTICAL_DEGENERATE')
+    w=g-h*(h@g)/(h@h)
+    h4m4_require(np.max(abs(w))>1e-6,'DIRECTION_DEGENERATE')
+    u=w/np.max(abs(w))
+    h4m4_require(e@JS@u>0 and abs(h@u)<1e-8
+        and np.max(abs(u-np.asarray(H4M4_VECTORS[lane_index])))<=5e-6,
+        'DIRECTION_PIN')
+    for j,i in enumerate(ids):
+        delta=np.zeros(36); delta[7+i]=1e-5
+        fd=(h4m4_fk(np.asarray(qpos)+delta,rec,np)[0]
+            -h4m4_fk(np.asarray(qpos)-delta,rec,np)[0])/(2e-5)
+        h4m4_require(np.max(abs(fd-JS[:,j]))<=1e-6,'JACOBIAN_FD')
+    f=manifest['fields']; joints=np.asarray(f['actuator_trnid'])[ids,0]
+    ranges=np.asarray(f['jnt_range'])[joints]; limited=np.asarray(f['jnt_limited'])[joints]
+    lo=np.maximum(-1.,(np.asarray(f['actuator_ctrlrange'])[ids,0]
+        -np.asarray(manifest['default_pose'])[ids])/.5)
+    hi=np.minimum(1.,(np.asarray(f['actuator_ctrlrange'])[ids,1]
+        -np.asarray(manifest['default_pose'])[ids])/.5)
+    mask=np.asarray(f['actuator_ctrllimited'])[ids].astype(bool)
+    lo=np.where(mask,lo,-1.); hi=np.where(mask,hi,1.)
+    h4m4_require(not manifest['clamp_disabled'] and np.all(lo==-1.)
+        and np.all(hi==1.),'ACTION_INTERSECTION')
+    min_gap=float('inf'); min_z=float('inf')
+    for frac in np.linspace(0.,1.,11):
+        pose=np.asarray(qpos,dtype=np.float64).copy(); pose[7+ids]+=.1*frac*u
+        h4m4_require(np.all(~limited.astype(bool) | ((pose[7+ids]>=ranges[:,0])
+            & (pose[7+ids]<=ranges[:,1]))),'HYPOTHETICAL_JOINT_RANGE')
+        pt,T,_=h4m4_fk(pose,rec,np)
+        min_gap=min(min_gap,h4m4_box_gap(pt,T,rec['halfsize'],q,S,sup['halfsize'],np))
+        min_z=min(min_z,float(pt[2]-np.asarray(rec['halfsize'])@abs(T[2])))
+    h4m4_require(min_gap>=.005 and min_z>=.005,'GEOMETRY_GUARD')
+    return {'support':support,'recovery':recovery,'indices':ids.tolist(),
+        'u':u.tolist(),'e':e.tolist(),'jacobian':JS.tolist(),
+        'min_gap':min_gap,'min_z':min_z,'predicted_shift_m':float((pt-p)@e),
+        'predicted_z_m':float(pt[2]-p[2]),'lo':lo.tolist(),'hi':hi.tolist()}
+
+
+def h4m4_pulse(tick,latched,arm,geometry,np):
+    r=np.zeros(29,dtype=np.float32)
+    h4m4_require(arm in ('baseline','sham','treatment'),'ARM')
+    if arm=='treatment' and not latched and 336<=tick<=345:
+        r[geometry['indices']]=.2*H4M4_WEIGHTS[tick-336]*np.asarray(geometry['u'])
+    return r
+
+
+def h4m4_apply_residual(actor,requested,selected,default,ctrlrange,limited,xp):
+    """Array-only adapter, NumPy fixtures and future JAX trace share this function."""
+    r=xp.asarray(requested,dtype=actor.dtype)
+    mask=xp.asarray(selected,dtype=bool)
+    d=xp.asarray(default,dtype=actor.dtype)
+    bounds=xp.asarray(ctrlrange,dtype=actor.dtype)
+    limited=xp.asarray(limited,dtype=bool)
+    lo=xp.where(limited,xp.maximum(-1.,(bounds[:,0]-d)/.5),-1.)
+    hi=xp.where(limited,xp.minimum(1.,(bounds[:,1]-d)/.5),1.)
+    base=d+.5*actor
+    base_ok=xp.all(~mask | ((actor>=lo)&(actor<=hi)&
+        (~limited|((base>=bounds[:,0])&(base<=bounds[:,1])))))
+    active=mask & (r!=0)
+    denom=xp.where(active,xp.abs(r),1.)
+    room=xp.where(active,xp.where(r>0,hi-actor,actor-lo)/denom,1.)
+    lam=xp.where(base_ok,xp.maximum(0.,xp.minimum(1.,xp.min(room))),0.)
+    delivered=lam*r
+    candidate=xp.where(active & (delivered!=0),actor+delivered,actor)
+    target=d+.5*candidate
+    good=xp.all(~mask | ((candidate>=lo)&(candidate<=hi)&
+        (~limited|((target>=bounds[:,0])&(target<=bounds[:,1])))))
+    sent=xp.where(good & active & (delivered!=0),candidate,actor)
+    scale=xp.where(good,lam,0.)
+    reason=xp.where(~xp.any(active),0,xp.where(~base_ok,1,xp.where(~good,2,
+        xp.where(scale==0,3,4))))
+    return sent,{'actor_action':actor,'requested_residual':r,'lambda':scale,
+        'delivered_residual':sent-actor,'sent_action':sent,'guard_code':reason}
+
+
+def h4m4_model_geometry(env,manifest,np):
+    """Verify compiled model metadata, no reset/forward or simulation."""
+    from mujoco import mjtGeom
+    from mujoco_playground._src.locomotion.g1 import base, g1_constants
+    from paper_config import REPO
+    for mod,blob in ((base,'fd59950822eb11c4d17d970cbca8fda9de7d2a6d'),
+                     (g1_constants,'59cce8046fd9995fc9d2d87bd0c0fa713ef13c69')):
+        path=Path(inspect.getfile(mod)).resolve(strict=True)
+        h4m4_require(path.is_relative_to(Path(REPO).resolve()) and
+            h4m3_git_blob(path)==blob,'G1_SOURCE_PIN')
+    scene=Path(env.xml_path).resolve(strict=True)
+    h4m4_require(scene==Path(g1_constants.FEET_ONLY_FLAT_TERRAIN_XML).resolve(strict=True)
+        and scene.is_relative_to(Path(REPO).resolve()),'SCENE_PATH')
+    xmls=[p for p in scene.parent.glob('*.xml') if h4m3_git_blob(p)==
+          '4a7c00cdc92e245914d39b86b69b9329a26c35f5']
+    h4m4_require(len(xmls)==1,'G1_XML_PIN')
+    import xml.etree.ElementTree as ET
+    includes=[x.attrib['file'] for x in ET.parse(scene).iter('include')]
+    h4m4_require(xmls[0].resolve() in [(scene.parent/x).resolve() for x in includes],
+        'G1_XML_INCLUDE')
+    m=env.mj_model; root=int(m.body('pelvis').id)
+    h4m4_require(root==manifest['root_body_id'] and int(m.jnt_bodyid[0])==root
+        and int(m.body_parentid[root])==0,'PELVIS_ROOT')
+    h4m4_require(np.allclose(m.body_ipos[root],[0,0,-.07605],atol=1e-8,rtol=0)
+        and np.allclose(h4m4_quat_matrix(m.body_iquat[root],np),
+            h4m4_quat_matrix([1,0,-.000399148,0],np),atol=1e-7,rtol=0),'PELVIS_INERTIA')
+    legs={}
+    for side in ('left','right'):
+        leg=h4m4_leg_spec(side); parent=root
+        for k,name in enumerate(H4M4_JOINTS):
+            joint=side+'_'+name+'_joint'; body=side+'_'+name+'_link'
+            j=int(m.joint(joint).id); b=int(m.body(body).id); a=leg['indices'][k]
+            h4m4_require(int(m.body_parentid[b])==parent and int(m.jnt_bodyid[j])==b
+                and int(m.actuator_trnid[a,0])==j and int(m.jnt_qposadr[j])==7+a
+                and int(m.jnt_dofadr[j])==6+a and m.qpos0[7+a]==0.
+                and np.array_equal(m.jnt_pos[j],np.zeros(3))
+                and np.allclose(m.jnt_axis[j],leg['axes'][k],atol=1e-8,rtol=0)
+                and np.allclose(m.body_pos[b],leg['offsets'][k],atol=1e-8,rtol=0)
+                and np.allclose(h4m4_quat_matrix(m.body_quat[b],np),
+                    h4m4_quat_matrix(leg['quats'][k],np),atol=1e-7,rtol=0)
+                and np.array_equal(m.actuator_gear[a],[1,0,0,0,0,0]),'MODEL_JOINT_'+joint)
+            leg['offsets'][k]=m.body_pos[b].tolist()
+            leg['quats'][k]=m.body_quat[b].tolist()
+            leg['axes'][k]=m.jnt_axis[j].tolist()
+            parent=b
+        gid=int(m.geom(side+'_foot').id)
+        h4m4_require(gid==manifest['foot_geom_ids'][0 if side=='left' else 1]
+            and int(m.geom_bodyid[gid])==parent and int(m.geom_type[gid])==int(mjtGeom.mjGEOM_BOX)
+            and np.allclose(m.geom_pos[gid],leg['foot_pos'],atol=1e-8,rtol=0)
+            and np.allclose(m.geom_size[gid],leg['halfsize'],atol=1e-8,rtol=0)
+            and np.allclose(h4m4_quat_matrix(m.geom_quat[gid],np),np.eye(3),atol=1e-8,rtol=0),
+            'MODEL_FOOT_'+side)
+        leg['foot_pos']=m.geom_pos[gid].tolist(); leg['halfsize']=m.geom_size[gid].tolist()
+        legs[side]=leg
+    return {'legs':legs,'scene_path':str(scene),'scene_sha256':sha256(scene),
+        'xml_path':str(xmls[0].resolve()),'xml_sha256':sha256(xmls[0]),
+        'xml_blob':'4a7c00cdc92e245914d39b86b69b9329a26c35f5'}
+
+
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--mode',choices=('plan','run'),required=True)
@@ -5638,7 +5887,27 @@ def main():
     p.add_argument('--h4m3-placement',action='store_true')
     p.add_argument('--h4m3-static-archives',action='store_true')
     p.add_argument('--h4m3-historical-archive',type=Path)
+    p.add_argument('--h4m4-feasibility',action='store_true')
     args=p.parse_args()
+    if args.h4m4_feasibility:
+        try:
+            h4m4_require(not any(getattr(args,k) for k in ('h4m3_placement',
+                'h4m3_static_archives','h4m3_historical_archive','h4cc_technical',
+                'h4cc_eval','h4_m1_eval','h4_technical','h3_m1_eval','h2a','h2b',
+                'checkpoint_c','checkpoint_p','report_p','checkpoint_h3','report_h3',
+                'h4_reward_report','h4cc_restore_report','h4cc_static_log'))
+                and all(getattr(args,k)==p.get_default(k) for k in ('seeds','profiles',
+                'directions','push_step','push_magnitude','second_push_step',
+                'second_push_magnitude','max_steps','max_cases')),'FROZEN_FLAGS')
+            root=Path(__file__).resolve().parent
+            h4m4_require(args.output.absolute()==root/H4M4_OUTPUT
+                and args.output.resolve()==root/H4M4_OUTPUT,'OUTPUT_PATH')
+            if args.mode=='run':
+                h4m4_authorization()
+            print('M470_H4M4_PLAN',json.dumps(h4m4_plan(),sort_keys=True))
+            return
+        except (RuntimeError,ValueError,KeyError,OSError) as exc:
+            p.error(str(exc))
     if args.h4m3_placement:
         try:
             h4m3_require(not any(getattr(args,k) for k in ('h4cc_technical',
