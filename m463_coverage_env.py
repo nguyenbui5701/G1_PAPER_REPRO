@@ -73,6 +73,69 @@ H4_FIELDS = ('h4_class', 'h4_boundary', 'h4_age', 'h4_target', 'h4_motion', 'h4_
 H4_WINDOWS = (10, 25, 50, 100, 250)
 
 
+# H4-M2: metadata-only shadow in REF, exact command delivery in CCRC.
+H4CC_FIELDS = ('start','event_terminal','tick','tick_age','tick_side','tick_same',
+    'tick_survived','tail_terminal','completed','refresh','sample_same',
+    'sample_different','deferred','published','terminal_restored','bad','episode',
+    'event_age','event_motion','event_side')
+H4CC_STATE = ('active','age','same','pending_valid')
+
+def h4cc_transition(xp, old, *, treatment, event, mature_repeat, side, motion,
+                     age, boundary, terminal, refresh, pre, actor, critic,
+                     native, next_actor, next_critic):
+    """Pure array transition; source action/reward and RNG have already run."""
+    active = old['h4cc_active'] > 0
+    prior = active & (~boundary)
+    start = mature_repeat
+    tick = prior & (~event)
+    n = xp.where(tick, old['h4cc_age'] + 1, 0)
+    held = xp.where(start, pre, old['h4cc_held_command'])
+    exact = xp.all(actor == held) & xp.all(critic == held) & xp.all(pre == held)
+    same = exact & (start | (old['h4cc_same'] > 0))
+    scope = start | tick
+    entered = start & (~terminal)
+    keep = (entered | (tick & (n < 250))) & (~terminal)
+    complete = tick & (n == 250) & (~terminal)
+    old_pending = (old['h4cc_pending_valid'] > 0) & prior
+    native_refresh = scope & refresh
+    defer = treatment & native_refresh & (~terminal)
+    pending = xp.where(defer, native, old['h4cc_pending_command'])
+    valid = old_pending | defer
+    publish = treatment & complete & valid
+    restore = treatment & tick & terminal & old_pending
+    delivered = xp.where(treatment & keep, held, native)
+    delivered = xp.where(publish, pending, delivered)
+    delivered = xp.where(restore & (~refresh), pending, delivered)
+    # On terminal AutoReset owns next obs. On release sync existing slices only.
+    patch = treatment & (keep | publish)
+    ao = xp.where(patch, delivered, next_actor)
+    co = xp.where(patch, delivered, next_critic)
+    finite = xp.all(xp.isfinite(held)) & xp.all(xp.isfinite(native))
+    bad = ((active & boundary) | (prior & event) | (tick & (n > 250)) |
+           (old_pending & (~treatment)) | (old_pending & native_refresh) |
+           (scope & (~finite)) |
+           (treatment & scope & (~same)) |
+           (patch & (~(xp.all(ao == delivered) & xp.all(co == delivered)))))
+    vals = dict(start=start,event_terminal=start & terminal,tick=tick,
+        tick_age=n,tick_side=xp.where(tick,old['h4cc_event_side'],0),
+        tick_same=tick & same,tick_survived=tick & (~terminal),
+        tail_terminal=tick & terminal,completed=complete,refresh=native_refresh,
+        sample_same=native_refresh & xp.all(native == held),
+        sample_different=native_refresh & xp.any(native != held),
+        deferred=defer,published=publish,terminal_restored=restore,bad=bad,
+        episode=old['h4cc_episode'] + boundary.astype(xp.int32),
+        event_age=xp.where(start,age,old['h4cc_event_age']),
+        event_motion=xp.where(start,motion,old['h4cc_event_motion']),
+        event_side=xp.where(start,side,old['h4cc_event_side']),
+        active=keep,age=xp.where(keep,n,0),same=keep & same,
+        pending_valid=treatment & keep & valid)
+    out = {'h4cc_'+k:xp.asarray(v,xp.int32) for k,v in vals.items()}
+    out['h4cc_held_command'] = xp.where(keep,held,xp.zeros_like(held))
+    out['h4cc_pending_command'] = xp.where(out['h4cc_pending_valid']>0,
+                                         pending,xp.zeros_like(pending))
+    return delivered, ao, co, out
+
+
 def heading_from_wxyz(quat):
     w, x, y, z = quat[0], quat[1], quat[2], quat[3]
     return jp.arctan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
@@ -96,7 +159,7 @@ class CoverageJoystick(joystick.Joystick):
     boundary for re-sampling push targets and counters.  Tracking `age` also
     supports a direct/unwrapped one-env diagnostic.
     """
-    def __init__(self, *, stage: str, config, task='flat_terrain', h1_m1=False, h1_m2=False, h3_m1=False, h4_arm=None):
+    def __init__(self, *, stage: str, config, task='flat_terrain', h1_m1=False, h1_m2=False, h3_m1=False, h4_arm=None, h4cc_arm=None):
         if stage not in STAGES:
             raise ValueError('M463_BAD_STAGE')
         if bool(config.push_config.enable):
@@ -123,6 +186,9 @@ class CoverageJoystick(joystick.Joystick):
                 self._h1_m1 or self._h1_m2 or self._h3_m1 or
                 float(config.ctrl_dt) != .02 or int(config.action_repeat) != 1):
             raise ValueError('M470_H4_ENV_CONTRACT')
+        if h4cc_arm not in (None, 'ref', 'ccrc') or (h4cc_arm is not None and h4_arm != 'candidate'):
+            raise ValueError('M470_H4CC_ENV_CONTRACT')
+        self._h4cc_arm = h4cc_arm
         self._h4_arm = h4_arm
         self._m463_stage = stage
         self._m463_min_mag, self._m463_max_mag, self._m463_repeat_probability = STAGES[stage]
@@ -246,6 +312,10 @@ class CoverageJoystick(joystick.Joystick):
                         h4_first_mag=jp.asarray(0., jp.float32),
                         h4_first_motion=jp.asarray(-1, jp.int32),
                         h4_tail_motion=jp.asarray(-1, jp.int32))
+        if getattr(self, '_h4cc_arm', None) is not None:
+            info.update({'h4cc_'+k:zeros for k in (*H4CC_FIELDS,*H4CC_STATE)})
+            info.update(h4cc_held_command=jp.zeros_like(info['command']),
+                        h4cc_pending_command=jp.zeros_like(info['command']))
         return state.replace(info=info)
 
     def step(self, state, action):
@@ -401,6 +471,33 @@ class CoverageJoystick(joystick.Joystick):
                             jp.where(event, jp.asarray(2**30, jp.int32), next_step))
         # If no repeat was sampled, do not allow a second event.
         new_count = jp.where(event & (~repeat_allowed), max_count, new_count)
+        if getattr(self, '_h4cc_arm', None) is not None:
+            # Exact existing mature-repeat predicate, evaluated before post-motion.
+            cc_first_age = jp.where(boundary, -1, info['h4_first_age'])
+            cc_first_mag = jp.where(boundary, 0., info['h4_first_mag'])
+            cc_first_motion = jp.where(boundary, -1, info['h4_first_motion'])
+            cc_mature = (repeat & (h4_class == 3) &
+                (cc_first_age >= 240) & (cc_first_age <= 308) &
+                (cc_first_mag >= .45) & (cc_first_mag <= .55) &
+                (actual_gap >= 30) & (actual_gap <= 40) &
+                (magnitude >= .30) & (magnitude <= .40) &
+                (cc_first_motion == pre_motion) & (actor_motion == pre_motion))
+            cc_side = jp.where(cc_mature & (pre_motion == 0) & side_matched,side_target,0)
+            command, ao, co, cc = h4cc_transition(
+                jp,info,treatment=self._h4cc_arm=='ccrc',event=event,
+                mature_repeat=cc_mature,side=cc_side,motion=pre_motion,age=age,
+                boundary=boundary,terminal=after.done>0,refresh=pre_source_step>=500,
+                pre=pre_command,actor=state.obs['state'][9:12],
+                critic=state.obs['privileged_state'][9:12],native=out['command'],
+                next_actor=after.obs['state'][9:12],
+                next_critic=after.obs['privileged_state'][9:12])
+            out.update(cc)
+            if self._h4cc_arm=='ccrc':
+                out['command'] = command
+                obs = dict(after.obs)
+                obs['state'] = obs['state'].at[9:12].set(ao)
+                obs['privileged_state'] = obs['privileged_state'].at[9:12].set(co)
+                after = after.replace(obs=obs)
         motion_id = jp.argmin(jp.sum(jp.abs(COMMANDS - out['command']), axis=-1))
         recent_after = jp.where(event, 100, jp.maximum(recent - 1, 0))
         term_recent = (after.done > 0) & (recent_after > 0)
@@ -536,6 +633,8 @@ class CoverageJoystick(joystick.Joystick):
                 h4_close_complete=close_complete,
                 h4_close_boundary=boundary & (old_kind>0),
                 h4_bad=bad)
+            if getattr(self, '_h4cc_arm', None) is not None:
+                vals['h4_bad'] = vals['h4_bad'] | (out['h4cc_bad'] > 0) | (cc_mature != mature_repeat)
             out.update({k: jp.asarray(v, jp.int32) for k,v in vals.items()})
             out.update(
                 h4_actual_dx=h4_actual_delta[0], h4_actual_dy=h4_actual_delta[1],
