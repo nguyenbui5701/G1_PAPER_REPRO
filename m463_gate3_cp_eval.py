@@ -1840,7 +1840,7 @@ def h3_gpu_check(monitor):
 
 
 def h3_group(args,env,step_fn,jax,jnp,np,session,name,seed,profile,
-             physical_cap=H3_EVAL_PHYSICAL):
+             physical_cap=H3_EVAL_PHYSICAL,*,rich=None):
     """One nominal rollout, two single suffixes, two double suffixes at most."""
     group={'policy':name,'seed':seed,'profile':profile,'command':list(PROFILES[profile]),
            'nominal_frames':[],'directions':{},'complete':False}
@@ -1848,12 +1848,17 @@ def h3_group(args,env,step_fn,jax,jnp,np,session,name,seed,profile,
     start=session['physical_transitions_attempted']
     def clone(st):
         return jax.tree_util.tree_map(lambda x:x,st)
-    def advance(st,first,last,rows,capture_step=None):
+    def advance(st,first,last,rows,capture_step=None,rich_direction=None,rich_kind=None):
         snap=None
         for i in range(first,last+1):
             h3_require(session['physical_transitions_attempted']<physical_cap,'PHYSICAL_BUDGET')
             session['physical_transitions_attempted']+=1
-            st,diag=step_fn(st)
+            capture=(rich is not None and rich_direction is not None and
+                ((rich_kind=='single' and i==334) or (rich_kind=='double' and 335<=i<=385)))
+            if capture:
+                st,diag,packed=step_fn(st,placement_capture=True)
+            else:
+                st,diag=step_fn(st)
             raw=jax.device_get(diag)
             h3_require(bool(raw['h2a_state_finite']) and bool(raw['h3_finite']),'NONFINITE_STATE')
             row={}
@@ -1872,6 +1877,8 @@ def h3_group(args,env,step_fn,jax,jnp,np,session,name,seed,profile,
             h3_require(cols==session['frame_columns'],'FRAME_SCHEMA')
             rows.append([row[k] for k in cols])
             session['physical_transitions_recorded']+=1
+            if capture:
+                rich(name,seed,profile,rich_direction,i,rows[-1],jax.device_get(packed))
             if row['done']:
                 break
             if i==capture_step:
@@ -1895,9 +1902,16 @@ def h3_group(args,env,step_fn,jax,jnp,np,session,name,seed,profile,
             'actual_world_dqvel_xy_mps':actual.tolist(),
             'actual_magnitude_mps':float(np.linalg.norm(actual)),
             'full_state_rng_fork_by_construction':True}
+    if rich is not None:
+        h4m6_eval_require(session['reset_lanes_attempted']<24,'DEV_RESET_CAP')
+        session['reset_lanes_attempted']+=1
+        h3_write(args.output,session)
     st=env.reset(jax.random.PRNGKey(seed))
     h3_require(st.obs['state'].shape==(103,) and st.obs['privileged_state'].shape==(216,)
                and not bool(jax.device_get(st.done)), 'RESET_SCHEMA')
+    if rich is not None:
+        session['reset_lanes_recorded']+=1
+        h3_write(args.output,session)
     snapshot=advance(st,1,1000,group['nominal_frames'],299)
     for direction in args.directions:
         item={'first':{'exposed':False,'step':300,'reason':'nominal_terminated_before_push'},
@@ -1907,11 +1921,12 @@ def h3_group(args,env,step_fn,jax,jnp,np,session,name,seed,profile,
         if snapshot is None:
             continue
         first,item['first']=kick(snapshot,direction,.50,300)
-        second_snapshot=advance(first,300,1000,item['single_suffix'],334)
+        rd=direction if rich is not None and profile=='stand' and (seed,direction) in H4M6_MECHANISM_LANES else None
+        second_snapshot=advance(first,300,1000,item['single_suffix'],334,rd,'single')
         item['second']['reason']='single_terminated_before_second'
         if second_snapshot is not None:
             second,item['second']=kick(second_snapshot,direction,.35,335)
-            advance(second,335,1000,item['double_suffix'])
+            advance(second,335,1000,item['double_suffix'],rich_direction=rd,rich_kind='double')
     group['physical_transitions']=session['physical_transitions_attempted']-start
     h3_require(group['physical_transitions']==len(group['nominal_frames'])+sum(
         len(v['single_suffix'])+len(v['double_suffix']) for v in group['directions'].values())
@@ -2607,8 +2622,10 @@ def h4_shared_frozen_loader(action_size,paper,networks,running_statistics,serial
 
 
 def run(args):
+    m6=bool(getattr(args,'h4m6_phase',None)=='dev')
     if getattr(args,'h4m6_phase',None) is not None:
-        raise RuntimeError('M470_H4M6_EXECUTION_HOLD')
+        h4m6_runtime_gate(args.h4m6_phase)
+        h4m6_eval_require(m6,'DEDICATED_TECH_DISPATCH')
     if getattr(args,'h4m5_obs_attribution',False):
         raise RuntimeError('M470_H4M5_DEDICATED_DISPATCH_REQUIRED')
     feasibility=bool(getattr(args,'h4m4_feasibility',False))
@@ -2620,8 +2637,26 @@ def run(args):
     if getattr(args,'h4cc_technical',False):
         raise RuntimeError('M470_H4CC_TECH_USE_DEDICATED_DISPATCH')
     cc=bool(getattr(args,'h4cc_eval',False))
-    h4_mode=bool(getattr(args,'h4_m1_eval',False)) or cc
-    if cc:
+    h4_mode=bool(getattr(args,'h4_m1_eval',False)) or cc or m6
+    if m6:
+        import m463_push_ppo_train as trainer
+        auth=trainer.h4m6_authorization(phase='dev')
+        checked,archive,external,exposure=h4m6_dev_inputs(auth)
+        session=getattr(args,'h3_session',None)
+        h4m6_eval_require(session is not None and session['authorization']==auth
+            and session['status']=='M470_H4M6_DEV_IN_PROGRESS'
+            and session['physical_transitions_attempted']==session['physical_transitions_recorded']
+                ==session['logical_trajectories_completed']==session['reset_lanes_attempted']
+                ==session['reset_lanes_recorded']==0 and session['groups']==[]
+            and session['input_sha256']==checked and session['exposure']==exposure
+            and args.output.is_file() and not args.output.is_symlink()
+            and json.loads(args.output.read_bytes())==session
+            and json.loads((args.output.parent/'attempt.json').read_bytes())=={'authorization':auth,'reserved':True},
+            'DEV_SESSION')
+        args.h4m6_archive=archive
+        args.h4m6_external=external
+        h4m6_write_bounded(args.output.parent/'dispatch.started.json',{'authorization':auth},exclusive=True)
+    elif cc:
         h4cc_eval_plan(args)
         auth=h4cc_eval_authorization()
         session=getattr(args,'h3_session',None)
@@ -2660,6 +2695,11 @@ def run(args):
             args.h3_session['external_sources']['nvcc_compat']['path'] and
             sha256(inspect.getfile(apply))==args.h3_session['external_sources']['nvcc_compat']['sha256'],
             'NVCC_RUNTIME_PIN')
+    if m6:
+        h4m3_no_runtime_imports()
+        nvcc=args.h4m6_external['common']['historical']['nvcc_compat']
+        h4m6_eval_require(str(Path(inspect.getfile(apply)).resolve())==nvcc['path']
+            and sha256(inspect.getfile(apply))==nvcc['sha256'],'DEV_NVCC_PIN')
     print('M463_GATE3_NVCC',apply(),flush=True)
     import jax
     import jax.numpy as jnp
@@ -2676,6 +2716,16 @@ def run(args):
             if feasibility:
                 h4m4_require(args.h3_session['brax_source_verification']
                     ==args.h4m4_approved_brax,'BRAX_ARCHIVE_IDENTITY')
+        if m6:
+            h4m6_eval_require(args.h3_session['brax_source_verification']==args.h4m6_archive['brax_source_verification'],'DEV_BRAX_SOURCE')
+            from importlib.util import find_spec
+            for name,pin in args.h4m6_external['training'].items():
+                spec=find_spec(name) if name!='brax.training.agents.ppo.train' else None
+                p=Path(pin['path'])
+                h4m6_eval_require(p.is_file() and sha256(p)==pin['sha256']
+                    and (spec is None if name=='brax.training.agents.ppo.train' else
+                        spec is not None and Path(spec.origin).resolve()==p),'DEV_RUNTIME_DEP '+name)
+            h4m6_eval_require('brax.training.agents.ppo.train' not in sys.modules,'DEV_TRAIN_IMPORT')
         if cc:
             h4cc_eval_require(args.h3_session['brax_source_verification']==args.h4cc_archive['brax_source_verification'],
                               'RUNTIME_BRAX_EQUIVALENCE')
@@ -2744,9 +2794,19 @@ def run(args):
                 'H4M3_MODEL_IDENTITY')
             args.h3_session['kinematics']=h4m4_model_geometry(env,args.h3_session['manifest'],np)
         h4m3_write(args.output,args.h3_session)
+    if m6:
+        session=args.h3_session
+        session['mjx_sources']=args.h4m6_external['common']['historical']['mjx']
+        h4m3_runtime_model_source(env,session)
+        args.h4m6_rich['manifest']=h4m3_manifest(env,np)
+        h4m6_rich_write(args.h4m6_rich)
     load_policy=h4_shared_frozen_loader(env.action_size,paper,networks,running_statistics,
         serialization,jax,jnp,np)
-    if placement:
+    if m6:
+        from m463_push_ppo_train import H4M6_PATHS
+        policies={label:load_policy(H4_EVAL_ROOT/H4M6_PATHS[arm]/H4_EVAL_POLICY_FILE)
+                  for label,arm in (('REF6','ref'),('RSS','rss'))}
+    elif placement:
         policies={n:load_policy(p) for n,p in h4m3_policy_paths(H4_EVAL_ROOT).items()}
     elif cc:
         from m463_push_ppo_train import H4CC_PATHS
@@ -3086,7 +3146,7 @@ def run(args):
                     return next_state,diag,h4m3_post_capture(pre_placement,action,next_state,env)
                 return next_state,diag
             step_fn=(jax.jit(one_step,static_argnames=('placement_capture',))
-                     if placement else jax.jit(one_step))
+                     if placement or m6 else jax.jit(one_step))
             if feasibility:
                 session=args.h3_session
                 h4m4_native_lane(args.h4m4_lanes[lane_index],session,env,step_fn,jax,jnp,np,
@@ -3105,8 +3165,16 @@ def run(args):
                 session=args.h3_session
                 if cc:
                     h4cc_eval_require(h4cc_eval_authorization()==session['authorization'],'AUTHORIZATION_CHANGED')
-                g=h3_group(args,env,step_fn,jax,jnp,np,session,name,seed,profile,
-                           H4_EVAL_PHYSICAL if h4_mode else H3_EVAL_PHYSICAL)
+                if m6:
+                    h4m6_eval_require(trainer.h4m6_authorization(phase='dev')==auth,'DEV_AUTH_CHANGED')
+                    def capture(label,seed,profile,direction,tick,row,raw):
+                        h4m6_add_rich(args.h4m6_rich,label,seed,direction,tick,row,raw,np)
+                    g=h3_group(args,env,step_fn,jax,jnp,np,session,name,seed,profile,
+                               H4_EVAL_PHYSICAL,rich=capture)
+                    h4m6_rich_write(args.h4m6_rich)
+                else:
+                    g=h3_group(args,env,step_fn,jax,jnp,np,session,name,seed,profile,
+                               H4_EVAL_PHYSICAL if h4_mode else H3_EVAL_PHYSICAL)
                 session['gpu']=h3_gpu_check(args.h3_monitor)
                 h3_write(args.output,session)
                 print('M470_H4_EVAL_GROUP' if h4_mode else 'M470_H3_EVAL_GROUP',
@@ -3380,6 +3448,19 @@ def run(args):
     if placement:
         return
     if h3_mode:
+        if m6:
+            session=args.h3_session
+            session['decision']=h4m6_dev_decisions(args.h4m6_archive,session)
+            session['ledger']=h4m6_dev_ledger(session)
+            projection=h4m6_rich_projection(session,args.h4m6_rich)
+            endpoints=h4m6_mechanism_endpoints(session,args.h4m6_rich,np)
+            session['mechanism']=h4m6_mechanism_decision(session['decision']['decision'],
+                session['exposure']['decision'],endpoints)
+            session['mechanism']['endpoints']=endpoints
+            args.h4m6_rich['projection']=projection
+            h4m6_rich_write(args.h4m6_rich)
+            session['mechanism_sha256']=sha256(H4_EVAL_ROOT/H4M6_RICH_OUTPUT)
+            return
         if cc:
             args.h3_session['decision']=h4cc_pair_decisions(args.h4cc_archive,args.h3_session)
             return
@@ -4459,7 +4540,7 @@ def h4cc_tech_actual(args,r,monitor,persist,*,rss=False):
     # Independent one-use dispatch check BEFORE runtime imports.
     import m463_push_ppo_train as t
     if rss:
-        h4m6_technical_dispatch(args)
+        h4m6_runtime_gate('tech')
     auth=t.h4m6_authorization(phase='tech') if rss else h4cc_tech_authorization()
     expected_out=H4M6_TECH_OUTPUT if rss else H4CC_TECH_OUTPUT
     expected_status='M470_H4M6_TECH_IN_PROGRESS' if rss else 'M470_H4CC_TECH_IN_PROGRESS'
@@ -4608,22 +4689,30 @@ def h4cc_tech_actual(args,r,monitor,persist,*,rss=False):
     for fixture in H4CC_TECH_FIXTURES:
         seed=fixture[0]; key=jax.random.PRNGKey(seed)
         dr_keys=jax.random.fold_in(key,H4CC_TECH_SPEC['dr_seed_fold_in'])[None,:]
+        shared_step=None;shared_reset=None
         for arm in (('ref','rss') if rss else ('ref','ccrc')):
             guard()
-            env=ce.CoverageJoystick(stage='easy_repeat_support',config=copy.deepcopy(cfg),
-                                    h4_arm='candidate',h4cc_arm='ref' if rss else arm,
-                                    **({'h4m6_arm':arm,'h4m6_tech_capture':True} if rss else {}))
-            h4cc_tech_require(env.action_size==29 and float(env.dt)==.02,'ENV_CONFIG')
-            wrapped=wrapper.wrap_for_brax_training(env,episode_length=1000,action_repeat=1,
-                randomization_fn=functools.partial(randomizer,rng=dr_keys))
-            # Insert observer between EpisodeWrapper and the unchanged AutoReset.
-            h4cc_tech_require(isinstance(wrapped,wrapper.BraxAutoResetWrapper),'WRAPPER_TYPE')
-            dr_wrapper=wrapped.env.env
-            model_sha=t.h4x_model_digest(jax,np,dr_wrapper._mjx_model_v,dr_wrapper._in_axes)
-            wrapped.env=RawAudit(wrapped.env)
+            if not rss or arm=='ref':
+                env=ce.CoverageJoystick(stage='easy_repeat_support',config=copy.deepcopy(cfg),
+                                        h4_arm='candidate',h4cc_arm='ref' if rss else arm,
+                                        **({'h4m6_arm':'ref','h4m6_tech_capture':True} if rss else {}))
+                h4cc_tech_require(env.action_size==29 and float(env.dt)==.02,'ENV_CONFIG')
+                wrapped=wrapper.wrap_for_brax_training(env,episode_length=1000,action_repeat=1,
+                    randomization_fn=functools.partial(randomizer,rng=dr_keys))
+                # Insert observer between EpisodeWrapper and the unchanged AutoReset.
+                h4cc_tech_require(isinstance(wrapped,wrapper.BraxAutoResetWrapper),'WRAPPER_TYPE')
+                dr_wrapper=wrapped.env.env
+                model_sha=t.h4x_model_digest(jax,np,dr_wrapper._mjx_model_v,dr_wrapper._in_axes)
+                wrapped.env=RawAudit(wrapped.env)
+                if rss:
+                    def shared_one(state,actor_key):
+                        action,_=policy(state.obs,actor_key)
+                        return wrapped.step(state,action),action
+                    shared_step=jax.jit(shared_one)
+                    shared_reset=jax.jit(wrapped.reset)
             h4cc_tech_require(r['reset_lanes_attempted']<8,'RESET_CAP')
             r['reset_lanes_attempted']+=1;persist()
-            st=jax.jit(wrapped.reset)(key[None,:])
+            st=(shared_reset if rss else jax.jit(wrapped.reset))(key[None,:])
             h4cc_tech_require(bool(host(st.info['h4cc_tech_raw_finite'])[0]) and
                 scalar(st.done)==0,'RESET_FINITE')
             info=dict(st.info); original_command=vec(info['command'])
@@ -4631,6 +4720,8 @@ def h4cc_tech_actual(args,r,monitor,persist,*,rss=False):
             for k,val in metadata.items():
                 info[k]=jp.full_like(info[k],val)
             info['command']=stand
+            if rss:
+                info['h4m6_tech_treatment']=jp.full_like(info['h4m6_tech_treatment'],int(arm=='rss'))
             obs=sync_obs(st.obs);info['first_obs']=sync_obs(info['first_obs'])
             st=st.replace(info=info,obs=obs)
             lane={'fixture':list(fixture),'arm':arm,'metadata':metadata,'prior_actual_pushes':0,
@@ -4642,7 +4733,7 @@ def h4cc_tech_actual(args,r,monitor,persist,*,rss=False):
                 action,_=policy(state.obs,actor_key)
                 nxt=wrapped.step(state,action)
                 return nxt,action
-            step=jax.jit(one)
+            step=shared_step if rss else jax.jit(one)
             for tick in range(52 if rss else 252):
                 guard()
                 h4cc_tech_require(r['physical_transitions_attempted']<(416 if rss else 2016),'PHYSICAL_CAP')
@@ -4681,6 +4772,7 @@ def h4cc_tech_actual(args,r,monitor,persist,*,rss=False):
                         reward=float(host(nxt.reward)[0]),
                         physics_sha256=digest_tree((nxt.data,nxt.info['h4cc_tech_raw'])))
                     row['rss'].update({k:float(host(nxt.info['h4m6_'+k])[0]) for k in ce.H4M6_FLOAT_FIELDS})
+                    h4m6_eval_require(scalar(nxt.info['h4m6_tech_treatment'])==int(arm=='rss'),'TECH_TREATMENT_BIT')
                 lane['rows'].append(row);lane['physical_recorded']+=1
                 r['physical_transitions_recorded']+=1;persist()
                 h4cc_tech_require(finite and not m['bad'] and not m['cc_bad'] and not m['truncation']
@@ -7152,10 +7244,150 @@ def h4m6_tech_inputs(args,auth):
     return {'input_sha256':expected,'input_paths':{k:str(p.resolve()) for k,p in paths.items()},
             'bootstrap':pins,'source_sha256':auth['source_sha256'],'external':external}
 
+def h4m6_runtime_gate(phase):
+    # No source flag; current Rules has neither approval nor active marker.
+    import m463_push_ppo_train as t
+    h4m6_eval_require(phase in ('tech','dev'),'RUNTIME_PHASE')
+    return t.h4m6_authorization(phase=phase)
+
+def h4m6_write_bounded(path,value,*,exclusive=False,cap=16*1024**2):
+    """Atomic bounded JSON; reject aliases and partial temporary-file reuse."""
+    import shutil
+    path=Path(path)
+    h4m6_eval_require(path.absolute()==path.resolve() and not path.is_symlink()
+        and path.parent.is_dir() and not path.parent.is_symlink(),'REPORT_PATH')
+    raw=(json.dumps(value,sort_keys=True,separators=(',',':'),allow_nan=False)+'\n').encode('utf8')
+    h4m6_eval_require(0<len(raw)<=cap and shutil.disk_usage(path.parent).free>=2*1024**3+len(raw),
+        'REPORT_STORAGE')
+    if exclusive:
+        with path.open('xb') as f:
+            f.write(raw);f.flush();os.fsync(f.fileno())
+    else:
+        h4m6_eval_require(path.is_file() and not path.is_symlink(),'REPORT_MISSING')
+        tmp=path.with_suffix(path.suffix+'.tmp')
+        with tmp.open('xb') as f:
+            f.write(raw);f.flush();os.fsync(f.fileno())
+        tmp.replace(path)
+    return len(raw)
+
+def h4m6_reserve_tech(path,auth):
+    import shutil
+    path=Path(path)
+    h4m6_eval_require(path.absolute()==path.resolve() and path.parent.parent.is_dir()
+        and path.parent.parent.resolve()==path.parent.parent.absolute()
+        and not path.parent.exists() and not path.parent.is_symlink()
+        and shutil.disk_usage(path.parent.parent).free>=2*1024**3+32*1024**2,
+        'TECH_RESERVATION')
+    path.parent.mkdir(exist_ok=False)
+    h4m6_write_bounded(path.parent/'attempt.json',{'authorization':auth,'reserved':True},exclusive=True)
+
 def h4m6_technical_dispatch(args):
-    # Held implementation only. Explicit authorization alone cannot open this
-    # until full-source static acceptance and native integration review.
-    raise RuntimeError('M470_H4M6_EXECUTION_HOLD')
+    h4m6_runtime_gate('tech')
+    import m463_push_ppo_train as t
+    root=Path(__file__).resolve().parent
+    auth=t.h4m6_authorization(root,phase='tech')
+    path=root/H4M6_TECH_OUTPUT
+    h4m6_eval_require(args.mode=='run' and args.h4m6_phase=='tech'
+        and args.output.absolute()==args.output.resolve()==path
+        and os.environ.get('JAX_PLATFORMS')=='cuda'
+        and os.environ.get('JAX_DEFAULT_MATMUL_PRECISION')=='highest'
+        and os.environ.get('XLA_PYTHON_CLIENT_PREALLOCATE')=='false','TECH_PREFLIGHT')
+    provenance=h4m6_tech_inputs(args,auth)
+    h4m3_no_runtime_imports()
+    h4m6_reserve_tech(path,auth)
+    r={'status':'M470_H4M6_TECH_IN_PROGRESS','spec':t.H4M6_SPEC,
+        'authorization':auth,'provenance':provenance,'source_commit':PIN,'lanes':[],
+        'physical_transitions_attempted':0,'physical_transitions_recorded':0,
+        'reset_lanes_attempted':0,'reset_lanes_recorded':0,
+        'optimizer_updates':0,'evaluation_transitions':0,'checkpoint_saves':0,
+        'training_performed':False,'efficacy_evaluated':False,'promotion_authorized':False,
+        'further_training_authorized':False,'passed':False}
+    def persist():
+        h4m6_write_bounded(path,r)
+    h4m6_write_bounded(path,r,exclusive=True)
+    monitor=None
+    try:
+        from m462_ppo_warmstart_run import GPUMonitor,sample_gpu
+        h4m3_no_runtime_imports()
+        gpu=sample_gpu()
+        h4m6_eval_require(gpu['total_mib']==12288 and 0<=gpu['used_mib']<.95*12288,'GPU_PREFLIGHT')
+        r['gpu_initial']=gpu;persist()
+        monitor=GPUMonitor()
+        with monitor:
+            h4cc_tech_actual(args,r,monitor,persist,rss=True)
+        r['gpu']=h3_gpu_check(monitor)
+        h4m6_eval_require(r['audit']==h4m6_technical_audit(r) and r['audit']['passed']
+            and r['policy_sha256_before']==r['policy_sha256_after'],'TECH_FINAL_AUDIT')
+        # Exact external-source scan in a new interpreter; no second inference or physics.
+        command=[sys.executable,'-B','-c',
+            'import json,sys;from pathlib import Path;from types import SimpleNamespace;'
+            'import m463_gate3_cp_eval as e;import m463_push_ppo_train as t;'
+            'a=t.h4m6_authorization(phase="tech");p=json.loads(sys.argv[1]);'
+            'args=SimpleNamespace(checkpoint_c=Path(p["C401M"]),h4_reward_report=Path(p["reward"]),'
+            'h4cc_restore_report=Path(p["restore"]),output=Path(a["output"])/"report.json");'
+            'print(json.dumps([a,e.h4m6_tech_inputs(args,a)],sort_keys=True))',
+            json.dumps(provenance['input_paths'],sort_keys=True)]
+        checked=json.loads(subprocess.check_output(command,cwd=root,text=True))
+        h4m6_eval_require(checked==[auth,provenance]
+            and json.loads((path.parent/'attempt.json').read_bytes())=={'authorization':auth,'reserved':True}
+            and json.loads((path.parent/'dispatch.started.json').read_bytes())=={'authorization':auth},
+            'TECH_POST_IMMUTABILITY')
+        r['status']='M470_H4M6_TECH_COMPLETE';r['passed']=True;persist()
+        h4m6_write_bounded(path.parent/'attempt_result.json',{'status':'COMPLETE','authorization':auth},exclusive=True)
+        print(r['status'],json.dumps(r['audit'],sort_keys=True),flush=True)
+    except BaseException as exc:
+        r['status']='M470_H4M6_TECH_STOP';r['passed']=False
+        r['error']=(type(exc).__name__+': '+str(exc))[:4096]
+        if monitor is not None:r['gpu']=monitor.snapshot()
+        try:
+            r['partial_ledger']=h4m6_technical_audit(r,partial=True)
+        except BaseException as err:
+            r['partial_ledger_error']=(type(err).__name__+': '+str(err))[:4096]
+        try:
+            persist()
+            h4m6_write_bounded(path.parent/'attempt_result.json',{'status':'STOPPED','authorization':auth},exclusive=True)
+        except BaseException as err:
+            print('M470_H4M6_TECH_PARTIAL_WRITE_FAILED',repr(err),flush=True)
+        raise
+
+def h4m6_read_technical(path,expected_sha,auth):
+    """Read completed native report under historical tech authorization, no active-marker substitution."""
+    import m463_push_ppo_train as t
+    from types import SimpleNamespace
+    root=Path(__file__).resolve().parent
+    path=Path(path)
+    h4m6_eval_require(path.absolute()==path.resolve()==root/H4M6_TECH_OUTPUT
+        and path.is_file() and not path.is_symlink() and 0<path.stat().st_size<=16*1024**2,'TECH_READ_PATH')
+    t.h4x_file_pin(path,expected_sha)
+    r=json.loads(path.read_bytes());a=r['authorization']
+    common=('id','source_sha256','spec_sha256','generated_sha256','external_sha256','static_sha256','static_log')
+    h4m6_eval_require(all(a[k]==auth[k] for k in common) and a['phase']=='tech'
+        and a['output']==t.H4M6_PATHS['tech']
+        and all(a[k]=='-' for k in ('technical_sha256','ref_sha256','rss_sha256'))
+        and auth['technical_sha256']==expected_sha,'TECH_AUTH_HISTORY')
+    h4m6_eval_require(r['status']=='M470_H4M6_TECH_COMPLETE' and r['passed'] is True
+        and r['spec']==t.H4M6_SPEC and r['source_commit']==PIN
+        and r['jax_version']=='0.4.35' and r['brax_source']['sha256']==TRAIN_SHA
+        and r['policy_sha256_before']==r['policy_sha256_after']
+        and r['gpu']['total_mib']==12288 and 0<r['gpu']['peak_used_mib']<.95*12288
+        and r['gpu']['samples']>0 and not r['gpu']['sampler_errors']
+        and r['further_training_authorized'] is False,'TECH_REPORT_CONTRACT')
+    for name,expected in (('attempt.json',{'authorization':a,'reserved':True}),
+        ('dispatch.started.json',{'authorization':a}),
+        ('attempt_result.json',{'status':'COMPLETE','authorization':a})):
+        p=path.parent/name
+        h4m6_eval_require(p.is_file() and not p.is_symlink() and json.loads(p.read_bytes())==expected,'TECH_MARKER '+name)
+    p=r['provenance']['input_paths']
+    proxy=SimpleNamespace(checkpoint_c=Path(p['C401M']),h4_reward_report=Path(p['reward']),
+        h4cc_restore_report=Path(p['restore']),output=path)
+    h4m6_eval_require(h4m6_tech_inputs(proxy,a)==r['provenance']
+        and h4m6_technical_audit(r)==r['audit'] and r['audit']['passed'],'TECH_REPORT_REPLAY')
+    reward=json.loads(Path(p['reward']).read_bytes())['train_reward_config']['scales']
+    for lane in r['lanes']:
+        for row in lane['rows']:
+            h4m6_eval_require(set(row['reward_names'])==set(reward)
+                and row['reward_scales']==[float(reward[k]) for k in row['reward_names']],'TECH_FROZEN_REWARD')
+    return r
 
 def h4m6_technical_audit(report,*,partial=False):
     """Pure replay: exact same-trajectory paired reward isolation, no physics."""
@@ -7168,6 +7400,11 @@ def h4m6_technical_audit(report,*,partial=False):
         <=report['physical_transitions_attempted']<=416,'TECH_PHYSICAL_LEDGER')
     req(sum(l['physical_attempted'] for l in lanes)==report['physical_transitions_attempted']
         and sum(l['physical_recorded'] for l in lanes)==report['physical_transitions_recorded'],'TECH_LANE_TOTALS')
+    outstanding_reset=report['reset_lanes_attempted']-report['reset_lanes_recorded']
+    outstanding_step=report['physical_transitions_attempted']-report['physical_transitions_recorded']
+    req(outstanding_reset+outstanding_step<=(1 if partial else 0)
+        and (not outstanding_step or (lanes and lanes[-1]['physical_attempted']-lanes[-1]['physical_recorded']==1)),
+        'TECH_PARTIAL_LEDGER')
     for name in ('optimizer_updates','evaluation_transitions','checkpoint_saves'):
         req(report[name]==0,'TECH_ZERO_'+name)
     req(report['training_performed'] is False and report['efficacy_evaluated'] is False
@@ -7228,6 +7465,12 @@ def h4m6_technical_audit(report,*,partial=False):
             req(bits(factor,e['factor']) and bits(raw[idx],e['actual_stand'])
                 and bits(w[idx],-f32(e['actual_stand']))
                 and bits(e['expected_reward'],row['reward']),'TECH_REWARD_ACCOUNTING')
+            h4m3_reward_check({'reward/'+name:float(value) for name,value in zip(names,w)},row['reward'],np)
+            base=w.copy();base[idx]=-f32(e['raw_stand'])
+            h4m3_reward_check({'reward/'+name:float(value) for name,value in zip(names,base)},e['base_reward'],np)
+            req(bits(e['shadow_stand'],factor*f32(e['raw_stand']))
+                and bits(e['shadow_relief'],(f32(e['raw_stand'])-f32(e['shadow_stand']))*np.float32(.02))
+                and bits(e['delivered_relief'],(f32(e['raw_stand'])-f32(e['actual_stand']))*np.float32(.02)),'TECH_RELIEF_FORMULA')
             req(bits(e['actual_stand'],e['raw_stand'] if arm=='ref' else e['shadow_stand'])
                 and (e['eligible'] or (bits(e['raw_stand'],e['actual_stand']) and e['delivered_relief']==0))
                 and (arm!='ref' or e['delivered_relief']==0)
@@ -7263,7 +7506,8 @@ def h4m6_technical_audit(report,*,partial=False):
             and lanes[i]['rows'][51]['rss']['factor']==1 for i in (0,1)),'TECH_REQUIRED_RESTORATION')
         req(any(row['rss']['delivered_relief']>0 for row in lanes[1]['rows']),'TECH_NONZERO_RELIEF')
     return {'passed':not partial,'paired_rows':pairs,'physical_recorded':report['physical_transitions_recorded'],
-            'reset_lanes_recorded':report['reset_lanes_recorded']}
+            'reset_lanes_recorded':report['reset_lanes_recorded'],
+            'outstanding_reset':outstanding_reset,'outstanding_step':outstanding_step}
 
 def h4m6_dev_decisions(archive,fresh):
     """Reuse the exact official/incremental decision code; no changed efficacy thresholds."""
@@ -7313,6 +7557,235 @@ def h4m6_mechanism_decision(efficacy,exposure,rows):
               'NOT_SUPPORTED_IN_TESTED_DESIGN' if primary.count('NOT_SUPPORTED')==2 else 'INCONCLUSIVE')
     return {'decision':decision,'primary':primary,'positive':positive,
             'efficacy':efficacy,'exposure':exposure,'promotion_authorized':False}
+
+
+def h4m6_dev_inputs(auth):
+    """Immutable evidence for the fresh paired dev run; no runtime import."""
+    import m463_push_ppo_train as t
+    root=H4_EVAL_ROOT
+    h4m6_eval_require(auth['phase']=='dev','DEV_AUTH')
+    tech=h4m6_read_technical(root/H4M6_TECH_OUTPUT,auth['technical_sha256'],auth)
+    external=h4m6_external_sources(root)
+    h4m6_eval_require(h4m3_digest(external)==auth['external_sha256']
+        and external==tech['provenance']['external'],'DEV_EXTERNAL')
+    reports={};pins={'archive/report.json':H4CC_ARCHIVE_SHA,'tech/report.json':auth['technical_sha256']}
+    archive=h4cc_read_archive(root/H4_EVAL_OUTPUT)
+    for arm in ('ref','rss'):
+        out=root/t.H4M6_PATHS[arm]
+        r=t.h4m6_read_final_report(out/'report.json',auth[arm+'_sha256'],arm,auth)
+        reports[arm]=r
+        for name in ('report.json','attempt.json','dispatch.started.json','attempt_result.json',
+                     'm463_brax_ppo_instrumented.py'):
+            pins[arm+'/'+name]=sha256(out/name)
+        for p,f in zip(r['checkpoints'],r['fullstate_checkpoints']):
+            for name in (p['file'],f['file'],f['manifest']):
+                pins[arm+'/'+name]=sha256(out/name)
+    ref,rss=reports['ref'],reports['rss']
+    historical=json.loads((h4e_paths('control')/'report.json').read_bytes())
+    h4m6_eval_require(ref['h4_common_contract']==rss['h4_common_contract']
+        and ref['h4x_brax_dependencies']==rss['h4x_brax_dependencies']==historical['h4x_brax_dependencies'],
+        'DEV_MATCHED_CONTRACT')
+    exposure=t.h4m6_exposure_comparison(ref['h4m6_final'],rss['h4m6_final'])
+    h4m6_eval_require(exposure==rss['h4m6_exposure_comparison'],'DEV_EXPOSURE_REPLAY')
+    for name in ('train.py','paper_config.py','m462_ppo_warmstart_run.py','m462_typed_orbax_stage.py'):
+        expected=archive['input_sha256']['source/'+name];t.h4x_file_pin(root/name,expected)
+        pins['source/'+name]=expected
+    for name,value in t.h4m6_source_identity(root)['files'].items():
+        pins['source/'+name]=value
+    pins['external']=auth['external_sha256']
+    h4m3_no_runtime_imports()
+    return pins,archive,external,exposure
+
+def h4m6_rich_write(sidecar,*,initial=False):
+    meta={k:v for k,v in sidecar.items() if k!='records'}
+    h4m6_mechanism_bound(sidecar['records'],meta)
+    return h4m6_write_bounded(H4_EVAL_ROOT/H4M6_RICH_OUTPUT,sidecar,
+        exclusive=initial,cap=32*1024**2)
+
+def h4m6_add_rich(sidecar,label,seed,direction,tick,row,raw,np):
+    req=h4m6_eval_require
+    req(label in ('REF6','RSS') and (seed,direction) in H4M6_MECHANISM_LANES
+        and 334<=tick<=385 and len(sidecar['records'])<416,'RICH_SCOPE')
+    req(not any((r['policy'],r['seed'],r['direction'],r['tick'])==(label,seed,direction,tick)
+        for r in sidecar['records']),'RICH_DUPLICATE')
+    data=h4m3_pack_capture(raw,row,sidecar['manifest'],np)
+    req(data['com']['available'] is True and data['contact']['available'] is True,'RICH_COM_LOAD')
+    item={'policy':label,'seed':seed,'direction':direction,'tick':tick,'row':row,'data':data}
+    item=json.loads(json.dumps(item,allow_nan=False,default=lambda a:np.asarray(a).tolist()))
+    req(len(json.dumps(item,allow_nan=False,separators=(',',':')).encode())+128<=65536,'RICH_RECORD_BYTES')
+    sidecar['records'].append(item)
+
+def h4m6_dev_ledger(session,*,partial=False):
+    req=h4m6_eval_require
+    groups=session['groups']
+    expected={(p,s,c) for p in ('REF6','RSS') for s in H3_EVAL_SEEDS for c in H3_EVAL_PROFILES}
+    keys={(g['policy'],g['seed'],g['profile']) for g in groups}
+    req(len(keys)==len(groups)<=24 and keys<=expected,'DEV_GROUP_KEYS')
+    rows=sum(len(g['nominal_frames'])+sum(len(v['single_suffix'])+len(v['double_suffix'])
+             for v in g['directions'].values()) for g in groups)
+    complete=sum(bool(g['complete']) for g in groups)
+    ra=session['reset_lanes_attempted'];rr=session['reset_lanes_recorded']
+    pa=session['physical_transitions_attempted'];pr=session['physical_transitions_recorded']
+    req(rows==pr<=pa<=89616 and 0<=rr<=ra<=24
+        and complete*5==session['logical_trajectories_completed']
+        and ra-rr+pa-pr<=(1 if partial else 0),'DEV_LEDGER')
+    req(complete<=rr<=len(groups) and len(groups)-complete<=(1 if partial else 0),'DEV_GROUP_LEDGER')
+    if not partial:
+        req(keys==expected and ra==rr==complete==24,'DEV_COMPLETE')
+    return {'physical_recorded':pr,'outstanding_step':pa-pr,'reset_recorded':rr,
+            'outstanding_reset':ra-rr,'complete_groups':complete,'logical':complete*5}
+
+def h4m6_rich_projection(session,sidecar):
+    req=h4m6_eval_require
+    req(tuple(session['frame_columns'])==H4M3_COLUMNS and len(session['groups'])==24,'RICH_FRAME_COLUMNS')
+    expected={}
+    for g in session['groups']:
+        if g['profile']!='stand':continue
+        for seed,d in H4M6_MECHANISM_LANES:
+            if seed!=g['seed']:continue
+            item=g['directions'][d]
+            single=item['single_suffix']
+            if len(single)>=35:
+                expected[(g['policy'],seed,d,334)]=single[34]
+            for tick,row in enumerate(item['double_suffix'][:51],335):
+                expected[(g['policy'],seed,d,tick)]=row
+    actual={(r['policy'],r['seed'],r['direction'],r['tick']):r['row'] for r in sidecar['records']}
+    req(len(actual)==len(sidecar['records']) and actual==expected,'RICH_RAW_PROJECTION')
+    return {'records':len(actual),'raw_projection_sha256':h4m3_digest(
+        [[*k,v] for k,v in sorted(expected.items())]),'extra_physical_transitions':0}
+
+def h4m6_mechanism_endpoints(session,sidecar,np):
+    req=h4m6_eval_require
+    h4m6_rich_projection(session,sidecar)
+    groups={(g['policy'],g['seed']):g for g in session['groups'] if g['profile']=='stand'}
+    cases=[]
+    for idx,(seed,direction) in enumerate(H4M6_MECHANISM_LANES):
+        role='primary' if idx<2 else 'positive'
+        ends={}; summaries={}; support={}; load={}
+        recovery='right' if direction=='left' else 'left'
+        for arm in ('REF6','RSS'):
+            g=groups[(arm,seed)]
+            traces=h3_decode(g,session['frame_columns'])
+            trace,exposed=traces[('double',direction)]
+            summaries[arm]=h3_summary(trace,exposed,'double',traces[('single',direction)][0])
+            samples={r['tick']:r for r in sidecar['records'] if
+                     (r['policy'],r['seed'],r['direction'])==(arm,seed,direction)}
+            origin=samples.get(334)
+            support[arm]=False if origin is None else (
+                origin['row'][H4M3_COLUMNS.index('lf_ground_contact')]==int(direction=='left')
+                and origin['row'][H4M3_COLUMNS.index('rf_ground_contact')]==int(direction=='right'))
+            ends[arm]={str(t):None for t in (354,365,385)}
+            load[arm]=None
+            if origin is not None and exposed:
+                kick=g['directions'][direction]['second']['actual_world_dqvel_xy_mps']
+                e=np.asarray([*kick,0.],dtype=np.float64); norm=np.linalg.norm(e)
+                req(np.isfinite(e).all() and norm>0,'RICH_DIRECTION')
+                geom={'e':(e/norm).tolist(),'recovery':recovery,'support':direction}
+                for tick in (354,365,385):
+                    if tick in samples:
+                        ends[arm][str(tick)]=h4m4_endpoint(samples[tick],origin,geom,np)
+                load[arm]=h4m4_load_summary([samples[t] for t in sorted(samples) if t>=335],recovery,.05)
+        b,t=ends['REF6'],ends['RSS'];bs,ts=summaries['REF6'],summaries['RSS']
+        required=('354','365') if role=='primary' else ('385',)
+        br=all(b[k] is not None for k in required);tr=all(t[k] is not None for k in required)
+        pair=next(p for p in session['decision']['incremental']['decision']['paired_cases']
+                  if p['case']==[seed,'stand','double',direction])
+        safe=all(x['pass'] for x in pair['safety'].values()) and not pair['new_critical_terminal_flags']
+        btrace=h3_decode(groups[('REF6',seed)],session['frame_columns'])[('double',direction)][0]
+        ttrace=h3_decode(groups[('RSS',seed)],session['frame_columns'])[('double',direction)][0]
+        earlier=len(ttrace)<len(btrace) and bool(ttrace[-1]['done'])
+        r={'seed':seed,'direction':direction,'role':role,'endpoints':ends,'load':load,
+           'matched_sole_ipsilateral':all(support.values()),'initial_support':support,
+           'reference_endpoints_available':br,'candidate_endpoints_available':tr,
+           'candidate_adverse':earlier or (not tr and bool(ttrace[-1]['done'])),
+           'safety_preserved':safe,'candidate_survived':ts['survived'],
+           'candidate_recovery5':ts['recovery_5s']['recovered'],
+           'reference_survived':bs['survived'],'reference_recovery5':bs['recovery_5s']['recovered'],
+           'placement_gain_m':None,'load3_complete_tick':None if load['RSS'] is None else load['RSS']['completed'],
+           'signed_velocity_gain_mps':None,'absolute_velocity_gain_mps':None,
+           'abs_v385_excess_mps':None,'abs_H385_excess':None}
+        if br and tr:
+            if role=='primary':
+                r.update(placement_gain_m=t['354']['D_m']-b['354']['D_m'],
+                    signed_velocity_gain_mps=b['365']['v_push_mps']-t['365']['v_push_mps'],
+                    absolute_velocity_gain_mps=abs(b['365']['v_push_mps'])-abs(t['365']['v_push_mps']))
+            else:
+                r.update(abs_v385_excess_mps=abs(t['385']['v_push_mps'])-abs(b['385']['v_push_mps']),
+                    abs_H385_excess=t['385']['angular_momentum_norm']-b['385']['angular_momentum_norm'])
+        cases.append(r)
+    return cases
+
+def h4m6_dev_dispatch(args):
+    h4m6_runtime_gate('dev')
+    import m463_push_ppo_train as t
+    import shutil
+    root=H4_EVAL_ROOT; path=root/H4M6_DEV_OUTPUT
+    auth=t.h4m6_authorization(phase='dev')
+    h4m6_eval_require(args.mode=='run' and args.h4m6_phase=='dev'
+        and args.output.absolute()==args.output.resolve()==path
+        and os.environ.get('JAX_PLATFORMS')=='cuda'
+        and os.environ.get('JAX_DEFAULT_MATMUL_PRECISION')=='highest'
+        and os.environ.get('XLA_PYTHON_CLIENT_PREALLOCATE')=='false'
+        and shutil.disk_usage(path.parent.parent).free>=2*1024**3+2*128*1024**2+2*32*1024**2,'DEV_PREFLIGHT')
+    pins,archive,external,exposure=h4m6_dev_inputs(auth)
+    args.seeds=list(H3_EVAL_SEEDS);args.profiles=list(H3_EVAL_PROFILES);args.directions=['left','right']
+    args.push_step=300;args.push_magnitude=.50;args.second_push_step=335
+    args.second_push_magnitude=.35;args.max_steps=1000;args.max_cases=120
+    h4m6_reserve_tech(path,auth)
+    session={'status':'M470_H4M6_DEV_IN_PROGRESS','authorization':auth,'source_commit':PIN,
+        'brax_train_sha256':TRAIN_SHA,'evaluator_sha256':sha256(Path(__file__)),'input_sha256':pins,
+        'seeds':args.seeds,'profiles':args.profiles,'directions':args.directions,'push_step':300,
+        'push_magnitude_mps':.50,'second_push_step':335,'second_push_magnitude_mps':.35,
+        'max_steps':1000,'dt_s':.02,'training_performed':False,'deterministic_actor':True,
+        'domain_randomization_enabled':False,'random_source_push_enabled':False,
+        'original_reward_PD_termination':True,'expected_logical_trajectories':120,
+        'max_physical_transitions':89616,'physical_transitions_attempted':0,
+        'physical_transitions_recorded':0,'logical_trajectories_completed':0,
+        'reset_lanes_attempted':0,'reset_lanes_recorded':0,'frame_columns':None,'groups':[],
+        'promotion_authorized':False,'exposure':exposure}
+    sidecar={'authorization':auth,'input_sha256':pins,'manifest':None,'records':[]}
+    h3_write(path,session,initial=True);h4m6_rich_write(sidecar,initial=True)
+    args.h3_session=session;args.h4m6_rich=sidecar
+    monitor=None
+    try:
+        from m462_ppo_warmstart_run import GPUMonitor,sample_gpu
+        g=sample_gpu()
+        h4m6_eval_require(g['total_mib']==12288 and 0<=g['used_mib']<.95*12288,'DEV_GPU_PREFLIGHT')
+        session['gpu_initial']=g
+        monitor=GPUMonitor();args.h3_monitor=monitor
+        with monitor:run(args)
+        session['gpu']=h3_gpu_check(monitor)
+        command=[sys.executable,'-B','-c',
+            'import json;import m463_push_ppo_train as t;import m463_gate3_cp_eval as e;'
+            'a=t.h4m6_authorization(phase="dev");p,_,x,y=e.h4m6_dev_inputs(a);'
+            'print(json.dumps([a,p,x,y],sort_keys=True))']
+        h4m6_eval_require(json.loads(subprocess.check_output(command,cwd=root,text=True))==[auth,pins,external,exposure]
+            and session['logical_trajectories_completed']==120
+            and session['physical_transitions_attempted']==session['physical_transitions_recorded']<=89616
+            and session['reset_lanes_attempted']==session['reset_lanes_recorded']==24
+            and h4m6_dev_ledger(session)==session['ledger']
+            and h4m6_rich_projection(session,sidecar)==sidecar['projection']
+            and sidecar['authorization']==auth and sidecar['input_sha256']==pins
+            and json.loads((path.parent/'attempt.json').read_bytes())=={'authorization':auth,'reserved':True}
+            and json.loads((path.parent/'dispatch.started.json').read_bytes())=={'authorization':auth}
+            and sha256(root/H4M6_RICH_OUTPUT)==session['mechanism_sha256'],'DEV_FINAL')
+        session['status']='M470_H4M6_DEV_COMPLETE'
+        h3_write(path,session)
+        h4m6_write_bounded(path.parent/'attempt_result.json',{'status':'COMPLETE','authorization':auth},exclusive=True)
+        print(session['status'],session['decision']['decision'],session['mechanism']['decision'],flush=True)
+    except BaseException as exc:
+        session['status']='M470_H4M6_DEV_STOP';session['error']=(type(exc).__name__+': '+str(exc))[:4096]
+        if monitor is not None:session['gpu']=monitor.snapshot()
+        try:
+            session['partial_ledger']=h4m6_dev_ledger(session,partial=True)
+        except BaseException as err:
+            session['partial_ledger_error']=(type(err).__name__+': '+str(err))[:4096]
+        try:
+            h4m6_rich_write(sidecar)
+            h3_write(path,session)
+            h4m6_write_bounded(path.parent/'attempt_result.json',{'status':'STOPPED','authorization':auth},exclusive=True)
+        except BaseException as err:print('M470_H4M6_DEV_PARTIAL_WRITE_FAILED',repr(err),flush=True)
+        raise
 
 def h4m6_mechanism_bound(records,metadata):
     """Byte accounting for future exact rich capture, no extra physical steps."""
@@ -7368,12 +7841,18 @@ def main():
     args=p.parse_args()
     if args.h4m6_phase is not None:
         try:
-            h4m6_eval_require(args.mode=='plan','EXECUTION_HOLD')
+            if args.mode=='run':
+                h4m6_runtime_gate(args.h4m6_phase)
+            allowed=('mode','output','h4m6_phase')
+            if args.mode=='run' and args.h4m6_phase=='tech':
+                allowed+=('checkpoint_c','h4_reward_report','h4cc_restore_report')
             h4m6_eval_require(all(getattr(args,k)==p.get_default(k) for k in vars(args)
-                if k not in ('mode','output','h4m6_phase')),'PLAN_CONFLICT')
+                if k not in allowed),'PLAN_CONFLICT')
             root=Path(__file__).resolve().parent
             expected=root/(H4M6_TECH_OUTPUT if args.h4m6_phase=='tech' else H4M6_DEV_OUTPUT)
             h4m6_eval_require(args.output.absolute()==args.output.resolve()==expected,'PLAN_OUTPUT')
+            if args.mode=='run':
+                return h4m6_technical_dispatch(args) if args.h4m6_phase=='tech' else h4m6_dev_dispatch(args)
             print('M470_H4M6_PLAN',json.dumps(h4m6_eval_plan(args.h4m6_phase),sort_keys=True))
             return
         except (RuntimeError,ValueError,KeyError,OSError) as exc:

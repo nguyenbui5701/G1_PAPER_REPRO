@@ -370,7 +370,7 @@ class CoverageJoystick(joystick.Joystick):
             raw = rewards['stand_still']
             eligible,factor,shadow,delivered = h4m6_reward(
                 jp,raw,info['h4m6_pre_eligible']>0,info['h4m6_pre_k'],
-                done>0,self._h4m6_arm=='rss')
+                done>0,(info['h4m6_tech_treatment']>0 if self._h4m6_tech_capture else self._h4m6_arm=='rss'))
             base = sum(v*self._config.reward_config.scales[k] for k,v in rewards.items())*self.dt
             rewards['stand_still'] = delivered
             if self._h4m6_tech_capture:
@@ -444,6 +444,7 @@ class CoverageJoystick(joystick.Joystick):
             info.update(h4m6_pre_eligible=zeros,h4m6_pre_k=zeros)
             if self._h4m6_tech_capture:
                 info['h4m6_raw_rewards'] = jp.zeros((24,),jp.float32)
+                info['h4m6_tech_treatment'] = zeros
         return state.replace(info=info)
 
     def step(self, state, action):
@@ -794,7 +795,10 @@ class CoverageJoystick(joystick.Joystick):
                    (out['h4m6_expected_reward'] != after.reward) |
                    (after.metrics['reward/stand_still'] != -out['h4m6_actual_stand']) |
                    ((out['h4m6_eligible']==0) & (out['h4m6_delivered_relief']!=0)) |
-                   ((self._h4m6_arm=='ref') & (out['h4m6_delivered_relief']!=0)))
+                   ((~(out['h4m6_tech_treatment']>0) if self._h4m6_tech_capture else self._h4m6_arm=='ref')
+                     & (out['h4m6_delivered_relief']!=0)))
+            if self._h4m6_tech_capture:
+                bad = bad | ((out['h4m6_tech_treatment']!=0)&(out['h4m6_tech_treatment']!=1))
             m6out['h4m6_bad'] = bad.astype(jp.int32)
             out.update(m6out)
             out['h4_bad'] = jp.maximum(out['h4_bad'],m6out['h4m6_bad'])

@@ -2454,11 +2454,16 @@ def h4x_normalizer_expected(np,value,dtype,rollouts):
     return target
 
 
-def h4x_verify_operational(report, *, h4cc=False):
+def h4x_verify_operational(report, *, h4cc=False,h4m6=False):
     import numpy as np
     h4x_require(report['h4x_exploratory'] is True,'EXPLORATORY_REPORT')
     auth=report['h4x_authorization']
-    if h4cc:
+    if h4m6:
+        h4m6_require(h4cc and auth['id']==H4M6_ID and auth['phase']==report['h4m6_arm']
+            and report['h4_arm']=='candidate' and report['h4cc_arm']=='ref'
+            and auth['output']==H4M6_PATHS[auth['phase']]
+            and auth['generated_sha256']==report['h4_common_contract']['generated_brax_sha256'],'OPERATIONAL_AUTH')
+    elif h4cc:
         h4x_require(auth['id']==H4CC_ID and auth['arm']==report['h4cc_arm']
                     and report['h4_arm']=='candidate'
                     and auth['output']==str(H4CC_PATHS[auth['arm']])
@@ -2646,7 +2651,8 @@ def h4x_audit_callback(jax,np,monitor,report,persist,args,auth,control_dr):
         budget.check(event)
         if event.endswith('_before'):
             rules=Path(__file__).with_name('G1_RESEARCH_RULES.md').read_text('utf8')
-            current=(h4cc_authorization() if auth['id']==H4CC_ID else h4x_parse_marker(rules))
+            current=(h4m6_authorization(phase=auth['phase']) if auth['id']==H4M6_ID else
+                     h4cc_authorization() if auth['id']==H4CC_ID else h4x_parse_marker(rules))
             h4x_require(current==auth,'AUTHORIZATION_CHANGED')
         safe()
         chunk=op['recorded']['optimizer']//200
@@ -3781,7 +3787,7 @@ def h3_technical_gate(api, train_cfg, stage, instrument_meta, result, persist):
 
 def run(args):
     if getattr(args,'h4m6_arm',None) is not None:
-        raise RuntimeError('M470_H4M6_EXECUTION_HOLD')
+        return h4m6_run(args)
     if getattr(args,'h4cc_arm',None) is not None:
         return h4cc_run(args)
     if getattr(args,'h4_exploratory',False):
@@ -3791,11 +3797,15 @@ def run(args):
 
 
 def _run_impl(args,h4x=None):
-    if getattr(args,'h4m6_arm',None) is not None:
-        raise RuntimeError('M470_H4M6_EXECUTION_HOLD')
-    cc_arm=getattr(args,'h4cc_arm',None)
+    m6_arm=getattr(args,'h4m6_arm',None)
+    if m6_arm is not None:
+        h4m6_train_gate(m6_arm)
+    cc_arm='ref' if m6_arm is not None else getattr(args,'h4cc_arm',None)
     if cc_arm is not None or getattr(args,'h4_exploratory',False):
-        auth=h4cc_validate_cli(args) if cc_arm is not None else h4x_validate_cli(args)
+        auth=(h4m6_authorization(phase=m6_arm) if m6_arm is not None else
+              h4cc_validate_cli(args) if cc_arm is not None else h4x_validate_cli(args))
+        if m6_arm is not None:
+            h4m6_require(h4x is not None and h4x['m6_evidence']==h4m6_train_inputs(args,auth),'RUN_EVIDENCE')
         h4x_require(h4x is not None and h4x['authorization']==auth,'RUN_RESERVATION')
         h4x_require(json.loads((args.output_dir/'attempt.json').read_bytes())==
                     {'authorization':h4x['authorization'],'reserved':True},'RUN_RESERVATION')
@@ -3912,7 +3922,7 @@ def _run_impl(args,h4x=None):
         for name,path in h4x['pins'].items():
             module=sys.modules.get(name)
             h4x_require(module is not None and Path(module.__file__).resolve()==Path(path),'IMPORTED_ORIGIN '+name)
-        h4x_require(h4x_bootstrap(args,h4cc=cc_arm is not None)==h4x['pins'],'BOOTSTRAP_IMMUTABILITY')
+        h4x_require(h4x_bootstrap(args,h4cc=cc_arm is not None,**({'h4m6':auth} if m6_arm is not None else {}))==h4x['pins'],'BOOTSTRAP_IMMUTABILITY')
     if jax.default_backend()!='gpu':raise RuntimeError('M463_GPU_REQUIRED')
     if (h3_acceptance is not None or h4_arm is not None) and (jax.process_count() != 1 or jax.local_device_count() != 1
             or gpu_initial['total_mib'] != 12288
@@ -3951,7 +3961,8 @@ def _run_impl(args,h4x=None):
         expected_reward=json.loads(args.h4_exploratory_reward_report.read_bytes())['train_reward_config']
         h4x_require(original_reward==expected_reward and train_cfg.to_dict()['reward_config']==expected_reward,'REWARD_PIN')
     train_env=CoverageJoystick(config=train_cfg,stage=args.stage,
-                               h1_m1=h1_m1,h1_m2=h1_m2,h3_m1=h3_m1,h4_arm=h4_arm,h4cc_arm=cc_arm)
+                               h1_m1=h1_m1,h1_m2=h1_m2,h3_m1=h3_m1,h4_arm=h4_arm,h4cc_arm=cc_arm,
+                               **({'h4m6_arm':m6_arm} if m6_arm is not None else {}))
     # Original source-driven randomized evaluation; only 2 envs as previous.
     eval_env=api['locomotion'].load(api['env_name'],config=source_cfg)
     scaled=api['scaled']
@@ -3992,7 +4003,8 @@ def _run_impl(args,h4x=None):
     instrumented_ppo,instrument_meta=build_instrumented_ppo(
         api['ppo'],out/'m463_brax_ppo_instrumented.py',
         enable_resume=longtrain, enable_h3=h3_m1,enable_h4=h4_arm is not None,
-        enable_h4x=h4x is not None,enable_h4cc=cc_arm is not None)
+        enable_h4x=h4x is not None,enable_h4cc=cc_arm is not None,
+        **({'enable_h4m6':True} if m6_arm is not None else {}))
     if h4x is not None:
         h4x_require(instrument_meta['instrumented_sha256']==h4x['authorization']['generated_sha256'],'GENERATED_PIN')
         h4x_storage(out)
@@ -4005,7 +4017,11 @@ def _run_impl(args,h4x=None):
             h4_control=h4cc_read_historical_control(historical_path,h4_contract)
             old_report=json.loads(historical_path.read_bytes())
             h4x_require(h4x['brax_dependencies']==old_report['h4x_brax_dependencies'],'CCRC_HISTORICAL_DEPENDENCIES')
-            if cc_arm=='ccrc':
+            if m6_arm=='rss':
+                ref=h4x['m6_evidence']['ref']
+                h4m6_require(ref['h4_common_contract']==h4_contract
+                    and ref['h4x_brax_dependencies']==h4x['brax_dependencies'],'MATCHED_REF_CONTRACT')
+            elif cc_arm=='ccrc':
                 ref=h4cc_read_final_report(args.h4cc_ref_report,h4x['authorization']['evidence_sha256'],'ref',h4_contract,contract_arm='ccrc')
                 h4x_require(ref['h4x_brax_dependencies']==h4x['brax_dependencies'],'CCRC_FRESH_DEPENDENCIES')
         elif h4_arm=='candidate':
@@ -4079,6 +4095,12 @@ def _run_impl(args,h4x=None):
     if h4x is not None:
         report.update(h4x_authorization=h4x['authorization'],h4x_bootstrap=h4x['pins'],
                       h4x_brax_dependencies=h4x['brax_dependencies'],h4x_exploratory=True)
+    if m6_arm is not None:
+        report.update(h4m6_arm=m6_arm,h4m6_spec=H4M6_SPEC,
+            h4m6_technical_sha256=auth['technical_sha256'],
+            h4m6_ref_sha256=auth['ref_sha256'],
+            h4m6_external_sha256=auth['external_sha256'],
+            reward_PD_termination_source_unchanged=(m6_arm=='ref'))
     if h3_m1:
         report.update(h3_m1_enabled=True, h3_m1_spec=H3_SPEC,
                       h3_ppo_fingerprint=h3_fp,
@@ -4207,6 +4229,8 @@ def _run_impl(args,h4x=None):
             info.update(h4_arm=h4_arm,h4_resume_forbidden=True,h4_common_contract=h4_contract)
         if cc_arm is not None:
             info.update(h4cc_arm=cc_arm,h4cc_authorization=h4x['authorization'])
+        if m6_arm is not None:
+            info.update(h4m6_arm=m6_arm,h4m6_authorization=auth)
         if h3_m1:
             info['h3_m1_enabled'] = True
             info['h3_m1_spec'] = H3_SPEC
@@ -4230,7 +4254,8 @@ def _run_impl(args,h4x=None):
 
     monitor=GPUMonitor()
     if h4_arm is not None:
-        cfg['h4_chunk_fn']=h4_chunk_callback(jax,np,monitor,report,persist,h4_arm,h4cc_arm=cc_arm)
+        cfg['h4_chunk_fn']=h4_chunk_callback(jax,np,monitor,report,persist,h4_arm,h4cc_arm=cc_arm,
+            **({'h4m6_arm':m6_arm} if m6_arm is not None else {}))
         if h4x is not None:
             control_dr=(H4CC_MATCHED_DR_SHA if cc_arm is not None else
                         h4x_verify_operational(json.loads(args.h4_control_report.read_bytes()))
@@ -4272,7 +4297,7 @@ def _run_impl(args,h4x=None):
                 if h4_arm is not None and not H4_EXECUTION_AUTHORIZED and h4x is None:
                     raise RuntimeError('M470_H4_EXECUTION_HOLD')
                 if h4x is not None:
-                    h4x_require((h4cc_authorization() if cc_arm is not None else h4x_authorization())==h4x['authorization'],'FINAL_AUTHORIZATION')
+                    h4x_require(h4m6_current_auth(h4x['authorization'],cc_arm)==h4x['authorization'],'FINAL_AUTHORIZATION')
                 report['training_performed']=True
                 if h3_m1 or h4_arm is not None:
                     persist()
@@ -4376,7 +4401,7 @@ def _run_impl(args,h4x=None):
         if h4_arm is not None:
             h4_final_checks(report,audit,h4_control)
         if h4x is not None:
-            dr=h4x_verify_operational(report,h4cc=cc_arm is not None)
+            dr=h4x_verify_operational(report,h4cc=cc_arm is not None,**({'h4m6':True} if m6_arm is not None else {}))
             if cc_arm is not None:
                 h4x_require(dr==H4CC_MATCHED_DR_SHA,'CCRC_FINAL_DR')
                 h4x_require(h4cc_read_historical_control(historical_path,h4_contract)==h4_control,'CCRC_FINAL_HISTORICAL')
@@ -4385,12 +4410,22 @@ def _run_impl(args,h4x=None):
                     ref=h4cc_read_final_report(args.h4cc_ref_report,h4x['authorization']['evidence_sha256'],'ref',h4_contract,contract_arm='ccrc')
                     h4x_require(h4cc_matched_nominal(ref['h4_final_counts'],report['h4_final_counts']),'CCRC_MATCHED_NOMINAL')
                     report['h4cc_exposure_decision']=h4cc_exposure_decision(ref['h4cc_final_counts'],report['h4cc_final_counts'])
-            h4x_require((h4cc_authorization() if cc_arm is not None else h4x_authorization())==h4x['authorization'] and h4x_bootstrap(args,h4cc=cc_arm is not None)==h4x['pins']
+            if m6_arm is not None:
+                final=h4m6_replay_ledger(report,m6_arm)
+                h4m6_require(final==report['h4m6_final'] and final['h4_counts']==report['h4_final_counts'],'FINAL_REPLAY')
+                if m6_arm=='ref':
+                    h4m6_require(final['audit']['exposure_adequate'] is True,'REF_EXPOSURE')
+                else:
+                    report['h4m6_exposure_comparison']=h4m6_exposure_comparison(ref['h4m6_final'],final)
+                h4m6_post_train_inputs(args,auth,h4x['m6_evidence'])
+            h4x_require(h4m6_current_auth(h4x['authorization'],cc_arm)==h4x['authorization'] and h4x_bootstrap(args,h4cc=cc_arm is not None,**({'h4m6':auth} if m6_arm is not None else {}))==h4x['pins']
                         and h4c_dependency_pins(api)==h4x['brax_dependencies'],'FINAL_IMMUTABILITY')
             h4x_file_pin(args.h4_exploratory_causal_report,H4X_CAUSAL_SHA)
             h4x_require(h4c_git_blob(wrapper_file.read_bytes())=='2c09c8268a29d14c832dd07050575e4541ee98af','FINAL_WRAPPER_PIN')
             read_restore_gate(args.restore_report,args.checkpoint)
-            if cc_arm is not None:
+            if m6_arm is not None:
+                h4m6_require((args.rollouts,args.num_evals)==(40,3),'FINAL_BUDGET')
+            elif cc_arm is not None:
                 h4cc_validate_cli(args,final=True)
             elif h4_arm=='candidate':
                 h4x_file_pin(args.h4_control_report,h4x['authorization']['evidence_sha256'])
@@ -4899,9 +4934,182 @@ def h4m6_parse_marker(rules,source,spec):
         generated_sha256=gen,external_sha256=ext,static_sha256=st,static_log=fields[5],
         technical_sha256=tech,ref_sha256=ref,rss_sha256=rss)
 
+
+def h4m6_train_gate(phase=None):
+    auth=h4m6_authorization(phase=phase)
+    h4m6_require(auth['phase'] in ('ref','rss'),'TRAIN_PHASE')
+    return auth
+
+def h4m6_train_inputs(args,auth):
+    """Pre-import evidence replay under a distinct H4M6 phase."""
+    from m463_gate3_cp_eval import h4m6_read_technical,h4m6_external_sources,h4m3_digest,H4M6_TECH_OUTPUT
+    root=Path(__file__).resolve().parent
+    h4m6_require(auth['phase'] in ('ref','rss') and args.h4m6_arm==auth['phase']
+        and args.mode=='longtrain' and args.stage=='easy_repeat_support'
+        and args.output_dir.resolve()==root/auth['output'],'TRAIN_PHASE_PATH')
+    h4m6_require(not any(getattr(args,k,None) for k in (
+        'h4cc_arm','h4cc_technical_report','h4cc_ref_report','h4_arm','h4_control_report',
+        'h4_exploratory','h4_readiness','h4_readiness_reward_report','h4_causal',
+        'h4_causal_failure_report','h3_m1','h3_diagnostic_only','h3_causal_report',
+        'h3_old10m_report','h1_m1','h1_m2','smoke_report','resume_state','independent_budget')),
+        'TRAIN_CONFLICT')
+    h4m6_require((args.rollouts,args.num_evals)==(None,None),'TRAIN_BUDGET_FLAGS')
+    h4x_file_pin(args.checkpoint,SEED1_SHA)
+    h4x_file_pin(args.restore_report,H3_CAUSAL_RESTORE_SHA)
+    h4x_file_pin(args.h4_exploratory_causal_report,H4X_CAUSAL_SHA)
+    h4x_file_pin(args.h4_exploratory_reward_report,H4R_REWARD_SHA)
+    prior=json.loads(args.h4_exploratory_causal_report.read_bytes())
+    h4m6_require(prior['status']=='M470_H4C_DIAGNOSTIC_COMPLETE'
+        and prior['phase_verdicts']=={'A':'DIVERGENT','B':'PASS'}
+        and prior['comparisons']['B']['bitwise_equal'] is True
+        and prior['recorded_physical_transitions']==1024
+        and prior['recorded_optimizer_updates']==80,'TRAIN_CAUSAL_EVIDENCE')
+    h4m6_require(args.h4m6_technical_report is not None
+        and args.h4m6_technical_report.resolve()==root/H4M6_TECH_OUTPUT,'TRAIN_TECH_PATH')
+    tech=h4m6_read_technical(args.h4m6_technical_report,auth['technical_sha256'],auth)
+    external=h4m6_external_sources(root)
+    h4m6_require(h4m3_digest(external)==auth['external_sha256']
+        and external==tech['provenance']['external'],'TRAIN_EXTERNAL')
+    ref=None
+    if auth['phase']=='ref':
+        h4m6_require(args.h4m6_ref_report is None,'TRAIN_REF_CONFLICT')
+    else:
+        ref=h4m6_read_final_report(args.h4m6_ref_report,auth['ref_sha256'],'ref',auth)
+    return {'pins':h4x_bootstrap(args,h4cc=True,h4m6=auth),
+        'external':external,'tech_sha256':auth['technical_sha256'],'ref':ref,
+        'input_paths':{k:str(getattr(args,k).resolve()) for k in (
+          'checkpoint','restore_report','h4_exploratory_causal_report',
+          'h4_exploratory_reward_report','h4m6_technical_report','h4m6_ref_report')
+          if getattr(args,k) is not None}}
+
+def h4m6_check_attempt(out,auth,*,complete=False):
+    out=Path(out)
+    req=h4m6_require
+    req(out.resolve()==out.absolute() and out.is_dir() and not out.is_symlink(),'ATTEMPT_PATH')
+    items=[('attempt.json',{'authorization':auth,'reserved':True})]
+    if complete:
+        items.extend((('dispatch.started.json',{'authorization':auth}),
+                      ('attempt_result.json',{'status':'COMPLETE','authorization':auth})))
+    for name,expected in items:
+        p=out/name
+        req(p.is_file() and not p.is_symlink() and json.loads(p.read_bytes())==expected,'ATTEMPT '+name)
+
+def h4m6_read_final_report(path,expected_sha,arm,auth):
+    """Strict final report replay; historical H4CC readers are not modified."""
+    req=h4m6_require
+    root=Path(__file__).resolve().parent
+    req(arm in ('ref','rss') and path is not None,'REPORT_ARM')
+    path=Path(path)
+    req(path.resolve()==root/H4M6_PATHS[arm]/'report.json' and not path.parent.is_symlink(),'REPORT_PATH')
+    h4x_file_pin(path,expected_sha)
+    r=json.loads(path.read_bytes()); a=r['h4x_authorization']; c=r['h4_common_contract']
+    common=('id','source_sha256','spec_sha256','generated_sha256','external_sha256','static_sha256','static_log','technical_sha256')
+    req(all(a[k]==auth[k] for k in common) and a['phase']==arm
+        and a['output']==H4M6_PATHS[arm] and a['rss_sha256']=='-'
+        and auth[arm+'_sha256']==expected_sha
+        and a['ref_sha256']==('-' if arm=='ref' else auth['ref_sha256']),'REPORT_AUTH')
+    req(r['status']=='M463_COVERAGE_LONGTRAIN_PASS' and r['h4m6_arm']==arm
+        and r['h4m6_spec']==H4M6_SPEC and r['h4_arm']=='candidate'
+        and r['h4m6_technical_sha256']==a['technical_sha256']
+        and r['h4m6_ref_sha256']==a['ref_sha256']
+        and r['h4m6_external_sha256']==a['external_sha256']
+        and r['config_fingerprint']==H3_FP and r['gpu_samples']>0
+        and r['h4cc_arm']=='ref' and r['h4cc_spec']==H4CC_SPEC
+        and r['source_commit']==PIN and r['source_checkpoint_sha256']==SEED1_SHA
+        and r['orbax_sha256']==H4_ORBAX_SHA and r['training_seed']==1
+        and r['trained_from']=='C401M_WEIGHTS_ONLY_ADAM_STARTED_ONCE'
+        and r['resume_fullstate_sha256'] is None and r['cumulative_steps_start']==0
+        and r['steps_observed']==r['run_steps_observed']==10485760
+        and r['reward_PD_termination_source_unchanged']==(arm=='ref')
+        and r['PD_termination_source_unchanged'] is True and r['eval_source_reward_unchanged'] is True
+        and r['training_performed'] is True and r['promotion_authorized'] is False
+        and r['coverage_gate_pass'] is True and r['memory_gate_pass'] is True
+        and r['weights_finite'] is True and r['callback_vs_final_equal'] is True
+        and r['final_tensor_count']==25 and r['gpu_total_mib']==12288
+        and 0<r['gpu_peak_mib']<.95*12288 and not r['gpu_monitor_errors']
+        and r['h4_matched_nominal_pass'] is True and r['h4_legacy_reconciled'] is True,'REPORT_CONTRACT')
+    req(c==h4_common_contract(r['hardware_scaled_config'],r['train_reward_config'],r['instrumented_brax'])
+        and r['runner_sha256']==c['source_digests']['m463_push_ppo_train.py']
+        and a['generated_sha256']==c['generated_brax_sha256']
+        and a['source_sha256']==h4m6_source_identity(root)['sha256'],'REPORT_SOURCE')
+    h4m6_check_attempt(path.parent,a,complete=True)
+    h4x_file_pin(path.parent/'m463_brax_ppo_instrumented.py',a['generated_sha256'])
+    req([v['steps'] for v in r['checkpoints']]==[v['steps'] for v in r['fullstate_checkpoints']]==list(H4_EDGES),'ARTIFACT_EDGES')
+    for step,pol,full in zip(H4_EDGES,r['checkpoints'],r['fullstate_checkpoints']):
+        req(pol['file']==f'm463_easy_repeat_support_longtrain_step_{step:09d}.msgpack'
+            and full['file']==f'm470_fullstate_step_{step:09d}.msgpack'
+            and full['manifest']==f'm470_fullstate_step_{step:09d}.json','ARTIFACT_NAMES')
+        for name,sha,cap in ((pol['file'],pol['sha256'],H4X_SPEC['policy_cap']),
+                             (full['file'],full['sha256'],H4X_SPEC['fullstate_cap']),
+                             (full['manifest'],full['manifest_sha256'],H4X_SPEC['other_cap'])):
+            p=path.parent/name;h4x_file_pin(p,sha);req(0<p.stat().st_size<=cap,'ARTIFACT_SIZE')
+        m=json.loads((path.parent/full['manifest']).read_bytes())
+        req(m['h4m6_arm']==arm and m['h4m6_authorization']==a
+            and m['h4_common_contract']==c and m['fullstate_sha256']==full['sha256']
+            and m['cumulative_steps']==step and m['parent_resume_sha256'] is None
+            and all(m[k] is True for k in ('reset_edge','optimizer_state_included',
+                'training_rng_included','evaluator_rng_included')),'MANIFEST')
+    ctrl=h4cc_read_historical_control(root/H4X_PATHS['control']/'report.json',c)
+    h4_final_checks(r,r['coverage'],ctrl)
+    h4cc_verify_ledger(r)
+    req(h4x_verify_operational(r,h4cc=True,h4m6=True)==H4CC_MATCHED_DR_SHA,'REPORT_DR')
+    final=h4m6_replay_ledger(r,arm)
+    req(final==r['h4m6_final'] and final['audit']['passed']
+        and final['h4_counts']==r['h4_final_counts'],'REPORT_LEDGER')
+    if arm=='ref':
+        req(final['audit']['exposure_adequate'] is True,'REF_EXPOSURE')
+    return r
+
+def h4m6_run(args):
+    auth=h4m6_train_gate(args.h4m6_arm)
+    evidence=h4m6_train_inputs(args,auth)
+    out=args.output_dir.resolve()
+    h4m6_require(out.parent.is_dir() and not out.parent.is_symlink()
+        and not out.exists() and not out.is_symlink(),'TRAIN_OUTPUT_CONSUMED')
+    h4x_storage(out,initial=True)
+    out.mkdir(exist_ok=False)
+    h4x_write_json(out/'attempt.json',{'authorization':auth,'reserved':True},exclusive=True)
+    try:
+        _run_impl(args,h4x={'authorization':auth,'pins':evidence['pins'],'m6_evidence':evidence})
+        h4x_write_json(out/'attempt_result.json',{'status':'COMPLETE','authorization':auth},exclusive=True)
+    except BaseException as exc:
+        try:h4x_write_json(out/'attempt_result.json',{'status':'STOPPED','authorization':auth,'error':repr(exc)[:4096]},exclusive=True)
+        except BaseException as err:print('M470_H4M6_TRAIN_PARTIAL_WRITE_FAILED',repr(err),flush=True)
+        raise
+
+def h4m6_current_auth(auth,cc_arm):
+    return (h4m6_authorization(phase=auth['phase']) if auth['id']==H4M6_ID
+            else h4cc_authorization() if cc_arm is not None else h4x_authorization())
+
+def h4m6_post_train_inputs(args,auth,evidence):
+    """Re-open the exact pre-import evidence in a clean process, no runtime import."""
+    import subprocess
+    root=Path(__file__).resolve().parent
+    command=[sys.executable,'-B','-c',
+        'import json,sys;from pathlib import Path;from types import SimpleNamespace;'
+        'import m463_push_ppo_train as t;p=json.loads(sys.argv[1]);'
+        'a=SimpleNamespace(**{k:Path(v) for k,v in p.items()});'
+        'a.h4m6_arm=sys.argv[2];a.mode="longtrain";a.stage="easy_repeat_support";'
+        'a.output_dir=Path(t.H4M6_PATHS[a.h4m6_arm]);a.rollouts=a.num_evals=None;'
+        'a.h4m6_ref_report=getattr(a,"h4m6_ref_report",None);'
+        'auth=t.h4m6_authorization(phase=a.h4m6_arm);'
+        'print(json.dumps([auth,t.h4m6_train_inputs(a,auth)],sort_keys=True))',
+        json.dumps(evidence['input_paths'],sort_keys=True),args.h4m6_arm]
+    h4m6_require(json.loads(subprocess.check_output(command,cwd=root,text=True))==[auth,evidence],'TRAIN_POST_INPUTS')
+
 def h4m6_generated_guard(audit,generated_file,environment):
-    # Deliberately unconditional until the complete native integration is reviewed.
-    raise RuntimeError('M470_H4M6_EXECUTION_HOLD')
+    auth=h4m6_train_gate(getattr(environment,'_h4m6_arm',None))
+    root=Path(__file__).resolve().parent
+    out=root/auth['output']; generated=Path(generated_file)
+    h4m6_require(auth['phase'] in ('ref','rss') and callable(audit)
+        and getattr(audit,'h4x_authorization',None)==auth
+        and getattr(environment,'_h4m6_arm',None)==auth['phase']
+        and getattr(environment,'_h4cc_arm',None)=='ref'
+        and getattr(environment,'_h4_arm',None)=='candidate','GENERATED_ENV')
+    h4m6_require(generated.resolve()==out/'m463_brax_ppo_instrumented.py'
+        and not generated.is_symlink() and digest(generated)==auth['generated_sha256'],'GENERATED_PIN')
+    h4m6_check_attempt(out,auth)
+    h4x_write_json(out/'dispatch.started.json',{'authorization':auth},exclusive=True)
 
 def h4m6_validate_held_plan(a):
     h4m6_require(a.mode=='plan','EXECUTION_HOLD')
@@ -5077,10 +5285,16 @@ def h4m6_source_identity(root):
 def h4m6_authorization(root=None,phase=None):
     root=Path(__file__).resolve().parent if root is None else Path(root).resolve()
     rules=(root/'G1_RESEARCH_RULES.md').read_text('utf8')
+    if not (any(x.startswith('H4M6_ACTIVE_GO:') for x in rules.splitlines())
+        and any(x.startswith('H4M6_STATIC_APPROVED:') for x in rules.splitlines())):
+        raise RuntimeError('M470_H4M6_EXECUTION_HOLD')
     auth=h4m6_parse_marker(rules,h4m6_source_identity(root)['sha256'],h4m6_spec_digest())
     h4m6_require(phase is None or auth['phase']==phase,'AUTH_PHASE')
+    import m463_gate3_cp_eval as ev
     h4m6_require(not any((H4_EXECUTION_AUTHORIZED,H4R_EXECUTION_AUTHORIZED,
-                           H4C_EXECUTION_AUTHORIZED)),'LEGACY_HOLD_REQUIRED')
+                           H4C_EXECUTION_AUTHORIZED,H4CC_EXECUTION_AUTHORIZED,
+                           ev.H4_EVAL_EXECUTION_AUTHORIZED,ev.H4CC_EVAL_EXECUTION_AUTHORIZED,
+                           ev.H4CC_TECH_EXECUTION_AUTHORIZED)),'LEGACY_HOLD_REQUIRED')
     h4m6_validate_static(root,auth)
     return auth
 
@@ -5161,14 +5375,21 @@ def main():
     p.add_argument('--h4cc-technical-report',type=Path)
     p.add_argument('--h4cc-ref-report',type=Path)
     p.add_argument('--h4m6-arm',choices=['ref','rss'],help='H4-M6 held plan only')
+    p.add_argument('--h4m6-technical-report',type=Path)
+    p.add_argument('--h4m6-ref-report',type=Path)
     a=p.parse_args()
     if a.h4m6_arm is not None:
         try:
+            if a.mode!='plan':
+                return h4m6_run(a)
+            h4m6_require(a.h4m6_technical_report is None and a.h4m6_ref_report is None,'PLAN_EVIDENCE')
             plan=h4m6_validate_held_plan(a)
         except RuntimeError as exc:
             p.error(str(exc))
         print('M470_H4M6_PLAN_NO_GPU',json.dumps(plan,sort_keys=True))
         return
+    if a.h4m6_technical_report is not None or a.h4m6_ref_report is not None:
+        p.error('M470_H4M6_FLAG_REQUIRED')
     if a.h4cc_arm is not None:
         if a.mode!='plan':
             try:

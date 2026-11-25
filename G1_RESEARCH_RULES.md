@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.152  
+**Version:** 1.2.153  
 **Ngày cập nhật:** 2026-11-25 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -1732,6 +1732,12 @@ Actual host checks: extracted NumPy helper compilation with independent remote t
 
 Remaining blockers before H4-M6-1 closure: complete distinct one-use tech dispatcher reservation/atomic report16MiB/partial ledger and post immutable recheck, strict technical report reader; complete full _run_impl arm wiring, generated runtime guard, operational audit callbacks/fresh REF6/RSS readers/manifests and exact source/evidence/external binding; complete controlled dev native dispatch, actual selected 416 rich record capture/projection/provenance/endpoint validation; focus offline tests for new integration, full-file compilation/legacy reverse, exact installed generated source, mock partial ledger/technical/decision and CLI/HOLD and owner full static log. Existing staged helper/schema is not authorization, all H4M6 runtime dispatches remain hard blocked even if a marker is mistakenly added; no H4M6_STATIC_APPROVED or H4M6_ACTIVE_GO. Do not repeat previously passed unchanged helper fixtures. No new source/package files, no actual inference, environment construction, physics transitions, simulation, evaluation, optimizer updates, saves or PPO. All seven legacy broad flags False, historical reports/source pins and H3/H4-M2 DEV NO_GO, H-R4a NOT_SUPPORTED remain. Independent holdout/readiness/production/promotion/Branch B HOLD. Rollback via reviewed inverse of these opt-in changes to 067f28a51b274975c6662d36f2930ded08a9b39d only (no force-push, no change to archives). H4-M6-1 PARTIAL HELD INTEGRATION, not closed.
 
+### H4-M6-1 — full held integration staging (v1.2.153)
+
+Reviewed v1.2.152 and exact parent 0df25b4777c1da742b92dd7f87bb8291a80fbb2e. In-place changes only: env 665667c2e3031e7cef71769a79f48c6e93c504e6, trainer a7a47f766a89214430d5977b9352af5c379a68b0, evaluator 44515105a1149f35d4a1422cbc14b23ff280d26c; instrumenter unchanged 348ae057456cbd326012ec76fa4600f38be74ff7. Supersedes the previous partial implementation blockers by staging the integration paths, not by accepting native compatibility. Technical phase uses distinct authorization, exclusive reservation and attempt/dispatch/result markers, bounded atomic report (16 MiB), attempted/recorded partial ledger, strict historical authorization/evidence reader, exact post-input recheck in clean process. Both technical arms within each fixture share compiled reset/step graph and one wrapper; only technical-capture metadata treatment bit differs, two reset calls remain separately counted. Original other 23 terms and physics/action/RNG digests matched in the contract. REF6/RSS dispatch is wired to existing _run_impl, generated-source guard, H4X operational callbacks and fresh final report/artifact readers; same original reward config and CCRC metadata-only ref, frozen checkpoint and independent fresh Adam. Dev dispatch uses original H3 group step/fork flow, official archived H4 CTRL comparator, fresh REF6 incremental comparison, actual fixed single334 and double335..385 capture with existing packer, at most416 rich records, exact original 46-column projection, sidecar32 MiB, endpoint/decision helpers and strict partial/final ledger. No extra physics steps. All four phase entries now require explicit distinct Rules-only H4M6 authorization AND static approval and exact source/spec/generated/external/evidence binding; seven legacy broad flags remain False. No approval or active marker is issued in this revision. No phase may run until separately reviewed and authorized.
+
+Actual offline extracted-helper compile/fingerprint checks and NumPy mocks this turn: technical full416 rows/208 pairs, outstanding reset and step, six corruptions rejected; after adding original reward-sum replay using existing H4-M3 bound, reran affected technical audit only, full/partial fixtures pass and seventh total-reward corruption rejected. Dev synthetic max89616 rows,24 groups,120 logical,416 projected records, partial reset/step and six tamper/byte-limit rejections; nine mechanism decisions and seven writer/reservation checks passed. These are synthetic host records, not actual native transitions or actual full-source compile. Previously passed unchanged window/predicate/GAE/exposure host checks not repeated. Full exact checkout not available in local container; actual complete-file compile, installed generated Brax source/reverse, CLI/HOLD, and installed dependency/source evidence must be collected from owner read-only static run. Do not mark H4-M6-1 accepted or issue technical GO on the basis of these mock checks. Preserve H-R4a NOT_SUPPORTED, H3/H4-M2 DEV NO_GO, all frozen budgets and mechanism/efficacy criteria; independent holdout/readiness/production/promotion/Branch B HOLD. No inference, environment construction, physics, simulation, evaluation, PPO, optimizer update or checkpoint save occurred.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -1994,7 +2000,7 @@ PY
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-25)
 
-**H4-M6-1 PARTIAL HELD INTEGRATION (v1.2.152):** core/ref-rss state/reward, consumed latch, native tech adapter, generated source/host ledger and pure dev decisions staged; focused NumPy host checks PASS, full native dispatch/trainer/dev integration and full static pending. All execution HOLD; no approval marker.
+**H4-M6-1 HELD INTEGRATION STAGED / OWNER FULL STATIC PENDING (v1.2.153):** distinct tech/REF6/RSS/dev dispatch and readers, generated guard, shared technical graph, original controlled evaluation and fixed rich projection staged. Focused host mock checks PASS; full-file compile, exact installed generated source, CLI and native compatibility remain unaccepted pending owner static evidence and review. No execution or static approval marker; all runtime HOLD.
 
 **H4-M6-0 RECOVERY-CONDITIONED STAND-STILL OBJECTIVE DESIGN CLOSED (v1.2.150):** H-R3b prospective single-factor REF6/RSS, mature same-side stand repeat subsequent1..50 g=.50..99, original event/terminal reward, exact GAE/source/exposure audit and future bounded paired training/eval; H3/H-R4a negatives preserved, held implementation separate GO, all runtime HOLD.
 
@@ -2652,6 +2658,7 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-25 | H4-M6-1 held integration staging | distinct dispatcher/reader/trainer/dev capture wiring; affected host mocks PASS | v1.2.153 owner full static pending; all runtime HOLD | 1.2.153 |
 | 2026-11-25 | H4-M6-1 partial held integration | four existing executable files, host state-machine/GAE/ledger fixtures, native technical adapter and held dev helpers | v1.2.152 staged, integration/full static pending; all runtime HOLD | 1.2.152 |
 
 | 2026-11-25 | H4-M6-0 recovery-conditioned stand-still objective isolation design | exact source/GAE and archive arithmetic, matched REF6/RSS, fixed 50 subsequent ticks, exposure and falsification/budget locked | v1.2.150 DESIGN CLOSED; held implementation separate GO; all runtime HOLD | 1.2.150 |
@@ -3020,6 +3027,7 @@ PY
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
 
+- **v1.2.153 — 2026-11-25:** Stage H4-M6-1 held integration wiring and focused actual host mock results; owner full static evidence and review pending, no phase authorization.
 - **v1.2.152 — 2026-11-25:** Record H4-M6-1 partial held integration and actual focused host checks; explicit no static acceptance or runtime authorization; keep original prospective and historical gates.
 
 - **v1.2.151 — 2026-11-25:** Correct H4-M6 design arithmetic: 495 x 12.75 = 6311.25 maximum factor-ticks; clarify primary RSS survival/recovery5 rather than requiring failed reference to survive; no factor, budget or gate changes, all runtime HOLD.
