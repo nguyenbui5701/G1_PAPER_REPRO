@@ -5707,7 +5707,7 @@ def h4m4_authorization():
         'STATIC_LOG')
     lines=p.read_text('utf8').splitlines()
     h4m4_require('H4_M4_1_FULL_STATIC_PASS '+auth['source_sha256'] in lines
-        and 'H4_M4_1_EXTERNAL_SHA256 '+h4m3_digest(h4m3_external_sources(root)) in lines,
+        and 'H4_M4_1_EXTERNAL_SHA256 '+h4m3_digest(h4m4_external_sources(root)) in lines,
         'STATIC_ACCEPTANCE')
     return auth
 
@@ -5874,6 +5874,31 @@ def h4m4_apply_residual(actor,requested,selected,default,ctrlrange,limited,xp):
         'delivered_residual':sent-actor,'sent_action':sent,'guard_code':reason}
 
 
+def h4m4_external_sources(root):
+    # Metadata and file bytes only; safe before NVCC or runtime imports.
+    from paper_config import REPO
+    root=Path(root).resolve()
+    repo=Path(REPO).resolve(strict=True)
+    h4m4_require(subprocess.check_output(['git','-C',str(repo),'rev-parse','HEAD'],
+        text=True).strip()==PIN and subprocess.check_output(
+        ['git','-C',str(repo),'status','--porcelain'],text=True).strip()=='',
+        'PLAYGROUND_TREE')
+    g1='mujoco_playground/_src/locomotion/g1/'
+    expected={g1+'base.py':'fd59950822eb11c4d17d970cbca8fda9de7d2a6d',
+        g1+'g1_constants.py':'59cce8046fd9995fc9d2d87bd0c0fa713ef13c69',
+        g1+'joystick.py':'561a18948e3467ab924468eaf362150dadb9d4a6',
+        g1+'xmls/scene_mjx_feetonly_flat_terrain.xml':'99b32be5b1a951d4ae148addcbe4ad0f4501fa25',
+        g1+'xmls/g1_mjx_feetonly.xml':'4a7c00cdc92e245914d39b86b69b9329a26c35f5',
+        'mujoco_playground/_src/mjx_env.py':'916c2f412a7a12568283f68eeb755e5d94ad9c83'}
+    files={}
+    for name,blob in expected.items():
+        p=repo/name
+        h4m4_require(p.is_file() and not p.is_symlink() and p.resolve()==p.absolute()
+            and h4m3_git_blob(p)==blob,'KINEMATIC_SOURCE_'+name)
+        files[name]={'path':str(p),'blob':blob,'sha256':sha256(p)}
+    return {**h4m3_external_sources(root),'g1_kinematics':files}
+
+
 def h4m4_model_geometry(env,manifest,np):
     """Verify compiled model metadata, no reset/forward or simulation."""
     from mujoco import mjtGeom
@@ -6005,9 +6030,12 @@ def h4m4_row(raw,np):
 def h4m4_audit_action(packed,meta,request,geometry,manifest,np):
     h4m4_require(isinstance(meta,dict) and set(meta)=={'actor_action','requested_residual',
         'lambda','delivered_residual','sent_action','guard_code'},'RESIDUAL_SCHEMA')
-    arr={k:np.asarray(meta[k],dtype=np.float32) for k in ('actor_action',
+    arr={k:np.asarray(meta[k]) for k in ('actor_action',
         'requested_residual','delivered_residual','sent_action')}
-    h4m4_require(all(v.shape==(29,) and np.isfinite(v).all() for v in arr.values()),'RESIDUAL_FINITE')
+    h4m4_require(all(v.shape==(29,) and v.dtype==np.float32 and np.isfinite(v).all()
+        for v in arr.values()),'RESIDUAL_FINITE_DTYPE')
+    h4m4_require(np.asarray(meta['lambda']).ndim==0 and np.asarray(meta['guard_code']).ndim==0
+        and np.asarray(meta['guard_code']).dtype.kind in 'iu','RESIDUAL_SCALAR_DTYPE')
     actor=arr['actor_action']; sent=arr['sent_action']; r=arr['requested_residual']
     mask=np.zeros(29,bool); mask[geometry['indices']]=True
     h4m4_require(np.array_equal(r,request) and np.all(r[~mask]==0)
@@ -6367,7 +6395,7 @@ def h4m4_enter_runtime(args):
         f.flush(); os.fsync(f.fileno())
     lanes,pins,approved=h4m4_read_evidence(root,args.h4m4_historical_archive)
     h4m4_require(pins==session['input_sha256']
-        and h4m3_external_sources(root)==session['external_sources']
+        and h4m4_external_sources(root)==session['external_sources']
         and session['mjx_sources']==session['external_sources']['mjx']
         and h4m3_digest(h4m3_source_map(root))==auth['source_sha256'],'PRE_RUNTIME_PINS')
     args.h4m4_lanes=lanes
@@ -6386,7 +6414,7 @@ def h4m4_dispatch(args):
         'DISPATCH_PROTOCOL')
     h4m3_no_runtime_imports()
     lanes,pins,approved=h4m4_read_evidence(root,args.h4m4_historical_archive)
-    external=h4m3_external_sources(root)
+    external=h4m4_external_sources(root)
     h4m4_require(os.environ.get('JAX_PLATFORMS')=='cuda'
         and h4m3_digest(h4m3_source_map(root))==auth['source_sha256']
         and shutil.disk_usage(args.output.parent.parent).free>=2*1024**3+H4M3_REPORT_CAP,
@@ -6415,7 +6443,7 @@ def h4m4_dispatch(args):
         session['gpu_initial']=gpu; session['gpu']=h3_gpu_check(monitor)
         h4m4_require(h4m4_authorization()==auth and
             h4m4_read_evidence(root,args.h4m4_historical_archive)[1]==pins
-            and h4m3_external_sources(root)==external
+            and h4m4_external_sources(root)==external
             and json.loads(marker.read_bytes())=={'authorization':auth}
             and json.loads((args.output.parent/'runtime.entered.json').read_bytes())
                 =={'authorization':auth},'POST_IMMUTABILITY')
