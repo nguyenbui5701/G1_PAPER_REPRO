@@ -2308,13 +2308,101 @@ def h4cc_pair_decisions(archive, fresh):
             'new_physical':fresh['physical_transitions_recorded'],
             'promotion_authorized':False,'further_training_authorized':False}
 
+def h4cc_eval_authorization():
+    import re
+    import m463_push_ppo_train as trainer
+    rules=(H4_EVAL_ROOT/'G1_RESEARCH_RULES.md').read_text('utf8')
+    h4cc_eval_require(not any((H4CC_EVAL_EXECUTION_AUTHORIZED,H4_EVAL_EXECUTION_AUTHORIZED,
+        trainer.H4CC_EXECUTION_AUTHORIZED,trainer.H4_EXECUTION_AUTHORIZED,
+        trainer.H4R_EXECUTION_AUTHORIZED,trainer.H4C_EXECUTION_AUTHORIZED)),
+        'BROAD_HOLD_REQUIRED')
+    h4cc_eval_require(not any(line.startswith(('H4X_ACTIVE_GO:','H4CC_ACTIVE_GO:'))
+        for line in rules.splitlines()),'TRAINING_AUTHORIZATION_CONFLICT')
+    lines=[line for line in rules.splitlines() if line.startswith('H4CC_EVAL_ACTIVE_GO:')]
+    h4cc_eval_require(len(lines)==1,'EXECUTION_HOLD')
+    m=re.fullmatch(r'H4CC_EVAL_ACTIVE_GO: (H4-M2-CCRC-V1) '
+        r'([0-9a-f]{64}) ([0-9a-f]{64}) ([0-9a-f]{64}) ([0-9a-f]{64})',lines[0])
+    h4cc_eval_require(m is not None,'AUTHORIZATION_SCHEMA')
+    ident,source,ref,ccrc,archive=m.groups()
+    h4cc_eval_require(source==trainer.h4x_source_digest(H4_EVAL_ROOT)
+        and ref==trainer.h4cc_approved_sha(rules,'REF_REPORT')
+        and ccrc==trainer.h4cc_approved_sha(rules,'CCRC_REPORT')
+        and archive==H4CC_ARCHIVE_SHA,'AUTHORIZATION_BINDING')
+    return {'id':ident,'source_sha256':source,'ref_report_sha256':ref,
+            'ccrc_report_sha256':ccrc,'archive_sha256':archive}
+
+def h4cc_read_inputs(args):
+    """Read accepted files only, no policy restore, runtime or simulator."""
+    import m463_push_ppo_train as trainer
+    auth=h4cc_eval_authorization()
+    archive_path=H4_EVAL_ROOT/H4_EVAL_OUTPUT
+    archive=h4cc_read_archive(archive_path)
+    reports={}
+    pins={'archive/report.json':H4CC_ARCHIVE_SHA}
+    for arm in ('ref','ccrc'):
+        p=H4_EVAL_ROOT/trainer.H4CC_PATHS[arm]/'report.json'
+        reports[arm]=trainer.h4cc_read_final_report(p,auth[arm+'_report_sha256'],arm,
+                         reports['ref']['h4_common_contract'] if arm=='ccrc' else None)
+        pins[arm+'/report.json']=auth[arm+'_report_sha256']
+        for name in ('m463_brax_ppo_instrumented.py','attempt.json',
+                     'dispatch.started.json','attempt_result.json'):
+            pins[arm+'/'+name]=sha256(p.parent/name)
+        for pol,full in zip(reports[arm]['checkpoints'],reports[arm]['fullstate_checkpoints']):
+            for name in (pol['file'],full['file'],full['manifest']):
+                pins[arm+'/'+name]=sha256(p.parent/name)
+    ref,t=reports['ref'],reports['ccrc']
+    a,b=ref['h4x_authorization'],t['h4x_authorization']
+    h4cc_eval_require(a=={**b,'arm':'ref','output':str(trainer.H4CC_PATHS['ref']),
+                          'evidence_sha256':b['technical_sha256']}
+        and b['evidence_sha256']==auth['ref_report_sha256'],'MATCHED_AUTHORIZATION')
+    h4cc_eval_require(trainer.h4cc_matched_nominal(ref['h4_final_counts'],t['h4_final_counts'])
+        and trainer.h4cc_exposure_decision(ref['h4cc_final_counts'],t['h4cc_final_counts'])
+            ==t['h4cc_exposure_decision']
+        and t['h4cc_exposure_decision']['decision']=='PASS','EXPOSURE_HYPOTHESIS')
+    historical=json.loads((h4e_paths('control')/'report.json').read_bytes())
+    h4cc_eval_require(ref['h4x_brax_dependencies']==t['h4x_brax_dependencies']
+        ==historical['h4x_brax_dependencies'],'MATCHED_DEPENDENCY_PINS')
+    # Historical modified helper files are not expected to match new CCRC.
+    # Unchanged runtime helpers must match archived bytes exactly.
+    for name in ('train.py','paper_config.py','m462_ppo_warmstart_run.py','m462_typed_orbax_stage.py'):
+        expected=archive['input_sha256']['source/'+name]
+        p=H4_EVAL_ROOT/name
+        h4cc_eval_require(p.is_file() and not p.is_symlink() and sha256(p)==expected,
+                          'ARCHIVE_HELPER '+name)
+        pins['source/'+name]=expected
+    for name,expected in ref['h4_common_contract']['source_digests'].items():
+        p=H4_EVAL_ROOT/name
+        h4cc_eval_require(p.is_file() and not p.is_symlink() and sha256(p)==expected,
+                          'FRESH_HELPER '+name)
+        pins['source/'+name]=expected
+    # Match installed source files by pinned Git blob without importing PPO.
+    from m463_instrument_brax import h4c_git_blob
+    train_path=Path(archive['brax_source_verification']['path'])
+    h4cc_eval_require(train_path.is_file() and sha256(train_path)==TRAIN_SHA,
+                      'ARCHIVE_BRAX_TRAIN')
+    brax_root=train_path.resolve().parents[3]
+    for name,entry in ref['h4x_brax_dependencies'].items():
+        p=Path(entry['path'])
+        intended=brax_root.joinpath(*name.split('.')[1:]).with_suffix('.py')
+        h4cc_eval_require(p.resolve()==intended and p.is_file()
+            and h4c_git_blob(p.read_bytes())==entry['blob'],'DEPENDENCY '+name)
+        pins['dependency/'+name]=sha256(p)
+    wrapper=brax_root/'envs/wrappers/training.py'
+    h4cc_eval_require(wrapper.is_file() and h4c_git_blob(wrapper.read_bytes())==
+        '2c09c8268a29d14c832dd07050575e4541ee98af','DEPENDENCY_WRAPPER')
+    pins['dependency/episode_wrapper']=sha256(wrapper)
+    return pins,archive
+
 def h4cc_eval_plan(args):
-    h4cc_eval_require(args.mode=='plan','EXECUTION_HOLD')
+    h4cc_eval_require(args.mode in ('plan','run'),'MODE')
     h4cc_eval_require(not any(getattr(args,k) for k in
         ('h4_m1_eval','h4_technical','h3_m1_eval','h2a','h2b','checkpoint_c',
          'checkpoint_p','report_p','checkpoint_h3','report_h3','h4_reward_report')),
          'MODE_CONFLICT')
-    h4cc_eval_require((args.seeds,args.profiles,args.directions,args.push_step,
+    seeds=','.join(map(str,args.seeds)) if isinstance(args.seeds,list) else args.seeds
+    profiles=','.join(args.profiles) if isinstance(args.profiles,list) else args.profiles
+    directions=','.join(args.directions) if isinstance(args.directions,list) else args.directions
+    h4cc_eval_require((seeds,profiles,directions,args.push_step,
         args.push_magnitude,args.second_push_step,args.second_push_magnitude,
         args.max_steps,args.max_cases)==('7331,7357,7601,7613','stand,forward_fast,turn_left',
         'left,right',300,.50,335,.35,1000,120),'FROZEN_PROTOCOL')
@@ -2414,8 +2502,15 @@ def h4e_read_inputs(args):
 
 
 def h4e_run(args):
-    h4e_require(H4_EVAL_EXECUTION_AUTHORIZED is True,'EXECUTION_HOLD')
-    pins=h4e_read_inputs(args)
+    cc=bool(getattr(args,'h4cc_eval',False))
+    if cc:
+        h4cc_eval_plan(args)
+        auth=h4cc_eval_authorization()
+        pins,archive=h4cc_read_inputs(args)
+        args.h4cc_archive=archive
+    else:
+        h4e_require(H4_EVAL_EXECUTION_AUTHORIZED is True,'EXECUTION_HOLD')
+        pins=h4e_read_inputs(args)
     import shutil
     from m462_ppo_warmstart_run import GPUMonitor,sample_gpu
     h4e_require(shutil.disk_usage(args.output.parent.parent).free>=2*1024**3,'DISK_RESERVE')
@@ -2432,6 +2527,9 @@ def h4e_run(args):
             'max_physical_transitions':H4_EVAL_PHYSICAL,'physical_transitions_attempted':0,
             'physical_transitions_recorded':0,'logical_trajectories_completed':0,
             'frame_columns':None,'groups':[],'promotion_authorized':False}
+    if cc:
+        report.update(status='M470_H4CC_EVAL_IN_PROGRESS',authorization=auth,
+                      archived_ctrl_physical=H4CC_ARCHIVE_CTRL_PHYSICAL)
     h3_write(args.output,report,initial=True)
     monitor=GPUMonitor()
     args.h3_monitor=monitor
@@ -2443,16 +2541,20 @@ def h4e_run(args):
         with monitor:
             run(args)
         report['gpu']=h3_gpu_check(monitor)
-        h4e_require(h4e_read_inputs(args)==pins,'INPUT_IMMUTABILITY')
+        if cc:
+            h4cc_eval_require(h4cc_eval_authorization()==auth and
+                h4cc_read_inputs(args)[0]==pins,'INPUT_IMMUTABILITY')
+        else:
+            h4e_require(h4e_read_inputs(args)==pins,'INPUT_IMMUTABILITY')
         h4e_require(report['logical_trajectories_completed']==H4_EVAL_LOGICAL
                      and report['physical_transitions_attempted']==report['physical_transitions_recorded']
                      <=H4_EVAL_PHYSICAL,'FINAL_CONTRACT')
-        report['status']='M470_H4_EVAL_COMPLETED'
+        report['status']='M470_H4CC_EVAL_COMPLETED' if cc else 'M470_H4_EVAL_COMPLETED'
         h3_write(args.output,report)
-        print('M470_H4_EVAL_COMPLETED',report['decision']['decision'],
+        print(report['status'],report['decision']['decision'],
               report['logical_trajectories_completed'],report['physical_transitions_attempted'],flush=True)
     except BaseException as e:
-        report['status']='M470_H4_EVAL_FAILED'
+        report['status']='M470_H4CC_EVAL_FAILED' if cc else 'M470_H4_EVAL_FAILED'
         report['error']=type(e).__name__+': '+str(e)
         report['gpu']=monitor.snapshot()
         try:
@@ -2463,10 +2565,16 @@ def h4e_run(args):
 
 
 def run(args):
-    if getattr(args,'h4cc_eval',False):
-        raise RuntimeError('M470_H4CC_EVAL_EXECUTION_HOLD')
-    h4_mode=bool(getattr(args,'h4_m1_eval',False))
-    if h4_mode:
+    cc=bool(getattr(args,'h4cc_eval',False))
+    h4_mode=bool(getattr(args,'h4_m1_eval',False)) or cc
+    if cc:
+        h4cc_eval_plan(args)
+        auth=h4cc_eval_authorization()
+        session=getattr(args,'h3_session',None)
+        h4cc_eval_require(session is not None and session['authorization']==auth
+            and args.output.is_file() and not args.output.is_symlink()
+            and h4cc_read_inputs(args)[0]==session['input_sha256'],'SESSION_PROVENANCE')
+    elif h4_mode:
         h4e_require(H4_EVAL_EXECUTION_AUTHORIZED is True,'EXECUTION_HOLD')
         h4e_validate_protocol(args)
         h4e_require(getattr(args,'h3_session',None) is not None,'SESSION_REQUIRED')
@@ -2492,6 +2600,9 @@ def run(args):
     if h3_mode:
         from brax.training.agents.ppo import networks
         args.h3_session['brax_source_verification']=h3_verify_brax_train_source(networks)
+        if cc:
+            h4cc_eval_require(args.h3_session['brax_source_verification']==args.h4cc_archive['brax_source_verification'],
+                              'RUNTIME_BRAX_EQUIVALENCE')
         print('M470_H4_EVAL_BRAX_SOURCE_PASS' if h4_mode else 'M470_H3_EVAL_BRAX_SOURCE_PASS',
               args.h3_session['brax_source_verification'],flush=True)
     else:
@@ -2553,7 +2664,11 @@ def run(args):
             raise RuntimeError('M462_NONFINITE_POLICY')
         inf=networks.make_inference_fn(ppo_nets)((norm,actor),deterministic=True)
         return inf
-    if h4_mode:
+    if cc:
+        from m463_push_ppo_train import H4CC_PATHS
+        policies={arm.upper():load_policy(H4_EVAL_ROOT/H4CC_PATHS[arm]/H4_EVAL_POLICY_FILE)
+                  for arm in ('ref','ccrc')}
+    elif h4_mode:
         policies={n:load_policy(h4e_paths(arm)/H4_EVAL_POLICY_FILE)
                   for n,arm in zip(H4_EVAL_POLICIES,('control','candidate'))}
     else:
@@ -3147,6 +3262,9 @@ def run(args):
                     'nominal',off['steps'],'pushed',last,'terminated',terminated,
                     'recovered',recovery['recovered'],flush=True)
     if h3_mode:
+        if cc:
+            args.h3_session['decision']=h4cc_pair_decisions(args.h4cc_archive,args.h3_session)
+            return
         args.h3_session['decision']=(h3_decide(args.h3_session,policies=H4_EVAL_POLICIES,
             comparator='CTRL',candidate='CAND',logical_cap=H4_EVAL_LOGICAL,
             physical_cap=H4_EVAL_PHYSICAL) if h4_mode else h3_decide(args.h3_session))
@@ -3819,8 +3937,17 @@ def main():
             plan=h4cc_eval_plan(args)
         except RuntimeError as exc:
             p.error(str(exc))
-        print('M470_H4CC_EVAL_PLAN',json.dumps(plan,sort_keys=True))
-        return
+        if args.mode=='plan':
+            print('M470_H4CC_EVAL_PLAN',json.dumps(plan,sort_keys=True))
+            return
+        try:
+            h4cc_eval_authorization()
+        except RuntimeError as exc:
+            p.error(str(exc))
+        args.seeds=[int(x) for x in args.seeds.split(',')]
+        args.profiles=args.profiles.split(',')
+        args.directions=args.directions.split(',')
+        return h4e_run(args)
     if not args.h4_m1_eval and args.checkpoint_c is None:
         p.error('--checkpoint-c is required outside H4 matched evaluation')
     if args.h4_m1_eval and args.h4_technical:
