@@ -143,6 +143,7 @@ H4M6_REWARD_NAMES = ('tracking_lin_vel','tracking_ang_vel','lin_vel_z','ang_vel_
     'feet_slip','feet_clearance','feet_height','feet_air_time','feet_phase',
     'alive','termination','stand_still','collision','contact_force',
     'joint_deviation_hip','joint_deviation_knee','dof_pos_limits','pose')
+H4M6_BOOL_REWARD_NAMES = ('termination','collision')
 H4M6_STATE = ('active','age','side','positive','consumed')
 H4M6_INT_FIELDS = ('qualified','event_terminal','start','event_side','eligible',
     'tick_age','tick_side','positive_start','completed','close_terminal',
@@ -374,6 +375,12 @@ class CoverageJoystick(joystick.Joystick):
             base = sum(v*self._config.reward_config.scales[k] for k,v in rewards.items())*self.dt
             rewards['stand_still'] = delivered
             if self._h4m6_tech_capture:
+                # Validate native scalar dtype before the heterogeneous telemetry stack.
+                for k in H4M6_REWARD_NAMES:
+                    term=jp.asarray(rewards[k])
+                    expected_dtype=jp.bool_ if k in H4M6_BOOL_REWARD_NAMES else jp.float32
+                    if term.shape != () or term.dtype != expected_dtype:
+                        raise RuntimeError('M470_H4M6_TECH_NATIVE_REWARD_TYPE '+k)
                 info['h4m6_raw_rewards'] = jp.stack([rewards[k] for k in H4M6_REWARD_NAMES])
             expected = sum(v*self._config.reward_config.scales[k] for k,v in rewards.items())*self.dt
             info.update(h4m6_eligible=eligible.astype(jp.int32),
