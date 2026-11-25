@@ -964,6 +964,13 @@ def make_h4_exploratory_source(raw, *, enable_h4cc=False):
             old = '\n'+old
             new = '\n'+new
         s = h4c_once(s,old,new)
+    if enable_h4cc:
+        # Separate dispatch guard; H4X authorization can never open CCRC.
+        s = h4c_once(s,
+            '  from m463_push_ppo_train import h4x_generated_guard\n'
+            '  h4x_generated_guard(h4x_audit_fn, __file__)\n',
+            '  from m463_push_ppo_train import h4cc_generated_guard\n'
+            '  h4cc_generated_guard(h4x_audit_fn, __file__, environment)\n')
     compile(s,'<H4 exploratory generated>','exec')
     return s,original
 
