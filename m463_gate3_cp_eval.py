@@ -2240,6 +2240,92 @@ H4_EVAL_DR = '60a4e6999c4fbad089439fabe9de951ba063bc68db1380b46ad47cb2c2f96ebf'
 H4_EVAL_COMMON = 'ac0ee95f9272cc58049e439db65f3bc68194e21b4784a114097334519d3df26b'
 
 
+# H4-M2 staged offline pairing: never dispatch dynamics from this entry.
+H4CC_EVAL_EXECUTION_AUTHORIZED = False
+H4CC_EVAL_OUTPUT = Path('m463_runs/m470_h4_m2_dev_v1/report.json')
+H4CC_ARCHIVE_SHA = '32bf04d64bafd7e80b250b862493b54a7c8db6af1bcf1010bf0df984a904f40c'
+H4CC_ARCHIVE_CTRL_PHYSICAL = 41052
+
+def h4cc_eval_require(ok,label):
+    if not ok:
+        raise RuntimeError('M470_H4CC_EVAL_'+label)
+
+def h4cc_read_archive(path):
+    path=Path(path)
+    h4cc_eval_require(path.is_file() and not path.is_symlink(),'ARCHIVE_FILE')
+    h4cc_eval_require(sha256(path)==H4CC_ARCHIVE_SHA,'ARCHIVE_SHA')
+    r=json.loads(path.read_bytes())
+    h4cc_eval_require(r['status']=='M470_H4_EVAL_COMPLETED' and
+        r['input_sha256']['control/'+H4_EVAL_POLICY_FILE]==H4_EVAL_ARTIFACTS[H4_EVAL_POLICY_FILE][0]
+        and r['input_sha256']['control/report.json']==H4_EVAL_ARTIFACTS['report.json'][0],
+        'ARCHIVE_PROVENANCE')
+    ctrl=[g for g in r['groups'] if g['policy']=='CTRL']
+    h4cc_eval_require(len(ctrl)==12 and all(g['complete'] for g in ctrl) and
+        sum(g['physical_transitions'] for g in ctrl)==H4CC_ARCHIVE_CTRL_PHYSICAL,
+        'ARCHIVE_LEDGER')
+    return r
+
+def h4cc_pair_decisions(archive, fresh):
+    """Offline-only computation on already accepted raw reports.
+
+    Caller must first verify immutable final REF/CCRC report and policy pins,
+    exact dependency/physics equivalence and all technical/exposure gates.
+    This helper is not a provenance acceptance or execution authorization.
+    """
+    for k in ('source_commit','brax_train_sha256','jax_version','seeds','profiles',
+              'directions','push_step','push_magnitude_mps','second_push_step',
+              'second_push_magnitude_mps','max_steps','dt_s','frame_columns',
+              'training_performed','deterministic_actor','domain_randomization_enabled',
+              'random_source_push_enabled','original_reward_PD_termination'):
+        h4cc_eval_require(k in archive and k in fresh and archive[k]==fresh[k],
+                          'PROTOCOL '+k)
+    h4cc_eval_require(fresh['logical_trajectories_completed']==120 and
+        fresh['physical_transitions_attempted']==fresh['physical_transitions_recorded']==
+        sum(g['physical_transitions'] for g in fresh['groups'])<=89616 and
+        len(fresh['groups'])==24 and {g['policy'] for g in fresh['groups']}=={'REF','CCRC'},
+        'FRESH_LEDGER')
+    def view(old_groups,old_label):
+        # Use exact existing H4 decision function including support logging.
+        groups=[dict(g,policy='CTRL') for g in old_groups]+[
+            dict(g,policy='CAND') for g in fresh['groups'] if g['policy']=='CCRC']
+        n=sum(g['physical_transitions'] for g in groups)
+        session=dict(fresh,groups=groups,logical_trajectories_completed=120,
+                     physical_transitions_attempted=n,physical_transitions_recorded=n)
+        d=h3_decide(session,policies=H4_EVAL_POLICIES,comparator='CTRL',
+                    candidate='CAND',logical_cap=120,physical_cap=89616)
+        return {'comparison_roles':{'CTRL':old_label,'CAND':'CCRC'},'decision':d,
+                'combined_physical_rows':n}
+    official=view([g for g in archive['groups'] if g['policy']=='CTRL'],'ARCHIVED_H4_CTRL')
+    incremental=view([g for g in fresh['groups'] if g['policy']=='REF'],'FRESH_REF')
+    o=official['decision']; i=incremental['decision']
+    primary=i['primary_stand_double']
+    result=('NO_GO' if o['decision']=='NO_GO' or i['hard_failures'] else
+            'INCONCLUSIVE' if o['decision']!='DEV_PASS' or i['missing_standing_windows']
+            or any(v['CTRL']==8 for v in primary.values()) else
+            'DEV_PASS' if all(v['gain']>=1 for v in primary.values()) else 'NO_GO')
+    return {'decision':result,'official':official,'incremental':incremental,
+            'archived_ctrl_physical':H4CC_ARCHIVE_CTRL_PHYSICAL,
+            'new_physical':fresh['physical_transitions_recorded'],
+            'promotion_authorized':False,'further_training_authorized':False}
+
+def h4cc_eval_plan(args):
+    h4cc_eval_require(args.mode=='plan','EXECUTION_HOLD')
+    h4cc_eval_require(not any(getattr(args,k) for k in
+        ('h4_m1_eval','h4_technical','h3_m1_eval','h2a','h2b','checkpoint_c',
+         'checkpoint_p','report_p','checkpoint_h3','report_h3','h4_reward_report')),
+         'MODE_CONFLICT')
+    h4cc_eval_require((args.seeds,args.profiles,args.directions,args.push_step,
+        args.push_magnitude,args.second_push_step,args.second_push_magnitude,
+        args.max_steps,args.max_cases)==('7331,7357,7601,7613','stand,forward_fast,turn_left',
+        'left,right',300,.50,335,.35,1000,120),'FROZEN_PROTOCOL')
+    h4cc_eval_require(args.output.absolute()==H4_EVAL_ROOT/H4CC_EVAL_OUTPUT and
+        args.output.resolve()==H4_EVAL_ROOT/H4CC_EVAL_OUTPUT,'FROZEN_OUTPUT')
+    return {'policies':['REF','CCRC'],'official_reference':'ARCHIVED_H4_CTRL',
+        'logical_trajectories':120,'max_physical_transitions':89616,
+        'training_performed':False,'execution_authorized':False,
+        'archive_sha256':H4CC_ARCHIVE_SHA,'output':str(args.output)}
+
+
 def h4e_require(ok, label):
     if not ok:
         raise RuntimeError('M470_H4_EVAL_'+label)
@@ -2377,6 +2463,8 @@ def h4e_run(args):
 
 
 def run(args):
+    if getattr(args,'h4cc_eval',False):
+        raise RuntimeError('M470_H4CC_EVAL_EXECUTION_HOLD')
     h4_mode=bool(getattr(args,'h4_m1_eval',False))
     if h4_mode:
         h4e_require(H4_EVAL_EXECUTION_AUTHORIZED is True,'EXECUTION_HOLD')
@@ -3724,7 +3812,15 @@ def main():
     p.add_argument('--second-push-magnitude', type=float, default=0.35)
     p.add_argument('--max-steps',type=int,default=1000)
     p.add_argument('--max-cases',type=int,default=120)
+    p.add_argument('--h4cc-eval',action='store_true',help='CCRC held plan only')
     args=p.parse_args()
+    if args.h4cc_eval:
+        try:
+            plan=h4cc_eval_plan(args)
+        except RuntimeError as exc:
+            p.error(str(exc))
+        print('M470_H4CC_EVAL_PLAN',json.dumps(plan,sort_keys=True))
+        return
     if not args.h4_m1_eval and args.checkpoint_c is None:
         p.error('--checkpoint-c is required outside H4 matched evaluation')
     if args.h4_m1_eval and args.h4_technical:
