@@ -523,15 +523,18 @@ def make_patched_source(raw, *, require_pin=True, enable_resume=False, enable_h3
     return s, actual_sha
 
 
-def build_instrumented_ppo(pinned_ppo_module, output:Path, *, enable_resume=False, enable_h3=False, enable_h4=False, enable_h4x=False, enable_h4cc=False):
+def build_instrumented_ppo(pinned_ppo_module, output:Path, *, enable_resume=False, enable_h3=False, enable_h4=False, enable_h4x=False, enable_h4cc=False, enable_h4m6=False):
     import inspect
     p=Path(inspect.getfile(pinned_ppo_module.train))
     if enable_h4cc and not enable_h4x:
         raise RuntimeError('M470_H4CC_BUILDER_CONTRACT')
+    if enable_h4m6 and not (enable_h4cc and enable_h4x and enable_h4 and enable_resume and not enable_h3):
+        raise RuntimeError('M470_H4M6_BUILDER_CONTRACT')
     if enable_h4x:
         if not enable_resume or not enable_h4 or enable_h3:
             raise RuntimeError('M470_H4X_BUILDER_CONTRACT')
-        patched,original_sha=make_h4_exploratory_source(p.read_bytes(),enable_h4cc=enable_h4cc)
+        patched,original_sha=(make_h4m6_source(p.read_bytes()) if enable_h4m6 else
+            make_h4_exploratory_source(p.read_bytes(),enable_h4cc=enable_h4cc))
     else:
         patched,original_sha=make_patched_source(p.read_bytes(),
             enable_resume=enable_resume, enable_h3=enable_h3, enable_h4=enable_h4)
@@ -555,7 +558,7 @@ def build_instrumented_ppo(pinned_ppo_module, output:Path, *, enable_resume=Fals
     return mod,{'original_brax_sha256':original_sha,
                 'instrumented_file':str(output.resolve()),
                 'instrumented_sha256':sha256(patched.encode('utf8')),
-                'extra_fields':list(EXT_FIELDS + (H3_EXT_FIELDS if enable_h3 else ()) + (H4_EXT_FIELDS if enable_h4 else ()) + (H4CC_EXT_FIELDS if enable_h4cc else ()))}
+                'extra_fields':list(EXT_FIELDS + (H3_EXT_FIELDS if enable_h3 else ()) + (H4_EXT_FIELDS if enable_h4 else ()) + (H4CC_EXT_FIELDS if enable_h4cc else ()) + (H4M6_EXT_FIELDS if enable_h4m6 else ()))}
 
 
 # Readiness-only source. Never change the production H4 generator or hold.
@@ -1011,3 +1014,76 @@ def h4cc_static_generated_regression(raw):
             'ccrc_sha256':sha256(cc.encode('utf8')),
             'normalized_byte_equal':True,'normalized_ast_equal':True,
             'generated_compile':True}
+
+# H4-M6 only. A separate generated source, shared by REF6/RSS. No legacy edits.
+H4M6_EXT_FIELDS = tuple('h4m6_'+k for k in (
+    'qualified','event_terminal','start','event_side','eligible','tick_age',
+    'tick_side','positive_start','completed','close_terminal','close_truncation',
+    'close_boundary','close_command','close_event','bad','opportunity_side',
+    'attempt_side','factor','raw_stand','shadow_stand','actual_stand',
+    'shadow_relief','delivered_relief','base_reward','expected_reward'))
+H4M6_METRICS_SOURCE = '''    # H4-M6: actual PPO data, never a second rollout or loss replacement.
+    m6 = lambda key: extras['h4m6_'+key]
+    elig = m6('eligible') > 0
+    m6k = m6('tick_age')
+    m6offset = jnp.arange(unroll_length)[None,:]
+    m6bad = ((m6('bad')>0) | (data.reward != m6('expected_reward')) |
+             (~jnp.isfinite(data.reward)) |
+             (elig & ((m6k<1) | (m6k>50) | (data.discount!=1) |
+                      (extras['truncation']!=0))) |
+             ((~elig) & ((m6('factor')!=1) | (m6('shadow_relief')!=0) |
+                         (m6('delivered_relief')!=0))) |
+             (m6('shadow_relief')<0) | (m6('delivered_relief')<0) |
+             (m6('delivered_relief')>m6('shadow_relief')) |
+             (m6('shadow_stand')>m6('raw_stand')) |
+             (m6('actual_stand')>m6('raw_stand')))
+    for name in ('factor','raw_stand','shadow_stand','actual_stand','shadow_relief',
+                 'delivered_relief','base_reward','expected_reward'):
+        m6bad = m6bad | (~jnp.isfinite(m6(name)))
+    coverage['m463_h4m6_bad_per_rollout'] = h4_count(m6bad)
+    for side in (1,2):
+        ev = m6('event_side')==side
+        tick = m6('tick_side')==side
+        for name in ('qualified','event_terminal','start'):
+            coverage[f'm463_h4m6_{side}_{name}_per_rollout'] = h4_count(ev & (m6(name)>0))
+        for name in ('eligible','positive_start','completed','close_terminal',
+                     'close_truncation','close_boundary','close_command','close_event'):
+            coverage[f'm463_h4m6_{side}_{name}_per_rollout'] = h4_count(tick & (m6(name)>0))
+        for name in ('opportunity','attempt'):
+            coverage[f'm463_h4m6_{side}_{name}_per_rollout'] = h4_count(m6(name+'_side')==side)
+        for w in (1,10,25,50):
+            cell = tick & elig & (m6k==w)
+            coverage[f'm463_h4m6_{side}_reached_{w}_per_rollout'] = h4_count(cell)
+            coverage[f'm463_h4m6_{side}_same_unroll_{w}_per_rollout'] = h4_count(cell & (m6offset>=w))
+        for off in range(32):
+            coverage[f'm463_h4m6_{side}_offset_{off}_per_rollout'] = h4_count(tick & elig & (m6offset==off))
+        for name in ('shadow_relief','delivered_relief'):
+            coverage[f'm463_h4m6_{side}_{name}_sum'] = jnp.sum(jnp.where(tick,m6(name),0.))
+            coverage[f'm463_h4m6_{side}_{name}_same_unroll_sum'] = jnp.sum(jnp.where(tick & elig & (m6offset>=m6k),m6(name),0.))
+    for name in ('base_reward','expected_reward','shadow_relief','delivered_relief'):
+        coverage[f'm463_h4m6_{name}_sum'] = jnp.sum(m6(name))
+    coverage['m463_h4m6_transition_reward_sum'] = jnp.sum(data.reward)
+    coverage['m463_h4m6_ppo_scaled_relief_sum'] = jnp.sum(m6('delivered_relief')*reward_scaling)
+'''
+
+def make_h4m6_source(raw):
+    """Held source generator; do not import/execute generated train."""
+    base,original = make_h4_exploratory_source(raw,enable_h4cc=True)
+    if original!=PINNED_SHA:
+        raise RuntimeError('M470_H4M6_ORIGINAL_PIN')
+    old_fields = EXT_FIELDS+H4_EXT_FIELDS+H4CC_EXT_FIELDS
+    fmt = lambda fields: "extra_fields=('truncation', " + ', '.join(repr(k) for k in fields) + '),'
+    old_guard = ('  from m463_push_ppo_train import h4cc_generated_guard\n'
+                 '  h4cc_generated_guard(h4x_audit_fn, __file__, environment)\n')
+    new_guard = ('  from m463_push_ppo_train import h4m6_generated_guard\n'
+                 '  h4m6_generated_guard(h4x_audit_fn, __file__, environment)\n')
+    s = h4c_once(base,fmt(old_fields),fmt(old_fields+H4M6_EXT_FIELDS))
+    s = h4c_once(s,H4CC_METRICS_SOURCE,H4CC_METRICS_SOURCE+H4M6_METRICS_SOURCE)
+    s = h4c_once(s,old_guard,new_guard)
+    reverse = h4c_once(s,new_guard,old_guard)
+    reverse = h4c_once(reverse,H4CC_METRICS_SOURCE+H4M6_METRICS_SOURCE,H4CC_METRICS_SOURCE)
+    reverse = h4c_once(reverse,fmt(old_fields+H4M6_EXT_FIELDS),fmt(old_fields))
+    if reverse!=base:
+        raise RuntimeError('M470_H4M6_GENERATED_REVERSE')
+    compile(s,'<H4M6 held generated>','exec')
+    return s,original

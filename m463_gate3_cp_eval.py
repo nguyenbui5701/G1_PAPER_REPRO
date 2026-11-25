@@ -2607,6 +2607,8 @@ def h4_shared_frozen_loader(action_size,paper,networks,running_statistics,serial
 
 
 def run(args):
+    if getattr(args,'h4m6_phase',None) is not None:
+        raise RuntimeError('M470_H4M6_EXECUTION_HOLD')
     if getattr(args,'h4m5_obs_attribution',False):
         raise RuntimeError('M470_H4M5_DEDICATED_DISPATCH_REQUIRED')
     feasibility=bool(getattr(args,'h4m4_feasibility',False))
@@ -4453,15 +4455,19 @@ def h4cc_tech_read_report(path,expected_sha,source,generated):
     h4cc_tech_require(audit==r['audit'] and audit['passed'],'REPORT_REPLAY')
     return r
 
-def h4cc_tech_actual(args,r,monitor,persist):
+def h4cc_tech_actual(args,r,monitor,persist,*,rss=False):
     # Independent one-use dispatch check BEFORE runtime imports.
     import m463_push_ppo_train as t
-    auth=h4cc_tech_authorization()
-    h4cc_tech_require(args.output.resolve()==H4_EVAL_ROOT/H4CC_TECH_OUTPUT
-        and r['authorization']==auth and r['status']=='M470_H4CC_TECH_IN_PROGRESS'
+    if rss:
+        h4m6_technical_dispatch(args)
+    auth=t.h4m6_authorization(phase='tech') if rss else h4cc_tech_authorization()
+    expected_out=H4M6_TECH_OUTPUT if rss else H4CC_TECH_OUTPUT
+    expected_status='M470_H4M6_TECH_IN_PROGRESS' if rss else 'M470_H4CC_TECH_IN_PROGRESS'
+    h4cc_tech_require(args.output.resolve()==H4_EVAL_ROOT/expected_out
+        and r['authorization']==auth and r['status']==expected_status
         and r['lanes']==[] and all(r[k]==0 for k in ('physical_transitions_attempted',
             'physical_transitions_recorded','reset_lanes_attempted','reset_lanes_recorded'))
-        and r['provenance']==h4cc_tech_inputs(args,auth),'DISPATCH_CONTRACT')
+        and r['provenance']==(h4m6_tech_inputs(args,auth) if rss else h4cc_tech_inputs(args,auth)),'DISPATCH_CONTRACT')
     reservation=args.output.parent/'attempt.json'
     h4cc_tech_require(reservation.is_file() and not reservation.is_symlink()
         and json.loads(reservation.read_bytes())=={'authorization':auth,'reserved':True}
@@ -4559,6 +4565,13 @@ def h4cc_tech_actual(args,r,monitor,persist):
             finite=self.finite(nxt) & jp.all(jp.isfinite(act).reshape((1,-1)),axis=1)
             return nxt.replace(info={**nxt.info,'h4cc_tech_raw_finite':finite,'h4cc_tech_raw':self.raw(nxt)})
     def state_digest(st):
+        if rss:
+            # Exclude only intervention metadata and its scalar/metric outputs.
+            # Keep full physics, obs, RNG and every common CCRC shadow field.
+            return digest_tree(st.replace(
+                info={k:v for k,v in st.info.items() if not k.startswith('h4m6_')},
+                reward=jp.zeros_like(st.reward),
+                metrics={k:v for k,v in st.metrics.items() if k!='reward/stand_still'}))
         # Only additive CCRC metadata omitted; all common state bytes compared.
         return digest_tree(st.replace(info={k:v for k,v in st.info.items()
                                             if not k.startswith('h4cc_')}))
@@ -4589,16 +4602,17 @@ def h4cc_tech_actual(args,r,monitor,persist):
     def vec(x):return host(x)[0].tolist()
     def scalar(x):return int(host(x)[0])
     def guard():
-        h4cc_tech_require(h4cc_tech_authorization()==r['authorization'],'AUTH_CHANGED')
+        h4cc_tech_require((t.h4m6_authorization(phase='tech') if rss else h4cc_tech_authorization())==r['authorization'],'AUTH_CHANGED')
         h4cc_tech_require('brax.training.agents.ppo.train' not in sys.modules,'TRAIN_IMPORT')
         h3_gpu_check(monitor)
     for fixture in H4CC_TECH_FIXTURES:
         seed=fixture[0]; key=jax.random.PRNGKey(seed)
         dr_keys=jax.random.fold_in(key,H4CC_TECH_SPEC['dr_seed_fold_in'])[None,:]
-        for arm in ('ref','ccrc'):
+        for arm in (('ref','rss') if rss else ('ref','ccrc')):
             guard()
             env=ce.CoverageJoystick(stage='easy_repeat_support',config=copy.deepcopy(cfg),
-                                    h4_arm='candidate',h4cc_arm=arm)
+                                    h4_arm='candidate',h4cc_arm='ref' if rss else arm,
+                                    **({'h4m6_arm':arm,'h4m6_tech_capture':True} if rss else {}))
             h4cc_tech_require(env.action_size==29 and float(env.dt)==.02,'ENV_CONFIG')
             wrapped=wrapper.wrap_for_brax_training(env,episode_length=1000,action_repeat=1,
                 randomization_fn=functools.partial(randomizer,rng=dr_keys))
@@ -4629,9 +4643,9 @@ def h4cc_tech_actual(args,r,monitor,persist):
                 nxt=wrapped.step(state,action)
                 return nxt,action
             step=jax.jit(one)
-            for tick in range(252):
+            for tick in range(52 if rss else 252):
                 guard()
-                h4cc_tech_require(r['physical_transitions_attempted']<2016,'PHYSICAL_CAP')
+                h4cc_tech_require(r['physical_transitions_attempted']<(416 if rss else 2016),'PHYSICAL_CAP')
                 pre=st.info;expected_rng,native_draw=key_audit(pre['rng'])
                 row={'tick':tick,'pre_sha256':state_digest(st),'rng_before':vec(pre['rng']),
                     'source_clock':scalar(pre['step']),'pre':vec(pre['command']),
@@ -4658,18 +4672,27 @@ def h4cc_tech_actual(args,r,monitor,persist):
                     action_sha256=digest_tree(action),physics_sha256=digest_tree((nxt.data,nxt.reward,nxt.metrics,
                         nxt.info['h4cc_tech_raw'][:6])),
                     post_sha256=state_digest(nxt))
+                if rss:
+                    names=ce.H4M6_REWARD_NAMES
+                    row.update(rss={k:scalar(nxt.info['h4m6_'+k]) for k in ce.H4M6_INT_FIELDS},
+                        reward_names=list(names),raw_rewards=vec(nxt.info['h4m6_raw_rewards']),
+                        weighted_rewards=[float(host(nxt.metrics['reward/'+k])[0]) for k in names],
+                        reward_scales=[float(cfg.reward_config.scales[k]) for k in names],
+                        reward=float(host(nxt.reward)[0]),
+                        physics_sha256=digest_tree((nxt.data,nxt.info['h4cc_tech_raw'])))
+                    row['rss'].update({k:float(host(nxt.info['h4m6_'+k])[0]) for k in ce.H4M6_FLOAT_FIELDS})
                 lane['rows'].append(row);lane['physical_recorded']+=1
                 r['physical_transitions_recorded']+=1;persist()
                 h4cc_tech_require(finite and not m['bad'] and not m['cc_bad'] and not m['truncation']
                     and row['rng_after']==row['expected_rng'],'LIVE_CONTRACT')
-                h4cc_tech_audit(r,partial=True)
+                (h4m6_technical_audit if rss else h4cc_tech_audit)(r,partial=True)
                 st=nxt
                 if m['terminal']:break
     r['policy_sha256_after']=digest_tree(params)
     h4cc_tech_require(r['policy_sha256_after']==r['policy_sha256_before'],'POLICY_MUTATED')
     guard()
     check_source()
-    r['audit']=h4cc_tech_audit(r)
+    r['audit']=(h4m6_technical_audit if rss else h4cc_tech_audit)(r)
 
 def h4cc_tech_run(args):
     import m463_push_ppo_train as t
@@ -7059,6 +7082,249 @@ def h4m5_dispatch(args):
         raise
 
 
+
+# H4-M6: independent held technical and development comparison contracts.
+H4M6_TECH_OUTPUT=Path('m463_runs/m470_h4_m6_tech_v1/report.json')
+H4M6_DEV_OUTPUT=Path('m463_runs/m470_h4_m6_dev_v1/report.json')
+H4M6_RICH_OUTPUT=Path('m463_runs/m470_h4_m6_dev_v1/mechanism.json')
+H4M6_TECH_FIXTURES=H4CC_TECH_FIXTURES
+H4M6_MECHANISM_LANES=((7601,'right'),(7613,'left'),(7357,'left'),(7331,'left'))
+
+def h4m6_eval_require(ok,label):
+    if not bool(ok):
+        raise RuntimeError('M470_H4M6_'+label)
+
+def h4m6_eval_plan(phase):
+    from m463_push_ppo_train import h4m6_plan
+    h4m6_eval_require(phase in ('tech','dev'),'PHASE')
+    result=h4m6_plan(phase)
+    if phase=='tech':
+        result.update(fixtures=[list(f) for f in H4M6_TECH_FIXTURES],
+            arms=['ref','rss'],synthetic_prior_event=True,prior_actual_pushes=0,
+            optimizer_updates=0,evaluation_transitions=0,checkpoint_saves=0)
+    else:
+        result.update(seeds=list(H3_EVAL_SEEDS),profiles=list(H3_EVAL_PROFILES),
+            directions=['left','right'],policies=['REF6','RSS'],
+            push_step=300,push_magnitude=.50,second_push_step=335,
+            second_push_magnitude=.35,max_steps=1000,original_reward=True,
+            deterministic_actor=True,domain_randomization=False,
+            mechanism_lanes=[list(f) for f in H4M6_MECHANISM_LANES],
+            mechanism_ticks=[334,385])
+    return result
+
+
+def h4m6_external_sources(root):
+    """Read-only exact installed dependencies; no JAX/MJX imports."""
+    import m463_push_ppo_train as t
+    external=h4m5_external_sources(root)
+    paths={}
+    for name,blob in {**t.H4C_BRAX_BLOBS,
+        'brax.envs.wrappers.training':'2c09c8268a29d14c832dd07050575e4541ee98af',
+        'mujoco_playground._src.wrapper':'62e2823b80b692befe29e4640d0b7a816e52271c'}.items():
+        p=h4m5_find_source(name)
+        h4m6_eval_require(h4m3_git_blob(p)==blob,'EXTERNAL_BLOB '+name)
+        paths[name]={'path':str(p),'blob':blob,'sha256':sha256(p)}
+    p=h4m5_find_source('brax.training.agents.ppo.train')
+    h4m6_eval_require(sha256(p)==TRAIN_SHA,'TRAIN_PIN')
+    paths['brax.training.agents.ppo.train']={'path':str(p),'sha256':sha256(p)}
+    h4m3_no_runtime_imports()
+    return {'common':external,'training':paths}
+
+def h4m6_tech_inputs(args,auth):
+    import m463_push_ppo_train as t
+    from types import SimpleNamespace
+    root=Path(__file__).resolve().parent
+    paths={'C401M':args.checkpoint_c,'reward':args.h4_reward_report,
+           'restore':args.h4cc_restore_report,'static':root/auth['static_log']}
+    expected={'C401M':BASE_SHA,'reward':t.H4R_REWARD_SHA,
+              'restore':t.H3_CAUSAL_RESTORE_SHA,'static':auth['static_sha256']}
+    for k,p in paths.items():
+        t.h4x_file_pin(p,expected[k])
+    h4m6_eval_require(auth['phase']=='tech' and args.output.resolve()==root/H4M6_TECH_OUTPUT,'TECH_PATH')
+    pins=t.h4x_bootstrap(SimpleNamespace(checkpoint=paths['C401M'],
+        restore_report=paths['restore'],h4_exploratory_reward_report=paths['reward']),
+        h4cc=True,h4m6=auth)
+    external=h4m6_external_sources(root)
+    h4m6_eval_require(h4m3_digest(external)==auth['external_sha256'],'EXTERNAL_PIN')
+    from m463_instrument_brax import make_h4m6_source
+    gen,original=make_h4m6_source(Path(external['training']['brax.training.agents.ppo.train']['path']).read_bytes())
+    h4m6_eval_require(original==TRAIN_SHA and hashlib.sha256(gen.encode()).hexdigest()==auth['generated_sha256'],'GENERATED_PIN')
+    return {'input_sha256':expected,'input_paths':{k:str(p.resolve()) for k,p in paths.items()},
+            'bootstrap':pins,'source_sha256':auth['source_sha256'],'external':external}
+
+def h4m6_technical_dispatch(args):
+    # Held implementation only. Explicit authorization alone cannot open this
+    # until full-source static acceptance and native integration review.
+    raise RuntimeError('M470_H4M6_EXECUTION_HOLD')
+
+def h4m6_technical_audit(report,*,partial=False):
+    """Pure replay: exact same-trajectory paired reward isolation, no physics."""
+    import numpy as np
+    req=h4m6_eval_require
+    lanes=report['lanes']
+    req(len(lanes)<=8 and report['reset_lanes_recorded']==len(lanes)
+        and len(lanes)<=report['reset_lanes_attempted']<=8,'TECH_RESET_LEDGER')
+    req(sum(len(l['rows']) for l in lanes)==report['physical_transitions_recorded']
+        <=report['physical_transitions_attempted']<=416,'TECH_PHYSICAL_LEDGER')
+    req(sum(l['physical_attempted'] for l in lanes)==report['physical_transitions_attempted']
+        and sum(l['physical_recorded'] for l in lanes)==report['physical_transitions_recorded'],'TECH_LANE_TOTALS')
+    for name in ('optimizer_updates','evaluation_transitions','checkpoint_saves'):
+        req(report[name]==0,'TECH_ZERO_'+name)
+    req(report['training_performed'] is False and report['efficacy_evaluated'] is False
+        and report['promotion_authorized'] is False,'TECH_NO_PROMOTION')
+    f32=lambda x:np.asarray(x,dtype=np.float32)
+    bits=lambda a,b:f32(a).shape==f32(b).shape and f32(a).tobytes()==f32(b).tobytes()
+    pairs=0
+    for i,l in enumerate(lanes):
+        fixture=H4M6_TECH_FIXTURES[i//2]; arm=('ref','rss')[i%2]
+        req(l['fixture']==list(fixture) and l['arm']==arm
+            and l['metadata']==h4cc_tech_fixture_values(fixture)
+            and l['prior_actual_pushes']==0 and l['initial_command']==[0.,0.,0.]
+            and len(l['rows'])==l['physical_recorded']<=l['physical_attempted']<=52,'TECH_LANE')
+        seed,cls,direction,first,target,age,clock=fixture
+        last_sha=l['initial_sha256']; last_key=l['initial_rng']
+        for k,row in enumerate(l['rows']):
+            m=row['metrics']; e=row['rss']
+            req(row['pre_sha256']==last_sha and row['rng_before']==last_key
+                and row['source_clock']==clock+k and m['age']==age+k
+                and m['wrapper_steps']==age+k+1 and m['boundary']==m['refresh']==0
+                and m['event']==m['repeat']==int(k==0)
+                and m['mature']==int(k==0 and cls==3)
+                and m['source_terminal']==m['terminal'],'TECH_SCHEDULER')
+            if k==0:
+                lo,hi=(.30,.40) if cls==3 else (.20,.60)
+                req(m['direction']==direction and m['gap']==age-first
+                    and m['side_target']==direction-1
+                    and m['side_matched']==int(m['support']==direction-1)
+                    and m['side_fallback']==1-m['side_matched']
+                    and m['event_qual']==(direction-1 if seed==4101 else 0)
+                    and lo<=row['magnitude']<=hi
+                    and abs(math.hypot(*row['delta'])-row['magnitude'])<=3e-6,'TECH_EVENT')
+            else:
+                req(row['magnitude']==0 and row['delta']==[0.,0.] and m['event_qual']==0,'TECH_NO_EXTRA_PUSH')
+            req(row['next_source_clock']==(0 if m['terminal'] else clock+k+1)
+                and row['post']==row['next_actor']==row['next_critic']==[0.,0.,0.],'TECH_COMMAND')
+            req(not m['terminal'] or row['reset_data_obs_equal'] is True,'TECH_TERMINAL_RESET')
+            last_sha=row['post_sha256']; last_key=row['rng_after']
+            req(row['tick']==k and row['finite'] is True and not m['bad'] and not m['cc_bad']
+                and not m['truncation'] and row['rng_after']==row['expected_rng']
+                and not e['bad'] and row['pre']==row['actor']==row['critic'],'TECH_ROW')
+            req(m['terminal'] in (0,1) and (not m['terminal'] or k==len(l['rows'])-1),'TECH_TERMINAL')
+            req(e['qualified']==int(k==0 and fixture[0]==4101)
+                and e['eligible']==int(fixture[0]==4101 and 1<=k<=50 and not m['terminal']),'TECH_ELIGIBLE')
+            req(e['start']==int(e['qualified'] and not m['terminal'])
+                and e['tick_age']==(k if e['eligible'] else 0),'TECH_TIMING')
+            names=row['reward_names']; raw=f32(row['raw_rewards']); w=f32(row['weighted_rewards'])
+            scales=f32(row['reward_scales'])
+            req(len(names)==24 and len(set(names))==24 and 'stand_still' in names
+                and 'termination' in names and raw.shape==w.shape==scales.shape==(24,)
+                and np.isfinite(raw).all() and np.isfinite(w).all() and np.isfinite(scales).all(),'TECH_REWARD_SCHEMA')
+            idx=names.index('stand_still')
+            req(scales[idx]==-1 and scales[names.index('termination')]==-100
+                and bits(raw*scales,w),'TECH_REWARD_SCALE')
+            req(all(np.isfinite(float(e[x])) for x in ('factor','raw_stand','shadow_stand',
+                'actual_stand','shadow_relief','delivered_relief','base_reward','expected_reward')),'TECH_FINITE')
+            factor=np.float32(1)-np.float32(.5)*np.float32(51-k)/np.float32(50) if e['eligible'] else np.float32(1)
+            req(bits(factor,e['factor']) and bits(raw[idx],e['actual_stand'])
+                and bits(w[idx],-f32(e['actual_stand']))
+                and bits(e['expected_reward'],row['reward']),'TECH_REWARD_ACCOUNTING')
+            req(bits(e['actual_stand'],e['raw_stand'] if arm=='ref' else e['shadow_stand'])
+                and (e['eligible'] or (bits(e['raw_stand'],e['actual_stand']) and e['delivered_relief']==0))
+                and (arm!='ref' or e['delivered_relief']==0)
+                and (not m['terminal'] or e['delivered_relief']==0),'TECH_REWARD_SCOPE')
+            if i%2:
+                ref=lanes[i-1]; req(l['initial_sha256']==ref['initial_sha256']
+                    and l['initial_rng']==ref['initial_rng'] and l['model_sha256']==ref['model_sha256'],'TECH_INITIAL_MATCH')
+                req(k<len(ref['rows']),'TECH_PAIRED_LENGTH')
+                b=ref['rows'][k]; be=b['rss']
+                for key in ('pre_sha256','post_sha256','physics_sha256','action_sha256','rng_before',
+                    'rng_after','native_draw','metrics','reward_names','reward_scales','post','next_actor','next_critic'):
+                    req(row[key]==b[key],'TECH_PAIRED_NONREWARD '+key)
+                req(all(bits(row['raw_rewards'][j],b['raw_rewards'][j]) and
+                    bits(row['weighted_rewards'][j],b['weighted_rewards'][j])
+                    for j in range(24) if j!=idx),'TECH_OTHER_23_TERMS')
+                req({k:v for k,v in e.items() if k not in ('actual_stand','delivered_relief','expected_reward')}
+                    =={k:v for k,v in be.items() if k not in ('actual_stand','delivered_relief','expected_reward')},
+                    'TECH_PAIRED_WINDOW')
+                for key in ('factor','raw_stand','shadow_stand','shadow_relief','base_reward'):
+                    req(bits(e[key],be[key]),'TECH_PAIRED_SHADOW '+key)
+                if not e['eligible']:
+                    req(bits(row['reward'],b['reward']) and bits(raw,b['raw_rewards'])
+                        and bits(w,b['weighted_rewards']),'TECH_EXACT_IDENTITY')
+                pairs+=1
+    if not partial:
+        req(len(lanes)==8 and report['reset_lanes_attempted']==report['reset_lanes_recorded']==8
+            and report['physical_transitions_attempted']==report['physical_transitions_recorded']
+            and all(l['physical_attempted']==l['physical_recorded'] and len(l['rows'])>0
+                and (len(l['rows'])==52 or l['rows'][-1]['metrics']['terminal']) for l in lanes)
+            and all(len(lanes[i]['rows'])==len(lanes[i+1]['rows']) for i in range(0,8,2)),'TECH_COMPLETE')
+        req(all(len(lanes[i]['rows'])==52 and lanes[i]['rows'][50]['rss']['completed']==1
+            and lanes[i]['rows'][51]['rss']['eligible']==0
+            and lanes[i]['rows'][51]['rss']['factor']==1 for i in (0,1)),'TECH_REQUIRED_RESTORATION')
+        req(any(row['rss']['delivered_relief']>0 for row in lanes[1]['rows']),'TECH_NONZERO_RELIEF')
+    return {'passed':not partial,'paired_rows':pairs,'physical_recorded':report['physical_transitions_recorded'],
+            'reset_lanes_recorded':report['reset_lanes_recorded']}
+
+def h4m6_dev_decisions(archive,fresh):
+    """Reuse the exact official/incremental decision code; no changed efficacy thresholds."""
+    req=h4m6_eval_require
+    req(len(fresh['groups'])==24 and {g['policy'] for g in fresh['groups']}=={'REF6','RSS'},'DEV_ARMS')
+    mapped=dict(fresh,groups=[dict(g,policy={'REF6':'REF','RSS':'CCRC'}[g['policy']])
+                              for g in fresh['groups']])
+    result=h4cc_pair_decisions(archive,mapped)
+    result['official']['comparison_roles']['CAND']='RSS'
+    result['incremental']['comparison_roles']={'CTRL':'FRESH_REF6','CAND':'RSS'}
+    result['promotion_authorized']=False
+    result['further_training_authorized']=False
+    return result
+
+def h4m6_mechanism_decision(efficacy,exposure,rows):
+    """Decision on verified endpoint evidence only; never manufacture missing endpoints."""
+    req=h4m6_eval_require
+    expected={(s,d) for s,d in H4M6_MECHANISM_LANES}
+    req(len(rows)==4 and {(r['seed'],r['direction']) for r in rows}==expected,'MECHANISM_LANES')
+    primary=[]; positive=[]
+    for r in rows:
+        k=(r['seed'],r['direction'])
+        req(r['role']==('primary' if k in H4M6_MECHANISM_LANES[:2] else 'positive'),'MECHANISM_ROLE')
+        if r['candidate_adverse'] or not r['safety_preserved']:
+            verdict='ADVERSE'
+        elif not r['candidate_endpoints_available'] and r['role']=='positive':
+            verdict='ADVERSE'
+        elif not r['reference_endpoints_available'] or not r['candidate_endpoints_available']:
+            verdict='INCONCLUSIVE'
+        elif r['role']=='primary':
+            if not r['matched_sole_ipsilateral']:
+                verdict='INCONCLUSIVE'
+            else:
+                verdict='PASS' if (r['placement_gain_m']>=.02 and r['load3_complete_tick'] is not None
+                    and r['load3_complete_tick']<=354 and r['signed_velocity_gain_mps']>=.10
+                    and r['absolute_velocity_gain_mps']>=.10 and r['candidate_survived']
+                    and r['candidate_recovery5']) else 'NOT_SUPPORTED'
+        else:
+            verdict='PASS' if (r['candidate_survived'] and r['candidate_recovery5']
+                and r['abs_v385_excess_mps']<=.10 and r['abs_H385_excess']<=.50) else 'ADVERSE'
+        (primary if r['role']=='primary' else positive).append(verdict)
+    decision=('NO_GO' if efficacy=='NO_GO' or 'ADVERSE' in primary+positive else
+              'INCONCLUSIVE' if exposure!='ADEQUATE' or 'INCONCLUSIVE' in primary+positive else
+              'LOCAL_H_R3b_SUPPORT' if efficacy=='DEV_PASS' and primary==['PASS','PASS']
+                 and positive==['PASS','PASS'] else
+              'HETEROGENEOUS' if primary.count('PASS')==1 else
+              'NOT_SUPPORTED_IN_TESTED_DESIGN' if primary.count('NOT_SUPPORTED')==2 else 'INCONCLUSIVE')
+    return {'decision':decision,'primary':primary,'positive':positive,
+            'efficacy':efficacy,'exposure':exposure,'promotion_authorized':False}
+
+def h4m6_mechanism_bound(records,metadata):
+    """Byte accounting for future exact rich capture, no extra physical steps."""
+    req=h4m6_eval_require
+    req(len(records)<=416,'MECHANISM_RECORD_CAP')
+    encode=lambda x:len(json.dumps(x,separators=(',',':'),allow_nan=False).encode('utf8'))
+    sizes=[encode(row)+128 for row in records]
+    m=encode(metadata)
+    req(all(n<=65536 for n in sizes) and m<=2*1024**2 and sum(sizes)+m<=32*1024**2,
+        'MECHANISM_BYTE_CAP')
+    return {'records':len(records),'record_bytes':sum(sizes),'metadata_bytes':m,'max_record_bytes':max(sizes,default=0)}
+
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--mode',choices=('plan','run'),required=True)
@@ -7098,7 +7364,20 @@ def main():
     p.add_argument('--h4m4-feasibility',action='store_true')
     p.add_argument('--h4m4-historical-archive',type=Path)
     p.add_argument('--h4m5-obs-attribution',action='store_true')
+    p.add_argument('--h4m6-phase',choices=('tech','dev'),help='H4-M6 held plan only')
     args=p.parse_args()
+    if args.h4m6_phase is not None:
+        try:
+            h4m6_eval_require(args.mode=='plan','EXECUTION_HOLD')
+            h4m6_eval_require(all(getattr(args,k)==p.get_default(k) for k in vars(args)
+                if k not in ('mode','output','h4m6_phase')),'PLAN_CONFLICT')
+            root=Path(__file__).resolve().parent
+            expected=root/(H4M6_TECH_OUTPUT if args.h4m6_phase=='tech' else H4M6_DEV_OUTPUT)
+            h4m6_eval_require(args.output.absolute()==args.output.resolve()==expected,'PLAN_OUTPUT')
+            print('M470_H4M6_PLAN',json.dumps(h4m6_eval_plan(args.h4m6_phase),sort_keys=True))
+            return
+        except (RuntimeError,ValueError,KeyError,OSError) as exc:
+            p.error(str(exc))
     if args.h4m5_obs_attribution:
         try:
             h4m5_require(not any(getattr(args,k) for k in ('h4m4_feasibility',

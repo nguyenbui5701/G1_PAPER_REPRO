@@ -200,7 +200,7 @@ def h4_epoch_audit(counts, pending, arm, final=False):
     return {'checks':checks, 'passed':all(checks.values())}
 
 
-def h4_chunk_callback(jax,np,monitor,report,persist,arm,*,h4cc_arm=None):
+def h4_chunk_callback(jax,np,monitor,report,persist,arm,*,h4cc_arm=None,h4m6_arm=None):
     """Prepared callback; no H4 runtime is authorized by this source revision.
 
     The caller must bind the same monitor and report as the future H4 runner.
@@ -212,6 +212,9 @@ def h4_chunk_callback(jax,np,monitor,report,persist,arm,*,h4cc_arm=None):
     report['h4_chunks']=chunks
     report['h4_epochs']=[]
     cc_audit = h4cc_chunk_ledger(jax,np,report,h4cc_arm) if h4cc_arm is not None else None
+    m6_audit = h4m6_chunk_ledger(jax,np,report,h4m6_arm) if h4m6_arm is not None else None
+    if h4m6_arm is not None:
+        h4m6_require(h4cc_arm=='ref' and arm=='candidate','CHUNK_ARM')
     def callback(index,state,env_state,metrics):
         expected_index=len(chunks)%4+1
         expected_steps=(len(chunks)+1)*5*TOTAL_STEPS_BATCH
@@ -315,6 +318,8 @@ def h4_chunk_callback(jax,np,monitor,report,persist,arm,*,h4cc_arm=None):
                     raise RuntimeError('M470_H4_FINAL_EXPOSURE')
         if cc_audit is not None:
             cc_audit(index,env_state,metrics,row['counts'])
+        if m6_audit is not None:
+            m6_audit(index,env_state,metrics,row['counts'])
         row['passed']=True
         persist()
     return callback
@@ -1087,7 +1092,7 @@ def h4r_audit_callback(api,args,report,persist,gpu_check):
     return callback
 
 
-def h4r_bootstrap_pins(args,*,h4cc=False):
+def h4r_bootstrap_pins(args,*,h4cc=False,h4m6=None):
     from importlib.machinery import PathFinder
     root=Path(__file__).resolve().parent
     compat=root.parent/'G1_M4_0_G1_PPO_ONE_UPDATE_SMOKE_V1'
@@ -1095,6 +1100,11 @@ def h4r_bootstrap_pins(args,*,h4cc=False):
     local_pins=dict(H4R_LOCAL_SHA)
     if h4cc:
         local_pins['m463_coverage_env']='d131e0bd14f6f1c8730eef5aaac32a6ef11e30ca19b7efb0a0751d1822991d01'
+    if h4m6 is not None:
+        h4m6_require(h4cc and h4m6['id']==H4M6_ID,'BOOTSTRAP_MODE')
+        identity=h4m6_source_identity(root)
+        h4m6_require(identity['sha256']==h4m6['source_sha256'],'BOOTSTRAP_SOURCE')
+        local_pins['m463_coverage_env']=identity['files']['m463_coverage_env.py']
     for name,expected in local_pins.items():
         search=[str(compat),*sys.path] if name=='nvcc_compat' else sys.path
         spec=PathFinder.find_spec(name,search)
@@ -2360,11 +2370,11 @@ def h4x_generated_guard(audit,generated_file):
     h4x_write_json(out/'dispatch.started.json',{'authorization':auth},exclusive=True)
 
 
-def h4x_bootstrap(args,*,h4cc=False):
+def h4x_bootstrap(args,*,h4cc=False,h4m6=None):
     from types import SimpleNamespace
     proxy=SimpleNamespace(checkpoint=args.checkpoint,restore_report=args.restore_report,
                           h4_readiness_reward_report=args.h4_exploratory_reward_report)
-    pins=h4r_bootstrap_pins(proxy,h4cc=h4cc)
+    pins=h4r_bootstrap_pins(proxy,h4cc=h4cc,h4m6=h4m6)
     # Exact launcher overlay resolution before JAX is imported.
     from importlib import metadata
     from importlib.machinery import PathFinder
@@ -3770,6 +3780,8 @@ def h3_technical_gate(api, train_cfg, stage, instrument_meta, result, persist):
 
 
 def run(args):
+    if getattr(args,'h4m6_arm',None) is not None:
+        raise RuntimeError('M470_H4M6_EXECUTION_HOLD')
     if getattr(args,'h4cc_arm',None) is not None:
         return h4cc_run(args)
     if getattr(args,'h4_exploratory',False):
@@ -3779,6 +3791,8 @@ def run(args):
 
 
 def _run_impl(args,h4x=None):
+    if getattr(args,'h4m6_arm',None) is not None:
+        raise RuntimeError('M470_H4M6_EXECUTION_HOLD')
     cc_arm=getattr(args,'h4cc_arm',None)
     if cc_arm is not None or getattr(args,'h4_exploratory',False):
         auth=h4cc_validate_cli(args) if cc_arm is not None else h4x_validate_cli(args)
@@ -4829,6 +4843,290 @@ def h4cc_validate_held_plan(a):
         raise RuntimeError('M470_H4CC_PLAN_CONTRACT')
 
 
+
+# H4-M6 held core. No legacy authorization or runtime entry is reused.
+H4M6_ID = 'H4-M6-RSS-V1'
+H4M6_PATHS = {p: 'm463_runs/m470_h4_m6_'+p+'_v1' for p in ('tech','ref','rss','dev')}
+H4M6_SPEC = {'id':H4M6_ID,'window':50,'peak_relaxation':.5,
+    'event_unchanged':True,'terminal_unchanged':True,'seed':1,
+    'checkpoint_sha256':SEED1_SHA,'restore_sha256':H3_CAUSAL_RESTORE_SHA,
+    'orbax_sha256':H4_ORBAX_SHA,'config_fingerprint':H3_FP,
+    'tech_physical':416,'tech_reset_lanes':8,'tech_max_lane_steps':52,
+    'training_per_arm':10485760,'optimizer_per_arm':1600,'source_eval_per_arm':6000,
+    'chunks_per_arm':8,'train_reset_lanes_per_arm':24576,'eval_reset_lanes_per_arm':6,
+    'dev_physical':89616,'dev_logical':120,'dev_group_resets':24,
+    'mechanism_records':416,'mechanism_record_cap':65536,'mechanism_report_cap':32*1024**2,
+    'tech_report_cap':16*1024**2,'log_cap':16*1024**2,
+    'total_future_physical':21073552,'execution_authorized':False}
+
+def h4m6_require(ok,label):
+    if not bool(ok):
+        raise RuntimeError('M470_H4M6_'+label)
+
+def h4m6_spec_digest():
+    return hashlib.sha256(json.dumps(H4M6_SPEC,sort_keys=True,
+        separators=(',',':'),allow_nan=False).encode()).hexdigest()
+
+def h4m6_plan(phase):
+    h4m6_require(phase in H4M6_PATHS,'PHASE')
+    return {'spec':dict(H4M6_SPEC),'spec_sha256':h4m6_spec_digest(),
+            'phase':phase,'output':H4M6_PATHS[phase],
+            'training_performed':False,'execution_authorized':False}
+
+def h4m6_parse_marker(rules,source,spec):
+    """Schema only; authorization is not execution and held dispatch never consumes it."""
+    import re
+    active=re.findall(r'^[A-Z0-9_]*ACTIVE_GO:.*$',rules,re.M)
+    h4m6_require(len(active)==1 and active[0].startswith('H4M6_ACTIVE_GO: '),'EXECUTION_HOLD' if not active else 'AUTH_CONFLICT')
+    tokens=active[0].split()
+    h4m6_require(len(tokens)==12 and tokens[1]==H4M6_ID,'AUTH_SCHEMA')
+    _,ident,phase,path,src,sp,gen,ext,st,tech,ref,rss=tokens
+    sha=lambda x:re.fullmatch(r'[0-9a-f]{64}',x) is not None
+    h4m6_require(phase in H4M6_PATHS and path==H4M6_PATHS[phase] and
+        all(sha(x) for x in (src,sp,gen,ext,st)) and src==source and sp==spec,'AUTH_PIN')
+    expected={'tech':(False,False,False),'ref':(True,False,False),
+              'rss':(True,True,False),'dev':(True,True,True)}[phase]
+    h4m6_require(all(sha(x) if need else x=='-' for x,need in zip((tech,ref,rss),expected)),'AUTH_EVIDENCE')
+    approved=re.findall(r'^H4M6_STATIC_APPROVED: (.+)$',rules,re.M)
+    h4m6_require(len(approved)==1,'STATIC_REQUIRED')
+    fields=approved[0].split()
+    h4m6_require(len(fields)==6 and fields[:5]==[src,sp,gen,ext,st] and
+        re.fullmatch(r'm463_runs/m470_h4_m6_1_full_static_[0-9_]+\.log',fields[5]) is not None,'STATIC_BINDING')
+    for tag,need,val in zip(('TECH','REF','RSS'),expected,(tech,ref,rss)):
+        pins=re.findall(r'^H4M6_APPROVED_'+tag+r'_SHA256: ([0-9a-f]{64})$',rules,re.M)
+        h4m6_require((pins==[val]) if need else (not pins),'EVIDENCE_BINDING '+tag)
+    return dict(id=ident,phase=phase,output=path,source_sha256=src,spec_sha256=sp,
+        generated_sha256=gen,external_sha256=ext,static_sha256=st,static_log=fields[5],
+        technical_sha256=tech,ref_sha256=ref,rss_sha256=rss)
+
+def h4m6_generated_guard(audit,generated_file,environment):
+    # Deliberately unconditional until the complete native integration is reviewed.
+    raise RuntimeError('M470_H4M6_EXECUTION_HOLD')
+
+def h4m6_validate_held_plan(a):
+    h4m6_require(a.mode=='plan','EXECUTION_HOLD')
+    phase=getattr(a,'h4m6_arm',None)
+    h4m6_require(phase in ('ref','rss') and a.stage=='easy_repeat_support'
+        and a.output_dir==Path(H4M6_PATHS[phase]),'PLAN_PATH')
+    h4m6_require(not any(getattr(a,k,None) for k in (
+        'h4cc_arm','h4cc_technical_report','h4cc_ref_report','h4_arm','h4_control_report',
+        'h4_exploratory','h4_exploratory_causal_report','h4_exploratory_reward_report',
+        'h4_readiness','h4_readiness_reward_report','h4_causal','h4_causal_failure_report',
+        'h3_m1','h3_diagnostic_only','h3_causal_report','h3_old10m_report',
+        'h1_m1','h1_m2','smoke_report','rollouts','num_evals','resume_state',
+        'independent_budget')),'PLAN_CONFLICT')
+    return h4m6_plan(phase)
+
+def h4m6_count_keys():
+    keys=['m463_h4m6_bad_per_rollout']
+    for side in (1,2):
+        names=('qualified','event_terminal','start','eligible','positive_start',
+            'completed','close_terminal','close_truncation','close_boundary',
+            'close_command','close_event','opportunity','attempt')
+        names+=tuple(f'{k}_{w}' for w in (1,10,25,50) for k in ('reached','same_unroll'))
+        names+=tuple(f'offset_{off}' for off in range(32))
+        keys.extend(f'm463_h4m6_{side}_{name}_per_rollout' for name in names)
+    return tuple(keys)
+
+def h4m6_sum_keys():
+    keys=['m463_h4m6_'+k+'_sum' for k in ('base_reward','expected_reward',
+        'shadow_relief','delivered_relief','transition_reward','ppo_scaled_relief')]
+    keys.extend(f'm463_h4m6_{side}_{name}{suffix}_sum' for side in (1,2)
+        for name in ('shadow_relief','delivered_relief') for suffix in ('','_same_unroll'))
+    return tuple(keys)
+
+def h4m6_epoch_audit(counts,sums,pending,h4_counts,arm,*,final=False):
+    """Conservation and scope gates; dose sufficiency is distinct from technical PASS."""
+    import math
+    h4m6_require(arm in ('ref','rss') and set(counts)==set(h4m6_count_keys()) and
+        set(sums)==set(h4m6_sum_keys()) and set(pending)=={'1','2'},'LEDGER_SCHEMA')
+    cap=10485760 if final else 5242880
+    h4m6_require(all(type(v) is int and 0<=v<=cap for v in counts.values()) and
+        all(type(v) is int and 0<=v<=(16384 if final else 8192) for v in pending.values()) and
+        all(type(v) in (int,float) and math.isfinite(v) for v in sums.values()),'LEDGER_VALUES')
+    c=lambda side,name:counts[f'm463_h4m6_{side}_{name}_per_rollout']
+    f=lambda name:sums['m463_h4m6_'+name+'_sum']
+    checks={'no_bad':counts['m463_h4m6_bad_per_rollout']==0,
+        'actual_reward':f('expected_reward')==f('transition_reward'),
+        'scope_global':0<=f('delivered_relief')<=f('shadow_relief'),
+        'arm_global':f('delivered_relief')==(f('shadow_relief') if arm=='rss' else 0)}
+    floors={}
+    for side in (1,2):
+        q=c(side,'qualified'); n=c(side,'start'); e=c(side,'eligible')
+        closed=sum(c(side,k) for k in ('completed','close_terminal','close_truncation',
+                                      'close_boundary','close_command','close_event'))
+        checks[f'qualified_{side}']=q==h4_counts[f'm463_h4_stand_{side}_events_per_rollout'] and q==n+c(side,'event_terminal')
+        checks[f'closure_{side}']=n==closed+pending[str(side)]
+        checks[f'no_impossible_{side}']=c(side,'close_boundary')==c(side,'close_event')==0
+        checks[f'opportunity_{side}']=q<=c(side,'attempt')<=c(side,'opportunity')
+        checks[f'dose_{side}']=0<=e<=50*n and c(side,'positive_start')<=n and sum(c(side,f'offset_{i}') for i in range(32))==e
+        prev=n
+        for w in (1,10,25,50):
+            a=c(side,f'reached_{w}'); b=c(side,f'same_unroll_{w}')
+            checks[f'window_{side}_{w}']=0<=b<=a<=prev and (w<32 or b==0)
+            prev=a
+        checks[f'complete_{side}']=c(side,'completed')==c(side,'reached_50')
+        for suffix in ('','_same_unroll'):
+            sh=f(f'{side}_shadow_relief{suffix}'); de=f(f'{side}_delivered_relief{suffix}')
+            checks[f'relief_{side}{suffix}']=0<=de<=sh and de==(sh if arm=='rss' else 0)
+        floors[f'qualified_{side}']=q>=32
+        floors[f'reached25_{side}']=c(side,'reached_25')>=16
+        floors[f'positive_{side}']=c(side,'positive_start')>=32
+    return {'checks':checks,'passed':all(checks.values()),'dose_floors':floors,
+            'exposure_adequate':all(floors.values()) if final else None}
+
+def h4m6_exposure_comparison(ref,rss):
+    """Post-training opportunity comparability; never equate survival outcomes."""
+    rows={}
+    for side in (1,2):
+        for name in ('qualified','opportunity'):
+            key=f'm463_h4m6_{side}_{name}_per_rollout'
+            rows[key]=[ref['counts'][key],rss['counts'][key]]
+    for name in ('assigned','repeat_events'):
+        key=f'm463_h4_class_3_{name}_per_rollout'
+        rows[key]=[ref['h4_counts'][key],rss['h4_counts'][key]]
+    nominal='m463_h4_class_0_steps_per_rollout'
+    r,t=ref['h4_counts'][nominal],rss['h4_counts'][nominal]
+    h4m6_require(all(type(v) is int and 0<=v<=10485760
+        for pair in rows.values() for v in pair) and all(type(v) is int and 0<=v<=10485760 for v in (r,t)),'MATCH_COUNTS')
+    checks={k:a>0 and 4*a<=5*b and 4*b<=5*a for k,(a,b) in rows.items()}
+    checks['matched_nominal']=r>=1867669 and t>=1867669 and 5*t>=4*r
+    adequate=(ref['audit']['passed'] is True and rss['audit']['passed'] is True and
+        ref['audit']['exposure_adequate'] is True and rss['audit']['exposure_adequate'] is True and all(checks.values()))
+    return {'counts':rows,'checks':checks,'decision':'ADEQUATE' if adequate else 'INCONCLUSIVE_EXPOSURE'}
+
+
+def h4m6_chunk_ledger(jax,np,report,arm):
+    """Compose with the existing H4/CCRC host callback, read-only carry audit."""
+    h4m6_require(arm in ('ref','rss'),'ARM')
+    chunks=[]; epochs=[]; counts={}; sums={}; h4_counts={}
+    report['h4m6_chunks']=chunks
+    report['h4m6_epochs']=epochs
+    def merge(dst,src):
+        for k,v in src.items():
+            dst[k]=dst.get(k,0)+v
+    def callback(index,env_state,metrics,old_counts):
+        h4m6_require(len(chunks)<8 and index==len(chunks)%4+1,'CHUNK_SEQUENCE')
+        def scalar(k):
+            a=np.asarray(jax.device_get(metrics[k]))
+            h4m6_require(a.shape==() and a.dtype==np.float32 and np.isfinite(a),'METRIC '+k)
+            return a.item()
+        c={k:h4_integer_count(scalar(k)) for k in h4m6_count_keys()}
+        z={k:5*scalar(k) for k in h4m6_sum_keys()}
+        h4m6_require(c['m463_h4m6_bad_per_rollout']==0,'BAD_TRANSITION')
+        merge(counts,c); merge(sums,z); merge(h4_counts,old_counts)
+        chunks.append({'chunk':len(chunks)+1,'counts':c,'sums':z,'h4_counts':dict(old_counts)})
+        if index==4:
+            info=env_state.info
+            active,age,side,positive,consumed=[np.asarray(jax.device_get(info['h4m6_'+k])) for k in ('active','age','side','positive','consumed')]
+            h4m6_require(all(x.shape==(1,8192) and x.dtype==np.int32 for x in (active,age,side,positive,consumed))
+                and np.isin(active,(0,1)).all() and np.isin(positive,(0,1)).all()
+                and np.isin(consumed,(0,1)).all() and np.all(active<=consumed)
+                and np.all(np.where(active>0,(age>=0)&(age<50)&np.isin(side,(1,2)),(age==0)&(side==0)&(positive==0))),
+                'PENDING_SCHEMA')
+            pending={str(i):int(np.count_nonzero((active>0)&(side==i))) for i in (1,2)}
+            audit=h4m6_epoch_audit(counts,sums,pending,h4_counts,arm)
+            epochs.append({'counts':dict(counts),'sums':dict(sums),'h4_counts':dict(h4_counts),
+                           'pending':pending,'audit':audit})
+            h4m6_require(audit['passed'],'EPOCH_LEDGER')
+            counts.clear(); sums.clear(); h4_counts.clear()
+            if len(chunks)==8:
+                report['h4m6_final']=h4m6_replay_ledger(report,arm)
+    return callback
+
+def h4m6_replay_ledger(report,arm):
+    """Replay independently from eight observed chunks; no accepted-summary shortcut."""
+    chunks=report['h4m6_chunks']; epochs=report['h4m6_epochs']
+    h4m6_require(len(chunks)==8 and len(epochs)==2,'FINAL_LENGTH')
+    c_all={}; s_all={}; h_all={}; p_all={'1':0,'2':0}
+    def merge(dst,src):
+        for k,v in src.items():
+            dst[k]=dst.get(k,0)+v
+    for ep in range(2):
+        counts={}; sums={}; h4={}
+        for n,row in enumerate(chunks[ep*4:ep*4+4],ep*4+1):
+            h4m6_require(row['chunk']==n and set(row['counts'])==set(h4m6_count_keys())
+                and set(row['sums'])==set(h4m6_sum_keys())
+                and all(type(v) is int and 0<=v<=1310720 for v in row['counts'].values())
+                and all(type(v) is int and 0<=v<=1310720 for v in row['h4_counts'].values())
+                and all(type(v) in (int,float) and math.isfinite(v) for v in row['sums'].values()),'FINAL_CHUNK')
+            merge(counts,row['counts']); merge(sums,row['sums']); merge(h4,row['h4_counts'])
+        saved=epochs[ep]; pending=saved['pending']
+        audit=h4m6_epoch_audit(counts,sums,pending,h4,arm)
+        h4m6_require(saved=={'counts':counts,'sums':sums,'h4_counts':h4,'pending':pending,'audit':audit}
+            and audit['passed'],'FINAL_EPOCH_REPLAY')
+        merge(c_all,counts); merge(s_all,sums); merge(h_all,h4); merge(p_all,pending)
+    audit=h4m6_epoch_audit(c_all,s_all,p_all,h_all,arm,final=True)
+    h4m6_require(audit['passed'],'FINAL_LEDGER')
+    return {'counts':c_all,'sums':s_all,'h4_counts':h_all,'pending':p_all,'audit':audit}
+
+def h4m6_source_identity(root):
+    """Separate current-source map. Historical H4CC source pins remain untouched."""
+    root=Path(root).resolve()
+    names=(*H4_FILES,'m463_gate3_cp_eval.py','paper_config_preflight.json')
+    result={}
+    for name in names:
+        p=root/name
+        h4m6_require(p.is_file() and not p.is_symlink(),'SOURCE_FILE '+name)
+        result[name]=digest(p)
+    common=hashlib.sha256(json.dumps(result,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+    h4m6_require(common==h4x_source_digest(root),'COMMON_SOURCE')
+    return {'files':result,'sha256':common}
+
+
+def h4m6_authorization(root=None,phase=None):
+    root=Path(__file__).resolve().parent if root is None else Path(root).resolve()
+    rules=(root/'G1_RESEARCH_RULES.md').read_text('utf8')
+    auth=h4m6_parse_marker(rules,h4m6_source_identity(root)['sha256'],h4m6_spec_digest())
+    h4m6_require(phase is None or auth['phase']==phase,'AUTH_PHASE')
+    h4m6_require(not any((H4_EXECUTION_AUTHORIZED,H4R_EXECUTION_AUTHORIZED,
+                           H4C_EXECUTION_AUTHORIZED)),'LEGACY_HOLD_REQUIRED')
+    h4m6_validate_static(root,auth)
+    return auth
+
+def h4m6_validate_static(root,auth):
+    root=Path(root).resolve()
+    h4m6_require(h4m6_source_identity(root)['sha256']==auth['source_sha256']
+        and h4m6_spec_digest()==auth['spec_sha256'],'STATIC_SOURCE')
+    log=root/auth['static_log']
+    h4m6_require(log.is_file() and not log.is_symlink() and 0<log.stat().st_size<=H4M6_SPEC['log_cap']
+        and digest(log)==auth['static_sha256'],'STATIC_LOG')
+    rows=log.read_text('utf8').splitlines()
+    for marker,value in (
+        ('H4_M6_1_FULL_STATIC_PASS',auth['source_sha256']),
+        ('H4_M6_1_SPEC_SHA256',auth['spec_sha256']),
+        ('H4_M6_1_GENERATED_SHA256',auth['generated_sha256']),
+        ('H4_M6_1_EXTERNAL_SHA256',auth['external_sha256'])):
+        h4m6_require([x for x in rows if x.startswith(marker+' ')]==[marker+' '+value],'STATIC_MARKER '+marker)
+    return True
+
+def h4m6_fixed_gae(np,reward,values,bootstrap,discount,truncation):
+    """Host arithmetic fixture of pinned losses.py; no actor/critic/optimizer call."""
+    reward=np.asarray(reward,dtype=np.float32)
+    values=np.asarray(values,dtype=np.float32)
+    bootstrap=np.asarray(bootstrap,dtype=np.float32)
+    discount=np.asarray(discount,dtype=np.float32)
+    truncation=np.asarray(truncation,dtype=np.float32)
+    h4m6_require(reward.shape==values.shape==discount.shape==truncation.shape and
+        reward.ndim==2 and reward.shape[0]==32 and bootstrap.shape==reward.shape[1:] and
+        all(np.isfinite(x).all() for x in (reward,values,bootstrap,discount,truncation)) and
+        np.isin(discount,(0,1)).all() and np.isin(truncation,(0,1)).all(),'GAE_SHAPE')
+    gamma=np.float32(.98); lam=np.float32(.95)
+    scaled=reward*np.float32(.1)
+    mask=1-truncation
+    term=(1-discount)*mask
+    next_values=np.concatenate((values[1:],bootstrap[None]),axis=0)
+    delta=(scaled+gamma*(1-term)*next_values-values)*mask
+    acc=np.zeros_like(bootstrap); accum=np.empty_like(values)
+    for k in range(31,-1,-1):
+        acc=delta[k]+gamma*(1-term[k])*mask[k]*lam*acc
+        accum[k]=acc
+    vs=values+accum
+    next_vs=np.concatenate((vs[1:],bootstrap[None]),axis=0)
+    adv=(scaled+gamma*(1-term)*next_vs-values)*mask
+    normalized=(adv-adv.mean())/(adv.std()+np.float32(1e-8))
+    return {'vs':vs,'adv':adv,'normalized':normalized}
+
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--mode',choices=['plan','smoke','probe2','smoke3','pilot','longtrain','readiness','causal'],required=True)
@@ -4862,7 +5160,15 @@ def main():
     p.add_argument('--h4cc-arm',choices=['ref','ccrc'],help='CCRC separate held authorization')
     p.add_argument('--h4cc-technical-report',type=Path)
     p.add_argument('--h4cc-ref-report',type=Path)
+    p.add_argument('--h4m6-arm',choices=['ref','rss'],help='H4-M6 held plan only')
     a=p.parse_args()
+    if a.h4m6_arm is not None:
+        try:
+            plan=h4m6_validate_held_plan(a)
+        except RuntimeError as exc:
+            p.error(str(exc))
+        print('M470_H4M6_PLAN_NO_GPU',json.dumps(plan,sort_keys=True))
+        return
     if a.h4cc_arm is not None:
         if a.mode!='plan':
             try:

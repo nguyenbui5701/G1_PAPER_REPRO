@@ -137,6 +137,99 @@ def h4cc_transition(xp, old, *, treatment, event, mature_repeat, side, motion,
     return delivered, ao, co, out
 
 
+# H4-M6-RSS-V1: event metadata only; never part of observations.
+H4M6_REWARD_NAMES = ('tracking_lin_vel','tracking_ang_vel','lin_vel_z','ang_vel_xy',
+    'orientation','base_height','torques','action_rate','energy','dof_acc',
+    'feet_slip','feet_clearance','feet_height','feet_air_time','feet_phase',
+    'alive','termination','stand_still','collision','contact_force',
+    'joint_deviation_hip','joint_deviation_knee','dof_pos_limits','pose')
+H4M6_STATE = ('active','age','side','positive','consumed')
+H4M6_INT_FIELDS = ('qualified','event_terminal','start','event_side','eligible',
+    'tick_age','tick_side','positive_start','completed','close_terminal',
+    'close_truncation','close_boundary','close_command','close_event','bad',
+    'opportunity_side','attempt_side')
+H4M6_FLOAT_FIELDS = ('factor','raw_stand','shadow_stand','actual_stand',
+    'shadow_relief','delivered_relief','base_reward','expected_reward')
+H4M6_FIELDS = H4M6_INT_FIELDS + H4M6_FLOAT_FIELDS
+
+def h4m6_pre(xp, old, *, event, repeat, cls, first_age, first_mag, gap,
+              magnitude, first_motion, pre_motion, actor_motion, direction,
+              support_side, boundary, age, clock, wrapper_steps,
+              command, actor_command, critic_command):
+    """Pure prospective metadata; called before original source step."""
+    active = old['h4m6_active'] > 0
+    old_age = old['h4m6_age']
+    consumed = (old['h4m6_consumed'] > 0) & (~boundary)
+    side_target = xp.where(direction == 2, 1, xp.where(direction == 3, 2, 0))
+    mature = (event & repeat & (cls == 3) & (first_age >= 240) &
+              (first_age <= 308) & (first_mag >= .45) & (first_mag <= .55) &
+              (gap >= 30) & (gap <= 40) & (magnitude >= .30) &
+              (magnitude <= .40) & (first_motion == pre_motion) &
+              (actor_motion == pre_motion))
+    native_qual = mature & (pre_motion == 0) & (side_target > 0) & (support_side == side_target)
+    coherent = xp.all(command == actor_command) & xp.all(command == critic_command)
+    zero = xp.all(command == 0) & coherent
+    clock_ok = (clock == age) & (wrapper_steps == age) & (clock < 500)
+    truncation = wrapper_steps + 1 >= 1000
+    qualified = native_qual & zero & clock_ok & (~boundary) & (~truncation) & (~active) & (~consumed)
+    opportunity = xp.where(boundary & (cls == 3) & (pre_motion == 0),side_target,0)
+    attempt = xp.where(repeat & event & (cls == 3) & (first_motion == 0) &
+                       (pre_motion == 0),side_target,0)
+    k = old_age + 1
+    valid_old = (old_age >= 0) & (old_age < 50) & ((old['h4m6_side']==1) | (old['h4m6_side']==2))
+    close_boundary = active & boundary
+    close_event = active & (~boundary) & event
+    close_truncation = active & (~boundary) & (~event) & truncation
+    close_command = active & (~boundary) & (~event) & (~truncation) & ((~zero) | (clock >= 500))
+    eligible_pre = active & valid_old & (~boundary) & (~event) & (~truncation) & zero & clock_ok
+    bad = (native_qual & (~qualified)) | (active & (~valid_old)) | close_boundary | close_event
+    bad = bad | (active & (~coherent)) | (active & (~boundary) & (~truncation) &
+              (clock < 500) & ((clock != age) | (wrapper_steps != age)))
+    bad = bad | ((~active) & ((old_age != 0) | (old['h4m6_side'] != 0) | (old['h4m6_positive'] != 0))) | (active & (~consumed) & (~boundary))
+    return dict(qualified=qualified,native_qual=native_qual,mature=mature,consumed=consumed,
+                side=side_target,active=active,k=k,eligible_pre=eligible_pre,
+                close_boundary=close_boundary,close_event=close_event,
+                close_truncation=close_truncation,close_command=close_command,
+                opportunity_side=opportunity,attempt_side=attempt,bad=bad)
+
+def h4m6_reward(xp, raw, eligible_pre, k, done, treatment):
+    """Identity outside scope; scalar float32 shadow and delivered raw cost."""
+    eligible = eligible_pre & (~done)
+    one = xp.asarray(1.,dtype=raw.dtype)
+    factor = xp.where(eligible,one-xp.asarray(.5,dtype=raw.dtype) *
+                      (xp.asarray(51,dtype=raw.dtype)-k.astype(raw.dtype)) /
+                      xp.asarray(50,dtype=raw.dtype),one)
+    shadow = xp.where(eligible,factor*raw,raw)
+    delivered = xp.where(eligible & treatment,shadow,raw)
+    return eligible,factor,shadow,delivered
+
+def h4m6_post(xp, old, pre, *, done, eligible, raw, shadow):
+    """Finalize exactly one window; close priority boundary/event/trunc/command/terminal."""
+    qualified = pre['qualified']
+    start = qualified & (~done)
+    close_terminal = pre['active'] & done & (~pre['close_boundary']) & (~pre['close_event']) & (~pre['close_truncation']) & (~pre['close_command'])
+    complete = eligible & (pre['k'] == 50)
+    keep = start | (eligible & (~complete))
+    positive = eligible & (raw > shadow)
+    positive_start = positive & (~(old['h4m6_positive'] > 0))
+    bad = pre['bad'] | (eligible != (pre['eligible_pre'] & (~done))) | (raw < 0) | (shadow < 0) | (shadow > raw)
+    closed = pre['close_boundary'] | pre['close_event'] | pre['close_truncation'] | pre['close_command'] | close_terminal | complete
+    bad = bad | (pre['active'] & (~(closed | eligible))) | (closed & keep)
+    side = old['h4m6_side']
+    vals = dict(qualified=qualified,event_terminal=qualified & done,start=start,
+        event_side=xp.where(qualified,pre['side'],0),eligible=eligible,
+        tick_age=xp.where(eligible,pre['k'],0),tick_side=xp.where(pre['active'],side,0),
+        positive_start=positive_start,completed=complete,close_terminal=close_terminal,
+        close_truncation=pre['close_truncation'],close_boundary=pre['close_boundary'],
+        close_command=pre['close_command'],close_event=pre['close_event'],
+        opportunity_side=pre['opportunity_side'],attempt_side=pre['attempt_side'],bad=bad,
+        consumed=pre['consumed'] | qualified,
+        active=keep,age=xp.where(keep & (~start),pre['k'],0),
+        side=xp.where(keep,xp.where(start,pre['side'],side),0),
+        positive=keep & (~start) & ((old['h4m6_positive'] > 0) | positive))
+    return {'h4m6_'+k:xp.asarray(v,xp.int32) for k,v in vals.items()}
+
+
 def heading_from_wxyz(quat):
     w, x, y, z = quat[0], quat[1], quat[2], quat[3]
     return jp.arctan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
@@ -160,7 +253,7 @@ class CoverageJoystick(joystick.Joystick):
     boundary for re-sampling push targets and counters.  Tracking `age` also
     supports a direct/unwrapped one-env diagnostic.
     """
-    def __init__(self, *, stage: str, config, task='flat_terrain', h1_m1=False, h1_m2=False, h3_m1=False, h4_arm=None, h4cc_arm=None):
+    def __init__(self, *, stage: str, config, task='flat_terrain', h1_m1=False, h1_m2=False, h3_m1=False, h4_arm=None, h4cc_arm=None, h4m6_arm=None, h4m6_tech_capture=False):
         if stage not in STAGES:
             raise ValueError('M463_BAD_STAGE')
         if bool(config.push_config.enable):
@@ -189,6 +282,16 @@ class CoverageJoystick(joystick.Joystick):
             raise ValueError('M470_H4_ENV_CONTRACT')
         if h4cc_arm not in (None, 'ref', 'ccrc') or (h4cc_arm is not None and h4_arm != 'candidate'):
             raise ValueError('M470_H4CC_ENV_CONTRACT')
+        if h4m6_arm not in (None,'ref','rss') or (h4m6_arm is not None and
+                (h4_arm != 'candidate' or h4cc_arm != 'ref' or
+                 float(config.reward_config.scales.stand_still) != -1.0 or
+                 float(config.reward_config.scales.termination) != -100.0 or
+                 len(config.reward_config.scales) != 24)):
+            raise ValueError('M470_H4M6_ENV_CONTRACT')
+        if h4m6_tech_capture and h4m6_arm is None:
+            raise ValueError('M470_H4M6_CAPTURE_CONTRACT')
+        self._h4m6_tech_capture = bool(h4m6_tech_capture)
+        self._h4m6_arm = h4m6_arm
         self._h4cc_arm = h4cc_arm
         self._h4_arm = h4_arm
         self._m463_stage = stage
@@ -261,6 +364,23 @@ class CoverageJoystick(joystick.Joystick):
         if self._h3_m1:
             g = h3_stand_factor(info['m470_h3_n'], done)
             rewards['stand_still'] = g * rewards['stand_still']
+        if getattr(self,'_h4m6_arm',None) is not None:
+            if tuple(rewards) != H4M6_REWARD_NAMES:
+                raise RuntimeError('M470_H4M6_REWARD_KEYS')
+            raw = rewards['stand_still']
+            eligible,factor,shadow,delivered = h4m6_reward(
+                jp,raw,info['h4m6_pre_eligible']>0,info['h4m6_pre_k'],
+                done>0,self._h4m6_arm=='rss')
+            base = sum(v*self._config.reward_config.scales[k] for k,v in rewards.items())*self.dt
+            rewards['stand_still'] = delivered
+            if self._h4m6_tech_capture:
+                info['h4m6_raw_rewards'] = jp.stack([rewards[k] for k in H4M6_REWARD_NAMES])
+            expected = sum(v*self._config.reward_config.scales[k] for k,v in rewards.items())*self.dt
+            info.update(h4m6_eligible=eligible.astype(jp.int32),
+                h4m6_factor=factor,h4m6_raw_stand=raw,h4m6_shadow_stand=shadow,
+                h4m6_actual_stand=delivered,h4m6_shadow_relief=(raw-shadow)*self.dt,
+                h4m6_delivered_relief=(raw-delivered)*self.dt,
+                h4m6_base_reward=base,h4m6_expected_reward=expected)
         return rewards
 
     def reset(self, rng):
@@ -317,6 +437,13 @@ class CoverageJoystick(joystick.Joystick):
             info.update({'h4cc_'+k:zeros for k in (*H4CC_FIELDS,*H4CC_STATE)})
             info.update(h4cc_held_command=jp.zeros_like(info['command']),
                         h4cc_pending_command=jp.zeros_like(info['command']))
+        if getattr(self,'_h4m6_arm',None) is not None:
+            info.update({'h4m6_'+k:zeros for k in H4M6_STATE+H4M6_INT_FIELDS})
+            info.update({'h4m6_'+k:jp.asarray(1. if k=='factor' else 0.,jp.float32)
+                         for k in H4M6_FLOAT_FIELDS})
+            info.update(h4m6_pre_eligible=zeros,h4m6_pre_k=zeros)
+            if self._h4m6_tech_capture:
+                info['h4m6_raw_rewards'] = jp.zeros((24,),jp.float32)
         return state.replace(info=info)
 
     def step(self, state, action):
@@ -437,6 +564,19 @@ class CoverageJoystick(joystick.Joystick):
             h3_pre_command = info['command']
             h3_pre_stand = (jp.linalg.norm(h3_pre_command) < 0.01)
             info['m470_h3_n'] = h3_n
+        if getattr(self,'_h4m6_arm',None) is not None:
+            m6 = h4m6_pre(jp,info,event=event,repeat=event & (count>0),cls=h4_class,
+                first_age=jp.where(boundary,-1,info['h4_first_age']),
+                first_mag=jp.where(boundary,0.,info['h4_first_mag']),
+                gap=age-last_event_age,magnitude=magnitude,
+                first_motion=jp.where(boundary,-1,info['h4_first_motion']),
+                pre_motion=pre_motion,actor_motion=actor_motion,direction=direction,
+                support_side=support_side,boundary=boundary,age=age,clock=pre_source_step,
+                wrapper_steps=info['steps'],command=pre_command,
+                actor_command=state.obs['state'][9:12],
+                critic_command=state.obs['privileged_state'][9:12])
+            info['h4m6_pre_eligible'] = m6['eligible_pre'].astype(jp.int32)
+            info['h4m6_pre_k'] = m6['k'].astype(jp.int32)
         updated_qvel = state.data.qvel.at[:2].add(world_delta)
         if self._h4_arm is not None:
             h4_actual_delta = updated_qvel[:2] - state.data.qvel[:2]
@@ -643,4 +783,19 @@ class CoverageJoystick(joystick.Joystick):
                 h4_first_mag=jp.where(first,magnitude,first_mag),
                 h4_first_motion=jp.where(first,pre_motion,first_motion),
                 h4_tail_motion=jp.where(event,pre_motion,info['h4_tail_motion']))
+        if getattr(self,'_h4m6_arm',None) is not None:
+            m6out = h4m6_post(jp,info,m6,done=after.done>0,
+                eligible=out['h4m6_eligible']>0,raw=out['h4m6_raw_stand'],
+                shadow=out['h4m6_shadow_stand'])
+            finite = jp.all(jp.isfinite(jp.stack([out['h4m6_'+k] for k in H4M6_FLOAT_FIELDS])))
+            bad = ((m6out['h4m6_bad']>0) | (~finite) |
+                   (m6['mature'] != (out['h4_mature_repeat']>0)) |
+                   (m6['native_qual'] != (out['h4_event_qual']>0)) |
+                   (out['h4m6_expected_reward'] != after.reward) |
+                   (after.metrics['reward/stand_still'] != -out['h4m6_actual_stand']) |
+                   ((out['h4m6_eligible']==0) & (out['h4m6_delivered_relief']!=0)) |
+                   ((self._h4m6_arm=='ref') & (out['h4m6_delivered_relief']!=0)))
+            m6out['h4m6_bad'] = bad.astype(jp.int32)
+            out.update(m6out)
+            out['h4_bad'] = jp.maximum(out['h4_bad'],m6out['h4m6_bad'])
         return after.replace(info=out)
