@@ -3997,7 +3997,7 @@ def h4cc_tech_inputs(args,auth):
         'H4CC_TECH_COMMON_SOURCE_SHA256 '+auth['source_sha256'] in static and
         'H4CC_TECH_GENERATED_SHA256 '+auth['generated_sha256'] in static,'STATIC_EVIDENCE')
     bootstrap=t.h4x_bootstrap(SimpleNamespace(checkpoint=paths['C401M'],
-        restore_report=paths['restore'],h4_exploratory_reward_report=paths['reward']))
+        restore_report=paths['restore'],h4_exploratory_reward_report=paths['reward']),h4cc=True)
     for name in ('m463_coverage_env','m463_gate3_cp_eval'):
         spec=PathFinder.find_spec(name,sys.path)
         h4cc_tech_require(spec is not None and spec.origin is not None and
@@ -4359,8 +4359,11 @@ def h4cc_tech_read_report(path,expected_sha,source,generated):
         h4cc_tech_require(p.is_file() and not p.is_symlink() and
             json.loads(p.read_bytes())==value,'ATTEMPT '+name)
     h4cc_tech_require(set(r['provenance']['input_paths'])==set(r['provenance']['input_sha256']),'INPUT_PATH_SCHEMA')
-    for k,p in r['provenance']['input_paths'].items():
-        t.h4x_file_pin(Path(p),r['provenance']['input_sha256'][k])
+    from types import SimpleNamespace
+    paths={k:Path(p) for k,p in r['provenance']['input_paths'].items()}
+    proxy=SimpleNamespace(checkpoint_c=paths['C401M'],h4_reward_report=paths['reward'],
+        h4cc_restore_report=paths['restore'],h4cc_static_log=paths['static'])
+    h4cc_tech_require(h4cc_tech_inputs(proxy,a)==r['provenance'],'BOOTSTRAP_REPLAY')
     audit=h4cc_tech_audit(r)
     h4cc_tech_require(audit==r['audit'] and audit['passed'],'REPORT_REPLAY')
     return r
