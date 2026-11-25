@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.140  
+**Version:** 1.2.141  
 **Ngày cập nhật:** 2026-11-25 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -1569,6 +1569,14 @@ H4M4_STATIC_APPROVED: 4ce1cb9fd7adf94d78d73c967fdf69ec3633393c7a4571379d277a8e11
 
 Marker is static evidence only. H4-M4-1 CLOSED / FULL STATIC PASS. No H4M4_ACTIVE_GO. H4-M4-2 requires a separate explicit owner GO, review exact approved source/static/spec/external and three raw archives/frozen policy pins, distinct one-use Rules-only authorization, existing native CUDA bootstrap and fixed new output, external bounded combined launcher16MiB with process-group kill on overflow, no retry. Retain all five lanes, post335 fork, exact baseline/sham archived rows and packed telemetry, three-joint pulse336..345 peak.20, headroom/latch/untouched bits, fixed2087 control physical/max2337 total/max867 rich,5 resets/15 suffix branches, report64MiB, all prospective geometry/safety/falsification criteria. Installed compiled model mapping, JAX tracing, actual baseline/sham numerical equivalence and scientific mechanism outcomes remain unverified until separately authorized runtime; no efficacy/readiness/robustness claim. No source edits, no new repo files, zero physical transitions/actual inference/simulation/evaluation/optimizer/checkpoint saves/PPO in this review. Independent holdout, readiness, production, promotion, Branch B and all runtime HOLD.
 
+### M4.70-H4-M4-2 — ONE BOUNDED SUPPORT-CONDITIONED RECOVERY FEASIBILITY PROBE GO / OWNER EXECUTION PENDING (v1.2.141; 2026-11-25)
+
+Owner explicit GO for exactly one bounded causal diagnostic on Branch A, no executable edits. SA reopened Rules v1.2.140/AGENTS at 84bd5da175f8e54df4f10870b4acde9b32aa8493, reviewed exact approved evaluator blob4f8b176a402eced1125c9986b3bec3546bd515a9, trainer cd423719b8d55130b3e15b33256f36c97c2eb1e7, authorization/CLI, frozen plan, evidence reader, dispatcher/runtime entry, native bootstrap/inference/step adapter, actual model guards, host replay/ledger/report progress and safety. All seven broad flags False. Actual uploaded static log5291 bytes SHA256 fb63225ac4c0f8d3cc8f68fa68a87fab2e9e16e3403999cae9dac499ce48bfd5, independently rehashed canonical nine-file common 4ce1cb9fd7adf94d78d73c967fdf69ec3633393c7a4571379d277a8e118164b8, external a7d465daf7d4cc4f79173dd1f36b68703dc721a8012b07905ef059a25cb84d64, reconstructed complete frozen plan 46826431470783ffe577508d721a129f64218fe438137fbf11206ea26c41663c. Actual three raw reports independently rehashed59111112/80281355/20115142 bytes SHA a231ff30abcd053f3e31e147fe4877fe0fe8da996229930c2d3b5fe69510a476 / beaef42162c16c8a8397e5e62164e2c09f443c0b8c5fa7bf3960c7917d3030e8 / 329ff0564d47e05e2360fdf95350928895cf515e8cec6ca9aa2182133319258b, REF/CCRC training reports6fce874743bd40c413295b8ed30451648a552c02292567b6724d259f4fd23c25/831aee76a41f78284639761604baee695ca45cb828c7a055ebd92824fa7b283d. Independently compared actual 2136 old archive rows, selected lane kick metadata and 666-record count; recomputed fixed control counts435/405/415/397/435 =2087, treatment cap50 each, total2337 and rich cap867. Frozen policy SHA metadata matches actual archives. Actual local binary checkpoints and installed runtime files still require local pre/post checks; SA has no direct labrobot shell. No rerun of accepted static regressions, no pilot.
+
+H4M4_ACTIVE_GO: H4-M4-FEASIBILITY-V1 4ce1cb9fd7adf94d78d73c967fdf69ec3633393c7a4571379d277a8e118164b8 fb63225ac4c0f8d3cc8f68fa68a87fab2e9e16e3403999cae9dac499ce48bfd5 46826431470783ffe577508d721a129f64218fe438137fbf11206ea26c41663c a231ff30abcd053f3e31e147fe4877fe0fe8da996229930c2d3b5fe69510a476 beaef42162c16c8a8397e5e62164e2c09f443c0b8c5fa7bf3960c7917d3030e8 329ff0564d47e05e2360fdf95350928895cf515e8cec6ca9aa2182133319258b 1ccf579ea35d4518713b00ea20d77db8463bc469b7de903b8f10f457b3dc90b8 8ecdbd675fac2fc54764938590d6ed67aa390fd29fc63bcb6f6b5fd5283f38d2 1c144a88f4bf9f1de6d9926b60c75ea417b77931b53a427ca22b8eef11ffb12e m463_runs/m470_h4_m4_feasibility_v1/report.json
+
+Only this distinct Rules-only H4M4 authorization active. Owner may dispatch once using exact source/static/spec/external/policy/archive pins, CUDA-only original bootstrap and fixed unused output m463_runs/m470_h4_m4_feasibility_v1/report.json; preserve exclusive dispatch.started.json/runtime.entered.json, no retry even preflight or failure, no deletion of evidence. Five frozen lanes CCRC7357L/7601R/7613L,C7357L,REF7331L, stand, deterministic frozen actors, original DR OFF/random source push OFF, kicks300/.50 and335/.35, exact post335 state/RNG fork, baseline/zero-sham/treatment order. Prefix and control46-column and original rich projections must match exactly; no tolerance widening. Only selected recovery hip pitch/roll/knee residual per frozen geometry vectors, pulse336..345 peak .20, scalar headroom, float32 bit guards and permanent contact latch; 26 non-target direct action dimensions untouched. Existing actuator, action envelope, PD, physics, observation, reward, network, termination and historical gates unchanged. Keep geometry/model mapping, required COM/contact, safety margins, endpoints and falsification rules in v1.2.138, including distinction of adverse treatment stop vs global technical STOP. Fixed2087 control physical, cap2337/867 rich,5 resets/15 suffixes, per-record72565 bytes, rich60MiB/metadata4MiB/report64MiB, sampled GPU peak<95%12288MiB/errors none,2GiB reserve plus report headroom, bounded combined launcher16MiB with process-group kill on overflow. No additional runs, padding, adaptive dose, or active directional comparator. Owner submits actual bounded log and report plus both reservation markers (partial if STOP) for independent SA review/relock. Technical completion not local feasibility or efficacy PASS; scientific adverse/unsupported/inconclusive outcomes retained. Zero optimizer updates/checkpoint saves/PPO/efficacy evaluation. Independent holdout/readiness/production/promotion/Branch B HOLD. SA authorization itself zero physical transitions, no actual inference or simulation. Only Rules changed.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -1830,6 +1838,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-25)
+
+**H4-M4-2 ONE BOUNDED FEASIBILITY DIAGNOSTIC GO (v1.2.141):** exact approved source/static/spec/external and three archives rehashed, one distinct Rules-only active marker, fixed five lanes/post335 baseline/zero-sham/treatment,2087 control/cap2337 physical/867 rich, zero optimizer/save/PPO/efficacy, owner execution pending, no retry, all other runtime HOLD.
 
 **H4-M4-1 ACTUAL FULL STATIC PASS / CLOSED (v1.2.140):** owner log fb63225a..., exact full compile/legacy/CLI6/6/local44 pins/G1 and MJX dependencies/zero runtime imports PASS; independent source/spec/external digests and evaluator SHA match. Static approval only; H4-M4-2 separate explicit GO required, all runtime HOLD.
 
@@ -2467,6 +2477,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-25 | H4-M4-2 one bounded feasibility diagnostic GO | exact static/source/spec/external and three archive pins; fixed2087 controls/cap2337 | v1.2.141 one Rules-only authorization, owner execution pending, all other runtime HOLD | 1.2.141 |
+
 | 2026-11-25 | H4-M4-1 actual full static acceptance | owner log fb63225a..., compile/CLI6/6/44 input pins/installed G1/MJX, independent digests | v1.2.140 CLOSED STATIC PASS; H4-M4-2 execution HOLD | 1.2.140 |
 
 | 2026-11-25 | H4-M4-1 held feasibility implementation/integration | existing evaluator only, exact legacy reverse and focused extracted FK/residual/runner/entry/endpoint mocks | v1.2.139 INTEGRATION STAGED; owner full static pending, all execution HOLD | 1.2.139 |
@@ -2812,6 +2824,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.141 — 2026-11-25:** Authorize exactly one bounded H4-M4 causal feasibility diagnostic, Rules-only exact pins, preserve prospective controls/safety/budget/stop rules, no retry or PPO, all other execution HOLD.
 
 - **v1.2.140 — 2026-11-25:** Accept actual full-static H4-M4-1 evidence, pin static approval only, retain all execution HOLD pending distinct H4-M4-2 GO.
 
