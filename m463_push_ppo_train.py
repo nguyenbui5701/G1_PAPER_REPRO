@@ -4881,7 +4881,8 @@ def h4cc_validate_held_plan(a):
 
 # H4-M6 held core. No legacy authorization or runtime entry is reused.
 H4M6_ID = 'H4-M6-RSS-V1'
-H4M6_PATHS = {p: 'm463_runs/m470_h4_m6_'+p+'_v1' for p in ('tech','ref','rss','dev')}
+H4M6_PATHS = {p: 'm463_runs/m470_h4_m6_'+p+'_v1' for p in ('ref','rss','dev')}
+H4M6_PATHS['tech'] = 'm463_runs/m470_h4_m6_tech_v2'
 H4M6_SPEC = {'id':H4M6_ID,'window':50,'peak_relaxation':.5,
     'event_unchanged':True,'terminal_unchanged':True,'seed':1,
     'checkpoint_sha256':SEED1_SHA,'restore_sha256':H3_CAUSAL_RESTORE_SHA,
@@ -4926,7 +4927,7 @@ def h4m6_parse_marker(rules,source,spec):
     h4m6_require(len(approved)==1,'STATIC_REQUIRED')
     fields=approved[0].split()
     h4m6_require(len(fields)==6 and fields[:5]==[src,sp,gen,ext,st] and
-        re.fullmatch(r'm463_runs/m470_h4_m6_1_full_static_[0-9_]+\.log',fields[5]) is not None,'STATIC_BINDING')
+        re.fullmatch(r'm463_runs/m470_h4_m6_2r_full_static_[0-9_]+\.log',fields[5]) is not None,'STATIC_BINDING')
     for tag,need,val in zip(('TECH','REF','RSS'),expected,(tech,ref,rss)):
         pins=re.findall(r'^H4M6_APPROVED_'+tag+r'_SHA256: ([0-9a-f]{64})$',rules,re.M)
         h4m6_require((pins==[val]) if need else (not pins),'EVIDENCE_BINDING '+tag)
