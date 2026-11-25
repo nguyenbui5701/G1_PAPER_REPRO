@@ -982,3 +982,32 @@ def normalize_h4_exploratory_source(s):
             new = '\n'+new
         s = h4c_once(s,new,old)
     return s
+
+
+def h4cc_static_generated_regression(raw):
+    """Offline source generation only: no JAX/Brax imports, no file writes."""
+    import ast
+    legacy,original=make_h4_exploratory_source(raw)
+    cc,cc_original=make_h4_exploratory_source(raw,enable_h4cc=True)
+    if original!=PINNED_SHA or cc_original!=original:
+        raise RuntimeError('M470_H4CC_STATIC_ORIGINAL_PIN')
+    legacy_sha=sha256(legacy.encode('utf8'))
+    if legacy_sha!='8f30e5c695211b21815375c37b1bda67fcda98b2ee259a703e87b182c3402062':
+        raise RuntimeError('M470_H4CC_STATIC_LEGACY_GENERATED_SHA '+legacy_sha)
+    fields=lambda items:"extra_fields=('truncation', " + ', '.join(repr(k) for k in items) + '),'
+    old=EXT_FIELDS+H4_EXT_FIELDS
+    normalized=h4c_once(cc,fields(old+H4CC_EXT_FIELDS),fields(old))
+    normalized=h4c_once(normalized,H4CC_METRICS_SOURCE,'')
+    normalized=h4c_once(normalized,
+        '  from m463_push_ppo_train import h4cc_generated_guard\n'
+        '  h4cc_generated_guard(h4x_audit_fn, __file__, environment)\n',
+        '  from m463_push_ppo_train import h4x_generated_guard\n'
+        '  h4x_generated_guard(h4x_audit_fn, __file__)\n')
+    if normalized!=legacy or ast.dump(ast.parse(normalized))!=ast.dump(ast.parse(legacy)):
+        raise RuntimeError('M470_H4CC_STATIC_GENERATED_DIFF')
+    compile(cc,'<CCRC generated static>','exec')
+    compile(legacy,'<H4 legacy generated static>','exec')
+    return {'original_sha256':original,'legacy_sha256':legacy_sha,
+            'ccrc_sha256':sha256(cc.encode('utf8')),
+            'normalized_byte_equal':True,'normalized_ast_equal':True,
+            'generated_compile':True}
