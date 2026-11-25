@@ -2642,7 +2642,8 @@ def run(args):
                 h4cc_eval_require(spec is not None and spec.origin is not None and
                     Path(spec.origin).resolve()==intended and sha256(intended)==expected,
                     'RUNTIME_DEPENDENCY '+name)
-        print('M470_H4_EVAL_BRAX_SOURCE_PASS' if h4_mode else 'M470_H3_EVAL_BRAX_SOURCE_PASS',
+        print('M470_H4M3_BRAX_SOURCE_PASS' if placement else
+              'M470_H4_EVAL_BRAX_SOURCE_PASS' if h4_mode else 'M470_H3_EVAL_BRAX_SOURCE_PASS',
               args.h3_session['brax_source_verification'],flush=True)
     else:
         from brax.training.agents.ppo import networks, train as ppo
@@ -4945,6 +4946,7 @@ def h4m3_post_capture(pre,action,next_state,env):
             'qvel_post':d.qvel,'target':next_state.info['motor_targets'],
             'raw_ctrl':d.ctrl,'actuator_force':d.actuator_force,
             'actuator_length':d.actuator_length,'actuator_velocity':d.actuator_velocity,
+            'qfrc_actuator':d.qfrc_actuator,
             'lf_geom_pos':d.geom_xpos[lid],'rf_geom_pos':d.geom_xpos[rid],
             'lf_geom_mat':d.geom_xmat[lid],'rf_geom_mat':d.geom_xmat[rid],
             'feet_sensor_velocity':d.sensordata[env._foot_linvel_sensor_adr],
@@ -4962,7 +4964,9 @@ def h4m3_post_capture(pre,action,next_state,env):
 def h4m3_read_evidence(root,current_path,historical_path,base_policy):
     """Diagnostic evidence only; not the historical full training-report reader."""
     root=Path(root).resolve()
-    h4m3_require(Path(current_path).resolve()==root/H4CC_EVAL_OUTPUT,'ARCHIVE_PATH')
+    h4m3_require(Path(current_path).resolve()==root/H4CC_EVAL_OUTPUT
+        and Path(current_path).absolute()==root/H4CC_EVAL_OUTPUT
+        and Path(historical_path).resolve()==Path(historical_path).absolute(),'ARCHIVE_PATH')
     lanes,current,historical=h4m3_read_archives(current_path,historical_path)
     pins={'current_archive':H4M3_ARCHIVES[0],'historical_archive':H4M3_ARCHIVES[1]}
     paths={'C_policy':(Path(base_policy),H4M3_POLICIES['C'])}
@@ -4982,12 +4986,14 @@ def h4m3_read_evidence(root,current_path,historical_path,base_policy):
     # Keep archived evaluator identity distinct; exact reviewed Git base required.
     archived=subprocess.check_output(['git','-C',str(root),'show',
         'd478c810152d2b7a1119514c94f09028d33f52da:m463_gate3_cp_eval.py'])
-    git_blob=hashlib.sha1(('blob '+str(len(archived))+'\\0').encode()+archived).hexdigest()
+    git_blob=hashlib.sha1(('blob '+str(len(archived))+'\0').encode()+archived).hexdigest()
     h4m3_require(git_blob=='db89c4c8516e5875fd2d3c51210a3279fe4bc435'
         and hashlib.sha256(archived).hexdigest()==current['evaluator_sha256'],
         'ARCHIVED_EVALUATOR_PIN')
     train=Path(current['brax_source_verification']['path'])
     h4m3_require(train.is_file() and sha256(train)==TRAIN_SHA,'BRAX_TRAIN_PIN')
+    h4m3_require(current['brax_source_verification']==historical['brax_source_verification'],
+        'ARCHIVE_BRAX_EQUIVALENCE')
     pins['brax_train']=TRAIN_SHA
     brax_root=train.resolve().parents[3]
     for key,expected in current['input_sha256'].items():
@@ -5001,6 +5007,10 @@ def h4m3_read_evidence(root,current_path,historical_path,base_policy):
         pins[key]=expected
     pins['archived_evaluator']=current['evaluator_sha256']
     pins['diagnostic_evaluator']=sha256(Path(__file__))
+    h4m3_require({k.removeprefix('source/') for k in current['input_sha256']
+        if k.startswith('source/')}==set(H4M3_SOURCE_NAMES),'ARCHIVED_SOURCE_SET')
+    h4m3_require(all(pins.get('source/'+k)==v for k,v in h4m3_source_map(root).items()
+        if k!='m463_gate3_cp_eval.py'),'SOURCE_MAP_MATCH')
     h4m3_require(pins['archived_evaluator']!=pins['diagnostic_evaluator'],'NEW_SOURCE_ID')
     return lanes,pins
 
@@ -5022,6 +5032,8 @@ def h4m3_manifest(env,np):
     h4m3_require(np.array_equal(qa,np.arange(7,36)) and
         np.array_equal(va,np.arange(6,35)), 'TARGET_ORDER')
     h4m3_require(int(m.opt.integrator)==0,'INTEGRATOR_EULER')
+    h4m3_require(not (int(m.opt.disableflags)&int(mjtDisableBit.mjDSBL_ACTUATION)),
+        'ACTUATION_ENABLED')
     body=np.asarray(m.body_rootid); roots=np.unique(body[1:])
     h4m3_require(len(roots)==1 and roots[0]>0,'G1_ROOT')
     root=int(roots[0])
@@ -5032,6 +5044,7 @@ def h4m3_manifest(env,np):
            'actuator_forcelimited','actuator_gainprm','actuator_biasprm',
            'actuator_gaintype','actuator_biastype','actuator_gear',
            'actuator_dyntype','actuator_trntype','actuator_trnid','jnt_range',
+           'jnt_actfrcrange','jnt_actfrclimited',
            'jnt_limited','jnt_qposadr','jnt_dofadr','body_mass','body_inertia',
            'body_rootid','body_parentid','body_subtreemass','geom_bodyid')
     fields={k:np.asarray(getattr(m,k)).tolist() for k in names}
@@ -5064,7 +5077,7 @@ def h4m3_validate_core(raw,row,manifest,np):
         'rng':(2,),'time_pre':(),'time_post':(),'qpos_pre':(36,),
         'qpos_post':(36,),'qvel_pre':(35,),'qvel_post':(35,),
         'action':(29,),'target':(29,),'raw_ctrl':(29,),'actuator_force':(29,),
-        'actuator_length':(29,),'actuator_velocity':(29,),
+        'actuator_length':(29,),'actuator_velocity':(29,),'qfrc_actuator':(35,),
         'lf_geom_pos':(3,),'rf_geom_pos':(3,),'lf_geom_mat':(3,3),'rf_geom_mat':(3,3)}
     for k,shape in shapes.items():
         h4m3_require(k in raw,'MISSING_'+k)
@@ -5113,6 +5126,10 @@ def h4m3_pack_capture(raw,row,manifest,np):
                                       fields['actuator_ctrllimited'])
     packed['force_margin_last_solve']=margins(raw['actuator_force'],fields['actuator_forcerange'],
                                              fields['actuator_forcelimited'])
+    packed['joint_actuation_margin_last_solve']=margins(
+        np.asarray(raw['qfrc_actuator'])[manifest['qvel_addresses']],
+        np.asarray(fields['jnt_actfrcrange'])[ids],
+        np.asarray(fields['jnt_actfrclimited'])[ids])
     packed['target_minus_post_joint']=np.asarray(raw['target'])-np.asarray(raw['qpos_post'])[
         manifest['qpos_addresses']]
     packed['actor_phase_features']=np.asarray(raw['actor_input'])[99:103]
@@ -5221,6 +5238,7 @@ def h4m3_native_lane(lane,session,env,step_fn,manifest,jax,jnp,np,pulse=None):
     def kick(st,direction,magnitude,tick):
         out,meta,audit=h4m3_native_kick(st,direction,magnitude,tick,jax,jnp,np)
         audits.append(audit)
+        session['lanes'][-1]['kick_audits']=list(audits)
         return out,meta
     lane_out=h4m3_replay_lane(lane,session,reset,step,
         lambda st:jax.tree_util.tree_map(lambda x:x,st),kick,
@@ -5310,7 +5328,10 @@ def h4m3_replay_lane(lane,session,reset,step,clone,kick,equal,validate,pulse=Non
     double,meta=kick(double,lane['direction'],.35,335)
     h4m3_require(meta==lane['second'] and equal(single,state),'SECOND_KICK_ARCHIVE')
     out['first']=lane['first']; out['second']=meta
-    advance(single,'single',335); advance(double,'double',335)
+    frozen_double=clone(double)
+    advance(single,'single',335)
+    h4m3_require(equal(double,frozen_double),'SIBLING_MUTATION')
+    advance(double,'double',335)
     s=next(x['data'] for x in out['rich'] if x['segment']=='single' and x['tick']==335)
     d=next(x['data'] for x in out['rich'] if x['segment']=='double' and x['tick']==335)
     for key in ('actor_input','rng','action','target'):
@@ -5380,7 +5401,7 @@ def h4m3_runtime_model_source(env,session):
     data_fields={f.name for f in fields(Data)}
     contact_fields={f.name for f in fields(Contact)}
     h4m3_require(set('time qpos qvel ctrl actuator_force actuator_length actuator_velocity '
-        'geom_xpos geom_xmat sensordata xipos ximat cvel subtree_com contact efc_force'.split())
+        'geom_xpos geom_xmat sensordata xipos ximat cvel subtree_com contact efc_force qfrc_actuator'.split())
         <=data_fields and set('geom pos frame dist includemargin friction dim efc_address'.split())
         <=contact_fields,'PINNED_TELEMETRY_FIELDS')
     h4m3_require(float(env._config.action_scale)==.5 and not env._config.push_config.enable,
@@ -5482,7 +5503,7 @@ def h4m3_dispatch(args):
         'PREFLIGHT_STORAGE_SOURCE')
     from m462_ppo_warmstart_run import GPUMonitor,sample_gpu
     train_path=json.loads((root/H4CC_EVAL_OUTPUT).read_bytes())['brax_source_verification']['path']
-    session={'status':'M470_H4M3_IN_PROGRESS','authorization':auth,'plan':h4m3_plan(),
+    session={'status':'M470_H4M3_IN_PROGRESS','authorization':auth,'plan':json.loads(json.dumps(h4m3_plan())),
         'input_sha256':pins,'mjx_sources':mjx_sources,'brax_train_path':train_path,
         'frame_columns':list(H4M3_COLUMNS),'lanes':[],'attempted':0,'recorded':0,
         'resets_attempted':0,'resets_recorded':0,'suffixes_attempted':0,
