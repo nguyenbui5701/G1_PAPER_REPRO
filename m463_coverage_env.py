@@ -84,6 +84,7 @@ def h4cc_transition(xp, old, *, treatment, event, mature_repeat, side, motion,
                      age, boundary, terminal, refresh, pre, actor, critic,
                      native, next_actor, next_critic):
     """Pure array transition; source action/reward and RNG have already run."""
+    treatment = xp.asarray(treatment, dtype=bool)
     active = old['h4cc_active'] > 0
     prior = active & (~boundary)
     start = mature_repeat
