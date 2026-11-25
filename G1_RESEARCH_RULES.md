@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.134  
+**Version:** 1.2.135  
 **Ngày cập nhật:** 2026-11-25 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -1482,6 +1482,14 @@ H4M3_STATIC_APPROVED: 35c768734069e3fd68903d4b98a546067747ed408e80c9bc2fbba8eba4
 
 Static approval marker is evidence only; no active execution marker. H4-M3-1 CLOSED / STATIC PASS. H4-M3-2 separate explicit owner GO required before one-use Rules-only authorization, verify exact source/plan/external/archive/checkpoint pins and bootstrap, fixed five lane order CCRC7357L/7601R/7613L,C7357L,REF7331L, same native actor/inference and original Joystick, DR/source random push OFF, command stand, exact prefix334 and single/double335..385 or termination, first300/.50 second335/.35. Expected2136 physical/666 rich, caps2180/710,5 reset/10 suffix, report64MiB/2GiB reserve, 16MiB combined bounded launcher with process-group kill on overflow, no retry, no padding. Source identity unchanged; no new pilot or repeat static. On any mismatch/finite/availability-required/provenance/budget/GPU/storage/ledger failure STOP preserve partial, optional COM/contact unavailable explicitly limits attribution. No efficacy evaluation, no optimizer/checkpoint saves/PPO, no gate changes, no production/readiness/promotion/independent holdout/Branch B. This review zero physical transitions and no actual inference or simulation. Only Rules changed.
 
+### M4.70-H4-M3-2 — ONE BOUNDED RECOVERY PLACEMENT DIAGNOSTIC GO / OWNER EXECUTION PENDING (v1.2.135; 2026-11-25)
+
+Owner explicit GO for exactly one bounded passive diagnostic under Branch A. SA reopened full Rules v1.2.134 and AGENTS at 62a4fbe4317f0d8812be2a264605a3601632c407; reviewed exact approved evaluator blob71711dec69336bc67f89530396a8199480cacbed, trainer cd423719b8d55130b3e15b33256f36c97c2eb1e7, authorization/CLI, evidence reader, dispatcher/runtime entry, existing bootstrap and deterministic loader, native lane/fork/kick, ledger and report/GPU/storage guards. All seven existing broad flags False. Rehashed actual uploaded static log3364 bytes edfba1d62396df1c48bb051c49fc96c01fa2479f22cf528da4f62c0a6570a80f, independently reproduced nine-file common 35c768734069e3fd68903d4b98a546067747ed408e80c9bc2fbba8eba4c731c3, external ba903059d74fca008880462d02506c7b637d0c510c78da50154efa836eab2ab2 and frozen plan cfe8466c12033aaf41006965b34f778fd476e7d86749f5556e03f6d297106143. Actual full static log has42 local input pins, full compile, CLI5/5, installed MJX pins and zero runtime imports. Rehashed actual two raw archives a231ff30abcd053f3e31e147fe4877fe0fe8da996229930c2d3b5fe69510a476 and beaef42162c16c8a8397e5e62164e2c09f443c0b8c5fa7bf3960c7917d3030e8, REF/CCRC reports6fce874743bd40c413295b8ed30451648a552c02292567b6724d259f4fd23c25/831aee76a41f78284639761604baee695ca45cb828c7a055ebd92824fa7b283d and technical e3d552212cb11634b46378aa9944df534d4b453703b04cf37bec9c661e391a83; checked selected policy hashes against archive metadata, rederived five selected row lengths436/421/426/417/436 and rich142/127/132/123/142. Actual checkpoint/runtime bytes still must pass owner local pre/post rehash; SA has no direct labrobot access. No repeated static suite or new pilot.
+
+H4M3_ACTIVE_GO: H4-M3-PLACEMENT-V1 35c768734069e3fd68903d4b98a546067747ed408e80c9bc2fbba8eba4c731c3 edfba1d62396df1c48bb051c49fc96c01fa2479f22cf528da4f62c0a6570a80f cfe8466c12033aaf41006965b34f778fd476e7d86749f5556e03f6d297106143 a231ff30abcd053f3e31e147fe4877fe0fe8da996229930c2d3b5fe69510a476 beaef42162c16c8a8397e5e62164e2c09f443c0b8c5fa7bf3960c7917d3030e8 1ccf579ea35d4518713b00ea20d77db8463bc469b7de903b8f10f457b3dc90b8 8ecdbd675fac2fc54764938590d6ed67aa390fd29fc63bcb6f6b5fd5283f38d2 1c144a88f4bf9f1de6d9926b60c75ea417b77931b53a427ca22b8eef11ffb12e m463_runs/m470_h4_m3_placement_v1/report.json
+
+Only this distinct Rules-only authorization is active. Fixed output must be absent before the sole dispatch; exclusive dispatch.started.json and runtime.entered.json reservations, no retry even if preflight or runtime fails. Owner must use exact approved source, static log, plan, archives, checkpoint hashes, NVCC and dependency pins, JAX CUDA0.4.35 single device/process, pinned original Joystick and reward/PD/physics, DR OFF and random source push OFF, deterministic actor, stand command, fixed lane order CCRC7357L/7601R/7613L, C7357L, REF7331L. Shared prefix1..334, first kick300/.50, single/double335..385 or source terminal, second kick335/.35. Expected2136 physical/666 rich, hard2180/710,5 resets/10 suffixes, report64MiB, per rich record88612, metadata4MiB, disk reserve2GiB plus report headroom, sampled GPU peak<95%12288MiB/no sampler errors, combined bounded launcher log16MiB with process-group kill on overflow. Retain exact archive projection, actual injection tolerance2e-6, fork/event-action equality, sampled timing, required finite/schema/ledger, partial report and provenance gates. No source edits, no tolerance change, no padding, no automatic retry. Optional COM/contact unavailable explicitly limits attribution; technical success is not a scientific mechanism conclusion, efficacy evaluation, robustness improvement or readiness. On STOP preserve output/markers/log/partial report and relock after independent SA review; on completion submit report and both markers with bounded launcher log for review/relock before attribution. Zero optimizer updates, checkpoint saves, PPO or efficacy evaluation; no changes to historical gates. Independent holdout/readiness/production/promotion/Branch B HOLD. This SA authorization task itself uses zero physical transitions, actual inference or simulation. No executable source changes or new repo files.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -1743,6 +1751,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-25)
+
+**H4-M3-2 ONE BOUNDED PLACEMENT DIAGNOSTIC GO (v1.2.135):** exact static/evaluator/source/spec/external and two archive SHA verified, one distinct Rules-only active marker, five frozen lanes expected2136 physical/666 rich cap2180/710, zero optimizer/save/efficacy/PPO, owner execution pending, no retry, all other execution HOLD.
 
 **H4-M3-1 ACTUAL FULL STATIC PASS / CLOSED (v1.2.134):** owner log edfba1d6..., actual full compile/legacy/CLI5/5/local42 pins/installed MJX/zero runtime imports PASS, independent source/spec/external digests match, approved static marker only. H4-M3-2 separate bounded diagnostic GO required, all actual execution HOLD, no source or gate changes.
 
@@ -2368,6 +2378,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-25 | H4-M3-2 one bounded placement diagnostic GO | exact static/source/spec/external and two archive pins; frozen five-lane budget | v1.2.135 one Rules-only authorization, owner execution pending, no retry, all other execution HOLD | 1.2.135 |
+
 | 2026-11-25 | H4-M3-1 actual full static acceptance | owner log edfba1d6..., compile/CLI5/5/42 input pins/installed dependency, independent digests | v1.2.134 CLOSED STATIC PASS, H4-M3-2 execution HOLD | 1.2.134 |
 
 | 2026-11-25 | H4-M3-1 held integration | existing dispatcher/one-use/bootstrap/fixed lanes and report interlocks, new exact extracted host regression and legacy preservation | v1.2.133 INTEGRATION STAGED; owner full static pending, all execution HOLD | 1.2.133 |
@@ -2701,6 +2713,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.135 — 2026-11-25:** Authorize exactly one frozen passive placement diagnostic, Rules-only marker bound to approved static/source/spec/archives/policies, preserve all budgets and gates, no retry or PPO; all other execution HOLD.
 
 - **v1.2.134 — 2026-11-25:** Accept actual H4-M3-1 full static owner evidence and independent SHA checks; pin static approval only, close implementation, keep H4-M3-2 and all execution HOLD pending distinct GO.
 
