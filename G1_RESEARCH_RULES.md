@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.158  
+**Version:** 1.2.159  
 **Ngày cập nhật:** 2026-11-26 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -1780,6 +1780,14 @@ H4M6_STATIC_APPROVED: 782ab1714cdba42c0f711c0bc0bea0bd4c68185bde32ba6053cf640fe8
 
 H4-M6-2R CLOSED / OWNER FOCUSED FULL STATIC PASS. No active GO marker. Next minimum task only after separate explicit owner GO: H4-M6-2 corrected bounded native technical v2, unique Rules-only H4M6 marker phase tech path m463_runs/m470_h4_m6_tech_v2, exact static binding and frozen C401M/restore/reward/current common/generated/external and six original archive pins; one fresh attempt only, preserve historical1 physical transition separately, max416 new physical and8 resets, no padding/retry. Shared REF/RSS compiled graph, typed native reward capture and all24 scale/actual reward checks, exact native paired state/action/RNG/DR/other23/off-scope/event/terminal, actual eligible4101 window ticks1..50 and tick51 restoration, negative controls, partial/final ledger, post-immutability, 16MiB report/log, existing CUDA/GPU/storage/STOP gates. No PPO/optimizer/evaluation/checkpoint save; no relaxation of criteria or tolerance. All runtime including corrected native v2, REF6/RSS training, controlled DEV, independent holdout/readiness/production/promotion and Branch B HOLD. No executable or new repository file, no SA runtime.
 
+### H4-M6-2 corrected native technical v2 — one-use GO (v1.2.159; 2026-11-26)
+
+Owner explicitly authorized exactly one corrected native technical v2 attempt. SA reopened exact Rules v1.2.158 blob f429a1113d152c579859757d68ae49b3acd6aae6 and AGENTS; current four executable blobs match approved owner static (env234d1d598ec796c45283576afa662c3c4daf0a93, trainer0883588b819d57e44108624dd0841cd0b633f7e6, evaluatorb29055a5a4b039a7bbdb26964fa3b303f0809186, instrumenter348ae057456cbd326012ec76fa4600f38be74ff7). Actual corrected log4345 bytes SHA84675a65e896ec85cc2f9d9cc5a8416cd22a27cbac0aa8b596d9a27f946e81e6 independently rehashed; canonical spec recomputed unchanged and all six actual historical uploads independently rehashed matching exact H4M6_V1_STOP_PINS. Exact marker parser, static validation, source identity, typed reward capture/replay, technical input pins, exclusive reservation, dispatcher pre/post immutability, strict reader and audit inspected. Retain accepted 57 focused cases and negative controls without repeating unchanged regression. Local checkpoint/restore/Orbax, installed generated/external bytes and common source map remain owner-local and MUST match exact existing bootstrap guards before runtime. No executable changes.
+
+H4M6_ACTIVE_GO: H4-M6-RSS-V1 tech m463_runs/m470_h4_m6_tech_v2 782ab1714cdba42c0f711c0bc0bea0bd4c68185bde32ba6053cf640fe80b65cc 65371befdc4cb7265b4ee4e6366fbf94ea1e5478cd6117ed190c492e340a9ae5 7e2010e84e888e4bfa1622c8eceea86e69b1767d9a89a323efec971611f71b5a 97e1686ac016de832166f26c7287992f0b6536a27c504ee6451a5d472597e7da 84675a65e896ec85cc2f9d9cc5a8416cd22a27cbac0aa8b596d9a27f946e81e6 - - -
+
+One fresh attempt only at m463_runs/m470_h4_m6_tech_v2/report.json. Historical v1 STOP and one physical transition separately preserved; six historical pins immutable before/after; no reuse of v1 or v2 directory, no retry including preflight STOP. Corrected static/common/spec/generated/external bindings unchanged. Frozen C401M, original H3 reward config report (no H3 actor), typed restore and Orbax unchanged. Four exact paired fixtures4101..4104; shared REF/RSS compiled graph, max8 reset lanes and416 new physical transitions, max52/lane, no padding, synthetic prior-event metadata not actual prior pushes. Require native scalar dtype guard, all24 typed scale/actual reward checks, exact actual other23 and paired nonreward/state/action/RNG/DR, event/terminal identity, eligible4101 unchanged tick0, ticks1..50 and first restoration tick51, nonzero RSS delivered relief and zero REF sham, negative controls, strict partial/final ledger and policy/source/input immutability. Preserve report/log16MiB each, single CUDA JAX0.4.35, RTX3060 12288MiB peak strictly below95%, no sampler error, storage2GiB reserve plus32MiB. Use existing g1_m463 launcher with unchanged overlays and absolute fixed output, evaluator --mode run --h4m6-phase tech --checkpoint-c <frozen C401M> --h4-reward-report <exact original config report> --h4cc-restore-report <typed restore> --output <absolute v2 report>. No legacy flags, no fixture overrides, bounded exclusive combined stdout/stderr collector; kill process group on overflow, preserve partial artifacts and report actual result. Zero optimizer/evaluation/save, no PPO or efficacy claim. REF6/RSS training, controlled DEV, independent holdout/readiness/production/promotion and Branch B HOLD. Official H4 CTRL, H-R4a NOT_SUPPORTED and H3/H4-M2 DEV NO_GO unchanged. SA has not run native runtime; owner dispatch pending. Relock on receipt of any result; never delete output.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -2041,6 +2049,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-26)
+
+**H4-M6-2 CORRECTED TECH V2 ONE-USE GO (v1.2.159):** exact accepted corrected source/static pins and six actual historical uploads verified; distinct tech_v2 authorization, historical v1 STOP immutable, one fresh bounded attempt max416 new transitions/8 resets; actual owner runtime pending. No PPO/evaluation/save/retry, all other runtime HOLD.
 
 **H4-M6-2R OWNER FOCUSED FULL STATIC PASS / ALL RUNTIME HOLD (v1.2.158):** exact log84675a65, five source blobs/four compile/six archive pins, actual typed replay57 cases, partial/synthetic paired and four negative checks, corrected namespace/CLI holds, installed generated/restore provenance, zero runtime/physical/optimizer. Corrected static approval recorded; no active GO. Next corrected native tech_v2 separate explicit owner GO only.
 
@@ -2710,6 +2720,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-26 | H4-M6-2 corrected native technical v2 one-use GO | log84675a65/source782ab171, unchanged source blobs/spec, six historical SHA rehash, distinct tech_v2 authorization | ONE TECH V2 GO; owner execution pending; all other runtime HOLD | 1.2.159 |
+
 | 2026-11-26 | H4-M6-2R owner focused full static acceptance | log84675a65, source782ab171,57 cases/4 negative controls, six historical pins, corrected namespace and all holds | CLOSED STATIC PASS; corrected tech_v2 separate GO; all runtime HOLD | 1.2.158 |
 
 | 2026-11-26 | H4-M6-2R typed reward verifier held repair | three existing files, actual failed row and57 host cases, exact v1 archive pins, v2 attempt namespace | HELD STAGED; owner focused static pending; all execution HOLD | 1.2.157 |
@@ -3088,6 +3100,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.159 — 2026-11-26:** Record explicit owner one-use corrected native technical v2 GO; preserve six original artifact pins, historical STOP, corrected static approval and frozen scientific gates. Rules-only; no SA runtime, no retry/PPO/evaluation/save or further authorization.
 
 - **v1.2.158 — 2026-11-26:** Accept exact owner corrected full static evidence, bind corrected common/spec/generated/external/log SHA, preserve historical v1 STOP and all scientific gates. No active marker, no executable changes or runtime; separate owner GO required for one corrected native attempt.
 
