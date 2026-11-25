@@ -3992,7 +3992,7 @@ def _run_impl(args,h4x=None):
             old_report=json.loads(historical_path.read_bytes())
             h4x_require(h4x['brax_dependencies']==old_report['h4x_brax_dependencies'],'CCRC_HISTORICAL_DEPENDENCIES')
             if cc_arm=='ccrc':
-                ref=h4cc_read_final_report(args.h4cc_ref_report,h4x['authorization']['evidence_sha256'],'ref',h4_contract)
+                ref=h4cc_read_final_report(args.h4cc_ref_report,h4x['authorization']['evidence_sha256'],'ref',h4_contract,contract_arm='ccrc')
                 h4x_require(ref['h4x_brax_dependencies']==h4x['brax_dependencies'],'CCRC_FRESH_DEPENDENCIES')
         elif h4_arm=='candidate':
             h4_control=h4_read_control(args.h4_control_report,h4_approved_control_sha(),h4_contract)
@@ -4368,7 +4368,7 @@ def _run_impl(args,h4x=None):
                 h4x_require(h4cc_read_historical_control(historical_path,h4_contract)==h4_control,'CCRC_FINAL_HISTORICAL')
                 h4cc_verify_ledger(report)
                 if cc_arm=='ccrc':
-                    ref=h4cc_read_final_report(args.h4cc_ref_report,h4x['authorization']['evidence_sha256'],'ref',h4_contract)
+                    ref=h4cc_read_final_report(args.h4cc_ref_report,h4x['authorization']['evidence_sha256'],'ref',h4_contract,contract_arm='ccrc')
                     h4x_require(h4cc_matched_nominal(ref['h4_final_counts'],report['h4_final_counts']),'CCRC_MATCHED_NOMINAL')
                     report['h4cc_exposure_decision']=h4cc_exposure_decision(ref['h4cc_final_counts'],report['h4cc_final_counts'])
             h4x_require((h4cc_authorization() if cc_arm is not None else h4x_authorization())==h4x['authorization'] and h4x_bootstrap(args,h4cc=cc_arm is not None)==h4x['pins']
@@ -4574,6 +4574,59 @@ def h4cc_approved_sha(rules,label):
     h4x_require(len(hits)==1,'CCRC_APPROVED_'+label)
     return hits[0]
 
+# The accepted REF/technical bytes are immutable. Only these two verifier
+# files may differ; both current raw pins and the archived nine-file digest
+# must match. Never use the archived digest as current execution identity.
+H4CC_ARCHIVED_SOURCE_SHA = '4a43f092d9a9d65822cc990249d0c17a621197cad9268fc5c617481456ff225d'
+H4CC_ARCHIVED_VERIFIER_FILES = {
+    'm463_push_ppo_train.py':'36daf64779bc1252d521e4eb226b2cffb3563f5476d1f7f7943c41b69228c21f',
+    'm463_gate3_cp_eval.py':'29de11a6c32abab1fb4e4012f885c91479e23ff6a80c188e3cfa3a5ebce8ce7a'}
+
+
+def h4cc_source_identity(root):
+    root=Path(root).resolve()
+    rules=(root/'G1_RESEARCH_RULES.md').read_text('utf8')
+    paths=(*H4_FILES,'m463_gate3_cp_eval.py','paper_config_preflight.json')
+    current={}
+    for name in paths:
+        p=root/name
+        h4x_require(p.is_file() and not p.is_symlink(),'CCRC_VERIFIER_FILE '+name)
+        current[name]=digest(p)
+    for name,label in (('m463_push_ppo_train.py','VERIFIER_TRAINER'),
+                       ('m463_gate3_cp_eval.py','VERIFIER_EVALUATOR')):
+        h4x_require(current[name]==h4cc_approved_sha(rules,label)
+                    and current[name]!=H4CC_ARCHIVED_VERIFIER_FILES[name],
+                    'CCRC_VERIFIER_RAW '+name)
+    archive={**current,**H4CC_ARCHIVED_VERIFIER_FILES}
+    def common(m):
+        return hashlib.sha256(json.dumps(m,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+    current_sha,archived_sha=common(current),common(archive)
+    h4x_require(current_sha==h4cc_approved_sha(rules,'VERIFIER_COMMON')
+                and current_sha==h4x_source_digest(root)
+                and archived_sha==H4CC_ARCHIVED_SOURCE_SHA and current_sha!=archived_sha,
+                'CCRC_VERIFIER_COMMON')
+    return {'current_sha256':current_sha,'archived_sha256':archived_sha,
+            'current_files':current,'archived_files':archive}
+
+
+def h4cc_contract_bridge(contract,from_arm,to_arm,identity):
+    # Construct an expected comparison contract only. Never mutate a report.
+    h4x_require(from_arm in ('ref','ccrc') and to_arm in ('ref','ccrc'),
+                'CCRC_VERIFIER_ARM')
+    maps={'ref':identity['archived_files'],'ccrc':identity['current_files']}
+    expected={k:maps[from_arm][k] for k in H4_FILES}
+    h4x_require(contract['source_digests']==expected,'CCRC_VERIFIER_CONTRACT_SOURCE')
+    return {**contract,'source_digests':{k:maps[to_arm][k] for k in H4_FILES}}
+
+
+def h4cc_matched_ref_authorization(auth,identity):
+    h4x_require(auth['arm']=='ccrc' and auth['source_sha256']==identity['current_sha256'],
+                'CCRC_VERIFIER_AUTH_SOURCE')
+    return {**auth,'arm':'ref','output':str(H4CC_PATHS['ref']),
+            'source_sha256':identity['archived_sha256'],
+            'evidence_sha256':auth['technical_sha256']}
+
+
 def h4cc_parse_marker(rules):
     import re
     h4x_require(not any(x.startswith(('H4X_ACTIVE_GO:','H4CC_EVAL_ACTIVE_GO:','H4CC_TECH_ACTIVE_GO:')) for x in rules.splitlines()),'CCRC_LEGACY_CONFLICT')
@@ -4597,7 +4650,9 @@ def h4cc_authorization():
                 'CCRC_LEGACY_HOLD_REQUIRED')
     root=Path(__file__).resolve().parent
     auth=h4cc_parse_marker((root/'G1_RESEARCH_RULES.md').read_text('utf8'))
-    h4x_require(h4x_source_digest(root)==auth['source_sha256'],'CCRC_SOURCE_CONTRACT')
+    identity=h4cc_source_identity(root)
+    h4x_require(auth['arm']=='ccrc' and identity['current_sha256']==auth['source_sha256'],
+                'CCRC_SOURCE_CONTRACT')
     return auth
 
 def h4cc_generated_guard(audit,generated_file,environment):
@@ -4637,12 +4692,16 @@ def h4cc_verify_ledger(report):
                 and check==report['h4cc_final_audit'] and check['passed'],'CCRC_FINAL_REPLAY')
     return total
 
-def h4cc_read_final_report(path,expected_sha,arm,contract=None):
+def h4cc_read_final_report(path,expected_sha,arm,contract=None,*,contract_arm=None):
     root=Path(__file__).resolve().parent
     h4x_require(path is not None and arm in H4CC_PATHS,'CCRC_REPORT_REQUIRED')
     path=Path(path)
     h4x_require(path.resolve()==root/H4CC_PATHS[arm]/'report.json'
                 and not path.parent.is_symlink(),'CCRC_REPORT_PATH')
+    identity=h4cc_source_identity(root)
+    rules=(root/'G1_RESEARCH_RULES.md').read_text('utf8')
+    h4x_require(arm!='ref' or expected_sha==h4cc_approved_sha(rules,'REF_REPORT'),
+                'CCRC_APPROVED_ARCHIVED_REF')
     h4x_file_pin(path,expected_sha)
     r=json.loads(path.read_bytes()); a=r['h4x_authorization']; c=r['h4_common_contract']
     h4x_require(r['status']=='M463_COVERAGE_LONGTRAIN_PASS' and r['h4cc_arm']==arm
@@ -4658,23 +4717,23 @@ def h4cc_read_final_report(path,expected_sha,arm,contract=None):
                 and r['coverage_gate_pass'] is True and r['memory_gate_pass'] is True
                 and r['weights_finite'] is True and r['callback_vs_final_equal'] is True
                 and r['final_tensor_count']==25 and r['gpu_total_mib']==12288
-                and 0<r['gpu_peak_mib']<.95*12288 and r['gpu_monitor_errors']==0
+                and 0<r['gpu_peak_mib']<.95*12288 and r['gpu_monitor_errors']==[]
                 and r['h4_matched_nominal_pass'] is True and r['h4_legacy_reconciled'] is True,
                 'CCRC_FINAL_REPORT')
     h4x_require(a['id']==H4CC_ID and a['arm']==arm and a['output']==str(H4CC_PATHS[arm])
                 and a['generated_sha256']==c['generated_brax_sha256']
-                and a['source_sha256']==h4x_source_digest(root)
+                and a['source_sha256']==identity['archived_sha256' if arm=='ref' else 'current_sha256']
                 and r['runner_sha256']==c['source_digests']['m463_push_ppo_train.py']
-                and (contract is None or c==contract)
-                and c==h4_common_contract(r['hardware_scaled_config'],r['train_reward_config'],r['instrumented_brax']),
+                and (contract is None or c==h4cc_contract_bridge(contract,contract_arm or arm,arm,identity))
+                and c==h4cc_contract_bridge(h4_common_contract(r['hardware_scaled_config'],
+                    r['train_reward_config'],r['instrumented_brax']),'ccrc',arm,identity),
                 'CCRC_FINAL_SOURCE')
-    rules=(root/'G1_RESEARCH_RULES.md').read_text('utf8')
     h4x_require(a['technical_sha256']==h4cc_approved_sha(rules,'TECH_REPORT')
                 and a['evidence_sha256']==(a['technical_sha256'] if arm=='ref' else h4cc_approved_sha(rules,'REF_REPORT')),
                 'CCRC_FINAL_EVIDENCE')
     from m463_gate3_cp_eval import h4cc_tech_read_report,H4CC_TECH_OUTPUT
     h4cc_tech_read_report(root/H4CC_TECH_OUTPUT,a['technical_sha256'],
-                          a['source_sha256'],a['generated_sha256'])
+                          identity['archived_sha256'],a['generated_sha256'])
     for name,value in (('attempt.json',{'authorization':a,'reserved':True}),
                        ('dispatch.started.json',{'authorization':a}),
                        ('attempt_result.json',{'status':'COMPLETE','authorization':a})):
@@ -4726,15 +4785,15 @@ def h4cc_validate_cli(a,*,final=False):
                 and prior['recorded_optimizer_updates']==80,'CCRC_CAUSAL_EVIDENCE')
     h4x_file_pin(a.h4_exploratory_reward_report,H4R_REWARD_SHA)
     from m463_gate3_cp_eval import h4cc_tech_read_report
+    identity=h4cc_source_identity(root)
     h4cc_tech_read_report(a.h4cc_technical_report,auth['technical_sha256'],
-                          auth['source_sha256'],auth['generated_sha256'])
+                          identity['archived_sha256'],auth['generated_sha256'])
     if a.h4cc_arm=='ref':
         h4x_require(a.h4cc_ref_report is None,'CCRC_REF_CONFLICT')
     else:
         ref=h4cc_read_final_report(a.h4cc_ref_report,auth['evidence_sha256'],'ref')
         old=ref['h4x_authorization']
-        h4x_require(old=={**auth,'arm':'ref','output':str(H4CC_PATHS['ref']),
-                         'evidence_sha256':auth['technical_sha256']},'CCRC_FRESH_MATCH')
+        h4x_require(old==h4cc_matched_ref_authorization(auth,identity),'CCRC_FRESH_MATCH')
     return auth
 
 def h4cc_run(args):
