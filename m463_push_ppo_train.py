@@ -5308,10 +5308,10 @@ def h4m6_validate_static(root,auth):
         and digest(log)==auth['static_sha256'],'STATIC_LOG')
     rows=log.read_text('utf8').splitlines()
     for marker,value in (
-        ('H4_M6_1_FULL_STATIC_PASS',auth['source_sha256']),
-        ('H4_M6_1_SPEC_SHA256',auth['spec_sha256']),
-        ('H4_M6_1_GENERATED_SHA256',auth['generated_sha256']),
-        ('H4_M6_1_EXTERNAL_SHA256',auth['external_sha256'])):
+        ('H4_M6_2R_FULL_STATIC_PASS',auth['source_sha256']),
+        ('H4_M6_2R_SPEC_SHA256',auth['spec_sha256']),
+        ('H4_M6_2R_GENERATED_SHA256',auth['generated_sha256']),
+        ('H4_M6_2R_EXTERNAL_SHA256',auth['external_sha256'])):
         h4m6_require([x for x in rows if x.startswith(marker+' ')]==[marker+' '+value],'STATIC_MARKER '+marker)
     return True
 
