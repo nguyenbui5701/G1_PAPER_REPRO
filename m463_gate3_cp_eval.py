@@ -4864,7 +4864,8 @@ def h4m3_post_capture(pre,action,next_state,env):
             'xipos':d.xipos,'ximat':d.ximat,'cvel':d.cvel,
             'subtree_com':d.subtree_com,'contact_geom':d.contact.geom,
             'contact_pos':d.contact.pos,'contact_frame':d.contact.frame,
-            'contact_dist':d.contact.dist,'contact_friction':d.contact.friction,
+            'contact_dist':d.contact.dist,'contact_includemargin':d.contact.includemargin,
+            'contact_friction':d.contact.friction,
             'contact_dim':d.contact.dim,'contact_address':d.contact.efc_address,
             'efc_force':d.efc_force,
             'reward':{k:v for k,v in next_state.metrics.items() if k.startswith('reward/')}}
@@ -4898,6 +4899,19 @@ def h4m3_read_evidence(root,current_path,historical_path,base_policy):
     h4m3_require(git_blob=='db89c4c8516e5875fd2d3c51210a3279fe4bc435'
         and hashlib.sha256(archived).hexdigest()==current['evaluator_sha256'],
         'ARCHIVED_EVALUATOR_PIN')
+    train=Path(current['brax_source_verification']['path'])
+    h4m3_require(train.is_file() and sha256(train)==TRAIN_SHA,'BRAX_TRAIN_PIN')
+    pins['brax_train']=TRAIN_SHA
+    brax_root=train.resolve().parents[3]
+    for key,expected in current['input_sha256'].items():
+        if not key.startswith('dependency/'):
+            continue
+        name=key.split('/',1)[1]
+        path=(brax_root/'envs/wrappers/training.py' if name=='episode_wrapper' else
+              brax_root.joinpath(*name.split('.')[1:]).with_suffix('.py'))
+        h4m3_require(path.is_file() and not path.is_symlink() and sha256(path)==expected,
+                      'DEPENDENCY_'+name)
+        pins[key]=expected
     pins['archived_evaluator']=current['evaluator_sha256']
     pins['diagnostic_evaluator']=sha256(Path(__file__))
     h4m3_require(pins['archived_evaluator']!=pins['diagnostic_evaluator'],'NEW_SOURCE_ID')
@@ -4906,6 +4920,7 @@ def h4m3_read_evidence(root,current_path,historical_path,base_policy):
 
 def h4m3_manifest(env,np):
     """Model metadata only, no physics; exact installed-source checks separate."""
+    from mujoco import mjtDisableBit, mjtCone, mjtGeom
     m=env.mj_model
     h4m3_require((m.nu,m.nq,m.nv,m.njnt)==(29,36,35,30)
         and abs(float(env.dt)-.02)<1e-9 and abs(float(m.opt.timestep)-.002)<1e-9
@@ -4933,6 +4948,13 @@ def h4m3_manifest(env,np):
            'jnt_limited','jnt_qposadr','jnt_dofadr','body_mass','body_inertia',
            'body_rootid','body_parentid','body_subtreemass','geom_bodyid')
     fields={k:np.asarray(getattr(m,k)).tolist() for k in names}
+    floor=int(env._floor_geom_id)
+    h4m3_require(int(m.geom_type[floor])==int(mjtGeom.mjGEOM_PLANE) and
+        int(m.geom_bodyid[floor])==0 and np.allclose(m.geom_quat[floor],[1,0,0,0],
+        atol=1e-7,rtol=0) and np.allclose(m.opt.gravity[:2],0,atol=1e-7,rtol=0)
+        and float(m.opt.gravity[2])<0,'FLAT_FLOOR')
+    h4m3_require(int(m.opt.cone) in (int(mjtCone.mjCONE_PYRAMIDAL),
+        int(mjtCone.mjCONE_ELLIPTIC)),'CONTACT_CONE')
     h4m3_require(all(np.isfinite(np.asarray(v)).all() for v in fields.values()),'MODEL_FINITE')
     return {'fields':fields,'joint_names':[m.joint(i).name for i in range(m.njnt)],
         'actuator_names':[m.actuator(i).name for i in range(m.nu)],
@@ -4941,6 +4963,10 @@ def h4m3_manifest(env,np):
         'floor_geom_id':int(env._floor_geom_id),'foot_site_ids':np.asarray(env._feet_site_id).tolist(),
         'feet_sensor_addresses':np.asarray(env._foot_linvel_sensor_adr).tolist(),
         'disableflags':int(m.opt.disableflags),'cone':int(m.opt.cone),
+        'clamp_disabled':bool(int(m.opt.disableflags)&int(mjtDisableBit.mjDSBL_CLAMPCTRL)),
+        'pyramidal':int(m.opt.cone)==int(mjtCone.mjCONE_PYRAMIDAL),
+        'gravity':np.asarray(m.opt.gravity).tolist(),
+        'reward_keys':sorted('reward/'+k for k in env._config.reward_config.scales.keys()),
         'integrator':int(m.opt.integrator),'default_pose':np.asarray(env._default_pose).tolist(),
         'dt_s':.02,'sim_dt_s':.002,'substeps':10,
         'stage':{'derived':'last_forward_solve','qpos_qvel':'post_integration'}}
@@ -4969,7 +4995,153 @@ def h4m3_validate_core(raw,row,manifest,np):
         and np.array_equal(target,raw['raw_ctrl']),'RAW_TARGET')
     h4m3_require(abs(float(raw['time_post'])-float(raw['time_pre'])-.02)<2e-5,
                   'SAMPLE_TIME')
+    h4m3_require(sorted(raw['reward'])==manifest['reward_keys'],'REWARD_KEYS')
     h4m3_reward_check(raw['reward'],row[H4M3_COLUMNS.index('reward_total')],np)
+
+
+
+def h4m3_pack_capture(raw,row,manifest,np):
+    """Pure host packer: optional COM/contact unavailable explicitly, no inference."""
+    h4m3_validate_core(raw,row,manifest,np)
+    fields=manifest['fields']
+    optional=('xipos','ximat','cvel','subtree_com','contact_geom','contact_pos',
+              'contact_frame','contact_dist','contact_includemargin','contact_friction',
+              'contact_dim','contact_address','efc_force')
+    packed={k:v for k,v in raw.items() if k not in optional}
+    ctrl=h4m3_effective_ctrl(raw['raw_ctrl'],fields['actuator_ctrlrange'],
+        fields['actuator_ctrllimited'],manifest['clamp_disabled'],np)
+    packed['derived_effective_ctrl']=ctrl
+    packed['effective_ctrl_semantics']='offline_source_clamp_not_direct_measurement'
+    def margins(values,ranges,limited):
+        x=np.asarray(values); r=np.asarray(ranges); mask=np.asarray(limited)
+        h4m3_require(x.shape==(29,) and r.shape==(29,2) and mask.shape==(29,)
+                      and np.isfinite(x).all() and np.isfinite(r).all()
+                      and np.isin(mask,[0,1]).all(),'MARGIN_SCHEMA')
+        margin=np.minimum(x-r[:,0],r[:,1]-x)
+        return [float(v) if use else None for v,use in zip(margin,mask)]
+    ids=np.asarray(fields['actuator_trnid'])[:,0]
+    packed['joint_margin_post']=margins(np.asarray(raw['qpos_post'])[manifest['qpos_addresses']],
+        np.asarray(fields['jnt_range'])[ids],np.asarray(fields['jnt_limited'])[ids])
+    packed['raw_ctrl_margin']=margins(raw['raw_ctrl'],fields['actuator_ctrlrange'],
+                                      fields['actuator_ctrllimited'])
+    packed['force_margin_last_solve']=margins(raw['actuator_force'],fields['actuator_forcerange'],
+                                             fields['actuator_forcelimited'])
+    packed['target_minus_post_joint']=np.asarray(raw['target'])-np.asarray(raw['qpos_post'])[
+        manifest['qpos_addresses']]
+    packed['actor_phase_features']=np.asarray(raw['actor_input'])[99:103]
+    packed['previous_action']=np.asarray(raw['actor_input'])[70:99]
+    packed['inference_key']=[0,0]
+    packed['sample_stage']=manifest['stage']
+    try:
+        root=manifest['root_body_id']; roots=np.asarray(fields['body_rootid'])
+        mask=roots==root; mass=np.asarray(fields['body_mass'])[mask]
+        inertia=np.asarray(fields['body_inertia'])[mask]
+        xipos=np.asarray(raw['xipos']); ximat=np.asarray(raw['ximat'])
+        cvel=np.asarray(raw['cvel']); subtree=np.asarray(raw['subtree_com'])
+        center,velocity,momentum=h4m3_com(mass,inertia,xipos[mask],ximat[mask],
+            cvel[mask],subtree[roots[mask]],np)
+        h4m3_require(np.allclose(center,subtree[root],atol=1e-5,rtol=0),'COM_ROOT_CHECK')
+        packed['com']={'available':True,'position':center,'velocity':velocity,
+            'angular_momentum':momentum,'body_xipos':xipos[mask],
+            'body_ximat':ximat[mask],'body_cvel':cvel[mask],'subtree_com':subtree[root]}
+    except (KeyError,IndexError,ValueError,RuntimeError) as exc:
+        packed['com']={'available':False,'reason':str(exc)[:240]}
+    try:
+        geom=np.asarray(raw['contact_geom']); n=len(geom)
+        pos=np.asarray(raw['contact_pos']); frame=np.asarray(raw['contact_frame']).reshape(n,3,3)
+        dist=np.asarray(raw['contact_dist']); margin=np.asarray(raw['contact_includemargin'])
+        friction=np.asarray(raw['contact_friction']); dim=np.asarray(raw['contact_dim'])
+        adr=np.asarray(raw['contact_address']); efc=np.asarray(raw['efc_force'])
+        h4m3_require(geom.shape==(n,2) and pos.shape==(n,3) and dist.shape==margin.shape
+            ==dim.shape==adr.shape==(n,) and friction.shape==(n,5)
+            and geom.dtype.kind in 'iu' and dim.dtype.kind in 'iu' and adr.dtype.kind in 'iu',
+            'CONTACT_SLOT_SCHEMA')
+        lf,rf=manifest['foot_geom_ids']; floor=manifest['floor_geom_id']
+        relevant={frozenset((lf,floor)),frozenset((rf,floor)),frozenset((lf,rf))}
+        slots=[]; loads={'left':0.,'right':0.}
+        for i,(g1,g2) in enumerate(geom):
+            pair=frozenset((int(g1),int(g2)))
+            if pair not in relevant:
+                continue
+            h4m3_require(np.isfinite(dist[i]) and np.isfinite(margin[i]),'CONTACT_DIST')
+            if adr[i]<0 or dist[i]>margin[i]:
+                continue
+            h4m3_require(np.isfinite(pos[i]).all() and np.isfinite(frame[i]).all()
+                and np.allclose(frame[i]@frame[i].T,np.eye(3),atol=1e-5,rtol=0),
+                'CONTACT_FRAME')
+            wrench=h4m3_contact_force(efc,int(adr[i]),int(dim[i]),friction[i],
+                                       manifest['pyramidal'],np)
+            h4m3_require(wrench is not None and np.isfinite(wrench).all(),'CONTACT_WRENCH')
+            normal=frame[i,0]
+            if floor in pair:
+                upward=normal if g1==floor else -normal
+                h4m3_require(upward[2]>.99 and wrench[0]>=-1e-6,'CONTACT_NORMAL')
+                loads['left' if lf in pair else 'right']+=float(wrench[0])
+            slots.append({'slot':i,'geom':[int(g1),int(g2)],'pos':pos[i],
+                'frame':frame[i],'dist':dist[i],'margin':margin[i],
+                'dim':int(dim[i]),'address':int(adr[i]),'friction':friction[i],
+                'wrench_contact_frame':wrench})
+        bw=float(np.asarray(fields['body_mass']).sum())*abs(manifest['gravity'][2])
+        h4m3_require(bw>0,'BODY_WEIGHT')
+        packed['contact']={'available':True,'slots':slots,'normal_load_N':loads,
+            'normal_load_bodyweight':{k:v/bw for k,v in loads.items()},
+            'stage':'last_forward_solve'}
+    except (KeyError,IndexError,ValueError,RuntimeError) as exc:
+        packed['contact']={'available':False,'reason':str(exc)[:240]}
+    # Required sensor velocities cannot silently become optional.
+    sensor=np.asarray(raw['feet_sensor_velocity'])
+    h4m3_require(sensor.shape==np.asarray(manifest['feet_sensor_addresses']).shape
+        and np.isfinite(sensor).all(),'FOOT_SENSOR_SCHEMA')
+    return packed
+
+
+def h4m3_native_kick(st,direction,magnitude,tick,jax,jnp,np):
+    """Same injection as legacy h3_group plus exact no-other-state audit."""
+    base=jax.tree_util.tree_map(lambda x:x,st)
+    heading=yaw_from_root_quat(jax.device_get(base.data.qpos[3:7]))
+    requested=new_body_delta(direction,heading,magnitude)
+    before=np.asarray(jax.device_get(base.data.qvel))
+    qvel=base.data.qvel.at[:2].add(jnp.asarray(requested,dtype=base.data.qvel.dtype))
+    after=np.asarray(jax.device_get(qvel))
+    actual=after[:2].astype(np.float64)-before[:2].astype(np.float64)
+    h4m3_require(np.isfinite(actual).all() and np.array_equal(before[2:],after[2:])
+        and np.allclose(actual,requested,atol=2e-6,rtol=0),'ACTUAL_KICK')
+    out=base.replace(data=base.data.replace(qvel=qvel))
+    restored=out.replace(data=out.data.replace(qvel=base.data.qvel))
+    h4m3_require(h4m3_tree_equal(base,restored,jax,np)
+        and h4m3_tree_equal(base,st,jax,np),'KICK_OTHER_STATE')
+    meta={'exposed':True,'step':tick,'heading_rad':heading,
+          'requested_world_dqvel_xy_mps':list(requested),
+          'actual_world_dqvel_xy_mps':actual.tolist(),
+          'actual_magnitude_mps':float(np.linalg.norm(actual)),
+          'full_state_rng_fork_by_construction':True}
+    return out,meta,{'tick':tick,'qvel_before':before.tolist(),'qvel_after':after.tolist()}
+
+
+def h4m3_native_lane(lane,session,env,step_fn,manifest,jax,jnp,np):
+    # No caller can use this adapter through the current held diagnostic.
+    h4m3_authorization()
+    audits=[]
+    def reset(seed):
+        state=env.reset(jax.random.PRNGKey(seed))
+        h4m3_require(state.obs['state'].shape==(103,) and
+            state.obs['privileged_state'].shape==(216,) and
+            not bool(jax.device_get(state.done)),'RESET_SCHEMA')
+        return state
+    def step(st,capture):
+        result=step_fn(st,placement_capture=capture)
+        return result[0],jax.device_get(result[1]),(
+            jax.device_get(result[2]) if capture else None)
+    def kick(st,direction,magnitude,tick):
+        out,meta,audit=h4m3_native_kick(st,direction,magnitude,tick,jax,jnp,np)
+        audits.append(audit)
+        return out,meta
+    lane_out=h4m3_replay_lane(lane,session,reset,step,
+        lambda st:jax.tree_util.tree_map(lambda x:x,st),kick,
+        lambda a,b:h4m3_tree_equal(a,b,jax,np),
+        lambda raw,row:h4m3_pack_capture(raw,row,manifest,np))
+    lane_out['kick_audits']=audits
+    return lane_out
 
 
 def h4m3_tree_equal(a,b,jax,np):
@@ -5008,10 +5180,16 @@ def h4m3_replay_lane(lane,session,reset,step,clone,kick,equal,validate):
             st,raw,rich=step(st,capture)
             row=h4m3_legacy_row(raw,expected,np)
             if capture:
-                validate(rich,row)
-                # serialize only after validation; disallow NaN/Inf and padded contacts
-                payload=json.loads(json.dumps(rich,allow_nan=False,
-                    default=lambda a:np.asarray(a).tolist()))
+                packed=validate(rich,row)
+                h4m3_require(isinstance(packed,dict),'PACK_SCHEMA')
+                # Reserve 4 MiB for legacy frames and report metadata.
+                encoded=json.dumps(packed,allow_nan=False,separators=(',',':'),
+                    default=lambda a:np.asarray(a).tolist())
+                size=len(encoded.encode('utf8'))+128
+                h4m3_require(session.get('rich_bytes',0)+size<=H4M3_REPORT_CAP-4*1024**2,
+                              'RICH_REPORT_CAP')
+                payload=json.loads(encoded)
+                session['rich_bytes']=session.get('rich_bytes',0)+size
                 out['rich'].append({'segment':segment,'tick':tick,'data':payload})
                 session['rich_recorded']+=1
             out['segments'][segment].append(row)
