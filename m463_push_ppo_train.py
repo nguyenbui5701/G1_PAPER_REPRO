@@ -2439,14 +2439,21 @@ def h4x_normalizer_expected(np,value,dtype,rollouts):
     return target
 
 
-def h4x_verify_operational(report):
+def h4x_verify_operational(report, *, h4cc=False):
     import numpy as np
     h4x_require(report['h4x_exploratory'] is True,'EXPLORATORY_REPORT')
     auth=report['h4x_authorization']
-    h4x_require(auth['id']==H4X_ID and auth['arm']==report['h4_arm'] and
-                auth['output']==H4X_PATHS[auth['arm']] and
-                auth['generated_sha256']==report['h4_common_contract']['generated_brax_sha256'],
-                'REPORT_AUTHORIZATION')
+    if h4cc:
+        h4x_require(auth['id']==H4CC_ID and auth['arm']==report['h4cc_arm']
+                    and report['h4_arm']=='candidate'
+                    and auth['output']==str(H4CC_PATHS[auth['arm']])
+                    and auth['generated_sha256']==report['h4_common_contract']['generated_brax_sha256'],
+                    'CCRC_REPORT_AUTHORIZATION')
+    else:
+        h4x_require(auth['id']==H4X_ID and auth['arm']==report['h4_arm'] and
+                    auth['output']==H4X_PATHS[auth['arm']] and
+                    auth['generated_sha256']==report['h4_common_contract']['generated_brax_sha256'],
+                    'REPORT_AUTHORIZATION')
     r=report['h4x_operational']
     h4x_require(r['spec']==H4X_SPEC and r['complete'] is True,'OPERATIONAL_CONTRACT')
     replay={}
@@ -2623,8 +2630,9 @@ def h4x_audit_callback(jax,np,monitor,report,persist,args,auth,control_dr):
         nonlocal initial_count,pending,training_schema,environment_schema
         budget.check(event)
         if event.endswith('_before'):
-            h4x_require(h4x_parse_marker(Path(__file__).with_name('G1_RESEARCH_RULES.md').read_text('utf8'))==auth,
-                        'AUTHORIZATION_CHANGED')
+            rules=Path(__file__).with_name('G1_RESEARCH_RULES.md').read_text('utf8')
+            current=(h4cc_authorization() if auth['id']==H4CC_ID else h4x_parse_marker(rules))
+            h4x_require(current==auth,'AUTHORIZATION_CHANGED')
         safe()
         chunk=op['recorded']['optimizer']//200
         row={}
@@ -4523,6 +4531,319 @@ def h4cc_exposure_decision(ref, treatment):
     decision=('INCONCLUSIVE' if any(v['ceiling'] for v in rows.values()) else
               'PASS' if all(v['improved'] for v in rows.values()) else 'NO_GO')
     return {'decision':decision,'sides':rows,'execution_authorized':False}
+
+def h4cc_approved_sha(rules,label):
+    import re
+    hits=re.findall(r'^H4CC_APPROVED_'+label+r'_SHA256: ([0-9a-f]{64})
+    if a.mode!='plan':
+        raise RuntimeError('M470_H4CC_EXECUTION_HOLD')
+    if (a.stage!='easy_repeat_support' or a.output_dir!=H4CC_PATHS[a.h4cc_arm]
+            or any(getattr(a,k,None) for k in ('h4_arm','h4_exploratory','h4_readiness',
+                'h4_causal','h3_m1','h3_diagnostic_only','h1_m1','h1_m2','resume_state',
+                'independent_budget','h4_control_report','h4_exploratory_causal_report',
+                'h4_exploratory_reward_report','h4_causal_failure_report',
+                'h4_readiness_reward_report','h3_causal_report','h3_old10m_report',
+                'smoke_report','rollouts','num_evals'))):
+        raise RuntimeError('M470_H4CC_PLAN_CONTRACT')
+
+
+def main():
+    p=argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--mode',choices=['plan','smoke','probe2','smoke3','pilot','longtrain','readiness','causal'],required=True)
+    p.add_argument('--stage',choices=['easy','easy_repeat','easy_repeat_support','medium','hard'],default='easy')
+    p.add_argument('--checkpoint',type=Path,required=True)
+    p.add_argument('--restore-report',type=Path,required=True)
+    p.add_argument('--output-dir',type=Path,required=True)
+    p.add_argument('--smoke-report',type=Path)
+    p.add_argument('--rollouts',type=int)
+    p.add_argument('--num-evals',type=int)
+    p.add_argument('--resume-state',type=Path)
+    p.add_argument('--independent-budget',choices=['10M','50M','100M'])
+    p.add_argument('--h1-m1',action='store_true',help='H1-M1 experimental reward: smoke3 or independent 10M only')
+    p.add_argument('--h1-m2',action='store_true',help='H1-M2 phase/contact foot-crossing reward: smoke3 or independent 10M only; separate owner GO required')
+    p.add_argument('--h3-m1',action='store_true',help='H3-M1 independent 10M only with immutable diagnostic/smoke/comparator evidence')
+    p.add_argument('--h3-diagnostic-only',action='store_true',
+                   help='Historical diagnostic mode (closed; no rerun)')
+    p.add_argument('--h3-causal-report',type=Path,
+                   help='Exact reviewed causal diagnostic report')
+    p.add_argument('--h3-old10m-report',type=Path,
+                   help='Exact OLD10M comparator report and adjacent frozen artifacts')
+    p.add_argument('--h4-arm',choices=['control','candidate'],help='H4 design plan only; execution HOLD')
+    p.add_argument('--h4-control-report',type=Path,help='Future pinned matched control; execution HOLD')
+    p.add_argument('--h4-readiness',action='store_true',help='Isolated readiness plan; execution HOLD')
+    p.add_argument('--h4-readiness-reward-report',type=Path)
+    p.add_argument('--h4-causal',action='store_true',help='Isolated causal plan; execution HOLD')
+    p.add_argument('--h4-causal-failure-report',type=Path)
+    p.add_argument('--h4-exploratory',action='store_true',help='H4-M1-2R separate Rules-only authorization')
+    p.add_argument('--h4-exploratory-causal-report',type=Path)
+    p.add_argument('--h4-exploratory-reward-report',type=Path)
+    p.add_argument('--h4cc-arm',choices=['ref','ccrc'],help='CCRC held plan only')
+    a=p.parse_args()
+    if a.h4cc_arm is not None:
+        try:
+            h4cc_validate_held_plan(a)
+        except RuntimeError as exc:
+            p.error(str(exc))
+        print('M470_H4CC_PLAN_NO_GPU',json.dumps({'arm':a.h4cc_arm,'spec':H4CC_SPEC,
+              'execution_authorized':False,'training_performed':False},sort_keys=True))
+        return
+    try:
+        validate_h4c_cli(a)
+        if not a.h4_causal:
+            validate_h4r_cli(a)
+        validate_h4_cli(a)
+    except RuntimeError as exc:
+        p.error(str(exc))
+    if a.h4_causal:
+        if a.mode=='plan':
+            print('M470_H4C_PLAN_NO_GPU',json.dumps({'spec':H4C_SPEC,'execution_authorized':False,
+                'production_authorized':False},sort_keys=True))
+            return
+        return h4c_run(a)
+    if a.h4_readiness:
+        if a.mode=='plan':
+            print('M470_H4R_PLAN_NO_GPU',json.dumps({'spec':H4R_SPEC,'execution_authorized':False,
+                 'production_authorized':False},sort_keys=True))
+            return
+        return h4r_run(a)
+    if a.h4_exploratory and a.mode=='plan':
+        print('M470_H4X_PLAN_NO_GPU',json.dumps({'arm':a.h4_arm,'spec':H4X_SPEC,
+              'execution_authorized':False,'training_performed':False},sort_keys=True))
+        return
+    if a.h4_arm is not None and a.mode=='plan':
+        print('M470_H4_PLAN_NO_GPU',json.dumps({'arm':a.h4_arm,'spec':H4_SPEC,
+              'execution_authorized':False,'training_performed':False},sort_keys=True))
+        return
+    if a.independent_budget is not None:
+        if (a.mode != 'longtrain' or a.resume_state is not None or
+                a.rollouts is not None or a.num_evals is not None):
+            p.error('--independent-budget requires longtrain without '
+                    '--resume-state/--rollouts/--num-evals')
+        a.rollouts, a.num_evals = {
+            '10M': (40, 6),
+            '50M': (192, 25),
+            '100M': (384, 49),
+        }[a.independent_budget]
+    try:
+        validate_h3_cli(a)
+    except RuntimeError as exc:
+        p.error(str(exc))
+    if a.mode=='plan':
+        if a.h3_m1:
+            print('M470_H3_M1_PLAN_NO_GPU', json.dumps({
+                'spec': H3_SPEC, 'stage': a.stage,
+                'smoke_steps': 786432, 'smoke_rollouts': 3,
+                'independent_steps': 10485760, 'independent_rollouts': 40,
+                'independent_evals': 6, 'num_envs': 8192,
+                'unroll_length': 32, 'num_minibatches': 8,
+                'batch_size': 1024, 'updates_per_batch': 5,
+                'fingerprint': H3_FP, 'training_performed': False,
+                'execution_authorized': False,
+                'ppo_hold': True, 'diagnostic_closed': True,
+                'causal_report_flag': '--h3-causal-report',
+                'causal_report_sha256': H3_CAUSAL_SHA,
+                'diagnostic_max_control_transitions': 54,
+            }, sort_keys=True))
+            return
+        print('M463_COVERAGE_PLAN_NO_GPU',json.dumps({
+            'stage':a.stage,'mode':a.mode,'smoke_steps':TOTAL_STEPS_BATCH,
+            'pilot_steps':20*TOTAL_STEPS_BATCH,'num_envs':8192,
+            'unroll_length':32,'push_target_step':[12,24],
+            'nominal_fraction':0.20,'checkpoint':str(a.checkpoint),
+            'probe2_steps': 2 * TOTAL_STEPS_BATCH,
+            'restore_report':str(a.restore_report),'out_dir':str(a.output_dir),
+            'source_not_modified':True,'optimizer_resumed':False},indent=2))
+        return
+    run(a)
+
+
+if __name__=='__main__': main()
+,rules,re.M)
+    h4x_require(len(hits)==1,'CCRC_APPROVED_'+label)
+    return hits[0]
+
+def h4cc_parse_marker(rules):
+    import re
+    h4x_require(not any(x.startswith('H4X_ACTIVE_GO:') for x in rules.splitlines()),'CCRC_LEGACY_CONFLICT')
+    hits=[x for x in rules.splitlines() if x.startswith('H4CC_ACTIVE_GO:')]
+    h4x_require(len(hits)==1,'CCRC_EXECUTION_HOLD')
+    m=re.fullmatch(r'H4CC_ACTIVE_GO: (H4-M2-CCRC-V1) (ref|ccrc) '
+                   r'(m463_runs/[a-z0-9_]+) ([0-9a-f]{64}) ([0-9a-f]{64}) '
+                   r'([0-9a-f]{64}) ([0-9a-f]{64})',hits[0])
+    h4x_require(m is not None,'CCRC_AUTHORIZATION_SCHEMA')
+    ident,arm,out,src,gen,tech,evidence=m.groups()
+    h4x_require(out==str(H4CC_PATHS[arm]) and tech==h4cc_approved_sha(rules,'TECH_REPORT')
+                and evidence==(tech if arm=='ref' else h4cc_approved_sha(rules,'REF_REPORT')),
+                'CCRC_AUTHORIZATION_BINDING')
+    return dict(id=ident,arm=arm,output=out,source_sha256=src,generated_sha256=gen,
+                technical_sha256=tech,evidence_sha256=evidence)
+
+def h4cc_authorization():
+    h4x_require(H4CC_EXECUTION_AUTHORIZED is True and not any(
+        (H4_EXECUTION_AUTHORIZED,H4R_EXECUTION_AUTHORIZED,H4C_EXECUTION_AUTHORIZED)),
+        'CCRC_EXECUTION_HOLD')
+    root=Path(__file__).resolve().parent
+    auth=h4cc_parse_marker((root/'G1_RESEARCH_RULES.md').read_text('utf8'))
+    h4x_require(h4x_source_digest(root)==auth['source_sha256'],'CCRC_SOURCE_CONTRACT')
+    return auth
+
+def h4cc_generated_guard(audit,generated_file,environment):
+    auth=h4cc_authorization()
+    root=Path(__file__).resolve().parent
+    out=root/auth['output']; generated=Path(generated_file)
+    h4x_require(callable(audit) and getattr(audit,'h4x_authorization',None)==auth
+                and getattr(environment,'_h4cc_arm',None)==auth['arm']
+                and getattr(environment,'_h4_arm',None)=='candidate','CCRC_AUDIT_ENV')
+    h4x_require(generated.resolve()==out/'m463_brax_ppo_instrumented.py'
+                and not generated.is_symlink() and digest(generated)==auth['generated_sha256'],'CCRC_GENERATED_PIN')
+    reservation=out/'attempt.json'
+    h4x_require(reservation.is_file() and not reservation.is_symlink() and
+        json.loads(reservation.read_bytes())=={'authorization':auth,'reserved':True},'CCRC_RESERVATION')
+    h4x_write_json(out/'dispatch.started.json',{'authorization':auth},exclusive=True)
+
+def h4cc_verify_ledger(report):
+    arm=report['h4cc_arm']; chunks=report['h4cc_chunks']; epochs=report['h4cc_epochs']
+    h4x_require(len(chunks)==8 and len(epochs)==2,'CCRC_LEDGER_LENGTH')
+    total={}; pending={'active':0,'pending_valid':0}
+    keys=set(map(h4cc_count_key,H4CC_COUNTERS))
+    for j,ep in enumerate(epochs):
+        counts={}
+        for i,row in enumerate(chunks[4*j:4*j+4]):
+            h4x_require(row['chunk']==4*j+i+1 and set(row['counts'])==keys
+                and all(type(v) is int and 0<=v<=5*TOTAL_STEPS_BATCH for v in row['counts'].values()),
+                'CCRC_CHUNK_COUNTS')
+            for k,v in row['counts'].items():
+                counts[k]=counts.get(k,0)+v; total[k]=total.get(k,0)+v
+        q=ep['pending_at_reset']
+        h4x_require(all(type(v) is int and 0<=v<=8192 for v in q.values()),'CCRC_CENSOR_COUNTS')
+        check=h4cc_epoch_audit({**report['h4_epochs'][j]['counts'],**counts},q,arm)
+        h4x_require(counts==ep['counts'] and check==ep['audit'] and check['passed'],'CCRC_EPOCH_REPLAY')
+        for k in pending:pending[k]+=q[k]
+    check=h4cc_epoch_audit({**report['h4_final_counts'],**total},pending,arm)
+    h4x_require(total==report['h4cc_final_counts'] and pending==report['h4cc_final_censored']
+                and check==report['h4cc_final_audit'] and check['passed'],'CCRC_FINAL_REPLAY')
+    return total
+
+def h4cc_read_final_report(path,expected_sha,arm,contract=None):
+    root=Path(__file__).resolve().parent
+    h4x_require(path is not None and arm in H4CC_PATHS,'CCRC_REPORT_REQUIRED')
+    path=Path(path)
+    h4x_require(path.resolve()==root/H4CC_PATHS[arm]/'report.json'
+                and not path.parent.is_symlink(),'CCRC_REPORT_PATH')
+    h4x_file_pin(path,expected_sha)
+    r=json.loads(path.read_bytes()); a=r['h4x_authorization']; c=r['h4_common_contract']
+    h4x_require(r['status']=='M463_COVERAGE_LONGTRAIN_PASS' and r['h4cc_arm']==arm
+                and r['h4cc_spec']==H4CC_SPEC and r['h4_arm']=='candidate'
+                and r['h4cc_historical_control_sha256']==H4CC_HISTORICAL_CONTROL_SHA
+                and r['h4_control_report_sha256']==H4CC_HISTORICAL_CONTROL_SHA
+                and r['source_commit']==PIN and r['source_checkpoint_sha256']==SEED1_SHA
+                and r['training_seed']==1 and r['trained_from']=='C401M_WEIGHTS_ONLY_ADAM_STARTED_ONCE'
+                and r['resume_fullstate_sha256'] is None and r['cumulative_steps_start']==0
+                and r['steps_observed']==r['run_steps_observed']==10485760
+                and r['reward_PD_termination_source_unchanged'] is True
+                and r['training_performed'] is True and r['promotion_authorized'] is False
+                and r['coverage_gate_pass'] is True and r['memory_gate_pass'] is True
+                and r['weights_finite'] is True and r['callback_vs_final_equal'] is True
+                and r['final_tensor_count']==25 and r['gpu_total_mib']==12288
+                and 0<r['gpu_peak_mib']<.95*12288 and r['gpu_monitor_errors']==0
+                and r['h4_matched_nominal_pass'] is True and r['h4_legacy_reconciled'] is True,
+                'CCRC_FINAL_REPORT')
+    h4x_require(a['id']==H4CC_ID and a['arm']==arm and a['output']==str(H4CC_PATHS[arm])
+                and a['generated_sha256']==c['generated_brax_sha256']
+                and a['source_sha256']==h4x_source_digest(root)
+                and (contract is None or c==contract)
+                and c==h4_common_contract(r['hardware_scaled_config'],r['train_reward_config'],r['instrumented_brax']),
+                'CCRC_FINAL_SOURCE')
+    rules=(root/'G1_RESEARCH_RULES.md').read_text('utf8')
+    h4x_require(a['technical_sha256']==h4cc_approved_sha(rules,'TECH_REPORT')
+                and a['evidence_sha256']==(a['technical_sha256'] if arm=='ref' else h4cc_approved_sha(rules,'REF_REPORT')),
+                'CCRC_FINAL_EVIDENCE')
+    for name,value in (('attempt.json',{'authorization':a,'reserved':True}),
+                       ('dispatch.started.json',{'authorization':a}),
+                       ('attempt_result.json',{'status':'COMPLETE','authorization':a})):
+        p=path.parent/name
+        h4x_require(p.is_file() and not p.is_symlink() and json.loads(p.read_bytes())==value,'CCRC_ATTEMPT '+name)
+    h4x_file_pin(path.parent/'m463_brax_ppo_instrumented.py',a['generated_sha256'])
+    h4x_require([v['steps'] for v in r['checkpoints']]==list(H4_EDGES)
+                and [v['steps'] for v in r['fullstate_checkpoints']]==list(H4_EDGES),'CCRC_ARTIFACT_EDGES')
+    for step,pol,full in zip(H4_EDGES,r['checkpoints'],r['fullstate_checkpoints']):
+        h4x_require(pol['file']==f'm463_easy_repeat_support_longtrain_step_{step:09d}.msgpack'
+                    and full['file']==f'm470_fullstate_step_{step:09d}.msgpack'
+                    and full['manifest']==f'm470_fullstate_step_{step:09d}.json','CCRC_ARTIFACT_NAMES')
+        h4x_file_pin(path.parent/pol['file'],pol['sha256'])
+        h4x_file_pin(path.parent/full['file'],full['sha256'])
+        h4x_file_pin(path.parent/full['manifest'],full['manifest_sha256'])
+        m=json.loads((path.parent/full['manifest']).read_bytes())
+        h4x_require(m['h4cc_arm']==arm and m['h4cc_authorization']==a
+                    and m['h4_common_contract']==c and m['fullstate_sha256']==full['sha256']
+                    and m['cumulative_steps']==step and m['parent_resume_sha256'] is None
+                    and all(m[k] is True for k in ('reset_edge','optimizer_state_included',
+                                                 'training_rng_included','evaluator_rng_included')),
+                    'CCRC_MANIFEST')
+    ctrl=h4cc_read_historical_control(root/H4X_PATHS['control']/'report.json',c)
+    h4_final_checks(r,r['coverage'],ctrl)
+    h4cc_verify_ledger(r)
+    h4x_require(h4x_verify_operational(r,h4cc=True)==H4CC_MATCHED_DR_SHA,'CCRC_REPORT_DR')
+    return r
+
+def h4cc_validate_cli(a,*,final=False):
+    auth=h4cc_authorization()
+    root=Path(__file__).resolve().parent
+    h4x_require(a.mode=='longtrain' and a.stage=='easy_repeat_support'
+                and a.h4cc_arm==auth['arm'] and a.output_dir.resolve()==root/auth['output']
+                and not a.output_dir.is_symlink() and not a.output_dir.parent.is_symlink(),'CCRC_MODE_ARM')
+    h4x_require(not any(getattr(a,k,None) for k in ('h4_arm','h4_exploratory','h4_readiness',
+                'h4_causal','h3_m1','h3_diagnostic_only','h1_m1','h1_m2','resume_state',
+                'independent_budget','h4_control_report','h4_causal_failure_report',
+                'h4_readiness_reward_report','h3_causal_report','h3_old10m_report',
+                'smoke_report')) and ((a.rollouts,a.num_evals)==(40,3) if final else
+                (a.rollouts,a.num_evals)==(None,None)), 'CCRC_CONFLICT')
+    h4x_file_pin(a.checkpoint,SEED1_SHA)
+    h4x_file_pin(a.restore_report,H3_CAUSAL_RESTORE_SHA)
+    h4x_file_pin(a.h4_exploratory_causal_report,H4X_CAUSAL_SHA)
+    prior=json.loads(a.h4_exploratory_causal_report.read_bytes())
+    h4x_require(prior['status']=='M470_H4C_DIAGNOSTIC_COMPLETE'
+                and prior['phase_verdicts']=={'A':'DIVERGENT','B':'PASS'}
+                and prior['comparisons']['B']['bitwise_equal'] is True
+                and prior['recorded_physical_transitions']==1024
+                and prior['recorded_optimizer_updates']==80,'CCRC_CAUSAL_EVIDENCE')
+    h4x_file_pin(a.h4_exploratory_reward_report,H4R_REWARD_SHA)
+    h4x_file_pin(a.h4cc_technical_report,auth['technical_sha256'])
+    tech=json.loads(a.h4cc_technical_report.read_bytes())
+    h4x_require(tech.get('status')=='M470_H4CC_TECH_COMPLETE'
+                and tech.get('passed') is True and tech.get('training_performed') is False
+                and type(tech.get('physical_transitions_attempted')) is int
+                and 0<tech['physical_transitions_attempted']<=2016
+                and tech.get('physical_transitions_recorded')==tech['physical_transitions_attempted'],
+                'CCRC_TECH_EVIDENCE')
+    if a.h4cc_arm=='ref':
+        h4x_require(a.h4cc_ref_report is None,'CCRC_REF_CONFLICT')
+    else:
+        ref=h4cc_read_final_report(a.h4cc_ref_report,auth['evidence_sha256'],'ref')
+        old=ref['h4x_authorization']
+        h4x_require(old=={**auth,'arm':'ref','output':str(H4CC_PATHS['ref']),
+                         'evidence_sha256':auth['technical_sha256']},'CCRC_FRESH_MATCH')
+    return auth
+
+def h4cc_run(args):
+    auth=h4cc_validate_cli(args)
+    out=args.output_dir
+    h4x_require(out.parent.is_dir() and not out.exists() and not out.is_symlink(),'CCRC_OUTPUT_CONSUMED')
+    h4x_storage(out,initial=True)
+    out.mkdir(exist_ok=False)
+    h4x_write_json(out/'attempt.json',{'authorization':auth,'reserved':True},exclusive=True)
+    try:
+        pins=h4x_bootstrap(args)
+        _run_impl(args,h4x={'authorization':auth,'pins':pins})
+        h4x_write_json(out/'attempt_result.json',{'status':'COMPLETE','authorization':auth},exclusive=True)
+    except BaseException as exc:
+        try:
+            h4x_write_json(out/'attempt_result.json',{'status':'STOPPED','error':repr(exc),
+                           'authorization':auth},exclusive=True)
+        except Exception as write_error:
+            print('M470_H4CC_PARTIAL_WRITE_FAILED',repr(write_error),flush=True)
+        raise
+
 
 def h4cc_validate_held_plan(a):
     if a.mode!='plan':
