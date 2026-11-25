@@ -1839,7 +1839,8 @@ def h3_gpu_check(monitor):
     return g
 
 
-def h3_group(args,env,step_fn,jax,jnp,np,session,name,seed,profile):
+def h3_group(args,env,step_fn,jax,jnp,np,session,name,seed,profile,
+             physical_cap=H3_EVAL_PHYSICAL):
     """One nominal rollout, two single suffixes, two double suffixes at most."""
     group={'policy':name,'seed':seed,'profile':profile,'command':list(PROFILES[profile]),
            'nominal_frames':[],'directions':{},'complete':False}
@@ -1850,7 +1851,7 @@ def h3_group(args,env,step_fn,jax,jnp,np,session,name,seed,profile):
     def advance(st,first,last,rows,capture_step=None):
         snap=None
         for i in range(first,last+1):
-            h3_require(session['physical_transitions_attempted']<H3_EVAL_PHYSICAL,'PHYSICAL_BUDGET')
+            h3_require(session['physical_transitions_attempted']<physical_cap,'PHYSICAL_BUDGET')
             session['physical_transitions_attempted']+=1
             st,diag=step_fn(st)
             raw=jax.device_get(diag)
@@ -1999,42 +2000,45 @@ def h3_standing(trace,first):
                                  for a,b in zip(x,x[1:]))}
 
 
-def h3_decide(session):
+def h3_decide(session, *, policies=H3_EVAL_POLICIES, comparator='OLD', candidate='H3',
+              logical_cap=H3_EVAL_LOGICAL, physical_cap=H3_EVAL_PHYSICAL):
+    # H3 defaults preserve the original labels, case ordering and gates.
+    only_old=comparator+'_ONLY'; only_new=candidate+'_ONLY'
     groups={(g['seed'],g['profile'],g['policy']):g for g in session['groups']}
-    expected={(s,p,n) for s in H3_EVAL_SEEDS for p in H3_EVAL_PROFILES for n in H3_EVAL_POLICIES}
-    h3_require(set(groups)==expected and len(session['groups'])==36
+    expected={(s,p,n) for s in H3_EVAL_SEEDS for p in H3_EVAL_PROFILES for n in policies}
+    h3_require(set(groups)==expected and len(session['groups'])==len(expected)
                and all(g['complete'] for g in groups.values()),'GROUP_COMPLETENESS')
-    h3_require(session['logical_trajectories_completed']==180
+    h3_require(session['logical_trajectories_completed']==logical_cap
                and session['physical_transitions_attempted']==session['physical_transitions_recorded']
                ==sum(g['physical_transitions'] for g in groups.values())
-               and session['physical_transitions_recorded']<=H3_EVAL_PHYSICAL,'FINAL_BUDGET')
+               and session['physical_transitions_recorded']<=physical_cap,'FINAL_BUDGET')
     summaries=[]
     paired=[]
     hard=[]
-    primary={'survival':{'OLD':0,'H3':0},'recovery5':{'OLD':0,'H3':0}}
-    moving={p:{'OLD':0,'H3':0} for p in H3_EVAL_PROFILES if p!='stand'}
+    primary={'survival':{comparator:0,candidate:0},'recovery5':{comparator:0,candidate:0}}
+    moving={p:{comparator:0,candidate:0} for p in H3_EVAL_PROFILES if p!='stand'}
     standing={k:0 for k in ('nominal','single','double')}
-    nominal={n:0 for n in H3_EVAL_POLICIES}
+    nominal={n:0 for n in policies}
     for seed in H3_EVAL_SEEDS:
         for profile in H3_EVAL_PROFILES:
-            traces={n:h3_decode(groups[(seed,profile,n)],session['frame_columns']) for n in H3_EVAL_POLICIES}
+            traces={n:h3_decode(groups[(seed,profile,n)],session['frame_columns']) for n in policies}
             for kind,d in [('nominal','none')]+[(k,d) for d in ('left','right') for k in ('single','double')]:
                 row={'seed':seed,'profile':profile,'kind':kind,'direction':d,'policies':{}}
-                for n in H3_EVAL_POLICIES:
+                for n in policies:
                     trace,exposed=traces[n][(kind,d)]
                     control=traces[n][('single',d) if kind=='double' else ('nominal','none')][0]
                     summary=h3_summary(trace,exposed,kind,control)
                     row['policies'][n]=summary
                     if kind=='nominal':
                         nominal[n]+=int(summary['survived'])
-                o,h=row['policies']['OLD'],row['policies']['H3']
-                old_t,new_t=traces['OLD'][(kind,d)][0],traces['H3'][(kind,d)][0]
+                o,h=row['policies'][comparator],row['policies'][candidate]
+                old_t,new_t=traces[comparator][(kind,d)][0],traces[candidate][(kind,d)][0]
                 key=[seed,profile,kind,d]
                 n=min(len(old_t),len(new_t))
                 safety={}
                 for k,tol in H3_EVAL_LIMITS.items():
                     x=max(f[k] for f in old_t[:n]); y=max(f[k] for f in new_t[:n])
-                    safety[k]={'OLD':x,'H3':y,'tolerance':tol,'pass':y<=x+tol}
+                    safety[k]={comparator:x,candidate:y,'tolerance':tol,'pass':y<=x+tol}
                     if not safety[k]['pass']:
                         hard.append({'case':key,'gate':k})
                 flags=lambda summary:{k for k,v in summary.get('terminal_source_flags',{}).items() if v}
@@ -2046,29 +2050,29 @@ def h3_decide(session):
                     hard.append({'case':key,'gate':'lost_survival'})
                 comparison={'case':key,'common_prefix_samples':n,'safety':safety,
                             'new_critical_terminal_flags':new_flags,
-                            'survival':{n:row['policies'][n]['survived'] for n in H3_EVAL_POLICIES}}
+                            'survival':{n:row['policies'][n]['survived'] for n in policies}}
                 if kind!='nominal':
-                    comparison['exposed']={n:row['policies'][n]['exposed'] for n in H3_EVAL_POLICIES}
+                    comparison['exposed']={n:row['policies'][n]['exposed'] for n in policies}
                     for sec in (2,5):
                         comparison['recovery'+str(sec)]={n:row['policies'][n]['recovery_'+str(sec)+'s']['recovered']
-                                                           for n in H3_EVAL_POLICIES}
+                                                           for n in policies}
                 comparison['discordance']={}
                 for metric in ('survival','exposed','recovery2','recovery5'):
                     if metric in comparison:
-                        a,b=(comparison[metric][n] for n in ('OLD','H3'))
+                        a,b=(comparison[metric][n] for n in (comparator,candidate))
                         comparison['discordance'][metric]=(
-                            'BOTH' if a and b else 'OLD_ONLY' if a else 'H3_ONLY' if b else 'NEITHER')
+                            'BOTH' if a and b else only_old if a else only_new if b else 'NEITHER')
                 if kind=='nominal':
                     for k in ('xy_tracking_rmse_mps','yaw_tracking_rmse_radps'):
                         if not h3_tracking_limit(o[k],h[k]):
                             hard.append({'case':key,'gate':'nominal_'+k})
                 if kind=='double':
                     if profile=='stand':
-                        for n in ('OLD','H3'):
+                        for n in (comparator,candidate):
                             primary['survival'][n]+=int(row['policies'][n]['survived'])
                             primary['recovery5'][n]+=int(comparison['recovery5'][n])
                     else:
-                        for n in ('OLD','H3'):
+                        for n in (comparator,candidate):
                             moving[profile][n]+=int(comparison['recovery5'][n])
                 if profile=='stand':
                     if o['survived'] and h['survived']:
@@ -2077,7 +2081,7 @@ def h3_decide(session):
                         standing[kind]+=1
                         tests={k:h3_tracking_limit(x[k],y[k]) for k in ('pose_l1_mean','xy_rmse','yaw_rmse')}
                         tests['swing_fraction']=y['swing_fraction']<=x['swing_fraction']+.02
-                        comparison['standing']={'OLD':x,'H3':y,'checks':tests}
+                        comparison['standing']={comparator:x,candidate:y,'checks':tests}
                         for k,v in tests.items():
                             if not v:
                                 hard.append({'case':key,'gate':'standing_'+k})
@@ -2089,14 +2093,14 @@ def h3_decide(session):
         if count!=12:
             hard.append({'policy':n,'gate':'nominal_12_of_12','observed':count})
     for p,v in moving.items():
-        if v['H3']<v['OLD']:
+        if v[candidate]<v[comparator]:
             hard.append({'profile':p,'gate':'moving_double_recovery5_net_loss'})
     ceiling=[]
     primary_pass=True
     for k,v in primary.items():
-        v['gain']=v['H3']-v['OLD']
+        v['gain']=v[candidate]-v[comparator]
         v['pass']=v['gain']>=2
-        if v['OLD']>6:
+        if v[comparator]>6:
             ceiling.append(k)
         primary_pass=primary_pass and v['pass']
     missing=[k for k,v in standing.items() if v<(4 if k=='nominal' else 1)]
@@ -2109,7 +2113,7 @@ def h3_decide(session):
         key=profile+'/'+kind
         dst=discordance.setdefault(key,{})
         for metric,label in pair['discordance'].items():
-            counts=dst.setdefault(metric,{k:0 for k in ('BOTH','OLD_ONLY','H3_ONLY','NEITHER')})
+            counts=dst.setdefault(metric,{k:0 for k in ('BOTH',only_old,only_new,'NEITHER')})
             counts[label]+=1
     return {'decision':decision,'primary_stand_double':primary,'primary_ceiling':ceiling,
             'discordance_counts':discordance,
@@ -2180,8 +2184,182 @@ def h3_run(args):
         raise
 
 
+
+# H4-M1-3: matched development only. Separate explicit execution GO required.
+H4_EVAL_EXECUTION_AUTHORIZED = False
+H4_EVAL_POLICIES = ('CTRL', 'CAND')
+H4_EVAL_LOGICAL = 120
+H4_EVAL_PHYSICAL = 89616
+H4_EVAL_ROOT = Path(__file__).resolve().parent
+H4_EVAL_OUTPUT = Path('m463_runs/m470_h4_m1_3_dev_v1/report.json')
+H4_EVAL_ARTIFACTS = {
+    'report.json': (
+        '2ab06f3cc92d546f49eb5b40551a1a8238398106afc547822d0ac2b73529a059',
+        '9c49c3cbea6cd3aae24435c4d8d4ee6f2cf09d35f4fbf1425d78f53a4a56307c'),
+    'm463_easy_repeat_support_longtrain_step_010485760.msgpack': (
+        'addc8e7217008555c4b4391f93dd3e7a3083e7b23052ec6ddf9b928fbc9fff33',
+        'a6ce74e03179202cb2bd9098e96a431e9e4265f373c9f092c43eb34ae558b296'),
+    'm470_fullstate_step_010485760.msgpack': (
+        '9b19312da08d71513ad8fa6638c632401bec20e09399fdf4a9f6f6e2b2619c80',
+        '7cbc24cb55767a9bcd6faa470ece3dbd78256f1bf5b6d1f074b67e2dea41124c'),
+    'm470_fullstate_step_010485760.json': (
+        '723ba76257cd0ec660ef6dd78d69d6546f80eec21467584d8fdd62295d69a119',
+        '015484fe8501d530c7dcd4742f22e50215667428e0e441e3ea1240dd81ce4959'),
+    'attempt.json': (
+        '4ea87a9695dbea17bc9e14052223f86f5126aca90a6b422e5e5959e8253c0bd2',
+        'e8e30dcf15876808f78917479a7a7e7044ec60c701207582aa0bee0cd0d22130'),
+    'dispatch.started.json': (
+        'a067569b1dc7f281fd4147402f3fc3d0907027f7c21a251119dbe13765b88aa1',
+        '3fd18fbfc5c033233e6dd86435c1cc0739d1b3d82619a0cbf37953b67e2387f8'),
+    'attempt_result.json': (
+        'ceaa02e61c04dda2f35a8b4a1f020fac74d1bb9f60673ac3d2d1d2ecfae8e334',
+        'fa7307b72904b56c7d9b8cb3dfdf388785ec46ab9bccacd190a62715d2b6ac25'),
+    'm463_brax_ppo_instrumented.py': (
+        '8f30e5c695211b21815375c37b1bda67fcda98b2ee259a703e87b182c3402062',
+        '8f30e5c695211b21815375c37b1bda67fcda98b2ee259a703e87b182c3402062'),
+}
+H4_EVAL_POLICY_FILE = 'm463_easy_repeat_support_longtrain_step_010485760.msgpack'
+H4_EVAL_DR = '60a4e6999c4fbad089439fabe9de951ba063bc68db1380b46ad47cb2c2f96ebf'
+H4_EVAL_COMMON = 'ac0ee95f9272cc58049e439db65f3bc68194e21b4784a114097334519d3df26b'
+
+
+def h4e_require(ok, label):
+    if not ok:
+        raise RuntimeError('M470_H4_EVAL_'+label)
+
+
+def h4e_paths(arm):
+    return H4_EVAL_ROOT / 'm463_runs' / ('m470_h4_m1_2r_'+arm+'_v1')
+
+
+def h4e_validate_protocol(args):
+    h4e_require(args.h4_m1_eval and not any((args.h3_m1_eval, args.h2a,
+                 args.h2b, args.h4_technical)), 'MODE_CONFLICT')
+    h4e_require(all(getattr(args,k) is None for k in (
+        'checkpoint_c','checkpoint_p','report_p','checkpoint_h3','report_h3',
+        'h4_reward_report')), 'LEGACY_INPUT_CONFLICT')
+    h4e_require(tuple(args.seeds)==H3_EVAL_SEEDS
+                 and tuple(args.profiles)==H3_EVAL_PROFILES
+                 and tuple(args.directions)==('left','right')
+                 and (args.push_step,args.push_magnitude,args.second_push_step,
+                      args.second_push_magnitude,args.max_steps,args.max_cases)
+                 ==(300,.50,335,.35,1000,H4_EVAL_LOGICAL), 'FROZEN_PROTOCOL')
+    expected=H4_EVAL_ROOT/H4_EVAL_OUTPUT
+    h4e_require(args.output.absolute()==expected and args.output.resolve()==expected,
+                 'FROZEN_OUTPUT')
+    h4e_require(24*5==H4_EVAL_LOGICAL and
+                 24*(1000+2*(701+666))==H4_EVAL_PHYSICAL,'BUDGET_FORMULA')
+
+
+def h4e_read_inputs(args):
+    # Exact accepted evidence bytes; no training module import or artifact restore.
+    h4e_validate_protocol(args)
+    pins={}
+    reports=[]
+    for i,arm in enumerate(('control','candidate')):
+        base=h4e_paths(arm)
+        h4e_require(base.resolve()==base and base.is_dir(),'INPUT_DIRECTORY_'+arm)
+        for name,expected in H4_EVAL_ARTIFACTS.items():
+            p=base/name
+            h4e_require(p.is_file() and not p.is_symlink() and sha256(p)==expected[i],
+                         'INPUT_'+arm+'_'+name)
+            pins[arm+'/'+name]=expected[i]
+        r=json.loads((base/'report.json').read_bytes())
+        result=json.loads((base/'attempt_result.json').read_bytes())
+        auth=r['h4x_authorization']
+        op=r['h4x_operational']
+        budget={'training':10485760,'optimizer':1600,'evaluation':6000,
+                'train_reset_lanes':24576,'eval_reset_lanes':6}
+        initial=[e for e in op['events'] if e['event']=='initial']
+        h4e_require(r['status']=='M463_COVERAGE_LONGTRAIN_PASS'
+                     and r['h4_arm']==arm and r['h4x_exploratory'] is True
+                     and r['source_commit']==PIN and r['source_checkpoint_sha256']==BASE_SHA
+                     and r['training_seed']==1 and r['trained_from']=='C401M_WEIGHTS_ONLY_ADAM_STARTED_ONCE'
+                     and r['resume_fullstate_sha256'] is None and r['cumulative_steps_start']==0
+                     and r['steps_observed']==r['run_steps_observed']==10485760
+                     and r['reward_PD_termination_source_unchanged'] is True
+                     and r['h4_final_exposure']['passed'] is True
+                     and r['coverage_gate_pass'] is True and r['memory_gate_pass'] is True
+                     and r['weights_finite'] is True and r['final_tensor_count']==25
+                     and r['callback_vs_final_equal'] is True
+                     and op['complete'] is True and op['recorded']==op['attempted']==budget
+                     and len(initial)==1 and initial[0]['dr_sha256']==H4_EVAL_DR
+                     and initial[0]['adam']==0 and initial[0]['restored_leaves']==25
+                     and result['status']=='COMPLETE' and result['authorization']==auth
+                     and auth['arm']==arm and auth['id']=='H4-M1-2R-V1'
+                     and auth['source_sha256']==H4_EVAL_COMMON
+                     and auth['generated_sha256']==H4_EVAL_ARTIFACTS['m463_brax_ppo_instrumented.py'][i]
+                     and r['checkpoints'][-1]['steps']==10485760
+                     and r['checkpoints'][-1]['file']==H4_EVAL_POLICY_FILE
+                     and r['checkpoints'][-1]['sha256']==H4_EVAL_ARTIFACTS[H4_EVAL_POLICY_FILE][i],
+                     'REPORT_CONTRACT_'+arm)
+        reports.append(r)
+    ctrl,cand=reports
+    h4e_require(ctrl['h4_common_contract']==cand['h4_common_contract']
+                 and ctrl['hardware_scaled_config']==cand['hardware_scaled_config']
+                 and ctrl['train_reward_config']==cand['train_reward_config']
+                 and cand['h4_control_report_sha256']==H4_EVAL_ARTIFACTS['report.json'][0]
+                 and cand['h4x_authorization']['evidence_sha256']==H4_EVAL_ARTIFACTS['report.json'][0]
+                 and cand['h4_matched_nominal_pass'] is True,'MATCHED_PAIR')
+    return pins
+
+
+def h4e_run(args):
+    h4e_require(H4_EVAL_EXECUTION_AUTHORIZED is True,'EXECUTION_HOLD')
+    pins=h4e_read_inputs(args)
+    import shutil
+    from m462_ppo_warmstart_run import GPUMonitor,sample_gpu
+    h4e_require(shutil.disk_usage(args.output.parent.parent).free>=2*1024**3,'DISK_RESERVE')
+    # Exclusive directory reservation. Never retry by deleting this directory.
+    args.output.parent.mkdir(exist_ok=False)
+    report={'status':'M470_H4_EVAL_IN_PROGRESS','source_commit':PIN,
+            'brax_train_sha256':TRAIN_SHA,'evaluator_sha256':sha256(Path(__file__)),
+            'input_sha256':pins,'seeds':args.seeds,'profiles':args.profiles,
+            'directions':args.directions,'push_step':300,'push_magnitude_mps':.50,
+            'second_push_step':335,'second_push_magnitude_mps':.35,'max_steps':1000,
+            'dt_s':.02,'training_performed':False,'deterministic_actor':True,
+            'domain_randomization_enabled':False,'random_source_push_enabled':False,
+            'original_reward_PD_termination':True,'expected_logical_trajectories':H4_EVAL_LOGICAL,
+            'max_physical_transitions':H4_EVAL_PHYSICAL,'physical_transitions_attempted':0,
+            'physical_transitions_recorded':0,'logical_trajectories_completed':0,
+            'frame_columns':None,'groups':[],'promotion_authorized':False}
+    h3_write(args.output,report,initial=True)
+    monitor=GPUMonitor()
+    args.h3_monitor=monitor
+    args.h3_session=report
+    try:
+        g=sample_gpu()
+        h4e_require(g['total_mib']==12288 and 0<=g['used_mib']<.95*12288,'GPU_PREFLIGHT')
+        report['gpu_initial']=g
+        with monitor:
+            run(args)
+        report['gpu']=h3_gpu_check(monitor)
+        h4e_require(h4e_read_inputs(args)==pins,'INPUT_IMMUTABILITY')
+        h4e_require(report['logical_trajectories_completed']==H4_EVAL_LOGICAL
+                     and report['physical_transitions_attempted']==report['physical_transitions_recorded']
+                     <=H4_EVAL_PHYSICAL,'FINAL_CONTRACT')
+        report['status']='M470_H4_EVAL_COMPLETED'
+        h3_write(args.output,report)
+        print('M470_H4_EVAL_COMPLETED',report['decision']['decision'],
+              report['logical_trajectories_completed'],report['physical_transitions_attempted'],flush=True)
+    except BaseException as e:
+        report['status']='M470_H4_EVAL_FAILED'
+        report['error']=type(e).__name__+': '+str(e)
+        report['gpu']=monitor.snapshot()
+        try:
+            h3_write(args.output,report)
+        except BaseException as write_error:
+            print('M470_H4_EVAL_PARTIAL_WRITE_FAILED',repr(write_error),flush=True)
+        raise
+
+
 def run(args):
-    h3_mode=bool(getattr(args,'h3_m1_eval',False))
+    h4_mode=bool(getattr(args,'h4_m1_eval',False))
+    if h4_mode:
+        h4e_require(H4_EVAL_EXECUTION_AUTHORIZED is True,'EXECUTION_HOLD')
+        h4e_validate_protocol(args)
+        h4e_require(getattr(args,'h3_session',None) is not None,'SESSION_REQUIRED')
+    h3_mode=bool(getattr(args,'h3_m1_eval',False)) or h4_mode
     if args.output.exists() and not (h3_mode and getattr(args,'h3_session',None) is not None):
         raise FileExistsError('Refuse to overwrite output: '+str(args.output))
     # Use the same pinned runner environment; apply compatibility BEFORE JAX import.
@@ -2213,10 +2391,10 @@ def run(args):
         args.h3_session['jax_version']=jax.__version__
     if not h3_mode and sha256(inspect.getfile(ppo.train))!=TRAIN_SHA:raise RuntimeError('M462_PINNED_BRAX_SOURCE_MISMATCH')
     paper=build_paper_config()
-    if sha256(args.checkpoint_c)!=BASE_SHA:raise RuntimeError('M462_FROZEN_401M_SHA_MISMATCH')
+    if not h4_mode and sha256(args.checkpoint_c)!=BASE_SHA:raise RuntimeError('M462_FROZEN_401M_SHA_MISMATCH')
     report_p = None
 
-    if not (args.h2a or args.h2b):
+    if not (args.h2a or args.h2b or h4_mode):
         report_p = read_m463_smoke_report(
             args.report_p,
             args.checkpoint_p,
@@ -2235,7 +2413,8 @@ def run(args):
     if float(cfg.reward_config.scales.base_height)!=0.:
         raise RuntimeError('M462_EVAL_SOURCE_REWARD_CONFIG_CHANGED')
     if h3_mode:
-        original_reward=json.loads(args.report_h3.read_bytes())['train_reward_config']
+        reward_report=h4e_paths('control')/'report.json' if h4_mode else args.report_h3
+        original_reward=json.loads(reward_report.read_bytes())['train_reward_config']
         h3_require(cfg.reward_config.to_dict()==original_reward,'ORIGINAL_REWARD_CONFIG')
     cfg.push_config.enable=False
     env=locomotion.load(ENV,config=cfg)
@@ -2260,17 +2439,21 @@ def run(args):
             raise RuntimeError('M462_NONFINITE_POLICY')
         inf=networks.make_inference_fn(ppo_nets)((norm,actor),deterministic=True)
         return inf
-    policies = {
-        'C': load_policy(args.checkpoint_c)
-    }
+    if h4_mode:
+        policies={n:load_policy(h4e_paths(arm)/H4_EVAL_POLICY_FILE)
+                  for n,arm in zip(H4_EVAL_POLICIES,('control','candidate'))}
+    else:
+        policies = {
+            'C': load_policy(args.checkpoint_c)
+        }
 
-    if not (args.h2a or args.h2b):
-        policies['P'] = load_policy(
-            args.checkpoint_p
-        )
-    if h3_mode:
-        policies['OLD']=policies.pop('P')
-        policies['H3']=load_policy(args.checkpoint_h3)
+        if not (args.h2a or args.h2b):
+            policies['P'] = load_policy(
+                args.checkpoint_p
+            )
+        if h3_mode:
+            policies['OLD']=policies.pop('P')
+            policies['H3']=load_policy(args.checkpoint_h3)
     results=[]
     if args.h2b:
         reference_path = args.output.with_suffix('.reference.json')
@@ -2577,10 +2760,12 @@ def run(args):
             step_fn=jax.jit(one_step)
             if h3_mode:
                 session=args.h3_session
-                g=h3_group(args,env,step_fn,jax,jnp,np,session,name,seed,profile)
+                g=h3_group(args,env,step_fn,jax,jnp,np,session,name,seed,profile,
+                           H4_EVAL_PHYSICAL if h4_mode else H3_EVAL_PHYSICAL)
                 session['gpu']=h3_gpu_check(args.h3_monitor)
                 h3_write(args.output,session)
-                print('M470_H3_EVAL_GROUP',name,seed,profile,g['physical_transitions'],
+                print('M470_H4_EVAL_GROUP' if h4_mode else 'M470_H3_EVAL_GROUP',
+                      name,seed,profile,g['physical_transitions'],
                       session['logical_trajectories_completed'],
                       session['physical_transitions_attempted'],flush=True)
                 continue
@@ -2848,7 +3033,9 @@ def run(args):
                     'nominal',off['steps'],'pushed',last,'terminated',terminated,
                     'recovered',recovery['recovered'],flush=True)
     if h3_mode:
-        args.h3_session['decision']=h3_decide(args.h3_session)
+        args.h3_session['decision']=(h3_decide(args.h3_session,policies=H4_EVAL_POLICIES,
+            comparator='CTRL',candidate='CAND',logical_cap=H4_EVAL_LOGICAL,
+            physical_cap=H4_EVAL_PHYSICAL) if h4_mode else h3_decide(args.h3_session))
         return
     if args.h2b:
         if len(session['calibration']) != 6 or len(results) != 6:
@@ -3485,7 +3672,8 @@ def h4t_run(args):
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--mode',choices=('plan','run'),required=True)
-    p.add_argument('--checkpoint-c',type=Path,required=True)
+    p.add_argument('--checkpoint-c',type=Path)
+    p.add_argument('--h4-m1-eval',action='store_true')
     p.add_argument('--checkpoint-p', type=Path)
     p.add_argument('--report-p', type=Path)
     p.add_argument('--h4-technical',action='store_true')
@@ -3511,6 +3699,10 @@ def main():
     p.add_argument('--max-steps',type=int,default=1000)
     p.add_argument('--max-cases',type=int,default=120)
     args=p.parse_args()
+    if not args.h4_m1_eval and args.checkpoint_c is None:
+        p.error('--checkpoint-c is required outside H4 matched evaluation')
+    if args.h4_m1_eval and args.h4_technical:
+        p.error('M470_H4_EVAL_MODE_CONFLICT')
     if args.h4_technical:
         if (args.h3_m1_eval or args.h2a or args.h2b or args.checkpoint_p is not None
                 or args.report_p is not None or args.checkpoint_h3 is not None
@@ -3552,6 +3744,23 @@ def main():
     if args.max_steps>5000 or args.max_steps<350:p.error('max steps must be in [350,5000]')
     count=len(args.seeds)*len(args.profiles)*len(args.directions)*2
     if count>args.max_cases or args.max_cases>300:p.error(f'{count} cases requested, max-cases={args.max_cases}')    
+    if args.h4_m1_eval:
+        try:
+            h4e_validate_protocol(args)
+            if args.mode=='run':
+                h4e_require(H4_EVAL_EXECUTION_AUTHORIZED is True,'EXECUTION_HOLD')
+        except RuntimeError as e:
+            p.error(str(e))
+        if args.mode=='plan':
+            print('M470_H4_EVAL_PLAN',json.dumps({
+                'policies':list(H4_EVAL_POLICIES),'seeds':args.seeds,
+                'profiles':args.profiles,'directions':args.directions,
+                'logical_trajectories':H4_EVAL_LOGICAL,'max_physical_transitions':H4_EVAL_PHYSICAL,
+                'training_performed':False,'execution_authorized':H4_EVAL_EXECUTION_AUTHORIZED,
+                'output':str(args.output)}))
+            return
+        h4e_run(args)
+        return
     if args.h3_m1_eval:
         try:
             h3_validate_protocol(args)
