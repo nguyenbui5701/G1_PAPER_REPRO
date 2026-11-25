@@ -2320,7 +2320,7 @@ def h4cc_eval_authorization():
         trainer.H4CC_EXECUTION_AUTHORIZED,trainer.H4_EXECUTION_AUTHORIZED,
         trainer.H4R_EXECUTION_AUTHORIZED,trainer.H4C_EXECUTION_AUTHORIZED)),
         'BROAD_HOLD_REQUIRED')
-    h4cc_eval_require(not any(line.startswith(('H4X_ACTIVE_GO:','H4CC_ACTIVE_GO:'))
+    h4cc_eval_require(not any(line.startswith(('H4X_ACTIVE_GO:','H4CC_ACTIVE_GO:','H4CC_TECH_ACTIVE_GO:'))
         for line in rules.splitlines()),'TRAINING_AUTHORIZATION_CONFLICT')
     lines=[line for line in rules.splitlines() if line.startswith('H4CC_EVAL_ACTIVE_GO:')]
     h4cc_eval_require(len(lines)==1,'EXECUTION_HOLD')
@@ -2571,6 +2571,8 @@ def h4e_run(args):
 
 
 def run(args):
+    if getattr(args,'h4cc_technical',False):
+        raise RuntimeError('M470_H4CC_TECH_USE_DEDICATED_DISPATCH')
     cc=bool(getattr(args,'h4cc_eval',False))
     h4_mode=bool(getattr(args,'h4_m1_eval',False)) or cc
     if cc:
@@ -3930,6 +3932,487 @@ def h4t_run(args):
         raise
 
 
+
+# H4-M2-3: isolated diagnostic only, no optimizer or efficacy evaluation.
+H4CC_TECH_EXECUTION_AUTHORIZED = False
+H4CC_TECH_ID = 'H4-M2-3-TECH-V1'
+H4CC_TECH_OUTPUT = Path('m463_runs/m470_h4_m2_tech_v1/report.json')
+H4CC_TECH_GENERATED_SHA = 'd5c03ebcbac9638c75b62161e332d15e7b2b3c671196ce1d11dce46bdef42e68'
+H4CC_TECH_FIXTURES = (
+    (4101,3,2,295,327,335,335),
+    (4102,3,3,295,327,335,335),
+    (4103,3,2,295,327,335,100),
+    (4104,1,3,305,327,335,335),
+)
+H4CC_TECH_SPEC = {'id':H4CC_TECH_ID,'fixtures':[list(x) for x in H4CC_TECH_FIXTURES],
+    'fixture_columns':['seed','class','direction','first_age','next','event_age','source_clock'],
+    'arms':['ref','ccrc'],'max_physical':2016,'max_reset_lanes':8,
+    'max_lane_steps':252,'hold_ticks':250,'action_repeat':1,'episode_length':1000,
+    'deterministic_actor':True,'synthetic_prior_event':True,'prior_actual_pushes':0,
+    'dr_seed_fold_in':41,'actor_seed_fold_in':42,'training_performed':False,
+    'efficacy_evaluated':False,'optimizer_updates':0,'evaluation_transitions':0,
+    'checkpoint_saves':0}
+
+def h4cc_tech_require(ok,label):
+    if not bool(ok):
+        raise RuntimeError('M470_H4CC_TECH_'+label)
+
+def h4cc_tech_parse_marker(rules):
+    import re
+    h4cc_tech_require(not any(line.startswith(('H4X_ACTIVE_GO:','H4CC_ACTIVE_GO:',
+        'H4CC_EVAL_ACTIVE_GO:')) for line in rules.splitlines()),'AUTH_CONFLICT')
+    lines=[line for line in rules.splitlines() if line.startswith('H4CC_TECH_ACTIVE_GO:')]
+    h4cc_tech_require(len(lines)==1,'EXECUTION_HOLD')
+    m=re.fullmatch(r'H4CC_TECH_ACTIVE_GO: (H4-M2-3-TECH-V1) '
+        r'([0-9a-f]{64}) ([0-9a-f]{64}) ([0-9a-f]{64})',lines[0])
+    h4cc_tech_require(m is not None,'AUTH_SCHEMA')
+    ident,source,generated,static=m.groups()
+    approved=re.findall(r'^H4CC_APPROVED_TECH_STATIC_SHA256: ([0-9a-f]{64})$',rules,re.M)
+    h4cc_tech_require(approved==[static] and generated==H4CC_TECH_GENERATED_SHA,
+                       'AUTH_BINDING')
+    return dict(id=ident,source_sha256=source,generated_sha256=generated,
+                static_sha256=static,output=str(H4CC_TECH_OUTPUT))
+
+def h4cc_tech_authorization():
+    import m463_push_ppo_train as t
+    h4cc_tech_require(not any((H4CC_TECH_EXECUTION_AUTHORIZED,H4CC_EVAL_EXECUTION_AUTHORIZED,
+        H4_EVAL_EXECUTION_AUTHORIZED,t.H4CC_EXECUTION_AUTHORIZED,t.H4_EXECUTION_AUTHORIZED,
+        t.H4R_EXECUTION_AUTHORIZED,t.H4C_EXECUTION_AUTHORIZED)),'BROAD_HOLD_REQUIRED')
+    a=h4cc_tech_parse_marker((H4_EVAL_ROOT/'G1_RESEARCH_RULES.md').read_text('utf8'))
+    h4cc_tech_require(t.h4x_source_digest(H4_EVAL_ROOT)==a['source_sha256'],'SOURCE_PIN')
+    return a
+
+def h4cc_tech_inputs(args,auth):
+    import m463_push_ppo_train as t
+    from types import SimpleNamespace
+    from importlib.machinery import PathFinder
+    paths={'C401M':args.checkpoint_c,'reward':args.h4_reward_report,
+           'restore':args.h4cc_restore_report,'static':args.h4cc_static_log}
+    expected={'C401M':BASE_SHA,'reward':t.H4R_REWARD_SHA,
+              'restore':t.H3_CAUSAL_RESTORE_SHA,'static':auth['static_sha256']}
+    for k,p in paths.items():
+        t.h4x_file_pin(p,expected[k])
+    static=paths['static'].read_text('utf8').splitlines()
+    h4cc_tech_require(static.count('H4_M2_3A_HELD_STATIC_PASS')==1 and
+        'H4CC_TECH_COMMON_SOURCE_SHA256 '+auth['source_sha256'] in static and
+        'H4CC_TECH_GENERATED_SHA256 '+auth['generated_sha256'] in static,'STATIC_EVIDENCE')
+    bootstrap=t.h4x_bootstrap(SimpleNamespace(checkpoint=paths['C401M'],
+        restore_report=paths['restore'],h4_exploratory_reward_report=paths['reward']))
+    for name in ('m463_coverage_env','m463_gate3_cp_eval'):
+        spec=PathFinder.find_spec(name,sys.path)
+        h4cc_tech_require(spec is not None and spec.origin is not None and
+            Path(spec.origin).resolve()==H4_EVAL_ROOT/(name+'.py'),'MODULE_ORIGIN '+name)
+    return {'input_sha256':expected,'input_paths':{k:str(p.resolve()) for k,p in paths.items()},
+            'bootstrap':bootstrap,'source_sha256':auth['source_sha256']}
+
+def h4cc_tech_fixture_values(fixture):
+    seed,cls,direction,first,target,age,clock=fixture
+    h4cc_tech_require(fixture in H4CC_TECH_FIXTURES and age==target+8 and
+        (30<=target-first<=32 and 30<=age-first<=40 if cls==3
+         else 15<=target-first<=30),'FIXTURE_METADATA')
+    return {'steps':age,'step':clock,'m463_age':age,'m463_next':target,
+            'm463_direction':direction,'m463_phase_target':0,'m463_no_push':0,
+            'm463_push_count':1,'m463_last_event_age':first,
+            'm463_recent':100-(age-first-1),'h4_class':cls,
+            'h4_first_pending':0,'h4_repeat_pending':1,'h4_first_age':first,
+            'h4_first_mag':.5,'h4_first_motion':0,'h4_assign_motion':0,
+            'h4_tail_kind':1,'h4_tail_cell':0,'h4_tail_age':age-first-1,
+            'h4_tail_same':1,'h4_tail_motion':0}
+
+def h4cc_tech_audit(report):
+    """Pure replay of bounded raw rows. No JAX, simulator or policy import."""
+    h4cc_tech_require(report['spec']==H4CC_TECH_SPEC,'SPEC')
+    lanes=report['lanes']
+    h4cc_tech_require(len(lanes)==report['reset_lanes_attempted']==report['reset_lanes_recorded']==8,'RESET_LEDGER')
+    stand=[0.,0.,0.]
+    commands=[stand,[.2,0.,0.],[.6,0.,0.],[.4,0.,.8],[.4,0.,-.8],[0.,.35,0.]]
+    # Compare exact float32 values by accepting only their canonical encodings.
+    import struct
+    commands=[[struct.unpack('f',struct.pack('f',v))[0] for v in c] for c in commands]
+    total=0; distinct_release=0; broad=0; no_refresh_completed=0; terminal_lanes=0
+    for index,fixture in enumerate(H4CC_TECH_FIXTURES):
+        seed,cls,direction,first,target,age,clock=fixture
+        pair=lanes[index*2:index*2+2]
+        for arm,lane in zip(('ref','ccrc'),pair):
+            h4cc_tech_require(lane['arm']==arm and lane['fixture']==list(fixture)
+                and lane['metadata']==h4cc_tech_fixture_values(fixture)
+                and lane['prior_actual_pushes']==0 and lane['initial_command']==stand,'LANE_ID')
+            rows=lane['rows']
+            h4cc_tech_require(1<=len(rows)<=252,'LANE_LENGTH')
+            total+=len(rows)
+            active=False; pending=None; held=stand; same=True
+            command=actor=critic=stand; source_clock=clock
+            last_key=lane['initial_rng']; last_sha=lane['initial_sha256']
+            for i,row in enumerate(rows):
+                def req(ok,label):h4cc_tech_require(ok,f'{seed}/{arm}/{i}/'+label)
+                m=row['metrics']
+                req(row['tick']==i and row['pre_sha256']==last_sha
+                    and row['rng_before']==last_key and row['source_clock']==source_clock
+                    and row['pre']==command and row['actor']==actor and row['critic']==critic,'CARRY')
+                req(row['finite'] is True and row['rng_after']==row['expected_rng']
+                    and row['native_draw'] in commands,'FINITE_RNG')
+                req(all(type(m[k]) is int and m[k] in (0,1) for k in (
+                    'event','repeat','terminal','refresh','bad','cc_bad','start',
+                    'event_terminal','tick','tick_same','tick_survived','tail_terminal',
+                    'completed','cc_refresh','sample_same','sample_different','deferred',
+                    'published','terminal_restored','active','pending_valid','boundary','truncation')),
+                    'FLAGS')
+                terminal=bool(m['terminal']); refresh=source_clock>=500
+                start=(i==0 and cls==3); tick=active and i>0
+                scope=start or tick
+                req(m['event']==m['repeat']==int(i==0) and m['start']==int(start)
+                    and m['mature']==int(start) and m['refresh']==int(refresh)
+                    and m['boundary']==m['truncation']==m['bad']==m['cc_bad']==0
+                    and m['age']==age+i and m['wrapper_steps']==age+i+1,'SCHEDULER')
+                if i==0:
+                    lo,hi=(.30,.40) if cls==3 else (.20,.60)
+                    req(m['gap']==age-first and m['direction']==direction
+                        and m['side_target']==direction-1 and m['support'] in (0,1,2,3)
+                        and m['side_matched']==int(m['support']==direction-1)
+                        and m['side_fallback']==1-m['side_matched']
+                        and lo<=row['magnitude']<=hi
+                        and abs(math.hypot(*row['delta'])-row['magnitude'])<=3e-6,'EVENT')
+                else:
+                    req(row['magnitude']==0 and row['delta']==[0.,0.],'EXTRA_PUSH')
+                exact=(command==actor==critic==held)
+                same=exact and (start or same) if scope else same
+                if arm=='ccrc' and scope:req(same,'COMMAND_COHERENCE')
+                native=row['native_draw'] if refresh else command
+                defer=arm=='ccrc' and scope and refresh and not terminal
+                restore=arm=='ccrc' and tick and terminal and pending is not None
+                if defer:
+                    req(pending is None,'DOUBLE_REFRESH')
+                    pending=native
+                complete=tick and i==250 and not terminal
+                publish=arm=='ccrc' and complete and pending is not None
+                keep=(start or (tick and i<250)) and not terminal
+                delivered=held if arm=='ccrc' and keep else native
+                if publish:delivered=pending
+                if restore and not refresh:delivered=pending
+                next_obs=stand if terminal else delivered if arm=='ccrc' and (keep or publish) else command
+                req(row['post']==delivered and row['next_actor']==row['next_critic']==next_obs,
+                    'COMMAND_DELIVERY')
+                expect={'event_terminal':start and terminal,'tick':tick,
+                    'tick_same':tick and same,'tick_survived':tick and not terminal,
+                    'tail_terminal':tick and terminal,'completed':complete,
+                    'cc_refresh':scope and refresh,'sample_same':scope and refresh and native==held,
+                    'sample_different':scope and refresh and native!=held,
+                    'deferred':defer,'published':publish,'terminal_restored':restore,
+                    'active':keep,'pending_valid':arm=='ccrc' and keep and pending is not None}
+                req(all(m[k]==int(v) for k,v in expect.items()) and
+                    m['tick_age']==(i if tick else 0),'TAIL_ACCOUNTING')
+                if publish and delivered!=held:
+                    # Completion alone is insufficient: observe the next physical action.
+                    if i+1<len(rows) and rows[i+1]['pre']==rows[i+1]['actor']==rows[i+1]['critic']==delivered:
+                        distinct_release+=1
+                if seed==4103 and arm=='ccrc' and complete:
+                    req(pending is None,'NO_REFRESH_PENDING')
+                    no_refresh_completed+=1
+                active=keep
+                if not keep:pending=None
+                req(row['held']==(held if keep else stand) and
+                    row['pending']==(pending if pending is not None else stand),'PENDING_VECTOR')
+                req(not terminal or (i==len(rows)-1 and not active and
+                    row['reset_data_obs_equal'] is True),'TERMINAL_CLOSE')
+                if terminal:terminal_lanes+=1
+                source_clock=0 if terminal or refresh else source_clock+1
+                req(row['next_source_clock']==source_clock,'SOURCE_CLOCK')
+                command,actor,critic=delivered,next_obs,next_obs
+                last_key=row['rng_after'];last_sha=row['post_sha256']
+            h4cc_tech_require(rows[-1]['metrics']['terminal']==1 or len(rows)==252,'SHORT_LANE')
+            h4cc_tech_require(lane['physical_attempted']==lane['physical_recorded']==len(rows),'LANE_LEDGER')
+        a,b=pair
+        h4cc_tech_require(a['initial_sha256']==b['initial_sha256'] and
+            a['initial_rng']==b['initial_rng'] and a['model_sha256']==b['model_sha256'],
+            'MATCHED_RESET')
+        matched=True
+        for x,y in zip(a['rows'],b['rows']):
+            if not matched:break
+            h4cc_tech_require(x['pre_sha256']==y['pre_sha256'] and
+                x['action_sha256']==y['action_sha256'] and x['physics_sha256']==y['physics_sha256']
+                and x['rng_after']==y['rng_after'] and x['native_draw']==y['native_draw']
+                and x['magnitude']==y['magnitude'] and x['delta']==y['delta'],'MATCHED_PREFIX')
+            if (x['post'],x['next_actor'])!=(y['post'],y['next_actor']):
+                h4cc_tech_require(cls==3 and y['metrics']['deferred']==1,'UNEXPECTED_DIVERGENCE')
+                matched=False
+            else:
+                h4cc_tech_require(x['post_sha256']==y['post_sha256'],'MATCHED_STATE')
+        if matched:
+            h4cc_tech_require(len(a['rows'])==len(b['rows']),'MATCHED_LENGTH')
+        if cls==1:
+            h4cc_tech_require(matched,'BROAD_NON_TARGET')
+            broad+=1
+    h4cc_tech_require(total==report['physical_transitions_attempted']==report['physical_transitions_recorded']
+        and 0<total<=2016,'PHYSICAL_LEDGER')
+    passed=distinct_release>0 and broad==1
+    return {'passed':passed,'decision':'PASS' if passed else 'INCONCLUSIVE',
+        'different_draw_release_followed_by_action':distinct_release,'broad_pairs':broad,
+        'no_refresh_completed':no_refresh_completed,'terminal_lanes':terminal_lanes,
+        'physical_transitions':total}
+
+def h4cc_tech_read_report(path,expected_sha,source,generated):
+    import m463_push_ppo_train as t
+    h4cc_tech_require(path is not None and path.resolve()==H4_EVAL_ROOT/H4CC_TECH_OUTPUT
+        and not path.parent.is_symlink(),'REPORT_PATH')
+    t.h4x_file_pin(path,expected_sha)
+    r=json.loads(path.read_bytes()); a=r['authorization']
+    h4cc_tech_require(r['status']=='M470_H4CC_TECH_COMPLETE' and r['passed'] is True
+        and r['source_commit']==PIN and a['id']==H4CC_TECH_ID
+        and a['output']==str(H4CC_TECH_OUTPUT) and a['source_sha256']==source
+        and a['generated_sha256']==generated==H4CC_TECH_GENERATED_SHA
+        and r['provenance']['source_sha256']==source
+        and r['provenance']['input_sha256']=={'C401M':BASE_SHA,'reward':t.H4R_REWARD_SHA,
+            'restore':t.H3_CAUSAL_RESTORE_SHA,'static':a['static_sha256']}
+        and r['brax_source']['sha256']==TRAIN_SHA and r['jax_version']=='0.4.35'
+        and r['training_performed'] is False and r['efficacy_evaluated'] is False
+        and r['ppo_steps']==r['optimizer_updates']==r['evaluation_transitions']==r['checkpoint_saves']==0
+        and r['policy_sha256_before']==r['policy_sha256_after']
+        and r['gpu']['total_mib']==12288 and 0<r['gpu']['peak_used_mib']<.95*12288
+        and r['gpu']['samples']>0 and not r['gpu']['sampler_errors'],'REPORT_PROVENANCE')
+    rules=(H4_EVAL_ROOT/'G1_RESEARCH_RULES.md').read_text('utf8')
+    h4cc_tech_require(t.h4cc_approved_sha(rules,'TECH_STATIC')==a['static_sha256'],'STATIC_APPROVAL')
+    for name,value in (('attempt.json',{'authorization':a,'reserved':True}),
+                       ('dispatch.started.json',{'authorization':a}),
+                       ('attempt_result.json',{'status':'COMPLETE','authorization':a})):
+        p=path.parent/name
+        h4cc_tech_require(p.is_file() and not p.is_symlink() and
+            json.loads(p.read_bytes())==value,'ATTEMPT '+name)
+    for k,p in r['provenance']['input_paths'].items():
+        t.h4x_file_pin(Path(p),r['provenance']['input_sha256'][k])
+    audit=h4cc_tech_audit(r)
+    h4cc_tech_require(audit==r['audit'] and audit['passed'],'REPORT_REPLAY')
+    return r
+
+def h4cc_tech_actual(args,r,monitor,persist):
+    # Only reached after exclusive reservation and separately approved marker.
+    import copy
+    import m463_push_ppo_train as t
+    from train import check_source,build_paper_config
+    from paper_config import BASE,ENV,PIN as SOURCE_PIN
+    check_source()
+    h4cc_tech_require(SOURCE_PIN==PIN,'SOURCE')
+    sys.path.insert(0,str(BASE/'G1_M4_0_G1_PPO_ONE_UPDATE_SMOKE_V1'))
+    from nvcc_compat import apply
+    r['nvcc']=apply()
+    import jax
+    import jax.numpy as jp
+    import numpy as np
+    from flax import serialization
+    from brax.training.acme import running_statistics
+    from brax.training.agents.ppo import networks
+    from mujoco_playground import locomotion
+    from mujoco_playground._src import wrapper
+    import m463_coverage_env as ce
+    from m462_typed_orbax_stage import checkpoint_parts
+    from m463_instrument_brax import h4c_git_blob
+    h4cc_tech_require(jax.default_backend()=='gpu' and jax.__version__=='0.4.35'
+        and jax.process_count()==jax.local_device_count()==1,'GPU_RUNTIME')
+    r['jax_version']=jax.__version__;r['brax_source']=h3_verify_brax_train_source(networks)
+    root=Path(r['brax_source']['path']).parents[3]
+    for name,blob in t.H4C_BRAX_BLOBS.items():
+        p=root.joinpath(*name.split('.')[1:]).with_suffix('.py')
+        h4cc_tech_require(p.is_file() and h4c_git_blob(p.read_bytes())==blob,'BRAX_DEP '+name)
+    h4cc_tech_require(h4c_git_blob((root/'envs/wrappers/training.py').read_bytes())==
+        '2c09c8268a29d14c832dd07050575e4541ee98af','EPISODE_WRAPPER')
+    h4cc_tech_require(h4c_git_blob(Path(wrapper.__file__).read_bytes())==
+        '62e2823b80b692befe29e4640d0b7a816e52271c','AUTORESET_WRAPPER')
+    paper=build_paper_config();cfg=locomotion.get_default_config(ENV)
+    reward=json.loads(args.h4_reward_report.read_bytes())['train_reward_config']
+    h4cc_tech_require(cfg.reward_config.to_dict()==reward and bool(cfg.push_config.enable)
+        and list(cfg.push_config.interval_range)==[5.,10.] and
+        list(cfg.push_config.magnitude_range)==[.1,2.],'SOURCE_CONFIG')
+    cfg.push_config.enable=False
+    shapes={'state':(103,),'privileged_state':(216,)}
+    nets=networks.make_ppo_networks(shapes,29,
+        preprocess_observations_fn=running_statistics.normalize,**dict(paper.network_factory))
+    n,p,v=checkpoint_parts(serialization.msgpack_restore(args.checkpoint_c.read_bytes()))
+    norm=serialization.from_state_dict(running_statistics.init_state(
+        {k:jp.zeros(s,jp.float32) for k,s in shapes.items()}),n)
+    actor=serialization.from_state_dict(nets.policy_network.init(jax.random.PRNGKey(11)),p)
+    critic=serialization.from_state_dict(nets.value_network.init(jax.random.PRNGKey(17)),v)
+    def host(x):return np.asarray(jax.device_get(x))
+    def digest_tree(tree):
+        h=hashlib.sha256()
+        pairs,treedef=jax.tree_util.tree_flatten_with_path(tree)
+        h.update(str(treedef).encode())
+        for key,x in pairs:
+            a=host(x);h.update(str(key).encode());h.update(a.dtype.str.encode())
+            h.update(str(a.shape).encode());h.update(a.tobytes())
+        return h.hexdigest()
+    params=(norm,actor,critic)
+    leaves=jax.tree_util.tree_leaves(params)
+    h4cc_tech_require(len(leaves)==25 and all(np.isfinite(host(x)).all() for x in leaves),'POLICY')
+    r['policy_sha256_before']=digest_tree(params)
+    policy=networks.make_inference_fn(nets)((norm,actor),deterministic=True)
+    randomizer=locomotion.get_domain_randomizer(ENV)
+    h4cc_tech_require(randomizer is not None,'DR')
+    # Raw finite checks BEFORE the pinned AutoReset replaces terminal data.
+    class RawAudit(wrapper.Wrapper):
+        def reset(self,rng):
+            st=self.env.reset(rng)
+            return st.replace(info={**st.info,'h4cc_tech_raw_finite':jp.ones_like(st.done,dtype=jp.bool_)})
+        def step(self,st,act):
+            nxt=self.env.step(st,act)
+            finite=jp.ones_like(nxt.done,dtype=jp.bool_)
+            for x in (nxt.data.qpos,nxt.data.qvel,nxt.data.qacc,nxt.data.ctrl,
+                nxt.data.actuator_force,nxt.data.sensordata,nxt.obs['state'],
+                nxt.obs['privileged_state'],nxt.reward,act):
+                finite=finite & jp.all(jp.isfinite(x).reshape((1,-1)),axis=1)
+            return nxt.replace(info={**nxt.info,'h4cc_tech_raw_finite':finite})
+    def state_digest(st):
+        # Only additive CCRC metadata omitted; all common state bytes compared.
+        return digest_tree(st.replace(info={k:v for k,v in st.info.items()
+                                            if not k.startswith('h4cc_')}))
+    metric_keys={'event':'m463_event','repeat':'m463_repeat','mature':'h4_mature_repeat',
+        'refresh':'h4_refresh','bad':'h4_bad','cc_bad':'h4cc_bad','age':'h4_age',
+        'boundary':'h4_boundary','truncation':'truncation','wrapper_steps':'steps',
+        'gap':'m463_repeat_gap','direction':'m463_direction','support':'m463_support_side',
+        'side_target':'m463_repeat_side_target','side_matched':'m463_repeat_side_matched',
+        'side_fallback':'m463_repeat_side_fallback'}
+    for k in ('start','event_terminal','tick','tick_age','tick_same','tick_survived',
+        'tail_terminal','completed','sample_same','sample_different','deferred','published',
+        'terminal_restored','active','pending_valid'):
+        metric_keys[k]='h4cc_'+k
+    metric_keys['cc_refresh']='h4cc_refresh'
+    # Independent pure key accounting, not a mutation or extra env sample.
+    def key_audit(key):
+        key=jax.random.split(key,8)[0]
+        key=jax.random.split(key,3)[0]
+        for _ in range(5):key=jax.random.split(key)[0]
+        key,cmd=jax.random.split(key)
+        return key,ce.COMMANDS[jax.random.randint(cmd,(),0,6)]
+    key_audit=jax.jit(jax.vmap(key_audit))
+    stand=jp.zeros((1,3),jp.float32)
+    def sync_obs(obs):
+        return {**obs,'state':obs['state'].at[:,9:12].set(stand),
+            'privileged_state':obs['privileged_state'].at[:,9:12].set(stand)}
+    def vec(x):return host(x)[0].tolist()
+    def scalar(x):return int(host(x)[0])
+    def guard():
+        h4cc_tech_require(h4cc_tech_authorization()==r['authorization'],'AUTH_CHANGED')
+        h4cc_tech_require('brax.training.agents.ppo.train' not in sys.modules,'TRAIN_IMPORT')
+        h3_gpu_check(monitor)
+    for fixture in H4CC_TECH_FIXTURES:
+        seed=fixture[0]; key=jax.random.PRNGKey(seed)
+        dr_keys=jax.random.fold_in(key,H4CC_TECH_SPEC['dr_seed_fold_in'])[None,:]
+        for arm in ('ref','ccrc'):
+            guard()
+            env=ce.CoverageJoystick(stage='easy_repeat_support',config=copy.deepcopy(cfg),
+                                    h4_arm='candidate',h4cc_arm=arm)
+            h4cc_tech_require(env.action_size==29 and float(env.dt)==.02,'ENV_CONFIG')
+            wrapped=wrapper.wrap_for_brax_training(env,episode_length=1000,action_repeat=1,
+                randomization_fn=functools.partial(randomizer,rng=dr_keys))
+            # Insert observer between EpisodeWrapper and the unchanged AutoReset.
+            h4cc_tech_require(isinstance(wrapped,wrapper.BraxAutoResetWrapper),'WRAPPER_TYPE')
+            model=wrapped.env.env._mjx_model_v
+            model_sha=digest_tree(model)
+            wrapped.env=RawAudit(wrapped.env)
+            h4cc_tech_require(r['reset_lanes_attempted']<8,'RESET_CAP')
+            r['reset_lanes_attempted']+=1;persist()
+            st=jax.jit(wrapped.reset)(key[None,:])
+            info=dict(st.info); original_command=vec(info['command'])
+            metadata=h4cc_tech_fixture_values(fixture)
+            for k,val in metadata.items():
+                info[k]=jp.full_like(info[k],val)
+            info['command']=stand
+            obs=sync_obs(st.obs);info['first_obs']=sync_obs(info['first_obs'])
+            st=st.replace(info=info,obs=obs)
+            lane={'fixture':list(fixture),'arm':arm,'metadata':metadata,'prior_actual_pushes':0,
+                'native_reset_command':original_command,'initial_command':vec(info['command']),
+                'initial_rng':vec(info['rng']),'initial_sha256':state_digest(st),
+                'model_sha256':model_sha,'rows':[],'physical_attempted':0,'physical_recorded':0}
+            r['lanes'].append(lane);r['reset_lanes_recorded']+=1;persist()
+            def one(state,actor_key):
+                action,_=policy(state.obs,actor_key)
+                nxt=wrapped.step(state,action)
+                return nxt,action
+            step=jax.jit(one)
+            for tick in range(252):
+                guard()
+                h4cc_tech_require(r['physical_transitions_attempted']<2016,'PHYSICAL_CAP')
+                pre=st.info;expected_rng,native_draw=key_audit(pre['rng'])
+                row={'tick':tick,'pre_sha256':state_digest(st),'rng_before':vec(pre['rng']),
+                    'source_clock':scalar(pre['step']),'pre':vec(pre['command']),
+                    'actor':vec(st.obs['state'][:,9:12]),'critic':vec(st.obs['privileged_state'][:,9:12]),
+                    'expected_rng':vec(expected_rng),'native_draw':vec(native_draw)}
+                r['physical_transitions_attempted']+=1;lane['physical_attempted']+=1;persist()
+                actor_key=jax.random.fold_in(jax.random.fold_in(key,H4CC_TECH_SPEC['actor_seed_fold_in']),tick)
+                nxt,action=step(st,actor_key)
+                m={k:scalar(nxt.info[v]) for k,v in metric_keys.items()}
+                m['terminal']=scalar(nxt.done)
+                finite=bool(host(nxt.info['h4cc_tech_raw_finite'])[0])
+                equal=all(np.array_equal(host(x),host(y)) for x,y in (
+                    (nxt.data.qpos,nxt.info['first_state'].qpos),
+                    (nxt.data.qvel,nxt.info['first_state'].qvel),
+                    (nxt.obs['state'],nxt.info['first_obs']['state']),
+                    (nxt.obs['privileged_state'],nxt.info['first_obs']['privileged_state'])))
+                row.update(metrics=m,finite=finite,reset_data_obs_equal=equal,
+                    post=vec(nxt.info['command']),next_actor=vec(nxt.obs['state'][:,9:12]),
+                    next_critic=vec(nxt.obs['privileged_state'][:,9:12]),
+                    held=vec(nxt.info['h4cc_held_command']),pending=vec(nxt.info['h4cc_pending_command']),
+                    rng_after=vec(nxt.info['rng']),next_source_clock=scalar(nxt.info['step']),
+                    magnitude=float(host(nxt.info['m463_magnitude'])[0]),
+                    delta=[float(host(nxt.info[k])[0]) for k in ('h4_actual_dx','h4_actual_dy')],
+                    action_sha256=digest_tree(action),physics_sha256=digest_tree((nxt.data,nxt.reward,nxt.metrics)),
+                    post_sha256=state_digest(nxt))
+                lane['rows'].append(row);lane['physical_recorded']+=1
+                r['physical_transitions_recorded']+=1;persist()
+                h4cc_tech_require(finite and not m['bad'] and not m['cc_bad'] and not m['truncation']
+                    and row['rng_after']==row['expected_rng'],'LIVE_CONTRACT')
+                st=nxt
+                if m['terminal']:break
+    r['policy_sha256_after']=digest_tree(params)
+    h4cc_tech_require(r['policy_sha256_after']==r['policy_sha256_before'],'POLICY_MUTATED')
+    guard()
+    r['audit']=h4cc_tech_audit(r)
+
+def h4cc_tech_run(args):
+    import m463_push_ppo_train as t
+    auth=h4cc_tech_authorization()
+    provenance=h4cc_tech_inputs(args,auth)
+    out=args.output.parent
+    h4cc_tech_require(out.parent.is_dir() and not out.parent.is_symlink()
+        and not out.exists() and not out.is_symlink(),'OUTPUT_CONSUMED')
+    t.h4x_storage(out,initial=True)
+    out.mkdir(exist_ok=False)
+    t.h4x_write_json(out/'attempt.json',{'authorization':auth,'reserved':True},exclusive=True)
+    t.h4x_write_json(out/'dispatch.started.json',{'authorization':auth},exclusive=True)
+    r={'status':'M470_H4CC_TECH_IN_PROGRESS','spec':H4CC_TECH_SPEC,'authorization':auth,
+        'provenance':provenance,'source_commit':PIN,'lanes':[],
+        'physical_transitions_attempted':0,'physical_transitions_recorded':0,
+        'reset_lanes_attempted':0,'reset_lanes_recorded':0,'training_performed':False,
+        'efficacy_evaluated':False,'ppo_steps':0,'optimizer_updates':0,
+        'evaluation_transitions':0,'checkpoint_saves':0,'passed':False}
+    def persist():t.h4x_write_json(args.output,r)
+    t.h4x_write_json(args.output,r,exclusive=True)
+    try:
+        from m462_ppo_warmstart_run import GPUMonitor,sample_gpu
+        gpu=sample_gpu()
+        h4cc_tech_require(gpu['total_mib']==12288 and 0<=gpu['used_mib']<.95*12288,'GPU_PREFLIGHT')
+        r['gpu_initial']=gpu
+        monitor=GPUMonitor()
+        with monitor:
+            h4cc_tech_actual(args,r,monitor,persist)
+        r['gpu']=h3_gpu_check(monitor)
+        h4cc_tech_require(h4cc_tech_authorization()==auth and h4cc_tech_inputs(args,auth)==provenance,
+                           'FINAL_IMMUTABILITY')
+        r['passed']=r['audit']['passed']
+        r['status']='M470_H4CC_TECH_COMPLETE' if r['passed'] else 'M470_H4CC_TECH_INCONCLUSIVE'
+        persist()
+        t.h4x_write_json(out/'attempt_result.json',{'status':'COMPLETE' if r['passed'] else 'INCONCLUSIVE',
+            'authorization':auth},exclusive=True)
+        print(r['status'],json.dumps(r['audit'],sort_keys=True),flush=True)
+    except BaseException as exc:
+        r['status']='M470_H4CC_TECH_FAILED';r['passed']=False
+        r['error']=type(exc).__name__+': '+str(exc)
+        try:
+            persist()
+            t.h4x_write_json(out/'attempt_result.json',{'status':'STOPPED','authorization':auth},exclusive=True)
+        except Exception as write_error:
+            print('M470_H4CC_TECH_PARTIAL_WRITE_FAILED',repr(write_error),flush=True)
+        raise
+
+
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--mode',choices=('plan','run'),required=True)
@@ -3960,7 +4443,29 @@ def main():
     p.add_argument('--max-steps',type=int,default=1000)
     p.add_argument('--max-cases',type=int,default=120)
     p.add_argument('--h4cc-eval',action='store_true',help='CCRC held plan only')
+    p.add_argument('--h4cc-technical',action='store_true',help='CCRC separately held technical diagnostic')
+    p.add_argument('--h4cc-restore-report',type=Path)
+    p.add_argument('--h4cc-static-log',type=Path)
     args=p.parse_args()
+    if args.h4cc_technical:
+        try:
+            h4cc_tech_require(not any(getattr(args,k) for k in ('h4cc_eval','h4_m1_eval',
+                'h4_technical','h3_m1_eval','h2a','h2b','checkpoint_p','report_p',
+                'checkpoint_h3','report_h3')) and all(getattr(args,k)==p.get_default(k)
+                for k in ('seeds','profiles','directions','push_step','push_magnitude',
+                          'second_push_step','second_push_magnitude','max_steps','max_cases')),
+                'FROZEN_FLAGS')
+            h4cc_tech_require(args.output.absolute()==H4_EVAL_ROOT/H4CC_TECH_OUTPUT
+                and args.output.resolve()==H4_EVAL_ROOT/H4CC_TECH_OUTPUT,'OUTPUT_PATH')
+            if args.mode=='plan':
+                print('M470_H4CC_TECH_PLAN',json.dumps(H4CC_TECH_SPEC,sort_keys=True))
+                return
+            h4cc_tech_authorization()
+        except RuntimeError as exc:
+            p.error(str(exc))
+        return h4cc_tech_run(args)
+    if args.h4cc_restore_report is not None or args.h4cc_static_log is not None:
+        p.error('M470_H4CC_TECH_FLAG_REQUIRED')
     if args.h4cc_eval:
         try:
             plan=h4cc_eval_plan(args)
