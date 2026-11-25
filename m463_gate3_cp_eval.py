@@ -2574,6 +2574,8 @@ def h4e_run(args):
 
 
 def run(args):
+    if getattr(args,'h4m3_placement',False):
+        h4m3_authorization()
     if getattr(args,'h4cc_technical',False):
         raise RuntimeError('M470_H4CC_TECH_USE_DEDICATED_DISPATCH')
     cc=bool(getattr(args,'h4cc_eval',False))
@@ -2749,7 +2751,7 @@ def run(args):
         command=jnp.asarray(PROFILES[profile],dtype=jnp.float32)
         for name,policy in policies.items():
             # JIT step/diagnostics; a single MJX state (no vectorized envs) is active at a time.
-            def one_step(state, effective_command=None):
+            def one_step(state, effective_command=None, *, placement_capture=False):
                 cmd = (
                     command
                     if effective_command is None
@@ -2767,6 +2769,8 @@ def run(args):
                     obs['privileged_state'].at[9:12].set(cmd)
                 )
                 state=state.replace(info=info,obs=obs)
+                if placement_capture:
+                    pre_placement=h4m3_pre_capture(state)
                 action,_=policy(state.obs,jax.random.PRNGKey(0))
                 next_state=env.step(state,action)
                 d = next_state.data
@@ -3017,6 +3021,8 @@ def run(args):
                             & jnp.isfinite(next_state.obs['privileged_state']).all()
                             & jnp.isfinite(next_state.reward)),
                     })
+                if placement_capture:
+                    return next_state,diag,h4m3_post_capture(pre_placement,action,next_state,env)
                 return next_state,diag
             step_fn=jax.jit(one_step)
             if h3_mode:
@@ -4638,6 +4644,251 @@ def h4cc_tech_run(args):
         raise
 
 
+
+# H4-M3-1: held passive placement diagnostic. No runtime authorization here.
+H4M3_OUTPUT = Path('m463_runs/m470_h4_m3_placement_v1/report.json')
+H4M3_LANES = (('CCRC',7357,'left',385), ('CCRC',7601,'right',370),
+               ('CCRC',7613,'left',375), ('C',7357,'left',366),
+               ('REF',7331,'left',385))
+H4M3_ARCHIVES = (
+    'a231ff30abcd053f3e31e147fe4877fe0fe8da996229930c2d3b5fe69510a476',
+    'beaef42162c16c8a8397e5e62164e2c09f443c0b8c5fa7bf3960c7917d3030e8')
+H4M3_POLICIES = {
+    'C': BASE_SHA,
+    'REF': '8ecdbd675fac2fc54764938590d6ed67aa390fd29fc63bcb6f6b5fd5283f38d2',
+    'CCRC': '1c144a88f4bf9f1de6d9926b60c75ea417b77931b53a427ca22b8eef11ffb12e'}
+H4M3_COLUMNS = tuple(('cause_fall cause_foot_foot cause_inverted_torso '
+    'cause_left_foot_right_shin cause_nan_qpos cause_nan_qvel cause_right_foot_left_shin '
+    'done foot_center_3d_dist_m foot_center_xy_dist_m foot_forward_sep_body_m '
+    'foot_lateral_sep_body_m foot_pair_present foot_pair_signed_dist_m '
+    'h2a_ctrl_limit_excess h2a_force_limit_excess h2a_joint_limit_excess '
+    'h2a_state_finite h3_finite h3_pose_l1 h3_root_x h3_root_y height '
+    'lf_geom_x_m lf_geom_y_m lf_geom_z_m lf_ground_contact lf_site_z_m '
+    'phase_left_post_rad phase_right_post_rad reward_orientation reward_termination '
+    'reward_total reward_tracking_ang reward_tracking_lin rf_geom_x_m rf_geom_y_m '
+    'rf_geom_z_m rf_ground_contact rf_site_z_m tilt_deg vx vy xy_err yaw_err yaw_rate').split())
+H4M3_CAP = 2180
+H4M3_EXPECTED = 2136
+H4M3_RICH_CAP = 710
+H4M3_REPORT_CAP = 64 * 1024**2
+
+
+def h4m3_require(ok, label):
+    if not ok:
+        raise RuntimeError('M470_H4M3_'+label)
+
+
+def h4m3_authorization():
+    # Intentionally no run path until separately reviewed integration/static GO.
+    raise RuntimeError('M470_H4M3_EXECUTION_HOLD')
+
+
+def h4m3_plan():
+    return {'id':'H4-M3-PLACEMENT-V1','lanes':H4M3_LANES,'archive_sha256':H4M3_ARCHIVES,
+            'policy_sha256':H4M3_POLICIES,'max_physical':H4M3_CAP,
+            'expected_physical':H4M3_EXPECTED,'max_resets':5,'max_suffixes':10,
+            'max_rich_records':H4M3_RICH_CAP,'rich_first_tick':295,
+            'prefix_end':334,'end_tick':385,'dt_s':.02,'sim_dt_s':.002,
+            'first_push':[300,.50],'second_push':[335,.35],
+            'training_performed':False,'efficacy_evaluated':False,
+            'optimizer_updates':0,'checkpoint_saves':0,'execution_authorized':False}
+
+
+def h4m3_pinned_json(path, expected):
+    path=Path(path)
+    h4m3_require(path.is_file() and not path.is_symlink(),'INPUT_FILE')
+    raw=path.read_bytes()
+    h4m3_require(hashlib.sha256(raw).hexdigest()==expected,'INPUT_SHA256')
+    return json.loads(raw)
+
+
+def h4m3_archive_lanes(current, historical):
+    """Only byte-accepted archives may be passed by h4m3_read_archives."""
+    import numpy as np
+    for report,status in ((current,'M470_H4CC_EVAL_COMPLETED'),
+                          (historical,'M470_H3_EVAL_COMPLETED')):
+        h4m3_require(report['status']==status and report['source_commit']==PIN
+            and report['brax_train_sha256']==TRAIN_SHA
+            and tuple(report['frame_columns'])==H4M3_COLUMNS
+            and report['deterministic_actor'] is True
+            and report['training_performed'] is False
+            and report['domain_randomization_enabled'] is False
+            and report['random_source_push_enabled'] is False
+            and report['original_reward_PD_termination'] is True
+            and (report['push_step'],report['push_magnitude_mps'],report['second_push_step'],
+                 report['second_push_magnitude_mps'],report['dt_s'],report['max_steps'])
+                ==(300,.50,335,.35,.02,1000),'ARCHIVE_PROTOCOL')
+    h4m3_require(historical['input_sha256']['C_policy']==H4M3_POLICIES['C'],
+                  'BASE_POLICY_PIN')
+    for arm in ('REF','CCRC'):
+        h4m3_require(current['input_sha256'][arm.lower()+'/'+H4_EVAL_POLICY_FILE]
+                      ==H4M3_POLICIES[arm],'FINAL_POLICY_PIN')
+    done=H4M3_COLUMNS.index('done')
+    flags=[H4M3_COLUMNS.index(k) for k in H3_EVAL_FLAGS]
+    result=[]
+    for policy,seed,direction,end in H4M3_LANES:
+        report=historical if policy=='C' else current
+        groups=[g for g in report['groups'] if (g['policy'],g['seed'],g['profile'])
+                ==(policy,seed,'stand')]
+        h4m3_require(len(groups)==1 and groups[0]['complete'] is True
+                      and groups[0]['command']==[0.,0.,0.],'ARCHIVE_GROUP')
+        g=groups[0]; d=g['directions'][direction]
+        h4m3_require(d['first']['exposed'] is True and d['second']['exposed'] is True
+            and d['first']['step']==300 and d['second']['step']==335,'ARCHIVE_KICKS')
+        rows={'nominal':g['nominal_frames'][:299],
+              'first':d['single_suffix'][:35],
+              'single':d['single_suffix'][35:86],
+              'double':d['double_suffix'][:51]}
+        h4m3_require(tuple(map(len,rows.values()))==(299,35,51,end-334),
+                      'ARCHIVE_LENGTH')
+        for segment,raw in rows.items():
+            a=np.asarray(raw)
+            h4m3_require(a.shape==(len(raw),46) and np.isfinite(a).all()
+                and np.isin(a[:,done],[0,1]).all()
+                and np.array_equal(a[:,done].astype(bool),a[:,flags].astype(bool).any(1))
+                and not a[:-1,done].any()
+                and bool(a[-1,done])==(segment=='double' and end<385),
+                'ARCHIVE_ROWS')
+            h4m3_require(np.all(a[:,[H4M3_COLUMNS.index('h2a_state_finite'),
+                                      H4M3_COLUMNS.index('h3_finite')]]==1)
+                and np.isin(a[:,[H4M3_COLUMNS.index('lf_ground_contact'),
+                                  H4M3_COLUMNS.index('rf_ground_contact')]], [0,1]).all(),
+                'ARCHIVE_FINITE_CONTACT')
+        result.append({'policy':policy,'seed':seed,'direction':direction,'end':end,
+                       'rows':rows,'first':d['first'],'second':d['second']})
+    h4m3_require(sum(len(v) for lane in result for v in lane['rows'].values())
+                  ==H4M3_EXPECTED<=H4M3_CAP,'ARCHIVE_BUDGET')
+    return result
+
+
+def h4m3_read_archives(current_path,historical_path):
+    current=h4m3_pinned_json(current_path,H4M3_ARCHIVES[0])
+    historical=h4m3_pinned_json(historical_path,H4M3_ARCHIVES[1])
+    return h4m3_archive_lanes(current,historical),current,historical
+
+
+def h4m3_legacy_row(raw,expected,np):
+    h4m3_require(tuple(sorted(raw))==H4M3_COLUMNS,'FRAME_SCHEMA')
+    for k,v in raw.items():
+        a=np.asarray(v)
+        h4m3_require(a.ndim==0 and np.isfinite(a).all(),'NONFINITE_OR_NONSCALAR_'+k)
+    row=[float(raw[k]) for k in H4M3_COLUMNS]
+    for k,a,b in zip(H4M3_COLUMNS,row,expected):
+        if a!=b:
+            raise RuntimeError('M470_H4M3_ARCHIVE_MISMATCH '+json.dumps(
+                {'field':k,'expected':b,'actual':a},allow_nan=False))
+    return row
+
+
+def h4m3_effective_ctrl(raw,ranges,limited,clamp_disabled,np):
+    raw=np.asarray(raw); ranges=np.asarray(ranges); limited=np.asarray(limited)
+    h4m3_require(raw.shape==(29,) and ranges.shape==(29,2) and limited.shape==(29,)
+        and np.isfinite(raw).all() and np.isfinite(ranges).all()
+        and np.all(ranges[:,0]<=ranges[:,1]) and np.isin(limited,[0,1]).all(),
+        'CTRL_SCHEMA')
+    return raw.copy() if clamp_disabled else np.where(limited,
+        np.clip(raw,ranges[:,0],ranges[:,1]),raw)
+
+
+def h4m3_com(mass,inertia,xipos,ximat,cvel,root_com,np):
+    """Read-only bodywise algebra, all arrays at the same forward epoch."""
+    mass,inertia,xipos,ximat,cvel,root_com=map(np.asarray,
+        (mass,inertia,xipos,ximat,cvel,root_com))
+    n=len(mass)
+    h4m3_require(mass.shape==(n,) and inertia.shape==(n,3) and xipos.shape==(n,3)
+        and ximat.shape==(n,3,3) and cvel.shape==(n,6) and root_com.shape==(n,3)
+        and all(np.isfinite(a).all() for a in (mass,inertia,xipos,ximat,cvel,root_com))
+        and (mass>=0).all() and (inertia>=0).all() and mass.sum()>0,'COM_SCHEMA')
+    h4m3_require(np.allclose(ximat@ximat.transpose(0,2,1),np.eye(3),atol=1e-5,rtol=0)
+        and np.allclose(np.linalg.det(ximat),1.,atol=1e-5,rtol=0),'COM_ROTATION')
+    omega=cvel[:,:3]
+    v=cvel[:,3:]+np.cross(omega,xipos-root_com)
+    center=np.sum(mass[:,None]*xipos,axis=0)/mass.sum()
+    velocity=np.sum(mass[:,None]*v,axis=0)/mass.sum()
+    iw=(ximat*inertia[:,None,:])@ximat.transpose(0,2,1)
+    momentum=np.sum((iw@omega[:,:,None])[:,:,0]+
+        np.cross(xipos-center,mass[:,None]*(v-velocity)),axis=0)
+    h4m3_require(all(np.isfinite(a).all() for a in (center,velocity,momentum)),
+                  'COM_NONFINITE')
+    return center,velocity,momentum
+
+
+def h4m3_contact_force(efc,address,dim,friction,pyramidal,np):
+    """Contact-frame wrench; invalid slot is unavailable, never a zero load."""
+    if address<0:
+        return None
+    efc=np.asarray(efc); friction=np.asarray(friction)
+    h4m3_require(dim in (1,3,4,6) and friction.shape==(5,) and efc.ndim==1
+        and np.isfinite(efc).all() and np.isfinite(friction).all(),'CONTACT_SCHEMA')
+    width=2*(dim-1) if pyramidal and dim>1 else dim
+    h4m3_require(address+width<=len(efc),'CONTACT_ADDRESS')
+    f=efc[address:address+width]
+    wrench=np.zeros(6,dtype=np.float64)
+    if pyramidal and dim>1:
+        wrench[0]=np.sum(f)
+        wrench[1:dim]=(f[::2]-f[1::2])*friction[:dim-1]
+    else:
+        wrench[:dim]=f
+    return wrench
+
+
+def h4m3_reward_check(metrics,reward,np):
+    h4m3_require(bool(metrics) and all(k.startswith('reward/') for k in metrics)
+        and all(np.asarray(v).ndim==0 and np.isfinite(v) for v in metrics.values())
+        and np.isfinite(reward),'REWARD_SCHEMA')
+    # Float32 summation order differs from host float64; no tolerance on legacy rows.
+    expected=.02*sum(float(v) for v in metrics.values())
+    h4m3_require(abs(expected-float(reward))<=2e-6*max(1.,abs(expected)),
+                  'REWARD_SUM')
+
+
+def h4m3_pre_capture(state):
+    # Capture leaves before Joystick mutates state.info and metrics dictionaries.
+    return {'actor_input':state.obs['state'],'command':state.info['command'],
+            'info_phase':state.info['phase'],'rng':state.info['rng'],
+            'time_pre':state.data.time,'qpos_pre':state.data.qpos,
+            'qvel_pre':state.data.qvel}
+
+
+def h4m3_post_capture(pre,action,next_state,env):
+    d=next_state.data
+    lid,rid=env._left_foot_geom_id,env._right_foot_geom_id
+    # Source sampled fields (last forward/solve); qpos/qvel/time post-integration.
+    return {**pre,'action':action,'time_post':d.time,'qpos_post':d.qpos,
+            'qvel_post':d.qvel,'target':next_state.info['motor_targets'],
+            'raw_ctrl':d.ctrl,'actuator_force':d.actuator_force,
+            'actuator_length':d.actuator_length,'actuator_velocity':d.actuator_velocity,
+            'foot_geom_pos':d.geom_xpos[[lid,rid],:],
+            'foot_geom_mat':d.geom_xmat[[lid,rid],:],
+            'feet_sensor_velocity':d.sensordata[env._foot_linvel_sensor_adr],
+            'xipos':d.xipos,'ximat':d.ximat,'cvel':d.cvel,
+            'subtree_com':d.subtree_com,'contact_geom':d.contact.geom,
+            'contact_pos':d.contact.pos,'contact_frame':d.contact.frame,
+            'contact_dist':d.contact.dist,'efc_force':d.efc_force,
+            'reward':{k:v for k,v in next_state.metrics.items() if k.startswith('reward/')}}
+
+
+def h4m3_static_archive_check(current_path,historical_path):
+    lanes,_,_=h4m3_read_archives(current_path,historical_path)
+    import numpy as np
+    # Exercise exact row comparator against archive rows and a one-field mutation.
+    for lane in lanes:
+        for rows in lane['rows'].values():
+            for row in rows:
+                h4m3_legacy_row(dict(zip(H4M3_COLUMNS,row)),row,np)
+    sample=lanes[0]['rows']['nominal'][0]
+    raw=dict(zip(H4M3_COLUMNS,sample)); raw['vx']+=1.
+    try:
+        h4m3_legacy_row(raw,sample,np)
+    except RuntimeError as exc:
+        h4m3_require('ARCHIVE_MISMATCH' in str(exc),'NEGATIVE_MISMATCH')
+    else:
+        raise RuntimeError('M470_H4M3_NEGATIVE_MISMATCH')
+    return {'lanes':len(lanes),'physical_rows':sum(len(v) for l in lanes
+            for v in l['rows'].values()),'negative_mismatch':'PASS',
+            'simulation_calls':0,'inference_calls':0}
+
+
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--mode',choices=('plan','run'),required=True)
@@ -4671,7 +4922,36 @@ def main():
     p.add_argument('--h4cc-technical',action='store_true',help='CCRC separately held technical diagnostic')
     p.add_argument('--h4cc-restore-report',type=Path)
     p.add_argument('--h4cc-static-log',type=Path)
+    p.add_argument('--h4m3-placement',action='store_true')
+    p.add_argument('--h4m3-static-archives',action='store_true')
+    p.add_argument('--h4m3-historical-archive',type=Path)
     args=p.parse_args()
+    if args.h4m3_placement:
+        try:
+            h4m3_require(not any(getattr(args,k) for k in ('h4cc_technical',
+                'h4cc_eval','h4_m1_eval','h4_technical','h3_m1_eval','h2a','h2b',
+                'checkpoint_c','checkpoint_p','report_p','checkpoint_h3','report_h3',
+                'h4_reward_report','h4cc_restore_report','h4cc_static_log'))
+                and all(getattr(args,k)==p.get_default(k) for k in ('seeds','profiles',
+                'directions','push_step','push_magnitude','second_push_step',
+                'second_push_magnitude','max_steps','max_cases')),'FROZEN_FLAGS')
+            root=Path(__file__).resolve().parent
+            h4m3_require(args.output.absolute()==root/H4M3_OUTPUT
+                and args.output.resolve()==root/H4M3_OUTPUT,'OUTPUT_PATH')
+            if args.mode=='run':
+                h4m3_authorization()
+            h4m3_require(args.h4m3_static_archives==(args.h4m3_historical_archive is not None),
+                          'STATIC_FLAGS')
+            if args.h4m3_static_archives:
+                print('M470_H4M3_ARCHIVE_STATIC_PASS',json.dumps(h4m3_static_archive_check(
+                    root/H4CC_EVAL_OUTPUT,args.h4m3_historical_archive),sort_keys=True))
+            else:
+                print('M470_H4M3_PLAN',json.dumps(h4m3_plan(),sort_keys=True))
+            return
+        except (RuntimeError,ValueError,KeyError,OSError) as exc:
+            p.error(str(exc))
+    if args.h4m3_static_archives or args.h4m3_historical_archive is not None:
+        p.error('M470_H4M3_FLAG_REQUIRED')
     if args.h4cc_technical:
         try:
             h4cc_tech_require(not any(getattr(args,k) for k in ('h4cc_eval','h4_m1_eval',
