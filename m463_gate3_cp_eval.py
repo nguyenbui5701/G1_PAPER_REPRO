@@ -4385,7 +4385,7 @@ def h4cc_tech_actual(args,r,monitor,persist):
     t.h4x_write_json(args.output.parent/'dispatch.started.json',{'authorization':auth},exclusive=True)
     import copy
     from train import check_source,build_paper_config
-    from paper_config import BASE,ENV,PIN as SOURCE_PIN
+    from paper_config import BASE,ENV,REPO,PIN as SOURCE_PIN
     check_source()
     h4cc_tech_require(SOURCE_PIN==PIN,'SOURCE')
     sys.path.insert(0,str(BASE/'G1_M4_0_G1_PPO_ONE_UPDATE_SMOKE_V1'))
@@ -4402,6 +4402,8 @@ def h4cc_tech_actual(args,r,monitor,persist):
     import m463_coverage_env as ce
     from m462_typed_orbax_stage import checkpoint_parts
     from m463_instrument_brax import h4c_git_blob
+    h4cc_tech_require(all(Path(m.__file__).resolve().is_relative_to(REPO.resolve())
+        for m in (locomotion,wrapper,ce.joystick)),'PLAYGROUND_IMPORT_ORIGIN')
     h4cc_tech_require(jax.default_backend()=='gpu' and jax.__version__=='0.4.35'
         and jax.process_count()==jax.local_device_count()==1,'GPU_RUNTIME')
     r['jax_version']=jax.__version__;r['brax_source']=h3_verify_brax_train_source(networks)
@@ -4458,17 +4460,18 @@ def h4cc_tech_actual(args,r,monitor,persist):
         def raw(self,st):
             return (st.data.qpos,st.data.qvel,st.data.qacc,st.data.ctrl,
                 st.data.actuator_force,st.data.sensordata,st.obs['state'],st.obs['privileged_state'])
+        def finite(self,st):
+            finite=jp.ones_like(st.done,dtype=jp.bool_)
+            for x in (*self.raw(st),st.reward,*jax.tree_util.tree_leaves(st.metrics)):
+                finite=finite & jp.all(jp.isfinite(x).reshape((1,-1)),axis=1)
+            return finite
         def reset(self,rng):
             st=self.env.reset(rng)
-            return st.replace(info={**st.info,'h4cc_tech_raw_finite':jp.ones_like(st.done,dtype=jp.bool_),
+            return st.replace(info={**st.info,'h4cc_tech_raw_finite':self.finite(st),
                                     'h4cc_tech_raw':self.raw(st)})
         def step(self,st,act):
             nxt=self.env.step(st,act)
-            finite=jp.ones_like(nxt.done,dtype=jp.bool_)
-            for x in (nxt.data.qpos,nxt.data.qvel,nxt.data.qacc,nxt.data.ctrl,
-                nxt.data.actuator_force,nxt.data.sensordata,nxt.obs['state'],
-                nxt.obs['privileged_state'],nxt.reward,act):
-                finite=finite & jp.all(jp.isfinite(x).reshape((1,-1)),axis=1)
+            finite=self.finite(nxt) & jp.all(jp.isfinite(act).reshape((1,-1)),axis=1)
             return nxt.replace(info={**nxt.info,'h4cc_tech_raw_finite':finite,'h4cc_tech_raw':self.raw(nxt)})
     def state_digest(st):
         # Only additive CCRC metadata omitted; all common state bytes compared.
@@ -4516,12 +4519,14 @@ def h4cc_tech_actual(args,r,monitor,persist):
                 randomization_fn=functools.partial(randomizer,rng=dr_keys))
             # Insert observer between EpisodeWrapper and the unchanged AutoReset.
             h4cc_tech_require(isinstance(wrapped,wrapper.BraxAutoResetWrapper),'WRAPPER_TYPE')
-            model=wrapped.env.env._mjx_model_v
-            model_sha=digest_tree(model)
+            dr_wrapper=wrapped.env.env
+            model_sha=t.h4x_model_digest(jax,np,dr_wrapper._mjx_model_v,dr_wrapper._in_axes)
             wrapped.env=RawAudit(wrapped.env)
             h4cc_tech_require(r['reset_lanes_attempted']<8,'RESET_CAP')
             r['reset_lanes_attempted']+=1;persist()
             st=jax.jit(wrapped.reset)(key[None,:])
+            h4cc_tech_require(bool(host(st.info['h4cc_tech_raw_finite'])[0]) and
+                scalar(st.done)==0,'RESET_FINITE')
             info=dict(st.info); original_command=vec(info['command'])
             metadata=h4cc_tech_fixture_values(fixture)
             for k,val in metadata.items():
@@ -4578,6 +4583,7 @@ def h4cc_tech_actual(args,r,monitor,persist):
     r['policy_sha256_after']=digest_tree(params)
     h4cc_tech_require(r['policy_sha256_after']==r['policy_sha256_before'],'POLICY_MUTATED')
     guard()
+    check_source()
     r['audit']=h4cc_tech_audit(r)
 
 def h4cc_tech_run(args):
