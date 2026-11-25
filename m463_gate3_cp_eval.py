@@ -2582,10 +2582,14 @@ def h4_shared_frozen_loader(action_size,paper,networks,running_statistics,serial
     norm_template=running_statistics.init_state({k:jnp.zeros(s,dtype=jnp.float32) for k,s in obs_shape.items()})
     if template_event is not None: template_event('actor','attempted')
     actor_template=ppo_nets.policy_network.init(jax.random.PRNGKey(11))
-    if template_event is not None: template_event('actor','recorded')
+    if template_event is not None:
+        jax.block_until_ready(actor_template)
+        template_event('actor','recorded')
     if template_event is not None: template_event('critic','attempted')
     critic_template=ppo_nets.value_network.init(jax.random.PRNGKey(17))
-    if template_event is not None: template_event('critic','recorded')
+    if template_event is not None:
+        jax.block_until_ready(critic_template)
+        template_event('critic','recorded')
     def load_policy(path):
         from m462_typed_orbax_stage import checkpoint_parts
         n,p,v=checkpoint_parts(serialization.msgpack_restore(Path(path).read_bytes()))
@@ -2603,6 +2607,8 @@ def h4_shared_frozen_loader(action_size,paper,networks,running_statistics,serial
 
 
 def run(args):
+    if getattr(args,'h4m5_obs_attribution',False):
+        raise RuntimeError('M470_H4M5_DEDICATED_DISPATCH_REQUIRED')
     feasibility=bool(getattr(args,'h4m4_feasibility',False))
     placement=bool(getattr(args,'h4m3_placement',False)) or feasibility
     if feasibility:
@@ -6692,6 +6698,325 @@ def h4m5_collect(pairs,manifest,session,infer,np,persist):
     session['decision']=h4m5_decision(session['effects'],np)
 
 
+
+def h4m5_final_ledger(pairs,session):
+    p=h4m5_plan()
+    endpoints=[(i,k) for i in range(52) for k in (0,63)]
+    hybrids=[(i,k) for i in range(52) for k in p['masks'] if k not in (0,63)]
+    records=session['slots']; calls={}; cache={}; lane_counts=[0]*5
+    h4m5_require([(x['pair'],x['mask']) for x in records]==endpoints+hybrids,'SLOT_ORDER')
+    for slot in records:
+        i=slot['pair']; k=slot['mask']; pair=pairs[i]
+        raw=h4m5_mask(pair,k).tobytes(); key=(i,raw)
+        h4m5_require(slot['input_sha256']==hashlib.sha256(raw).hexdigest(),'SLOT_INPUT')
+        prior=cache.get(key)
+        if slot['alias']:
+            h4m5_require(k not in (0,63) and prior is not None and slot['call']==prior
+                and slot['action']==calls[prior]['action'],'ALIAS_IDENTITY')
+        else:
+            h4m5_require(slot['call']==len(calls)+1 and (prior is None or k in (0,63)),
+                'CALL_IDENTITY')
+            calls[slot['call']]=slot; cache.setdefault(key,slot['call'])
+            lane_counts[pair['lane']]+=1
+    h4m5_require(len(calls)==742 and lane_counts==[190,190,158,14,190]
+        and session['attempted']==session['recorded']==len(calls)
+        and session['endpoint_attempted']==session['endpoint_recorded']==104
+        and session['hybrid_attempted']==session['hybrid_recorded']==638
+        and len(records)==832 and sum(x['alias'] for x in records)==90,'FINAL_COUNTS')
+    return {'calls':len(calls),'aliases':90,'slots':832,'lane_calls':lane_counts}
+
+
+def h4m5_read_evidence(root,historical,np):
+    root=Path(root).resolve()
+    r=h4m3_pinned_json(root/H4M4_OUTPUT,H4M5_SPEC['source_report_sha256'])
+    _,pins,old=h4m4_read_evidence(root,historical)
+    old_bytes=subprocess.check_output(['git','-C',str(root),'show',
+        '3fa74f887ff3331c1de104d243d386099c38a2a9:m463_gate3_cp_eval.py'])
+    old_sha=hashlib.sha256(old_bytes).hexdigest()
+    h4m5_require(hashlib.sha1(('blob '+str(len(old_bytes))+'\\0').encode()+old_bytes).hexdigest()
+        =='4f8b176a402eced1125c9986b3bec3546bd515a9'
+        and len(pins)==44 and {**pins,'diagnostic_evaluator':old_sha}==r['input_sha256']
+        and h4m3_digest({**h4m3_source_map(root),'m463_gate3_cp_eval.py':old_sha})
+            ==r['authorization']['source_sha256']
+        and r['authorization']['policy_sha256']==H4M3_POLICIES
+        and r['external_sources']==h4m4_external_sources(root),'H4M4_PROVENANCE')
+    h4m5_require(r['brax_source_verification']==old['brax_source_verification'],'BRAX_IDENTITY')
+    return h4m5_pairs(r,old,np),{**pins,'approved_h4m4_report':H4M5_SPEC['source_report_sha256'],
+        'approved_h4m4_evaluator':old_sha},r
+
+
+def h4m5_find_source(name):
+    # PathFinder resolves nested module paths without executing package __init__.
+    from importlib.machinery import PathFinder
+    path=None; spec=None
+    for i in range(1,len(name.split('.'))+1):
+        spec=PathFinder.find_spec('.'.join(name.split('.')[:i]),path)
+        h4m5_require(spec is not None,'MODULE_SPEC_'+name)
+        path=spec.submodule_search_locations
+    h4m5_require(spec.origin is not None,'MODULE_ORIGIN_'+name)
+    f=Path(spec.origin)
+    h4m5_require(f.is_file() and not f.is_symlink() and f.resolve()==f.absolute(),
+        'MODULE_FILE_'+name)
+    return f
+
+
+def h4m5_external_sources(root):
+    from importlib import metadata
+    h4m3_no_runtime_imports()
+    external=h4m4_external_sources(root)
+    public={
+        'brax.training.agents.ppo.networks':'1922bad3499988bc664c3024f9640332d66982d5',
+        'brax.training.networks':'ee63e0b5aa964ac9800b797d095a80a628eaf00e',
+        'brax.training.distribution':'971a4a9abd0a9145eecec387a203ab7be8261a98',
+        'brax.training.acme.running_statistics':'4361e185b49917543dfa759feb521be14aeaa487'}
+    modules={}
+    for name in (*public,'flax.serialization','jax','jaxlib','brax','flax','numpy',
+                 'm462_typed_orbax_stage','m462_ppo_warmstart_run','train','paper_config'):
+        path=h4m5_find_source(name)
+        if name in public:
+            h4m5_require(h4m3_git_blob(path)==public[name],'PUBLIC_SOURCE_'+name)
+        if name.startswith('m462_') or name in ('train','paper_config'):
+            h4m5_require(path==Path(root)/ (name+'.py'),'LOCAL_IMPORT_'+name)
+        modules[name]={'path':str(path),'sha256':sha256(path)}
+    versions={n:metadata.version(n) for n in ('jax','jaxlib','brax','flax','numpy','scipy',
+        'optax','chex','orbax-checkpoint','ml-collections','etils','msgpack')}
+    h4m5_require(versions['jax']=='0.4.35' and versions['brax']=='0.12.1','PACKAGE_VERSION')
+    # Pin actual resolved package trees, excluding generated bytecode. This includes
+    # Python source and shared-library bytes, not just dist-info version strings.
+    packages={}
+    for name in ('jax','jaxlib','brax','flax','numpy','scipy','optax','chex',
+                 'ml_collections','etils','msgpack','mujoco'):
+        path=h4m5_find_source(name).parent
+        files=sorted(x for x in path.rglob('*') if x.is_file()
+            and '__pycache__' not in x.parts and x.suffix not in ('.pyc','.pyo'))
+        h4m5_require(files and all(not x.is_symlink() for x in files),'PACKAGE_FILES_'+name)
+        h=hashlib.sha256()
+        for x in files:
+            h.update(x.relative_to(path).as_posix().encode()+b'\\0')
+            h.update(bytes.fromhex(sha256(x)))
+        packages[name]={'path':str(path),'files':len(files),'sha256':h.hexdigest()}
+    # Orbax is namespace packaged; pin the actual checkpoint package and serializer.
+    path=h4m5_find_source('orbax.checkpoint').parent
+    files=sorted(x for x in path.rglob('*') if x.is_file()
+        and '__pycache__' not in x.parts and x.suffix not in ('.pyc','.pyo'))
+    h4m5_require(files and all(not x.is_symlink() for x in files),'PACKAGE_ORBAX')
+    h=hashlib.sha256()
+    for x in files:
+        h.update(x.relative_to(path).as_posix().encode()+b'\\0'); h.update(bytes.fromhex(sha256(x)))
+    packages['orbax.checkpoint']={'path':str(path),'files':len(files),'sha256':h.hexdigest()}
+    h4m3_no_runtime_imports()
+    return {'historical':external,'modules':modules,'versions':versions,'packages':packages}
+
+
+def h4m5_parse_authorization(rules,source,external):
+    p=h4m5_plan()
+    static=[x.split() for x in rules.splitlines() if x.startswith('H4M5_STATIC_APPROVED:')]
+    active=[x.split() for x in rules.splitlines() if x.startswith('H4M5_ACTIVE_GO:')]
+    h4m5_require(len(static)==len(active)==1,'EXECUTION_HOLD')
+    h4m5_require(not any(x.split(':',1)[0].endswith('ACTIVE_GO') and
+        x.split(':',1)[0]!='H4M5_ACTIVE_GO' and x.split(':',1)[0].replace('_','').isalnum()
+        and x.split(':',1)[0].isupper() for x in rules.splitlines()),'CONCURRENT_GO')
+    a,b=static[0],active[0]
+    h4m5_require(len(a)==5 and a[1]==source and a[3]==external
+        and len(a[2])==64 and all(c in '0123456789abcdef' for c in a[2]),'STATIC_PIN')
+    log=Path(a[4])
+    h4m5_require(log.parent==Path('m463_runs') and log.name.startswith('m470_h4_m5_1_')
+        and log.suffix=='.log','STATIC_PATH')
+    expected=['H4M5_ACTIVE_GO:',p['id'],source,a[2],external,H4M5_SPEC_SHA,p['pair_digest_sha256'],
+        p['source_report_sha256'],p['h4m3_report_sha256'],*[H4M3_POLICIES[k] for k in ('C','REF','CCRC')],
+        str(H4M5_OUTPUT)]
+    h4m5_require(b==expected,'AUTHORIZATION_PIN')
+    return {'id':p['id'],'source_sha256':source,'static_sha256':a[2],'external_sha256':external,
+        'static_path':str(log),'spec_sha256':H4M5_SPEC_SHA,'pair_sha256':p['pair_digest_sha256'],
+        'report_sha256':p['source_report_sha256'],'h4m3_report_sha256':p['h4m3_report_sha256'],
+        'policy_sha256':dict(H4M3_POLICIES),'output':str(H4M5_OUTPUT)}
+
+
+def h4m5_authorization(root=None):
+    root=Path(__file__).resolve().parent if root is None else Path(root).resolve()
+    rules=(root/'G1_RESEARCH_RULES.md').read_text('utf8')
+    h4m5_require(any(x.startswith('H4M5_ACTIVE_GO:') for x in rules.splitlines()) and
+        any(x.startswith('H4M5_STATIC_APPROVED:') for x in rules.splitlines()),'EXECUTION_HOLD')
+    source=h4m3_digest(h4m3_source_map(root))
+    external=h4m5_external_sources(root)
+    auth=h4m5_parse_authorization(rules,source,h4m3_digest(external))
+    path=root/auth['static_path']
+    h4m5_require(path.is_file() and not path.is_symlink() and path.resolve()==path.absolute()
+        and 0<path.stat().st_size<=H4M5_SPEC['log_cap'] and sha256(path)==auth['static_sha256'],
+        'STATIC_LOG')
+    lines=path.read_text('utf8').splitlines()
+    h4m5_require('H4_M5_1_FULL_STATIC_PASS '+source in lines
+        and 'H4_M5_1_EXTERNAL_SHA256 '+auth['external_sha256'] in lines
+        and 'H4_M5_1_PAIR_SHA256 '+auth['pair_sha256'] in lines
+        and 'H4_M5_1_SPEC_SHA256 '+H4M5_SPEC_SHA in lines,'STATIC_ACCEPTANCE')
+    return auth,external
+
+
+def h4m5_write(path,session,initial=False):
+    import shutil
+    p=h4m5_plan(); path=Path(path)
+    data=(json.dumps(session,allow_nan=False,separators=(',',':'))+'\\n').encode()
+    metadata={**session,'slots':[]}
+    h4m5_require(len(data)<=p['report_cap'] and len(json.dumps(metadata,allow_nan=False,
+        separators=(',',':')).encode())+1<=p['metadata_cap'],'REPORT_CAP')
+    h4m5_require(path.parent.is_dir() and not path.parent.is_symlink() and
+        shutil.disk_usage(path.parent).free>=2*1024**3+p['report_cap'],'REPORT_STORAGE')
+    tmp=path.with_name(path.name+'.tmp')
+    h4m5_require(not tmp.exists() and not tmp.is_symlink() and not path.is_symlink()
+        and path.exists()!=initial,'REPORT_PATH')
+    with (path if initial else tmp).open('xb') as f:
+        f.write(data); f.flush(); os.fsync(f.fileno())
+    if not initial: os.replace(tmp,path)
+
+
+def h4m5_tree_digest(tree,jax,np):
+    h=hashlib.sha256(); leaves=jax.tree_util.tree_leaves(tree)
+    h.update(str(jax.tree_util.tree_structure(tree)).encode())
+    for leaf in leaves:
+        a=np.asarray(jax.device_get(leaf))
+        h4m5_require(np.isfinite(a).all(),'TREE_FINITE')
+        h.update(json.dumps([list(a.shape),str(a.dtype)],separators=(',',':')).encode()+b'\\0')
+        h.update(a.tobytes())
+    return h.hexdigest()
+
+
+def h4m5_runtime(args,session,pairs,approved,monitor):
+    # Re-enter only from reserved dispatcher; rehash before any runtime import.
+    root=Path(__file__).resolve().parent
+    auth,external=h4m5_authorization(root); h4m3_no_runtime_imports()
+    out=root/H4M5_OUTPUT
+    h4m5_require(args.output==out and session['authorization']==auth
+        and session['external']==external and session['status']=='M470_H4M5_IN_PROGRESS'
+        and session['attempted']==session['recorded']==0 and session['slots']==[]
+        and json.loads(out.read_bytes())==session
+        and json.loads((out.parent/'dispatch.started.json').read_bytes())=={'authorization':auth},
+        'SESSION_REQUIRED')
+    with (out.parent/'runtime.entered.json').open('x',encoding='utf8') as f:
+        json.dump({'authorization':auth},f,sort_keys=True,allow_nan=False); f.flush();os.fsync(f.fileno())
+    from train import check_source,build_paper_config
+    from paper_config import BASE
+    check_source()
+    sys.path.insert(0,str(BASE/'G1_M4_0_G1_PPO_ONE_UPDATE_SMOKE_V1'))
+    from nvcc_compat import apply
+    compat=external['historical']['nvcc_compat']
+    h4m5_require(str(Path(inspect.getfile(apply)).resolve())==compat['path']
+        and sha256(inspect.getfile(apply))==compat['sha256'],'NVCC_PIN')
+    h4m3_no_runtime_imports()
+    print('M470_H4M5_NVCC',apply(),flush=True)
+    import jax
+    import jax.numpy as jnp
+    import numpy as np
+    from flax import serialization
+    from brax.training.acme import running_statistics
+    from brax.training.agents.ppo import networks
+    h4m5_require(jax.default_backend()=='gpu' and jax.__version__=='0.4.35'
+        and jax.process_count()==jax.local_device_count()==1,'RUNTIME_PIN')
+    h4m5_require(h3_verify_brax_train_source(networks)==approved['brax_source_verification'],
+        'BRAX_TRAIN_PIN')
+    def check_origins():
+        h4m5_require('brax.training.agents.ppo.train' not in sys.modules,'TRAIN_MODULE_IMPORTED')
+        for name,pin in external['modules'].items():
+            mod=sys.modules.get(name)
+            if mod is not None:
+                path=Path(mod.__file__).resolve()
+                h4m5_require(str(path)==pin['path'] and sha256(path)==pin['sha256'],
+                    'IMPORTED_ORIGIN_'+name)
+        for name,mod in list(sys.modules.items()):
+            if not getattr(mod,'__file__',None):continue
+            for package,pin in external['packages'].items():
+                if name==package or name.startswith(package+'.'):
+                    h4m5_require(Path(mod.__file__).resolve().is_relative_to(Path(pin['path'])),
+                        'TRANSITIVE_ORIGIN_'+name)
+    paper=build_paper_config()
+    h4m5_require(dict(paper.network_factory).get('policy_obs_key','state')=='state'
+        and dict(paper.network_factory)['value_obs_key']=='privileged_state','NETWORK_KEYS')
+    trees={}
+    def persist():
+        session['gpu']=h3_gpu_check(monitor); h4m5_write(out,session)
+    def event(name,stage):
+        k=name+'_template_'+stage
+        h4m5_require(session[k]==0,'TEMPLATE_CAP');session[k]+=1
+    def audit(path,tree,template):
+        h4m5_require(jax.tree_util.tree_structure(tree)==jax.tree_util.tree_structure(template),
+            'TREE_SCHEMA')
+        for a,b in zip(jax.tree_util.tree_leaves(tree),jax.tree_util.tree_leaves(template)):
+            x,y=np.asarray(jax.device_get(a)),np.asarray(jax.device_get(b))
+            h4m5_require(x.shape==y.shape and x.dtype==y.dtype and np.isfinite(x).all(),'TREE_LEAF')
+        h4m5_require(all(np.all(np.asarray(jax.device_get(x))>0)
+            for x in jax.tree_util.tree_leaves(tree[0].std)),'NORMALIZER_STD')
+        key=str(path);h4m5_require(key not in trees,'DUPLICATE_POLICY')
+        trees[key]=(tree,h4m5_tree_digest(tree,jax,np))
+    load=h4_shared_frozen_loader(29,paper,networks,running_statistics,serialization,jax,jnp,np,
+        audit=audit,template_event=event)
+    policies={k:jax.jit(load(v)) for k,v in h4m3_policy_paths(root).items()}
+    h4m5_require(len(trees)==3 and all(session[k]==1 for k in
+        ('actor_template_attempted','actor_template_recorded','critic_template_attempted','critic_template_recorded')),
+        'TEMPLATE_LEDGER')
+    session['tree_sha256']={k:v[1] for k,v in trees.items()}
+    check_origins(); persist()
+    privileged=jnp.zeros((216,),dtype=jnp.float32); key=jax.random.PRNGKey(0)
+    def infer(policy,x):
+        result,extra=policies[policy]({'state':jnp.asarray(x,dtype=jnp.float32),
+            'privileged_state':privileged},key)
+        h4m5_require(extra=={},'DETERMINISTIC_EXTRA')
+        return np.asarray(jax.device_get(result.block_until_ready()))
+    h4m5_collect(pairs,approved['manifest'],session,infer,np,persist)
+    session['ledger']=h4m5_final_ledger(pairs,session)
+    h4m5_require(all(h4m5_tree_digest(tree,jax,np)==digest for tree,digest in trees.values()),
+        'TREE_IMMUTABILITY')
+    check_origins(); persist()
+
+
+def h4m5_dispatch(args):
+    import shutil
+    import numpy as np
+    root=Path(__file__).resolve().parent; out=root/H4M5_OUTPUT
+    auth,external=h4m5_authorization(root)
+    h4m5_require(args.mode=='run' and args.output==out and out.resolve()==out
+        and os.environ.get('JAX_PLATFORMS')=='cuda'
+        and os.environ.get('JAX_DEFAULT_MATMUL_PRECISION')=='highest'
+        and os.environ.get('XLA_PYTHON_CLIENT_PREALLOCATE')=='false'
+        and shutil.disk_usage(out.parent.parent).free>=2*1024**3+H4M5_SPEC['report_cap'],
+        'DISPATCH_PREFLIGHT')
+    historical=root/'m463_runs/m470_h3_m1_3_corrected_20261124_192702_101671859/report.json'
+    pairs,pins,approved=h4m5_read_evidence(root,historical,np)
+    from m462_ppo_warmstart_run import GPUMonitor,sample_gpu
+    h4m3_no_runtime_imports()
+    session={'status':'M470_H4M5_IN_PROGRESS','authorization':auth,'external':external,
+        'input_sha256':pins,'plan':h4m5_plan(),'slots':[],'effects':[],
+        'attempted':0,'recorded':0,'endpoint_attempted':0,'endpoint_recorded':0,
+        'hybrid_attempted':0,'hybrid_recorded':0,'actor_template_attempted':0,
+        'actor_template_recorded':0,'critic_template_attempted':0,'critic_template_recorded':0,
+        'physical_transitions':0,'resets':0,'optimizer_updates':0,'checkpoint_saves':0,
+        'training_performed':False,'efficacy_evaluated':False,'promotion_authorized':False}
+    marker=h4m3_reserve(out,auth);h4m5_write(out,session,initial=True)
+    monitor=GPUMonitor()
+    try:
+        gpu=sample_gpu()
+        h4m5_require(gpu['total_mib']==12288 and 0<=gpu['used_mib']<.95*12288,'GPU_PREFLIGHT')
+        with monitor:
+            h4m5_runtime(args,session,pairs,approved,monitor)
+        session['gpu_initial']=gpu;session['gpu']=h3_gpu_check(monitor)
+        # No new runtime imports or inference in post-check; external scan occurs
+        # in an independent clean interpreter to avoid pre-import contamination.
+        command=[sys.executable,'-B','-c',
+            'import json;import m463_gate3_cp_eval as e;from pathlib import Path;print(json.dumps(e.h4m5_authorization(Path.cwd()),sort_keys=True))']
+        after=json.loads(subprocess.check_output(command,cwd=root,text=True))
+        h4m5_require(after==[auth,external] and h4m5_read_evidence(root,historical,np)[1]==pins
+            and json.loads(marker.read_bytes())=={'authorization':auth}
+            and json.loads((out.parent/'runtime.entered.json').read_bytes())=={'authorization':auth},
+            'POST_IMMUTABILITY')
+        session['status']='M470_H4M5_TECHNICAL_ATTRIBUTION_COMPLETED'
+        h4m5_write(out,session)
+        print(session['status'],session['ledger'],session['decision']['decision'],flush=True)
+    except BaseException as exc:
+        session['status']='M470_H4M5_STOP';session['error']=(type(exc).__name__+': '+str(exc))[:4096]
+        session['gpu']=monitor.snapshot()
+        try:h4m5_write(out,session)
+        except BaseException as err:print('M470_H4M5_PARTIAL_WRITE_FAILED',repr(err),flush=True)
+        raise
+
+
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--mode',choices=('plan','run'),required=True)
@@ -6730,7 +7055,29 @@ def main():
     p.add_argument('--h4m3-historical-archive',type=Path)
     p.add_argument('--h4m4-feasibility',action='store_true')
     p.add_argument('--h4m4-historical-archive',type=Path)
+    p.add_argument('--h4m5-obs-attribution',action='store_true')
     args=p.parse_args()
+    if args.h4m5_obs_attribution:
+        try:
+            h4m5_require(not any(getattr(args,k) for k in ('h4m4_feasibility',
+                'h4m4_historical_archive','h4m3_placement','h4m3_static_archives',
+                'h4m3_historical_archive','h4cc_technical','h4cc_eval','h4_m1_eval',
+                'h4_technical','h3_m1_eval','h2a','h2b','checkpoint_c','checkpoint_p',
+                'report_p','checkpoint_h3','report_h3','h4_reward_report','h4cc_restore_report',
+                'h4cc_static_log')) and all(getattr(args,k)==p.get_default(k) for k in
+                ('seeds','profiles','directions','push_step','push_magnitude','second_push_step',
+                'second_push_magnitude','max_steps','max_cases')),'FROZEN_FLAGS')
+            root=Path(__file__).resolve().parent
+            h4m5_require(args.output.absolute()==root/H4M5_OUTPUT
+                and args.output.resolve()==root/H4M5_OUTPUT,'OUTPUT_PATH')
+            if args.mode=='run':
+                h4m5_authorization()
+                args.output=root/H4M5_OUTPUT
+                return h4m5_dispatch(args)
+            print('M470_H4M5_PLAN',json.dumps(h4m5_plan(),sort_keys=True))
+            return
+        except (RuntimeError,ValueError,KeyError,OSError) as exc:
+            p.error(str(exc))
     if args.h4m4_feasibility:
         try:
             h4m4_require(not any(getattr(args,k) for k in ('h4m3_placement',
