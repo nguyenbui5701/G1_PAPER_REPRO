@@ -2573,6 +2573,35 @@ def h4e_run(args):
         raise
 
 
+def h4_shared_frozen_loader(action_size,paper,networks,running_statistics,serialization,jax,jnp,np,
+                            audit=None,template_event=None):
+    obs_shape={'state':(103,),'privileged_state':(216,)}
+    ppo_nets=networks.make_ppo_networks(obs_shape,action_size,
+                preprocess_observations_fn=running_statistics.normalize,
+                **dict(paper.network_factory))
+    norm_template=running_statistics.init_state({k:jnp.zeros(s,dtype=jnp.float32) for k,s in obs_shape.items()})
+    if template_event is not None: template_event('actor','attempted')
+    actor_template=ppo_nets.policy_network.init(jax.random.PRNGKey(11))
+    if template_event is not None: template_event('actor','recorded')
+    if template_event is not None: template_event('critic','attempted')
+    critic_template=ppo_nets.value_network.init(jax.random.PRNGKey(17))
+    if template_event is not None: template_event('critic','recorded')
+    def load_policy(path):
+        from m462_typed_orbax_stage import checkpoint_parts
+        n,p,v=checkpoint_parts(serialization.msgpack_restore(Path(path).read_bytes()))
+        norm=serialization.from_state_dict(norm_template,n)
+        actor=serialization.from_state_dict(actor_template,p)
+        critic=serialization.from_state_dict(critic_template,v)
+        leaves=jax.tree_util.tree_leaves((norm,actor,critic))
+        if len(leaves)!=25:raise RuntimeError('M462_WRONG_CHECKPOINT_LEAF_COUNT')
+        if any(not np.all(np.isfinite(np.asarray(jax.device_get(x)))) for x in leaves):
+            raise RuntimeError('M462_NONFINITE_POLICY')
+        if audit is not None: audit(path,(norm,actor,critic),(norm_template,actor_template,critic_template))
+        inf=networks.make_inference_fn(ppo_nets)((norm,actor),deterministic=True)
+        return inf
+    return load_policy
+
+
 def run(args):
     feasibility=bool(getattr(args,'h4m4_feasibility',False))
     placement=bool(getattr(args,'h4m3_placement',False)) or feasibility
@@ -2707,25 +2736,8 @@ def run(args):
                 'H4M3_MODEL_IDENTITY')
             args.h3_session['kinematics']=h4m4_model_geometry(env,args.h3_session['manifest'],np)
         h4m3_write(args.output,args.h3_session)
-    obs_shape={'state':(103,),'privileged_state':(216,)}
-    ppo_nets=networks.make_ppo_networks(obs_shape,env.action_size,
-                preprocess_observations_fn=running_statistics.normalize,
-                **dict(paper.network_factory))
-    norm_template=running_statistics.init_state({k:jnp.zeros(s,dtype=jnp.float32) for k,s in obs_shape.items()})
-    actor_template=ppo_nets.policy_network.init(jax.random.PRNGKey(11))
-    critic_template=ppo_nets.value_network.init(jax.random.PRNGKey(17))
-    def load_policy(path):
-        from m462_typed_orbax_stage import checkpoint_parts
-        n,p,v=checkpoint_parts(serialization.msgpack_restore(Path(path).read_bytes()))
-        norm=serialization.from_state_dict(norm_template,n)
-        actor=serialization.from_state_dict(actor_template,p)
-        critic=serialization.from_state_dict(critic_template,v)
-        leaves=jax.tree_util.tree_leaves((norm,actor,critic))
-        if len(leaves)!=25:raise RuntimeError('M462_WRONG_CHECKPOINT_LEAF_COUNT')
-        if any(not np.all(np.isfinite(np.asarray(jax.device_get(x)))) for x in leaves):
-            raise RuntimeError('M462_NONFINITE_POLICY')
-        inf=networks.make_inference_fn(ppo_nets)((norm,actor),deterministic=True)
-        return inf
+    load_policy=h4_shared_frozen_loader(env.action_size,paper,networks,running_statistics,
+        serialization,jax,jnp,np)
     if placement:
         policies={n:load_policy(p) for n,p in h4m3_policy_paths(H4_EVAL_ROOT).items()}
     elif cc:
@@ -6462,6 +6474,222 @@ def h4m4_dispatch(args):
         except BaseException as write_error:
             print('M470_H4M4_PARTIAL_WRITE_FAILED',repr(write_error),flush=True)
         raise
+
+
+
+# H4-M5-1: held observation-channel attribution, no environment path.
+H4M5_OUTPUT=Path('m463_runs/m470_h4_m5_obs_attribution_v1/report.json')
+H4M5_SPEC_SHA='5b07c4a667198b0df3bed92c8466bef69fbf1f5400d62e11d297cf4e37c9f35e'
+H4M5_SPEC={"actor_template_init_cap":1,"checkpoint_saves":0,"critic_template_init_cap":1,"endpoint_calls":104,"execution_authorized":False,"fixed_slices":[[9,12],[99,103]],"groups":[["linvel",0,3],["gyro",3,6],["gravity",6,9],["joint_pos",12,41],["joint_vel",41,70],["history",70,99]],"h4m3_report_sha256":"329ff0564d47e05e2360fdf95350928895cf515e8cec6ca9aa2182133319258b","hybrid_calls":638,"id":"H4-M5-OBS-ATTRIBUTION-V1","inference_cap":742,"lane_ticks":[["CCRC",7357,"left",[336,337,338,339,340,341,342,343,344,345,354,365,385]],["CCRC",7601,"right",[336,337,338,339,340,341,342,343,344,345,354,358,360]],["CCRC",7613,"left",[336,337,338,339,340,341,342,343,344,345,350]],["C",7357,"left",[336,337]],["REF",7331,"left",[336,337,338,339,340,341,342,343,344,345,354,365,385]]],"log_cap":16777216,"logical_slots":832,"masks":[0,1,2,4,8,15,16,31,32,47,48,55,59,61,62,63],"metadata_cap":1048576,"optimizer_updates":0,"original_action_match":"float32_bit_exact","pair_digest_sha256":"8d8233f019f2ca18d174f67e2a0371a502e5f4146b6f9d83f0d32c3974d48c15","physical_transitions":0,"primary_ticks":[337,338,339,340,341,342,343,344,345],"report_cap":4194304,"slot_cap":2048,"source_report_sha256":"83d87cdd5279ab13acb06815083b72f02ecadcabc652cff35b24a82814beb9a5","thresholds":{"ankle_min_abs_delta":0.0001,"ankle_min_each_context_share":0.3,"ankle_min_symmetric_share":0.5,"max_absolute_context_gap_share":0.5,"max_absolute_residual_share":0.25,"min_A":0.05,"min_each_context_share":0.3,"min_opposing_ticks":6,"min_symmetric_share":0.5,"opposing_epsilon":0.0001}}
+
+def h4m5_require(ok,label):
+    if not ok:
+        raise RuntimeError('M470_H4M5_'+label)
+
+
+def h4m5_plan():
+    result=json.loads(json.dumps(H4M5_SPEC))
+    h4m5_require(h4m3_digest(result)==H4M5_SPEC_SHA,'SPEC_PIN')
+    return result
+
+
+def h4m5_vector(value,n,np):
+    x=np.asarray(value)
+    h4m5_require(x.shape==(n,) and x.dtype.kind=='f' and np.isfinite(x).all(),'ARCHIVE_VECTOR')
+    y=np.asarray(value,dtype='<f4')
+    h4m5_require(np.isfinite(y).all() and np.array_equal(x,y),'ARCHIVE_FLOAT32')
+    return y
+
+
+def h4m5_mask(pair,mask):
+    h4m5_require(mask in H4M5_SPEC['masks'],'MASK')
+    b,t=pair['obs']
+    x=b.copy()
+    for i,(_,lo,hi) in enumerate(H4M5_SPEC['groups']):
+        if mask & (1<<i): x[lo:hi]=t[lo:hi]
+    return x
+
+
+def h4m5_pairs(report,old,np):
+    p=h4m5_plan()
+    h4m5_require(report['status']=='M470_H4M4_TECHNICAL_PROBE_COMPLETED'
+        and report['attempted']==report['recorded']==2229
+        and report['rich_recorded']==759 and report['optimizer_updates']==report['checkpoint_saves']==0
+        and report['training_performed'] is False and report['efficacy_evaluated'] is False
+        and report['manifest']==old['manifest'] and len(report['lanes'])==len(old['lanes'])==5,
+        'REPORT_CONTRACT')
+    m=report['manifest']; f=m['fields']
+    h4m5_require(m['joint_names'][f['actuator_trnid'][5][0]]=='left_ankle_roll_joint',
+        'ANKLE_MAP')
+    out=[]; digest=hashlib.sha256(); counts=[]; active=0; checked=0
+    for i,(lane,prev,key) in enumerate(zip(report['lanes'],old['lanes'],p['lane_ticks'])):
+        h4m5_require([lane[k] for k in ('policy','seed','direction')]==key[:3]
+            and [prev[k] for k in ('policy','seed','direction')]==key[:3],'LANE')
+        ds={a:{x['tick']:x for x in lane['rich'] if x['arm']==a}
+            for a in ('prefix','baseline','sham','treatment')}
+        historical={x['tick']:x['data'] for x in prev['rich'] if x['segment']!='single'}
+        h4m5_require(sum(map(len,ds.values()))==len(lane['rich'])
+            and lane['prefix']==prev['segments']['nominal']+prev['segments']['first']+prev['segments']['double'][:1]
+            and lane['arms']['baseline']['rows']==lane['arms']['sham']['rows']==prev['segments']['double'][1:],
+            'ARCHIVE_CONTROL')
+        for arm,rows in ds.items():
+            for tick,rec in rows.items():
+                d=rec['data']; x=h4m5_vector(d['actor_input'],103,np)
+                a=h4m5_vector(rec['residual']['actor_action'],29,np)
+                sent=h4m5_vector(rec['residual']['sent_action'],29,np)
+                h4m5_require(np.max(abs(a))<=1 and np.max(abs(sent))<=1
+                    and sent.tobytes()==h4m5_vector(d['action'],29,np).tobytes()
+                    and d['inference_key']==[0,0],'ARCHIVE_ACTION')
+                if arm!='treatment':
+                    h4m5_require(d==historical[tick],'PACKED_CONTROL')
+                predecessor=ds['prefix'].get(tick-2) if tick-2<=335 else rows.get(tick-2)
+                if predecessor is not None:
+                    h4m5_require(x[70:99].tobytes()==h4m5_vector(
+                        predecessor['data']['action'],29,np).tobytes(),'HISTORY_T2')
+                checked+=1
+        g=lane['geometry']; ids=g['indices']; u=np.asarray(g['u'],dtype=np.float64)
+        h4m5_require(len(ids)==len(set(ids))==3 and 5 not in ids and all(0<=j<29 for j in ids)
+            and u.shape==(3,) and np.isfinite(u).all() and np.linalg.norm(u)>0,'DIRECTION')
+        count=0
+        for t in key[3]:
+            B,T=ds['baseline'][t],ds['treatment'][t]
+            h4m5_require(B['data']==ds['sham'][t]['data']
+                and B['data']['rng']==T['data']['rng']
+                and B['data']['command']==T['data']['command']==[0.,0.,0.],
+                'PAIR_CONTEXT')
+            x,y=[h4m5_vector(z['data']['actor_input'],103,np) for z in (B,T)]
+            a,b=[h4m5_vector(z['residual']['actor_action'],29,np) for z in (B,T)]
+            for lo,hi in p['fixed_slices']:
+                h4m5_require(x[lo:hi].tobytes()==y[lo:hi].tobytes(),'FIXED_CHANNEL')
+            if t==336:
+                h4m5_require(x.tobytes()==y.tobytes() and a.tobytes()==b.tobytes(),'IDENTICAL_336')
+            if t==337:
+                h4m5_require(x[70:99].tobytes()==y[70:99].tobytes(),'HISTORY_337')
+            live=bool(np.any(h4m5_vector(T['residual']['delivered_residual'],29,np)))
+            active+=live
+            pair={'lane':i,'tick':t,'policy':key[0],'obs':(x,y),'actions':(a,b),
+                  'indices':ids,'unit':u/np.linalg.norm(u),'active':live}
+            pair['ankle_context']={arm:{'q':z['data']['qpos_post'][m['qpos_addresses'][5]],
+                'qvel':z['data']['qvel_post'][m['qvel_addresses'][5]],
+                'load':z['data']['contact']['normal_load_bodyweight'],
+                'raw':z['data']['raw_ctrl'][5],'effective':z['data']['derived_effective_ctrl'][5]}
+                for arm,z in (('baseline',B),('treatment',T))}
+            digest.update(bytes([i])+t.to_bytes(2,'little')+x.tobytes()+y.tobytes()+a.tobytes()+b.tobytes())
+            keys={h4m5_mask(pair,mask).tobytes() for mask in p['masks']}
+            count+=len(keys)+int(x.tobytes()==y.tobytes())
+            out.append(pair)
+        counts.append(count)
+    h4m5_require(len(out)==52 and checked==759 and active==37
+        and counts==[190,190,158,14,190] and digest.hexdigest()==p['pair_digest_sha256'],'PAIR_DIGEST')
+    return out
+
+
+def h4m5_effects(pair,outputs,manifest,np):
+    F={k:np.asarray(outputs[k],dtype=np.float64) for k in H4M5_SPEC['masks']}
+    delta=F[63]-F[0]
+    db=np.stack([F[1<<i]-F[0] for i in range(6)])
+    dt=np.stack([F[63]-F[63^(1<<i)] for i in range(6)])
+    phi=(db+dt)/2.; gap=dt-db; E=delta-phi.sum(axis=0)
+    IB=F[48]-F[16]-F[32]+F[0]; IT=F[63]-F[47]-F[31]+F[15]
+    h4m5_require(np.max(abs(delta-phi.sum(axis=0)-E))<=1e-12,'ARITHMETIC')
+    if pair['tick']==336:
+        h4m5_require(all(not np.any(x) for x in (delta,db,dt,phi,gap,E,IB,IT)),'ZERO_336')
+    if pair['tick']==337:
+        h4m5_require(all(not np.any(x) for x in (db[5],dt[5],IB,IT)),'ZERO_HISTORY_337')
+    project=lambda x:(x[...,pair['indices']]@pair['unit']).tolist()
+    den=float(delta[5]); shares=None
+    if abs(den)>=.0001:
+        shares={'baseline':(db[:,5]/den).tolist(),'treatment':(dt[:,5]/den).tolist(),
+                'symmetric':(phi[:,5]/den).tolist(),
+                'material':((phi[:,5]/den>=.5)&(db[:,5]/den>=.3)&(dt[:,5]/den>=.3)).tolist()}
+    f=manifest['fields']; lo,hi=f['actuator_ctrlrange'][5]; default=np.float32(manifest['default_pose'][5])
+    raw={str(k):float(default+np.float32(.5)*np.float32(v[5])) for k,v in F.items()}
+    eff={k:min(hi,max(lo,v)) if f['actuator_ctrllimited'][5] else v for k,v in raw.items()}
+    return {'lane':pair['lane'],'tick':pair['tick'],'active':pair['active'],
+            'delta':delta.tolist(),'dB':db.tolist(),'dT':dt.tolist(),'phi':phi.tolist(),
+            'gap':gap.tolist(),'E':E.tolist(),'I_B':IB.tolist(),'I_T':IT.tolist(),
+            'projection':{k:project(v) for k,v in [('delta',delta),('dB',db),('dT',dt),
+                ('phi',phi),('gap',gap),('E',E),('I_B',IB),('I_T',IT)]},
+            'ankle':{'delta':den,'shares':shares,'raw':raw,'effective':eff,
+                     'context':pair['ankle_context']}}
+
+
+def h4m5_decision(effects,np):
+    results=[]
+    for lane in range(5):
+        a=[x['projection'] for x in effects if x['lane']==lane and x['active'] and x['tick']!=336]
+        h4m5_require(len(a)==[9,9,9,1,4][lane],'ACTIVE_COUNT')
+        A=-sum(x['delta'] for x in a)
+        V=-np.sum([x['phi'] for x in a],axis=0)
+        B=-np.sum([x['dB'] for x in a],axis=0); T=-np.sum([x['dT'] for x in a],axis=0)
+        residual=sum(abs(x['E']) for x in a); context=sum(abs(x['gap'][4]) for x in a)
+        opposing=sum(x['phi'][4]<-.0001 for x in a)
+        r={'lane':lane,'n':len(a),'A':A,'group_symmetric':V.tolist(),'group_baseline':B.tolist(),
+           'group_treatment':T.tolist(),'absolute_residual':residual,'absolute_velocity_gap':context,
+           'opposing_ticks':opposing,'decision':'DESCRIPTIVE_ONLY','criteria':None,'shares':None}
+        if A>=.05:
+            r['shares']={'symmetric':float(V[4]/A),'baseline':float(B[4]/A),'treatment':float(T[4]/A),
+                         'residual':residual/A,'context':context/A}
+            c={'magnitude':True,'symmetric':V[4]/A>=.5,'baseline':B[4]/A>=.3,
+               'treatment':T[4]/A>=.3,'opposing':opposing>=6,
+               'dominance':V[4]>=max(abs(V[j]) for j in (0,1,2,3,5)),
+               'residual':residual/A<=.25,'context':context/A<=.5}
+            r['criteria']={k:bool(v) for k,v in c.items()}
+            if lane in (1,2):
+                r['decision']='INCONCLUSIVE_CONTEXT' if not(c['residual'] and c['context']) else (
+                    'SUPPORT_LOCAL_VELOCITY' if all(c.values()) else 'NOT_SUPPORTED_IN_TESTED_INPUTS')
+        elif lane in (1,2):
+            r['decision']='INCONCLUSIVE_CONTEXT';r['criteria']={'magnitude':False}
+        results.append(r)
+    primary=[results[i]['decision'] for i in (1,2)]
+    n=primary.count('SUPPORT_LOCAL_VELOCITY')
+    return {'lanes':results,'decision':'SUPPORT_LOCAL_VELOCITY' if n==2 else 'HETEROGENEOUS' if n==1 else
+            'INCONCLUSIVE' if 'INCONCLUSIVE_CONTEXT' in primary else 'NOT_SUPPORTED'}
+
+
+def h4m5_collect(pairs,manifest,session,infer,np,persist):
+    """Host ledger; infer callback is the only inference boundary."""
+    p=h4m5_plan(); cache=[{} for _ in pairs]; outputs=[{} for _ in pairs]
+    def slot(i,mask,phase):
+        pair=pairs[i]; x=h4m5_mask(pair,mask); key=x.tobytes()
+        prior=cache[i].get(key) if phase=='hybrid' else None
+        if prior is None:
+            h4m5_require(session['attempted']<p['inference_cap']
+                and session[phase+'_attempted']<p['endpoint_calls' if phase=='endpoint' else 'hybrid_calls'],'INFERENCE_CAP')
+            session['attempted']+=1;session[phase+'_attempted']+=1
+            call=session['attempted'];session['last_attempt']={'pair':i,'mask':mask,'call':call,'phase':phase}
+            y=np.asarray(infer(pair['policy'],x.copy()))
+            h4m5_require(y.shape==(29,) and y.dtype==np.float32 and np.isfinite(y).all()
+                and np.max(abs(y))<=1,'INFERENCE_OUTPUT')
+            if phase=='endpoint' and y.tobytes()!=pair['actions'][mask==63].tobytes():
+                session['mismatch']={'pair':i,'mask':mask,'expected':pair['actions'][mask==63].tolist(),
+                    'actual':y.tolist()}
+                raise RuntimeError('M470_H4M5_ORIGINAL_ACTION_MISMATCH')
+            session['recorded']+=1;session[phase+'_recorded']+=1
+            cache[i].setdefault(key,(call,y.copy()))
+        else:
+            call,y=prior
+        rec={'pair':i,'mask':mask,'input_sha256':hashlib.sha256(key).hexdigest(),
+             'call':call,'alias':prior is not None,'action':y.tolist()}
+        h4m5_require(len(session['slots'])<p['logical_slots'] and
+            len(json.dumps(rec,allow_nan=False,separators=(',',':')).encode())<=p['slot_cap'],'SLOT_CAP')
+        session['slots'].append(rec);outputs[i][mask]=y.copy()
+        if len(session['slots'])%16==0: persist()
+    for i in range(len(pairs)):
+        for mask in (0,63):slot(i,mask,'endpoint')
+    h4m5_require(session['endpoint_recorded']==session['endpoint_attempted']==104
+        and session['hybrid_attempted']==0,'PHASE_A')
+    persist()
+    for i,pair in enumerate(pairs):
+        for mask in p['masks']:
+            if mask not in (0,63):slot(i,mask,'hybrid')
+        session['effects'].append(h4m5_effects(pair,outputs[i],manifest,np))
+        persist()
+    h4m5_require(session['attempted']==session['recorded']==742
+        and session['hybrid_attempted']==session['hybrid_recorded']==638
+        and len(session['slots'])==832 and sum(x['alias'] for x in session['slots'])==90
+        and len(session['effects'])==52,'FINAL_LEDGER')
+    session['decision']=h4m5_decision(session['effects'],np)
 
 
 def main():
