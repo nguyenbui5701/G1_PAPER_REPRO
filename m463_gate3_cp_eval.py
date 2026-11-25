@@ -5647,8 +5647,30 @@ def h4m4_plan():
         'optimizer_updates':0,'checkpoint_saves':0,'execution_authorized':False}
 
 
+def h4m4_parse_authorization(rules,source,spec):
+    approved=[l.split() for l in rules.splitlines() if l.startswith('H4M4_STATIC_APPROVED:')]
+    active=[l.split() for l in rules.splitlines() if l.startswith('H4M4_ACTIVE_GO:')]
+    h4m4_require(len(active)==len(approved)==1,'EXECUTION_HOLD')
+    h4m4_require(not any(l.startswith(('H4M3_ACTIVE_GO:','H4X_ACTIVE_GO:',
+        'H4CC_ACTIVE_GO:','H4CC_EVAL_ACTIVE_GO:','H4CC_TECH_ACTIVE_GO:'))
+        for l in rules.splitlines()),'CONCURRENT_AUTHORIZATION')
+    a,b=approved[0],active[0]
+    h4m4_require(len(a)==4 and a[1]==source and len(a[2])==64 and
+        all(c in '0123456789abcdef' for c in a[2]),'STATIC_PIN')
+    p=Path(a[3])
+    h4m4_require(not p.is_absolute() and p.parent==Path('m463_runs')
+        and p.name.startswith('m470_h4_m4_1_') and p.suffix=='.log','STATIC_PATH')
+    expected=['H4M4_ACTIVE_GO:','H4-M4-FEASIBILITY-V1',source,a[2],spec,
+        *H4M3_ARCHIVES,H4M4_REPORT_SHA,*[H4M3_POLICIES[k] for k in ('C','REF','CCRC')],
+        str(H4M4_OUTPUT)]
+    h4m4_require(b==expected,'AUTHORIZATION_PIN')
+    return {'id':b[1],'source_sha256':source,'static_sha256':a[2],
+        'static_path':a[3],'spec_sha256':spec,'archive_sha256':[*H4M3_ARCHIVES,H4M4_REPORT_SHA],
+        'policy_sha256':dict(H4M3_POLICIES),'output':str(H4M4_OUTPUT)}
+
+
 def h4m4_authorization():
-    # Deliberately fail closed during staged implementation. No runtime path.
+    # Held implementation: no runtime entry until integration/static review.
     raise RuntimeError('M470_H4M4_EXECUTION_HOLD')
 
 
@@ -6112,6 +6134,151 @@ def h4m4_final_ledger(session):
         'FINAL_LEDGER')
     return {'control_physical':control,'treatment_physical':treatments,
             'physical':physical,'rich':rich}
+
+
+
+def h4m4_load_summary(samples,side,threshold):
+    hits=[r['data']['contact']['normal_load_bodyweight'][side]>=threshold for r in samples]
+    start=None; streak=0; longest=0
+    for i,hit in enumerate(hits):
+        streak=streak+1 if hit else 0
+        longest=max(longest,streak)
+        if streak==3 and start is None:
+            start=samples[i-2]['tick']
+    return {'onset':start,'completed':None if start is None else start+2,
+            'longest':longest,'count':sum(hits)}
+
+
+def h4m4_endpoint(sample,origin,geometry,np):
+    x=sample['data']; b=origin['data']; side=geometry['recovery']
+    foot='lf_geom_pos' if side=='left' else 'rf_geom_pos'
+    e=np.asarray(geometry['e']); v=np.asarray(x['com']['velocity'])
+    p=np.asarray(x[foot])-np.asarray(x['com']['position'])
+    p0=np.asarray(b[foot])-np.asarray(b['com']['position'])
+    return {'D_m':float((p-p0)@e),'foot_relative_push_m':float(p@e),
+            'v_push_mps':float(v@e),'v_transverse_mps':float(v@np.array([-e[1],e[0],0.])),
+            'angular_momentum_norm':float(np.linalg.norm(x['com']['angular_momentum'])),
+            'load_recovery_bw':x['contact']['normal_load_bodyweight'][side],
+            'load_support_bw':x['contact']['normal_load_bodyweight'][geometry['support']]}
+
+
+def h4m4_classify(out,np):
+    B=out['arms']['baseline']; T=out['arms']['treatment']; geom=out['geometry']
+    samples={arm:{r['tick']:r for r in out['rich'] if r['arm']==arm}
+             for arm in ('prefix','baseline','sham','treatment')}
+    origin=samples['prefix'][334]
+    ends={}
+    for arm in ('baseline','sham','treatment'):
+        ends[arm]={str(t):h4m4_endpoint(samples[arm][t],origin,geom,np)
+            if t in samples[arm] else None for t in (354,365,385)}
+        ends[arm]['last']=h4m4_endpoint(samples[arm][out['arms'][arm]['end_tick']],
+                                       origin,geom,np)
+        ends[arm]['load']={str(p):h4m4_load_summary(list(samples[arm].values()),
+            geom['recovery'],p/100.) for p in (1,5,10)}
+    n=min(len(B['rows']),len(T['rows']))
+    safety={}
+    for k,tol in H3_EVAL_LIMITS.items():
+        j=H4M3_COLUMNS.index(k)
+        b=max(r[j] for r in B['rows'][:n]); t=max(r[j] for r in T['rows'][:n])
+        bf=max(r[j] for r in B['rows']); tf=max(r[j] for r in T['rows'])
+        safety[k]={'baseline_common':b,'treatment_common':t,
+            'baseline_full':bf,'treatment_full':tf,'tolerance':tol,
+            'pass':t<=b+tol and tf<=bf+tol}
+    def flags(branch):
+        return {k for k in H3_EVAL_FLAGS if any(r[H4M3_COLUMNS.index(k)]
+                                                for r in branch['rows'])}
+    new_flags=sorted(flags(T)-flags(B))
+    adverse=bool(T['safety_violations'] or not all(x['pass'] for x in safety.values())
+                 or new_flags or T['end_tick']<B['end_tick'])
+    low_dose=T['dose_ticks']<3 or T['dose_sum']<.4
+    b,t=ends['baseline'],ends['treatment']; positive=B['end_reason']=='censored'
+    criteria={}
+    if positive:
+        criteria={'censored385':T['end_reason']=='censored' and T['end_tick']==385,
+            'velocity':t['385'] is not None and abs(t['385']['v_push_mps'])
+                <=abs(b['385']['v_push_mps'])+.1,
+            'angular_momentum':t['385'] is not None and t['385']['angular_momentum_norm']
+                <=b['385']['angular_momentum_norm']+.5,'safety':not adverse}
+        decision='POSITIVE_PRESERVED' if all(criteria.values()) else 'POSITIVE_ADVERSE'
+    else:
+        missing=t['354'] is None or t['365'] is None
+        load=t['load']['5']
+        criteria={'placement':t['354'] is not None and
+            t['354']['D_m']-b['354']['D_m']>=.02,
+            'load':load['completed'] is not None and load['completed']<=354
+                and (out['policy']!='C' or load['onset']<=350),
+            'momentum':t['365'] is not None and
+                t['365']['v_push_mps']<=b['365']['v_push_mps']-.1 and
+                abs(t['365']['v_push_mps'])<=abs(b['365']['v_push_mps'])-.1,
+            'safety':not adverse}
+        decision=('ADVERSE' if adverse else 'LOCAL_CHAIN_SUPPORTED' if all(criteria.values())
+            else 'INCONCLUSIVE_MISSING_ENDPOINT' if missing else 'INCONCLUSIVE_LOW_DOSE'
+            if low_dose else 'CHAIN_NOT_SUPPORTED')
+    return {'decision':decision,'criteria':criteria,'low_dose':low_dose,
+        'endpoints':ends,'safety':safety,'new_critical_flags':new_flags,
+        'matched_suffix_samples':n,'treatment_end':T['end_tick'],
+        'baseline_end':B['end_tick']}
+
+
+def h4m4_summary(session,np):
+    results=[h4m4_classify(x,np) for x in session['lanes']]
+    positives=all(results[i]['decision']=='POSITIVE_PRESERVED' for i in (0,4))
+    successes=sum(results[i]['decision']=='LOCAL_CHAIN_SUPPORTED' for i in (1,2))
+    decision=('POSITIVE_CONTROL_ADVERSE' if not positives else 'LOCAL_FEASIBILITY_SUPPORTED'
+        if successes==2 else 'HETEROGENEOUS_PARTIAL' if successes==1 else
+        'INCONCLUSIVE' if any(results[i]['decision'].startswith('INCONCLUSIVE')
+            for i in (1,2)) else 'CHAIN_NOT_SUPPORTED_IN_TESTED_ENVELOPE')
+    return {'decision':decision,'lanes':results,'primary_chains':successes,
+        'positive_preservation':positives,'efficacy_evaluated':False}
+
+
+def h4m4_native_lane(lane,session,env,step_fn,jax,jnp,np,pulse=None):
+    h4m4_require(h4m4_authorization()==session['authorization'],'AUTH_CHANGED')
+    manifest=session['manifest']; legs=session['kinematics']['legs']
+    def reset(seed):
+        st=env.reset(jax.random.PRNGKey(seed))
+        h4m4_require(st.obs['state'].shape==(103,) and
+            st.obs['privileged_state'].shape==(216,) and not bool(jax.device_get(st.done)),
+            'RESET_SCHEMA')
+        return st
+    def clone(st):
+        out=jax.tree_util.tree_map(lambda x:x,st)
+        def containers(x):
+            if isinstance(x,dict):
+                return {id(x)}.union(*(containers(v) for v in x.values()))
+            if isinstance(x,list):
+                return {id(x)}.union(*(containers(v) for v in x))
+            if isinstance(x,tuple):
+                return set().union(*(containers(v) for v in x))
+            return set()
+        for name in ('info','obs','metrics'):
+            h4m4_require(not (containers(getattr(st,name)) & containers(getattr(out,name))),
+                'CLONE_MUTABLE_ALIAS')
+        return out
+    def step(st,capture,request,geometry):
+        if request is None:
+            result=step_fn(st,placement_capture=capture)
+        else:
+            mask=np.zeros(29,bool); mask[geometry['indices']]=True
+            result=step_fn(st,placement_capture=capture,
+                probe_residual=jnp.asarray(request),probe_selected=jnp.asarray(mask))
+        raw=jax.device_get(result[1])
+        packed=None; meta=None
+        if capture:
+            old=h4m3_pack_capture(jax.device_get(result[2]),h4m4_row(raw,np),manifest,np)
+            packed=json.loads(json.dumps(old,allow_nan=False,
+                default=lambda a:np.asarray(a).tolist()))
+            if request is not None:
+                meta=jax.device_get(result[3])
+        return result[0],raw,packed,meta
+    def geometry(st,packed,lane):
+        q=np.asarray(jax.device_get(st.data.qpos))
+        h4m4_require(np.array_equal(q,packed['qpos_post']),'FORK_QPOS')
+        return h4m4_geometry(q,legs,manifest,lane['second']['requested_world_dqvel_xy_mps'],
+                             lane['index'],np)
+    return h4m4_replay_lane(lane,session,reset,step,clone,
+        lambda st,d,mag,t:h4m3_native_kick(st,d,mag,t,jax,jnp,np),
+        lambda a,b:h4m3_tree_equal(a,b,jax,np),geometry,manifest,np,pulse=pulse)
 
 
 def main():
