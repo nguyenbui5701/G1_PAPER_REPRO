@@ -5804,7 +5804,8 @@ def h4m4_model_geometry(env,manifest,np):
             h4m3_git_blob(path)==blob,'G1_SOURCE_PIN')
     scene=Path(env.xml_path).resolve(strict=True)
     h4m4_require(scene==Path(g1_constants.FEET_ONLY_FLAT_TERRAIN_XML).resolve(strict=True)
-        and scene.is_relative_to(Path(REPO).resolve()),'SCENE_PATH')
+        and scene.is_relative_to(Path(REPO).resolve()) and h4m3_git_blob(scene)==
+            '99b32be5b1a951d4ae148addcbe4ad0f4501fa25','SCENE_PATH')
     xmls=[p for p in scene.parent.glob('*.xml') if h4m3_git_blob(p)==
           '4a7c00cdc92e245914d39b86b69b9329a26c35f5']
     h4m4_require(len(xmls)==1,'G1_XML_PIN')
@@ -5849,6 +5850,268 @@ def h4m4_model_geometry(env,manifest,np):
     return {'legs':legs,'scene_path':str(scene),'scene_sha256':sha256(scene),
         'xml_path':str(xmls[0].resolve()),'xml_sha256':sha256(xmls[0]),
         'xml_blob':'4a7c00cdc92e245914d39b86b69b9329a26c35f5'}
+
+
+
+def h4m4_archive_projection(report,lanes):
+    h4m4_require(report['status']=='M470_H4M3_TECHNICAL_REPLAY_COMPLETED'
+        and report['frame_columns']==list(H4M3_COLUMNS)
+        and report['attempted']==report['recorded']==2136
+        and report['resets_attempted']==report['resets_recorded']==5
+        and report['suffixes_attempted']==report['suffixes_recorded']==10
+        and report['rich_recorded']==666 and len(report['lanes'])==len(lanes)==5,
+        'APPROVED_REPORT_LEDGER')
+    h4m4_require(report['plan']==json.loads(json.dumps(h4m3_plan()))
+        and report['authorization']['policy_sha256']==H4M3_POLICIES
+        and report['training_performed'] is False and report['efficacy_evaluated'] is False
+        and report['optimizer_updates']==report['checkpoint_saves']==0,
+        'APPROVED_REPORT_PROTOCOL')
+    result=[]
+    for i,(old,archive,key) in enumerate(zip(report['lanes'],lanes,H4M3_LANES)):
+        policy,seed,direction,end=key
+        h4m4_require((old['policy'],old['seed'],old['direction'])==key[:3]
+            and (archive['policy'],archive['seed'],archive['direction'],archive['end'])==key
+            and old['segments']==archive['rows'] and old['complete'] is True
+            and old['first']==archive['first'] and old['second']==archive['second']
+            and len(old['kick_audits'])==2,'APPROVED_ARCHIVE_EQUAL')
+        prefix=old['segments']['nominal']+old['segments']['first']+old['segments']['double'][:1]
+        suffix=old['segments']['double'][1:]
+        rich={x['tick']:x['data'] for x in old['rich'] if x['segment']!='single'}
+        h4m4_require(len(prefix)==335 and len(suffix)==end-335
+            and sorted(rich)==list(range(295,end+1)) and len(old['rich'])==end-243,
+            'APPROVED_RICH_KEYS')
+        h4m4_require(all(x['com']['available'] is True and x['contact']['available'] is True
+            for x in rich.values()),'APPROVED_TELEMETRY')
+        result.append({'index':i,'policy':policy,'seed':seed,'direction':direction,
+            'end':end,'prefix':prefix,'suffix':suffix,'rich':rich,
+            'first':old['first'],'second':old['second'],'kick_audits':old['kick_audits']})
+    return result
+
+
+def h4m4_read_evidence(root,historical_path):
+    root=Path(root)
+    report=h4m3_pinned_json(root/H4M3_OUTPUT,H4M4_REPORT_SHA)
+    lanes,pins=h4m3_read_evidence(root,root/H4CC_EVAL_OUTPUT,historical_path,
+                                root/H4M3_BASE_POLICY)
+    old=subprocess.check_output(['git','-C',str(root),'show',
+        'dc79dc906a38edc208c0770ea8ea26f7722d8aba:m463_gate3_cp_eval.py'])
+    old_blob=hashlib.sha1(('blob '+str(len(old))+'\0').encode()+old).hexdigest()
+    old_sha=hashlib.sha256(old).hexdigest()
+    h4m4_require(old_blob==H4M4_PREVIOUS_BLOB and old_sha==report['input_sha256']['diagnostic_evaluator']
+        and pins['diagnostic_evaluator']!=old_sha and
+        {**pins,'diagnostic_evaluator':old_sha}==report['input_sha256'],'OLD_SOURCE_PINS')
+    h4m4_require(h4m3_digest({**h4m3_source_map(root),'m463_gate3_cp_eval.py':old_sha})
+        ==report['authorization']['source_sha256'],'OLD_COMMON_SOURCE')
+    external=h4m3_external_sources(root)
+    h4m4_require(external==report['external_sources'],'OLD_EXTERNAL_PINS')
+    return h4m4_archive_projection(report,lanes),{
+        **pins,'approved_h4m3_report':H4M4_REPORT_SHA,'approved_h4m3_evaluator':old_sha},report
+
+
+def h4m4_row(raw,np):
+    h4m4_require(tuple(sorted(raw))==H4M3_COLUMNS,'FRAME_SCHEMA')
+    h4m4_require(all(np.asarray(v).ndim==0 and np.isfinite(v) for v in raw.values()),
+        'FRAME_FINITE')
+    row=[float(raw[k]) for k in H4M3_COLUMNS]
+    for k in ('h2a_state_finite','h3_finite'):
+        h4m4_require(raw[k]==1,'NONFINITE_'+k)
+    for k in ('done','lf_ground_contact','rf_ground_contact',*H3_EVAL_FLAGS):
+        h4m4_require(raw[k] in (0,1),'BOOLEAN_'+k)
+    return row
+
+
+def h4m4_audit_action(packed,meta,request,geometry,manifest,np):
+    h4m4_require(isinstance(meta,dict) and set(meta)=={'actor_action','requested_residual',
+        'lambda','delivered_residual','sent_action','guard_code'},'RESIDUAL_SCHEMA')
+    arr={k:np.asarray(meta[k],dtype=np.float32) for k in ('actor_action',
+        'requested_residual','delivered_residual','sent_action')}
+    h4m4_require(all(v.shape==(29,) and np.isfinite(v).all() for v in arr.values()),'RESIDUAL_FINITE')
+    actor=arr['actor_action']; sent=arr['sent_action']; r=arr['requested_residual']
+    mask=np.zeros(29,bool); mask[geometry['indices']]=True
+    h4m4_require(np.array_equal(r,request) and np.all(r[~mask]==0)
+        and np.max(abs(r))<=np.float32(.2) and np.max(abs(actor))<=1.
+        and np.max(abs(sent))<=1. and np.array_equal(sent[~mask].view(np.uint32),
+            actor[~mask].view(np.uint32)) and np.array_equal(sent,np.asarray(packed['action']))
+        and np.array_equal(arr['delivered_residual'],sent-actor),'RESIDUAL_IDENTITY')
+    lam=float(meta['lambda']); code=int(meta['guard_code'])
+    h4m4_require(np.isfinite(lam) and 0<=lam<=1. and code in (0,1,2,3,4)
+        and np.max(abs((sent-actor)-lam*r))<=1e-7,'RESIDUAL_SCALE')
+    f=manifest['fields']
+    ref,expected=h4m4_apply_residual(actor,r,mask,manifest['default_pose'],
+        f['actuator_ctrlrange'],f['actuator_ctrllimited'],np)
+    h4m4_require(abs(float(expected['lambda'])-lam)<=1e-6
+        and int(expected['guard_code'])==code and np.allclose(ref,sent,atol=1e-7,rtol=0),
+        'RESIDUAL_RECONCILIATION')
+    if not np.any(r) or lam==0:
+        h4m4_require(np.array_equal(sent.view(np.uint32),actor.view(np.uint32)),
+            'ZERO_DOSE_BITS')
+    else:
+        ids=np.asarray(geometry['indices'])
+        raw=np.asarray(packed['raw_ctrl'])[ids]
+        bounds=np.asarray(f['actuator_ctrlrange'])[ids]
+        h4m4_require(np.all(raw>=bounds[:,0]) and np.all(raw<=bounds[:,1]),
+            'TARGET_HEADROOM')
+    return {'actor_action':actor.tolist(),'requested_residual':r.tolist(),
+        'lambda':lam,'delivered_residual':(sent-actor).tolist(),'sent_action':sent.tolist(),
+        'guard_code':code}
+
+
+def h4m4_force_discrepancy(packed,manifest,np):
+    a=np.asarray(packed['actuator_force'])
+    q=np.asarray(packed['qfrc_actuator'])[manifest['qvel_addresses']]
+    h4m4_require(a.shape==q.shape==(29,) and np.isfinite(a).all() and
+        np.isfinite(q).all(),'FORCE_MAP')
+    return float(np.max(abs(a-q)))
+
+
+def h4m4_replay_lane(lane,session,reset,step,clone,kick,equal,geometry_fn,manifest,np,
+                      pulse=None):
+    """Host mechanics only. Actual callback adapter must be separately authorized."""
+    idx=len(session['lanes'])
+    h4m4_require(idx<5 and session['resets_attempted']==session['resets_recorded']==idx
+        and lane['index']==idx and (lane['policy'],lane['seed'],lane['direction'],lane['end'])
+        ==H4M3_LANES[idx],'LANE_ORDER')
+    out={'policy':lane['policy'],'seed':lane['seed'],'direction':lane['direction'],
+        'prefix':[],'arms':{},'rich':[],'kicks':[],'complete':False}
+    session['lanes'].append(out); session['resets_attempted']+=1
+    st=reset(lane['seed']); session['resets_recorded']+=1
+    geometry=None
+    def advance(state,arm,tick,expected,request=None,latched=False):
+        capture=tick>=295
+        h4m4_require(session['attempted']<H4M4_CAP and
+            (not capture or session['rich_recorded']<H4M4_RICH_CAP),'STEP_CAP')
+        session['attempted']+=1
+        session['last_attempt']={'lane':idx,'arm':arm,'tick':tick}
+        state,raw,packed,meta=step(state,capture,request,geometry)
+        row=h4m4_row(raw,np)
+        if expected is not None:
+            h4m4_require(row==expected,'EXACT_ROW_'+arm+'_'+str(tick))
+        if capture:
+            h4m4_require(packed['com']['available'] is True and
+                packed['contact']['available'] is True,'REQUIRED_COM_CONTACT')
+            if expected is not None:
+                h4m4_require(packed==lane['rich'][tick],'EXACT_RICH_'+arm+'_'+str(tick))
+            if request is None:
+                h4m4_require(meta is None,'BASELINE_ADAPTER')
+                action=packed['action']; meta={'actor_action':action,'sent_action':action,
+                    'requested_residual':[0.]*29,'delivered_residual':[0.]*29,
+                    'lambda':0.,'guard_code':0}
+            else:
+                meta=h4m4_audit_action(packed,meta,request,geometry,manifest,np)
+            rec={'arm':arm,'tick':tick,'data':packed,'residual':meta,
+                 'latched_before':bool(latched),
+                 'force_discrepancy_Nm':h4m4_force_discrepancy(packed,manifest,np)}
+            encoded=json.dumps(rec,allow_nan=False,separators=(',',':'))
+            size=len(encoded.encode())+128
+            h4m4_require(size<=H4M4_RECORD_CAP and session['rich_bytes']+size<=60*1024**2,
+                'RICH_REPORT_CAP')
+            session['rich_bytes']+=size; session['rich_recorded']+=1
+            out['rich'].append(rec)
+        session['recorded']+=1
+        if arm=='prefix':
+            out['prefix'].append(row)
+        else:
+            out['arms'][arm]['rows'].append(row)
+        if pulse is not None and tick%100==0:
+            pulse()
+        return state,row
+    for tick in range(1,336):
+        if tick in (300,335):
+            st,meta,audit=kick(clone(st),lane['direction'],.5 if tick==300 else .35,tick)
+            h4m4_require(meta==lane['first' if tick==300 else 'second'] and
+                audit==lane['kick_audits'][0 if tick==300 else 1],'KICK_ARCHIVE')
+            out['kicks'].append(audit)
+        st,row=advance(st,'prefix',tick,lane['prefix'][tick-1])
+        h4m4_require(not row[H4M3_COLUMNS.index('done')],'PREFIX_TERMINAL')
+    fork=clone(st); witness=clone(st)
+    siblings={arm:clone(st) for arm in ('baseline','sham','treatment')}
+    h4m4_require(equal(fork,witness) and all(equal(fork,x) for x in siblings.values()),
+        'FORK_EQUAL')
+    geometry=geometry_fn(fork,out['rich'][-1]['data'],lane)
+    out['geometry']=geometry
+    rec=geometry['recovery']; sup=geometry['support']
+    contact_key=('lf' if rec=='left' else 'rf')+'_ground_contact'
+    support_key=('lf' if sup=='left' else 'rf')+'_ground_contact'
+    ri=H4M3_COLUMNS.index(contact_key); si=H4M3_COLUMNS.index(support_key)
+    loads=out['rich'][-1]['data']['contact']['normal_load_bodyweight']
+    h4m4_require(out['prefix'][-1][ri]==0 and out['prefix'][-1][si]==1
+        and loads[rec]==0 and loads[sup]>0,'FORK_SUPPORT')
+    if pulse is not None: pulse()
+    limits={k:H4M3_COLUMNS.index(k) for k in H3_EVAL_LIMITS}
+    for arm in ('baseline','sham','treatment'):
+        h4m4_require(session['suffixes_attempted']<15 and equal(fork,witness)
+            and equal(siblings[arm],witness),'SIBLING_PRE')
+        session['suffixes_attempted']+=1
+        branch={'rows':[],'end_reason':None,'dose_ticks':0,'dose_sum':0.,
+            'first_contact_tick':None,'safety_violations':[]}
+        out['arms'][arm]=branch; state=siblings.pop(arm); latched=False
+        stop=lane['end'] if arm!='treatment' else 385
+        for tick in range(336,stop+1):
+            request=None if arm=='baseline' else h4m4_pulse(tick,latched,arm,geometry,np)
+            state,row=advance(state,arm,tick,lane['suffix'][tick-336] if arm!='treatment'
+                else None,request,latched)
+            rich=out['rich'][-1]; dose=max(map(abs,rich['residual']['delivered_residual']))
+            if dose>0:
+                branch['dose_ticks']+=1; branch['dose_sum']+=dose
+            if row[ri] and not latched:
+                latched=True; branch['first_contact_tick']=tick
+            if arm=='treatment':
+                for k,j in limits.items():
+                    if row[j]>max(x[j] for x in out['arms']['baseline']['rows'])+H3_EVAL_LIMITS[k]:
+                        branch['safety_violations'].append({'tick':tick,'gate':k})
+                if rich['force_discrepancy_Nm']>.1:
+                    branch['safety_violations'].append({'tick':tick,'gate':'GENERALIZED_FORCE_CLIP'})
+            if row[H4M3_COLUMNS.index('done')]:
+                h4m4_require(arm=='treatment' or tick==stop,'CONTROL_EARLY_TERMINAL')
+                branch['end_reason']='source_terminal'
+                break
+            if branch['safety_violations']:
+                branch['end_reason']='safety_stop'
+                break
+        if branch['end_reason'] is None:
+            branch['end_reason']='censored'
+        branch['end_tick']=335+len(branch['rows'])
+        if arm!='treatment':
+            h4m4_require(branch['end_tick']==lane['end'] and
+                branch['end_reason']==('source_terminal' if lane['end']<385 else 'censored')
+                and branch['dose_ticks']==0,'CONTROL_END')
+        h4m4_require(equal(fork,witness) and all(equal(x,witness) for x in siblings.values()),
+            'SIBLING_MUTATION')
+        session['suffixes_recorded']+=1
+        if pulse is not None: pulse()
+    out['complete']=True
+    return out
+
+
+def h4m4_final_ledger(session):
+    h4m4_require(session['resets_attempted']==session['resets_recorded']==5
+        and session['suffixes_attempted']==session['suffixes_recorded']==15
+        and len(session['lanes'])==5,'FINAL_COUNTS')
+    physical=0; rich=0; control=0; treatments=0
+    for out,key in zip(session['lanes'],H4M3_LANES):
+        h4m4_require((out['policy'],out['seed'],out['direction'])==key[:3]
+            and out['complete'] is True and len(out['prefix'])==335
+            and set(out['arms'])=={'baseline','sham','treatment'},'FINAL_LANE')
+        expected=[('prefix',t) for t in range(295,336)]
+        physical+=335; control+=335
+        for arm in ('baseline','sham','treatment'):
+            b=out['arms'][arm]; n=len(b['rows'])
+            h4m4_require(1<=n<=50 and b['end_tick']==335+n,'FINAL_ARM')
+            if arm!='treatment':
+                h4m4_require(n==key[3]-335 and b['dose_ticks']==0,'FINAL_CONTROL')
+                control+=n
+            else:
+                treatments+=n
+            physical+=n
+            expected.extend((arm,t) for t in range(336,336+n))
+        h4m4_require([(r['arm'],r['tick']) for r in out['rich']]==expected,'FINAL_RICH_KEYS')
+        rich+=len(expected)
+    h4m4_require(control==2087 and physical==2087+treatments
+        and session['attempted']==session['recorded']==physical<=H4M4_CAP
+        and session['rich_recorded']==rich==physical-1470<=H4M4_RICH_CAP,
+        'FINAL_LEDGER')
+    return {'control_physical':control,'treatment_physical':treatments,
+            'physical':physical,'rich':rich}
 
 
 def main():
