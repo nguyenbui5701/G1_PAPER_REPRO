@@ -2574,10 +2574,11 @@ def h4e_run(args):
 
 
 def run(args):
-    if getattr(args,'h4m4_feasibility',False):
-        h4m4_authorization()
-    placement=bool(getattr(args,'h4m3_placement',False))
-    if placement:
+    feasibility=bool(getattr(args,'h4m4_feasibility',False))
+    placement=bool(getattr(args,'h4m3_placement',False)) or feasibility
+    if feasibility:
+        h4m4_enter_runtime(args)
+    elif placement:
         h4m3_enter_runtime(args)
     if getattr(args,'h4cc_technical',False):
         raise RuntimeError('M470_H4CC_TECH_USE_DEDICATED_DISPATCH')
@@ -2635,6 +2636,9 @@ def run(args):
             h4m3_require(args.h3_session['brax_source_verification']['path']
                 ==args.h3_session['brax_train_path'],'RUNTIME_BRAX_PATH')
             h4m3_runtime_dependencies(args.h3_session)
+            if feasibility:
+                h4m4_require(args.h3_session['brax_source_verification']
+                    ==args.h4m4_approved_brax,'BRAX_ARCHIVE_IDENTITY')
         if cc:
             h4cc_eval_require(args.h3_session['brax_source_verification']==args.h4cc_archive['brax_source_verification'],
                               'RUNTIME_BRAX_EQUIVALENCE')
@@ -2698,6 +2702,10 @@ def run(args):
     if placement:
         h4m3_runtime_model_source(env,args.h3_session)
         args.h3_session['manifest']=h4m3_manifest(env,np)
+        if feasibility:
+            h4m4_require(args.h3_session['manifest']==args.h4m4_approved_manifest,
+                'H4M3_MODEL_IDENTITY')
+            args.h3_session['kinematics']=h4m4_model_geometry(env,args.h3_session['manifest'],np)
         h4m3_write(args.output,args.h3_session)
     obs_shape={'state':(103,),'privileged_state':(216,)}
     ppo_nets=networks.make_ppo_networks(obs_shape,env.action_size,
@@ -2774,7 +2782,8 @@ def run(args):
         selected=H4M3_LANES[lane_index][0] if placement else None
         for name,policy in ([(selected,policies[selected])] if placement else policies.items()):
             # JIT step/diagnostics; a single MJX state (no vectorized envs) is active at a time.
-            def one_step(state, effective_command=None, *, placement_capture=False):
+            def one_step(state, effective_command=None, *, placement_capture=False,
+                         probe_residual=None,probe_selected=None):
                 cmd = (
                     command
                     if effective_command is None
@@ -2795,6 +2804,12 @@ def run(args):
                 if placement_capture:
                     pre_placement=h4m3_pre_capture(state)
                 action,_=policy(state.obs,jax.random.PRNGKey(0))
+                if probe_residual is not None:
+                    h4m4_require(feasibility and placement_capture and probe_selected is not None,
+                                  'OPT_IN_CAPTURE_REQUIRED')
+                    action,probe_meta=h4m4_apply_residual(action,probe_residual,probe_selected,
+                        env._default_pose,env.mj_model.actuator_ctrlrange,
+                        env.mj_model.actuator_ctrllimited,jnp)
                 next_state=env.step(state,action)
                 d = next_state.data
 
@@ -3045,10 +3060,19 @@ def run(args):
                             & jnp.isfinite(next_state.reward)),
                     })
                 if placement_capture:
+                    if probe_residual is not None:
+                        return (next_state,diag,h4m3_post_capture(pre_placement,action,next_state,env),
+                                probe_meta)
                     return next_state,diag,h4m3_post_capture(pre_placement,action,next_state,env)
                 return next_state,diag
             step_fn=(jax.jit(one_step,static_argnames=('placement_capture',))
                      if placement else jax.jit(one_step))
+            if feasibility:
+                session=args.h3_session
+                h4m4_native_lane(args.h4m4_lanes[lane_index],session,env,step_fn,jax,jnp,np,
+                    pulse=lambda: h4m3_progress(args,session))
+                h4m3_progress(args,session)
+                continue
             if placement:
                 session=args.h3_session
                 h4m3_require(h4m3_authorization()==session['authorization'],'AUTH_CHANGED')
@@ -5670,8 +5694,22 @@ def h4m4_parse_authorization(rules,source,spec):
 
 
 def h4m4_authorization():
-    # Held implementation: no runtime entry until integration/static review.
-    raise RuntimeError('M470_H4M4_EXECUTION_HOLD')
+    root=Path(__file__).resolve().parent
+    rules=(root/'G1_RESEARCH_RULES.md').read_text('utf8')
+    h4m4_require(any(l.startswith('H4M4_ACTIVE_GO:') for l in rules.splitlines())
+        and any(l.startswith('H4M4_STATIC_APPROVED:') for l in rules.splitlines()),
+        'EXECUTION_HOLD')
+    auth=h4m4_parse_authorization(rules,h4m3_digest(h4m3_source_map(root)),
+                                  h4m3_digest(h4m4_plan()))
+    p=root/auth['static_path']
+    h4m4_require(p.is_file() and not p.is_symlink() and p.resolve()==p.absolute()
+        and p.stat().st_size<=16*1024**2 and sha256(p)==auth['static_sha256'],
+        'STATIC_LOG')
+    lines=p.read_text('utf8').splitlines()
+    h4m4_require('H4_M4_1_FULL_STATIC_PASS '+auth['source_sha256'] in lines
+        and 'H4_M4_1_EXTERNAL_SHA256 '+h4m3_digest(h4m3_external_sources(root)) in lines,
+        'STATIC_ACCEPTANCE')
+    return auth
 
 
 def h4m4_leg_spec(side):
@@ -5697,10 +5735,15 @@ def h4m4_quat_matrix(q,np):
         [2*(x*z-w*y),2*(y*z+w*x),1-2*(x*x+y*y)]])
 
 
-def h4m4_fk(qpos,leg,np):
+def h4m4_fk(qpos,leg,np,root_override=None):
     qpos=np.asarray(qpos,dtype=np.float64)
     h4m4_require(qpos.shape==(36,) and np.isfinite(qpos).all(),'FK_QPOS')
     root=qpos[:3].copy(); R=h4m4_quat_matrix(qpos[3:7],np)
+    if root_override is not None:
+        root,R=map(lambda a:np.asarray(a,dtype=np.float64).copy(),root_override)
+        h4m4_require(root.shape==(3,) and R.shape==(3,3) and np.isfinite(root).all()
+            and np.isfinite(R).all() and np.allclose(R@R.T,np.eye(3),atol=1e-6,rtol=0),
+            'ALIGNED_ROOT')
     anchors=[]; axes=[]
     for p,q,a,t,ref in zip(leg['offsets'],leg['quats'],leg['axes'],
                            qpos[7+np.asarray(leg['indices'])],leg['qpos0']):
@@ -5715,6 +5758,23 @@ def h4m4_fk(qpos,leg,np):
     J=np.cross(np.asarray(axes),foot-np.asarray(anchors)).T
     h4m4_require(np.isfinite(J).all() and np.isfinite(foot).all(),'FK_FINITE')
     return foot,R,J
+
+
+def h4m4_verify_aligned(packed,legs,np):
+    # Last-solve inertial pose and actuator length, never stale geometry vs qpos_post.
+    co=packed['com']
+    R=np.asarray(co['body_ximat'][0])@h4m4_quat_matrix([1,0,-.000399148,0],np).T
+    root=np.asarray(co['body_xipos'][0])-R@np.asarray([0,0,-.07605])
+    qpos=np.asarray(packed['qpos_post'],dtype=np.float64).copy()
+    qpos[7:]=packed['actuator_length']
+    errors={}
+    for side,short in (('left','lf'),('right','rf')):
+        p,Q,_=h4m4_fk(qpos,legs[side],np,root_override=(root,R))
+        pe=float(np.linalg.norm(p-np.asarray(packed[short+'_geom_pos'])))
+        re=float(np.max(abs(Q-np.asarray(packed[short+'_geom_mat']))))
+        h4m4_require(pe<=1e-6 and re<=1e-6,'ALIGNED_FK_'+side)
+        errors[side]={'position_m':pe,'rotation_element':re}
+    return errors
 
 
 def h4m4_box_gap(p,R,half,q,S,other,np):
@@ -6274,11 +6334,106 @@ def h4m4_native_lane(lane,session,env,step_fn,jax,jnp,np,pulse=None):
     def geometry(st,packed,lane):
         q=np.asarray(jax.device_get(st.data.qpos))
         h4m4_require(np.array_equal(q,packed['qpos_post']),'FORK_QPOS')
-        return h4m4_geometry(q,legs,manifest,lane['second']['requested_world_dqvel_xy_mps'],
+        result=h4m4_geometry(q,legs,manifest,lane['second']['requested_world_dqvel_xy_mps'],
                              lane['index'],np)
+        result['aligned_fk']=h4m4_verify_aligned(packed,legs,np)
+        return result
     return h4m4_replay_lane(lane,session,reset,step,clone,
         lambda st,d,mag,t:h4m3_native_kick(st,d,mag,t,jax,jnp,np),
         lambda a,b:h4m3_tree_equal(a,b,jax,np),geometry,manifest,np,pulse=pulse)
+
+
+
+def h4m4_enter_runtime(args):
+    auth=h4m4_authorization()
+    h4m3_no_runtime_imports()
+    root=Path(__file__).resolve().parent
+    session=getattr(args,'h3_session',None)
+    h4m4_require(not any(getattr(args,k,False) for k in ('h4m3_placement','h4cc_eval',
+        'h4cc_technical','h4_m1_eval','h4_technical','h3_m1_eval','h2a','h2b'))
+        and args.output.absolute()==root/H4M4_OUTPUT and args.output.resolve()==root/H4M4_OUTPUT
+        and list(args.seeds)==[x[1] for x in H4M3_LANES] and list(args.profiles)==['stand']
+        and args.checkpoint_c==root/H4M3_BASE_POLICY and session is not None
+        and session['authorization']==auth and session['status']=='M470_H4M4_IN_PROGRESS'
+        and session['attempted']==session['recorded']==session['resets_attempted']==0
+        and session['lanes']==[] and args.output.is_file() and not args.output.is_symlink(),
+        'SESSION_REQUIRED')
+    marker=args.output.parent/'dispatch.started.json'
+    h4m4_require(marker.is_file() and not marker.is_symlink() and
+        json.loads(marker.read_bytes())=={'authorization':auth}
+        and json.loads(args.output.read_bytes())==session,'DISPATCH_MARKER')
+    with (args.output.parent/'runtime.entered.json').open('x',encoding='utf8') as f:
+        json.dump({'authorization':auth},f,sort_keys=True,allow_nan=False)
+        f.flush(); os.fsync(f.fileno())
+    lanes,pins,approved=h4m4_read_evidence(root,args.h4m4_historical_archive)
+    h4m4_require(pins==session['input_sha256']
+        and h4m3_external_sources(root)==session['external_sources']
+        and session['mjx_sources']==session['external_sources']['mjx']
+        and h4m3_digest(h4m3_source_map(root))==auth['source_sha256'],'PRE_RUNTIME_PINS')
+    args.h4m4_lanes=lanes
+    args.h4m4_approved_manifest=approved['manifest']
+    args.h4m4_approved_brax=approved['brax_source_verification']
+
+
+def h4m4_dispatch(args):
+    import shutil
+    auth=h4m4_authorization()
+    root=Path(__file__).resolve().parent
+    h4m4_require(args.mode=='run' and args.output.absolute()==root/H4M4_OUTPUT
+        and args.output.resolve()==root/H4M4_OUTPUT and
+        not any(getattr(args,k,False) for k in ('h4m3_placement','h4cc_eval',
+        'h4cc_technical','h4_m1_eval','h4_technical','h3_m1_eval','h2a','h2b')),
+        'DISPATCH_PROTOCOL')
+    h4m3_no_runtime_imports()
+    lanes,pins,approved=h4m4_read_evidence(root,args.h4m4_historical_archive)
+    external=h4m3_external_sources(root)
+    h4m4_require(os.environ.get('JAX_PLATFORMS')=='cuda'
+        and h4m3_digest(h4m3_source_map(root))==auth['source_sha256']
+        and shutil.disk_usage(args.output.parent.parent).free>=2*1024**3+H4M3_REPORT_CAP,
+        'PREFLIGHT_STORAGE_SOURCE')
+    from m462_ppo_warmstart_run import GPUMonitor,sample_gpu
+    h4m3_no_runtime_imports()
+    session={'status':'M470_H4M4_IN_PROGRESS','authorization':auth,
+        'plan':json.loads(json.dumps(h4m4_plan())),'input_sha256':pins,
+        'external_sources':external,'mjx_sources':external['mjx'],
+        'brax_train_path':approved['brax_source_verification']['path'],
+        'frame_columns':list(H4M3_COLUMNS),'lanes':[],'attempted':0,'recorded':0,
+        'resets_attempted':0,'resets_recorded':0,'suffixes_attempted':0,'suffixes_recorded':0,
+        'rich_recorded':0,'rich_bytes':0,'training_performed':False,
+        'efficacy_evaluated':False,'optimizer_updates':0,'checkpoint_saves':0,
+        'promotion_authorized':False}
+    marker=h4m3_reserve(args.output,auth)
+    h4m3_write(args.output,session,initial=True)
+    args.h3_session=session; args.checkpoint_c=root/H4M3_BASE_POLICY
+    args.seeds=[x[1] for x in H4M3_LANES]; args.profiles=['stand']
+    monitor=GPUMonitor(); args.h3_monitor=monitor
+    try:
+        gpu=sample_gpu()
+        h4m4_require(gpu['total_mib']==12288 and 0<=gpu['used_mib']<.95*12288,'GPU_PREFLIGHT')
+        with monitor:
+            run(args)
+        session['gpu_initial']=gpu; session['gpu']=h3_gpu_check(monitor)
+        h4m4_require(h4m4_authorization()==auth and
+            h4m4_read_evidence(root,args.h4m4_historical_archive)[1]==pins
+            and h4m3_external_sources(root)==external
+            and json.loads(marker.read_bytes())=={'authorization':auth}
+            and json.loads((args.output.parent/'runtime.entered.json').read_bytes())
+                =={'authorization':auth},'POST_IMMUTABILITY')
+        session['ledger']=h4m4_final_ledger(session)
+        import numpy as np
+        session['mechanism']=h4m4_summary(session,np)
+        session['status']='M470_H4M4_TECHNICAL_PROBE_COMPLETED'
+        h4m3_write(args.output,session)
+        print(session['status'],session['ledger'],session['mechanism']['decision'],flush=True)
+    except BaseException as exc:
+        session['status']='M470_H4M4_STOP'
+        session['error']=(type(exc).__name__+': '+str(exc))[:4096]
+        session['gpu']=monitor.snapshot()
+        try:
+            h4m3_write(args.output,session)
+        except BaseException as write_error:
+            print('M470_H4M4_PARTIAL_WRITE_FAILED',repr(write_error),flush=True)
+        raise
 
 
 def main():
@@ -6318,6 +6473,7 @@ def main():
     p.add_argument('--h4m3-static-archives',action='store_true')
     p.add_argument('--h4m3-historical-archive',type=Path)
     p.add_argument('--h4m4-feasibility',action='store_true')
+    p.add_argument('--h4m4-historical-archive',type=Path)
     args=p.parse_args()
     if args.h4m4_feasibility:
         try:
@@ -6334,10 +6490,15 @@ def main():
                 and args.output.resolve()==root/H4M4_OUTPUT,'OUTPUT_PATH')
             if args.mode=='run':
                 h4m4_authorization()
+                h4m4_require(args.h4m4_historical_archive is not None,'HISTORICAL_REQUIRED')
+                return h4m4_dispatch(args)
+            h4m4_require(args.h4m4_historical_archive is None,'PLAN_FLAGS')
             print('M470_H4M4_PLAN',json.dumps(h4m4_plan(),sort_keys=True))
             return
         except (RuntimeError,ValueError,KeyError,OSError) as exc:
             p.error(str(exc))
+    if args.h4m4_historical_archive is not None:
+        p.error('M470_H4M4_FLAG_REQUIRED')
     if args.h4m3_placement:
         try:
             h4m3_require(not any(getattr(args,k) for k in ('h4cc_technical',
