@@ -2574,8 +2574,9 @@ def h4e_run(args):
 
 
 def run(args):
-    if getattr(args,'h4m3_placement',False):
-        h4m3_authorization()
+    placement=bool(getattr(args,'h4m3_placement',False))
+    if placement:
+        h4m3_enter_runtime(args)
     if getattr(args,'h4cc_technical',False):
         raise RuntimeError('M470_H4CC_TECH_USE_DEDICATED_DISPATCH')
     cc=bool(getattr(args,'h4cc_eval',False))
@@ -2603,7 +2604,7 @@ def run(args):
         h4e_require(args.output.is_file() and not args.output.is_symlink()
                      and h4e_read_inputs(args)==args.h3_session['input_sha256'],
                      'SESSION_INPUT_PROVENANCE')
-    h3_mode=bool(getattr(args,'h3_m1_eval',False)) or h4_mode
+    h3_mode=bool(getattr(args,'h3_m1_eval',False)) or h4_mode or placement
     if args.output.exists() and not (h3_mode and getattr(args,'h3_session',None) is not None):
         raise FileExistsError('Refuse to overwrite output: '+str(args.output))
     # Use the same pinned runner environment; apply compatibility BEFORE JAX import.
@@ -2622,6 +2623,10 @@ def run(args):
     if h3_mode:
         from brax.training.agents.ppo import networks
         args.h3_session['brax_source_verification']=h3_verify_brax_train_source(networks)
+        if placement:
+            h4m3_require(args.h3_session['brax_source_verification']['path']
+                ==args.h3_session['brax_train_path'],'RUNTIME_BRAX_PATH')
+            h4m3_runtime_dependencies(args.h3_session)
         if cc:
             h4cc_eval_require(args.h3_session['brax_source_verification']==args.h4cc_archive['brax_source_verification'],
                               'RUNTIME_BRAX_EQUIVALENCE')
@@ -2653,7 +2658,7 @@ def run(args):
     if not h4_mode and sha256(args.checkpoint_c)!=BASE_SHA:raise RuntimeError('M462_FROZEN_401M_SHA_MISMATCH')
     report_p = None
 
-    if not (args.h2a or args.h2b or h4_mode):
+    if not (args.h2a or args.h2b or h4_mode or placement):
         report_p = read_m463_smoke_report(
             args.report_p,
             args.checkpoint_p,
@@ -2672,13 +2677,19 @@ def run(args):
     if float(cfg.reward_config.scales.base_height)!=0.:
         raise RuntimeError('M462_EVAL_SOURCE_REWARD_CONFIG_CHANGED')
     if h3_mode:
-        reward_report=h4e_paths('control')/'report.json' if h4_mode else args.report_h3
+        reward_report=(H4_EVAL_ROOT/'m463_runs/m470_h4_m2_ccrc_v1/report.json'
+                       if placement else h4e_paths('control')/'report.json'
+                       if h4_mode else args.report_h3)
         original_reward=json.loads(reward_report.read_bytes())['train_reward_config']
         h3_require(cfg.reward_config.to_dict()==original_reward,'ORIGINAL_REWARD_CONFIG')
     cfg.push_config.enable=False
     env=locomotion.load(ENV,config=cfg)
     if env.action_size!=29:raise RuntimeError('M462_ACTION_DIM_CHANGED')
     if abs(float(env.dt)-0.02)>1e-6:raise RuntimeError('M462_CTRL_DT_CHANGED')
+    if placement:
+        h4m3_runtime_model_source(env,args.h3_session)
+        args.h3_session['manifest']=h4m3_manifest(env,np)
+        h4m3_write(args.output,args.h3_session)
     obs_shape={'state':(103,),'privileged_state':(216,)}
     ppo_nets=networks.make_ppo_networks(obs_shape,env.action_size,
                 preprocess_observations_fn=running_statistics.normalize,
@@ -2698,7 +2709,9 @@ def run(args):
             raise RuntimeError('M462_NONFINITE_POLICY')
         inf=networks.make_inference_fn(ppo_nets)((norm,actor),deterministic=True)
         return inf
-    if cc:
+    if placement:
+        policies={n:load_policy(p) for n,p in h4m3_policy_paths(H4_EVAL_ROOT).items()}
+    elif cc:
         from m463_push_ppo_train import H4CC_PATHS
         policies={arm.upper():load_policy(H4_EVAL_ROOT/H4CC_PATHS[arm]/H4_EVAL_POLICY_FILE)
                   for arm in ('ref','ccrc')}
@@ -2746,10 +2759,11 @@ def run(args):
         run_seeds = list(H2B_CAL_SEEDS) + args.seeds
     else:
         run_seeds = args.seeds
-    for seed in run_seeds:
+    for lane_index,seed in enumerate(run_seeds):
       for profile in args.profiles:
         command=jnp.asarray(PROFILES[profile],dtype=jnp.float32)
-        for name,policy in policies.items():
+        selected=H4M3_LANES[lane_index][0] if placement else None
+        for name,policy in ([(selected,policies[selected])] if placement else policies.items()):
             # JIT step/diagnostics; a single MJX state (no vectorized envs) is active at a time.
             def one_step(state, effective_command=None, *, placement_capture=False):
                 cmd = (
@@ -3024,7 +3038,16 @@ def run(args):
                 if placement_capture:
                     return next_state,diag,h4m3_post_capture(pre_placement,action,next_state,env)
                 return next_state,diag
-            step_fn=jax.jit(one_step)
+            step_fn=(jax.jit(one_step,static_argnames=('placement_capture',))
+                     if placement else jax.jit(one_step))
+            if placement:
+                session=args.h3_session
+                h4m3_require(h4m3_authorization()==session['authorization'],'AUTH_CHANGED')
+                h4m3_native_lane(args.h4m3_lanes[lane_index],session,env,step_fn,
+                    session['manifest'],jax,jnp,np,
+                    pulse=lambda: h4m3_progress(args,session))
+                h4m3_progress(args,session)
+                continue
             if h3_mode:
                 session=args.h3_session
                 if cc:
@@ -3301,6 +3324,8 @@ def run(args):
                 print('M463_GATE3_RESULT',name,seed,profile,direction,
                     'nominal',off['steps'],'pushed',last,'terminated',terminated,
                     'recovered',recovery['recovered'],flush=True)
+    if placement:
+        return
     if h3_mode:
         if cc:
             args.h3_session['decision']=h4cc_pair_decisions(args.h4cc_archive,args.h3_session)
@@ -4678,9 +4703,71 @@ def h4m3_require(ok, label):
         raise RuntimeError('M470_H4M3_'+label)
 
 
+H4M3_BASE_POLICY=Path('m430_seed1/checkpoint_pilot_20261114_120515_1722937_step_401080320.msgpack')
+H4M3_RICH_RECORD_CAP=(H4M3_REPORT_CAP-4*1024**2)//H4M3_RICH_CAP
+H4M3_SOURCE_NAMES=('train.py','paper_config.py','m462_ppo_warmstart_run.py',
+    'm462_typed_orbax_stage.py','m463_coverage_env.py','m463_instrument_brax.py',
+    'm463_push_ppo_train.py','m463_gate3_cp_eval.py','paper_config_preflight.json')
+H4M3_MJX_BLOBS={'types':'16fa3a8142e35ca0353859b19bc3c0270d05730f',
+    'forward':'07f33a90c8ed68bc545ba47bfb78d4bfb8db1f52',
+    'support':'57c9475bca1a8641f05525da15190c93102a085c',
+    'smooth':'f52391ed37074424c9a95ae4cd6b8330ca2be96b',
+    'sensor':'5d040052bfac7e8afc4e221bdcae6826344de2bd'}
+
+
+def h4m3_digest(obj):
+    return hashlib.sha256(json.dumps(obj,sort_keys=True,separators=(',',':'),
+        allow_nan=False).encode()).hexdigest()
+
+
+def h4m3_source_map(root):
+    result={}
+    for name in H4M3_SOURCE_NAMES:
+        p=Path(root)/name
+        h4m3_require(p.is_file() and not p.is_symlink() and p.resolve()==p.absolute(),
+                     'SOURCE_FILE_'+name)
+        result[name]=sha256(p)
+    return result
+
+
+def h4m3_parse_authorization(rules,source,spec):
+    approved=[l.split() for l in rules.splitlines() if l.startswith('H4M3_STATIC_APPROVED:')]
+    active=[l.split() for l in rules.splitlines() if l.startswith('H4M3_ACTIVE_GO:')]
+    h4m3_require(len(active)==1 and len(approved)==1,'EXECUTION_HOLD')
+    h4m3_require(not any(l.startswith(('H4X_ACTIVE_GO:','H4CC_ACTIVE_GO:',
+        'H4CC_EVAL_ACTIVE_GO:','H4CC_TECH_ACTIVE_GO:')) for l in rules.splitlines()),
+        'CONCURRENT_AUTHORIZATION')
+    a=approved[0]; b=active[0]
+    h4m3_require(len(a)==4 and a[1]==source and len(a[2])==64
+        and all(c in '0123456789abcdef' for c in a[2]),'STATIC_PIN')
+    log=Path(a[3])
+    h4m3_require(not log.is_absolute() and log.parent==Path('m463_runs')
+        and log.name.startswith('m470_h4_m3_1_') and log.suffix=='.log','STATIC_PATH')
+    expected=['H4M3_ACTIVE_GO:','H4-M3-PLACEMENT-V1',source,a[2],spec,
+              *H4M3_ARCHIVES,*[H4M3_POLICIES[k] for k in ('C','REF','CCRC')],
+              str(H4M3_OUTPUT)]
+    h4m3_require(b==expected,'AUTHORIZATION_PIN')
+    return {'id':b[1],'source_sha256':source,'static_sha256':a[2],
+            'static_path':a[3],'spec_sha256':spec,'archive_sha256':list(H4M3_ARCHIVES),
+            'policy_sha256':dict(H4M3_POLICIES),'output':str(H4M3_OUTPUT)}
+
+
 def h4m3_authorization():
-    # Intentionally no run path until separately reviewed integration/static GO.
-    raise RuntimeError('M470_H4M3_EXECUTION_HOLD')
+    root=Path(__file__).resolve().parent
+    rules=(root/'G1_RESEARCH_RULES.md').read_text('utf8')
+    # No source or artifact access on held CLI. Both distinct markers required.
+    h4m3_require(any(l.startswith('H4M3_ACTIVE_GO:') for l in rules.splitlines())
+        and any(l.startswith('H4M3_STATIC_APPROVED:') for l in rules.splitlines()),
+        'EXECUTION_HOLD')
+    auth=h4m3_parse_authorization(rules,h4m3_digest(h4m3_source_map(root)),
+                                  h4m3_digest(h4m3_plan()))
+    p=root/auth['static_path']
+    h4m3_require(p.is_file() and not p.is_symlink() and p.resolve()==p.absolute()
+        and sha256(p)==auth['static_sha256'] and p.stat().st_size<=16*1024**2,
+        'STATIC_LOG')
+    h4m3_require(('H4_M3_1_FULL_STATIC_PASS '+auth['source_sha256']) in
+                  p.read_text('utf8').splitlines(),'STATIC_ACCEPTANCE')
+    return auth
 
 
 def h4m3_plan():
@@ -4843,7 +4930,7 @@ def h4m3_reward_check(metrics,reward,np):
 
 
 def h4m3_pre_capture(state):
-    # Capture leaves before Joystick mutates state.info and metrics dictionaries.
+    # Capture immutable leaves before Joystick mutates state.info and metrics dictionaries.
     return {'actor_input':state.obs['state'],'command':state.info['command'],
             'info_phase':state.info['phase'],'rng':state.info['rng'],
             'time_pre':state.data.time,'qpos_pre':state.data.qpos,
@@ -5118,9 +5205,8 @@ def h4m3_native_kick(st,direction,magnitude,tick,jax,jnp,np):
     return out,meta,{'tick':tick,'qvel_before':before.tolist(),'qvel_after':after.tolist()}
 
 
-def h4m3_native_lane(lane,session,env,step_fn,manifest,jax,jnp,np):
-    # No caller can use this adapter through the current held diagnostic.
-    h4m3_authorization()
+def h4m3_native_lane(lane,session,env,step_fn,manifest,jax,jnp,np,pulse=None):
+    h4m3_require(h4m3_authorization()==session['authorization'],'AUTH_CHANGED')
     audits=[]
     def reset(seed):
         state=env.reset(jax.random.PRNGKey(seed))
@@ -5139,7 +5225,7 @@ def h4m3_native_lane(lane,session,env,step_fn,manifest,jax,jnp,np):
     lane_out=h4m3_replay_lane(lane,session,reset,step,
         lambda st:jax.tree_util.tree_map(lambda x:x,st),kick,
         lambda a,b:h4m3_tree_equal(a,b,jax,np),
-        lambda raw,row:h4m3_pack_capture(raw,row,manifest,np))
+        lambda raw,row:h4m3_pack_capture(raw,row,manifest,np),pulse=pulse)
     lane_out['kick_audits']=audits
     return lane_out
 
@@ -5152,7 +5238,7 @@ def h4m3_tree_equal(a,b,jax,np):
         for x,y in zip(jax.device_get(aa),jax.device_get(bb)))
 
 
-def h4m3_replay_lane(lane,session,reset,step,clone,kick,equal,validate):
+def h4m3_replay_lane(lane,session,reset,step,clone,kick,equal,validate,pulse=None):
     """Host bounded mechanics; callbacks supplied by a future authorized dispatcher.
     No runtime imports, no own reset/physics call outside the frozen ledger.
     """
@@ -5169,6 +5255,10 @@ def h4m3_replay_lane(lane,session,reset,step,clone,kick,equal,validate):
     session['resets_recorded']+=1
     import numpy as np
     def advance(st,segment,start):
+        suffix=segment in ('single','double')
+        if suffix:
+            h4m3_require(session.get('suffixes_attempted',0)<10,'SUFFIX_CAP')
+            session['suffixes_attempted']=session.get('suffixes_attempted',0)+1
         out['segments'][segment]=[]
         for offset,expected in enumerate(lane['rows'][segment]):
             tick=start+offset; capture=tick>=295
@@ -5186,21 +5276,34 @@ def h4m3_replay_lane(lane,session,reset,step,clone,kick,equal,validate):
                 encoded=json.dumps(packed,allow_nan=False,separators=(',',':'),
                     default=lambda a:np.asarray(a).tolist())
                 size=len(encoded.encode('utf8'))+128
-                h4m3_require(session.get('rich_bytes',0)+size<=H4M3_REPORT_CAP-4*1024**2,
-                              'RICH_REPORT_CAP')
+                h4m3_require(size<=H4M3_RICH_RECORD_CAP and
+                    session.get('rich_bytes',0)+size<=H4M3_REPORT_CAP-4*1024**2,
+                    'RICH_REPORT_CAP')
                 payload=json.loads(encoded)
+                if segment=='double' and tick==335:
+                    first=next(x['data'] for x in out['rich']
+                               if x['segment']=='single' and x['tick']==335)
+                    for k in ('actor_input','rng','action','target'):
+                        h4m3_require(np.array_equal(first[k],payload[k]),'EVENT_EQUAL_'+k)
                 session['rich_bytes']=session.get('rich_bytes',0)+size
                 out['rich'].append({'segment':segment,'tick':tick,'data':payload})
                 session['rich_recorded']+=1
             out['segments'][segment].append(row)
             session['recorded']+=1
+            if pulse is not None and tick%100==0:
+                pulse()
             if row[H4M3_COLUMNS.index('done')]:
                 h4m3_require(offset+1==len(lane['rows'][segment]),'EARLY_TERMINAL')
                 break
+        if suffix:
+            session['suffixes_recorded']=session.get('suffixes_recorded',0)+1
+        if pulse is not None:
+            pulse()
         return st
     state=advance(state,'nominal',1)
     first,meta=kick(clone(state),lane['direction'],.50,300)
     h4m3_require(meta==lane['first'],'FIRST_KICK_ARCHIVE')
+    out['first']=meta
     state=advance(first,'first',300)
     single=clone(state); double=clone(state)
     h4m3_require(equal(single,double) and equal(single,state),'FORK_EQUAL')
@@ -5214,6 +5317,211 @@ def h4m3_replay_lane(lane,session,reset,step,clone,kick,equal,validate):
         h4m3_require(np.array_equal(s[key],d[key]),'EVENT_EQUAL_'+key)
     out['complete']=True
     return out
+
+
+
+def h4m3_policy_paths(root):
+    root=Path(root)
+    return {'C':root/H4M3_BASE_POLICY,
+            **{a.upper():root/'m463_runs'/('m470_h4_m2_'+a+'_v1')/H4_EVAL_POLICY_FILE
+               for a in ('ref','ccrc')}}
+
+
+def h4m3_git_blob(path):
+    raw=Path(path).read_bytes()
+    return hashlib.sha1(('blob '+str(len(raw))+'\0').encode()+raw).hexdigest()
+
+
+def h4m3_installed_mjx():
+    # Distribution metadata only; safe before NVCC and runtime imports.
+    from importlib.metadata import distribution
+    core=distribution('mujoco'); mjx_dist=distribution('mujoco-mjx')
+    h4m3_require(core.version==mjx_dist.version=='3.2.7','MUJOCO_VERSION')
+    paths={}
+    for name,expected in H4M3_MJX_BLOBS.items():
+        p=Path(mjx_dist.locate_file('mujoco/mjx/_src/'+name+'.py')).resolve(strict=True)
+        h4m3_require(p.is_file() and h4m3_git_blob(p)==expected,'MJX_SOURCE_'+name)
+        paths['mujoco.mjx._src.'+name]={'path':str(p),'blob':expected,'sha256':sha256(p)}
+    return paths
+
+
+def h4m3_runtime_dependencies(session):
+    from importlib.util import find_spec
+    root=Path(session['brax_train_path']).resolve().parents[3]
+    for key,expected in session['input_sha256'].items():
+        if not key.startswith('dependency/'):
+            continue
+        name=key.split('/',1)[1]
+        module='brax.envs.wrappers.training' if name=='episode_wrapper' else name
+        path=root.joinpath(*module.split('.')[1:]).with_suffix('.py')
+        spec=find_spec(module)
+        h4m3_require(spec is not None and spec.origin is not None
+            and Path(spec.origin).resolve()==path and sha256(path)==expected,
+            'RUNTIME_DEPENDENCY_'+name)
+
+
+def h4m3_runtime_model_source(env,session):
+    from importlib.util import find_spec
+    from paper_config import REPO
+    from mujoco.mjx._src.types import Data, Contact
+    from dataclasses import fields
+    for module,entry in session['mjx_sources'].items():
+        spec=find_spec(module)
+        h4m3_require(spec is not None and spec.origin is not None
+            and str(Path(spec.origin).resolve())==entry['path']
+            and sha256(entry['path'])==entry['sha256'],'RUNTIME_MJX_'+module)
+    joystick=Path(inspect.getfile(type(env))).resolve(strict=True)
+    from mujoco_playground._src import mjx_env
+    wrapper=Path(inspect.getfile(mjx_env)).resolve(strict=True)
+    for p,blob in ((joystick,'561a18948e3467ab924468eaf362150dadb9d4a6'),
+                   (wrapper,'916c2f412a7a12568283f68eeb755e5d94ad9c83')):
+        h4m3_require(p.is_relative_to(Path(REPO).resolve()) and h4m3_git_blob(p)==blob,
+                      'PLAYGROUND_RUNTIME_PIN')
+    data_fields={f.name for f in fields(Data)}
+    contact_fields={f.name for f in fields(Contact)}
+    h4m3_require(set('time qpos qvel ctrl actuator_force actuator_length actuator_velocity '
+        'geom_xpos geom_xmat sensordata xipos ximat cvel subtree_com contact efc_force'.split())
+        <=data_fields and set('geom pos frame dist includemargin friction dim efc_address'.split())
+        <=contact_fields,'PINNED_TELEMETRY_FIELDS')
+    h4m3_require(float(env._config.action_scale)==.5 and not env._config.push_config.enable,
+                  'FROZEN_CONFIG')
+    session['playground_runtime']={'joystick':str(joystick),'mjx_env':str(wrapper)}
+
+
+def h4m3_write(path,report,initial=False):
+    import shutil
+    path=Path(path)
+    h4m3_require(path.parent.is_dir() and not path.parent.is_symlink()
+        and shutil.disk_usage(path.parent).free>=2*1024**3,'REPORT_STORAGE')
+    data=(json.dumps(report,allow_nan=False,separators=(',',':'))+'\n').encode('utf8')
+    h4m3_require(len(data)<=H4M3_REPORT_CAP,'FINAL_REPORT_CAP')
+    tmp=path.with_name(path.name+'.tmp')
+    h4m3_require(not tmp.exists() and not tmp.is_symlink()
+        and not path.is_symlink() and path.exists()!=initial,'REPORT_PATH')
+    with (path if initial else tmp).open('xb') as f:
+        f.write(data); f.flush(); os.fsync(f.fileno())
+    if not initial:
+        os.replace(tmp,path)
+
+
+def h4m3_reserve(path,auth):
+    h4m3_require(not path.parent.exists() and not path.parent.is_symlink()
+        and path.parent.parent.resolve()==path.parent.parent.absolute(),'OUTPUT_CONSUMED')
+    path.parent.mkdir(exist_ok=False)
+    marker=path.parent/'dispatch.started.json'
+    with marker.open('x',encoding='utf8') as f:
+        json.dump({'authorization':auth},f,sort_keys=True,allow_nan=False)
+        f.flush(); os.fsync(f.fileno())
+    return marker
+
+
+def h4m3_progress(args,session):
+    session['gpu']=h3_gpu_check(args.h3_monitor)
+    h4m3_write(args.output,session)
+
+
+def h4m3_final_ledger(session):
+    h4m3_require(session['attempted']==session['recorded']==H4M3_EXPECTED
+        and session['resets_attempted']==session['resets_recorded']==5
+        and session['suffixes_attempted']==session['suffixes_recorded']==10
+        and session['rich_recorded']==666 and len(session['lanes'])==5,
+        'FINAL_LEDGER')
+    total=0; rich=0
+    for out,(policy,seed,direction,end) in zip(session['lanes'],H4M3_LANES):
+        h4m3_require((out['policy'],out['seed'],out['direction'])==(policy,seed,direction)
+            and out['complete'] is True and set(out['segments'])=={'nominal','first','single','double'}
+            and tuple(len(out['segments'][k]) for k in ('nominal','first','single','double'))
+                ==(299,35,51,end-334),'FINAL_LANE')
+        expect=[('nominal',t) for t in range(295,300)]+[('first',t) for t in range(300,335)]
+        expect += [('single',t) for t in range(335,386)]+[('double',t) for t in range(335,end+1)]
+        h4m3_require([(x['segment'],x['tick']) for x in out['rich']]==expect,'FINAL_RICH_KEYS')
+        total+=sum(map(len,out['segments'].values())); rich+=len(out['rich'])
+        out['double_end']='terminal' if end<385 else 'censored'
+    h4m3_require(total==H4M3_EXPECTED and rich==666,'FINAL_RECOUNT')
+
+
+def h4m3_enter_runtime(args):
+    # Only a separately reserved dispatch may enter existing run() bootstrap.
+    auth=h4m3_authorization()
+    root=Path(__file__).resolve().parent
+    session=getattr(args,'h3_session',None)
+    h4m3_require(args.output.resolve()==root/H4M3_OUTPUT and
+        args.output.absolute()==root/H4M3_OUTPUT and session is not None
+        and session['authorization']==auth and session['status']=='M470_H4M3_IN_PROGRESS'
+        and session['attempted']==session['recorded']==session['resets_attempted']==0
+        and session['lanes']==[] and args.output.is_file() and not args.output.is_symlink(),
+        'SESSION_REQUIRED')
+    marker=args.output.parent/'dispatch.started.json'
+    h4m3_require(marker.is_file() and not marker.is_symlink() and
+        json.loads(marker.read_bytes())=={'authorization':auth}
+        and json.loads(args.output.read_bytes())==session,'DISPATCH_MARKER')
+    # A second process cannot enter even with a copied initial session.
+    with (args.output.parent/'runtime.entered.json').open('x',encoding='utf8') as f:
+        json.dump({'authorization':auth},f,sort_keys=True,allow_nan=False)
+        f.flush(); os.fsync(f.fileno())
+    lanes,pins=h4m3_read_evidence(root,root/H4CC_EVAL_OUTPUT,
+        args.h4m3_historical_archive,root/H4M3_BASE_POLICY)
+    h4m3_require(pins==session['input_sha256'] and h4m3_installed_mjx()==session['mjx_sources']
+        and h4m3_digest(h4m3_source_map(root))==auth['source_sha256'],'PRE_RUNTIME_PINS')
+    args.h4m3_lanes=lanes
+
+
+def h4m3_dispatch(args):
+    import shutil
+    auth=h4m3_authorization()
+    root=Path(__file__).resolve().parent
+    h4m3_require(not any(getattr(args,k,False) for k in ('h4cc_eval','h4cc_technical',
+        'h4_m1_eval','h4_technical','h3_m1_eval','h2a','h2b'))
+        and args.mode=='run' and args.output.absolute()==root/H4M3_OUTPUT
+        and args.output.resolve()==root/H4M3_OUTPUT,'DISPATCH_PROTOCOL')
+    lanes,pins=h4m3_read_evidence(root,root/H4CC_EVAL_OUTPUT,
+        args.h4m3_historical_archive,root/H4M3_BASE_POLICY)
+    mjx_sources=h4m3_installed_mjx()
+    h4m3_require(h4m3_digest(h4m3_source_map(root))==auth['source_sha256']
+        and shutil.disk_usage(args.output.parent.parent).free>=2*1024**3+H4M3_REPORT_CAP,
+        'PREFLIGHT_STORAGE_SOURCE')
+    from m462_ppo_warmstart_run import GPUMonitor,sample_gpu
+    train_path=json.loads((root/H4CC_EVAL_OUTPUT).read_bytes())['brax_source_verification']['path']
+    session={'status':'M470_H4M3_IN_PROGRESS','authorization':auth,'plan':h4m3_plan(),
+        'input_sha256':pins,'mjx_sources':mjx_sources,'brax_train_path':train_path,
+        'frame_columns':list(H4M3_COLUMNS),'lanes':[],'attempted':0,'recorded':0,
+        'resets_attempted':0,'resets_recorded':0,'suffixes_attempted':0,
+        'suffixes_recorded':0,'rich_recorded':0,'rich_bytes':0,
+        'training_performed':False,'efficacy_evaluated':False,
+        'optimizer_updates':0,'checkpoint_saves':0,'promotion_authorized':False}
+    marker=h4m3_reserve(args.output,auth)
+    h4m3_write(args.output,session,initial=True)
+    args.h3_session=session; args.h4m3_lanes=lanes
+    args.checkpoint_c=root/H4M3_BASE_POLICY
+    args.seeds=[x[1] for x in H4M3_LANES]; args.profiles=['stand']
+    monitor=GPUMonitor(); args.h3_monitor=monitor
+    try:
+        g=sample_gpu()
+        h4m3_require(g['total_mib']==12288 and 0<=g['used_mib']<.95*12288,'GPU_PREFLIGHT')
+        # Do not mutate the initial report until h4m3_enter_runtime checks it.
+        with monitor:
+            run(args)
+        session['gpu_initial']=g
+        session['gpu']=h3_gpu_check(monitor)
+        h4m3_require(h4m3_authorization()==auth and
+            h4m3_read_evidence(root,root/H4CC_EVAL_OUTPUT,args.h4m3_historical_archive,
+                root/H4M3_BASE_POLICY)[1]==pins and h4m3_installed_mjx()==mjx_sources
+            and json.loads(marker.read_bytes())=={'authorization':auth}
+            and json.loads((args.output.parent/'runtime.entered.json').read_bytes())
+                =={'authorization':auth},'POST_IMMUTABILITY')
+        h4m3_final_ledger(session)
+        session['status']='M470_H4M3_TECHNICAL_REPLAY_COMPLETED'
+        h4m3_write(args.output,session)
+        print(session['status'],session['recorded'],session['rich_recorded'],flush=True)
+    except BaseException as exc:
+        session['status']='M470_H4M3_STOP'
+        session['error']=(type(exc).__name__+': '+str(exc))[:4096]
+        session['gpu']=monitor.snapshot()
+        try:
+            h4m3_write(args.output,session)
+        except BaseException as write_error:
+            print('M470_H4M3_PARTIAL_WRITE_FAILED',repr(write_error),flush=True)
+        raise
 
 
 def h4m3_static_archive_check(current_path,historical_path):
@@ -5288,6 +5596,9 @@ def main():
                 and args.output.resolve()==root/H4M3_OUTPUT,'OUTPUT_PATH')
             if args.mode=='run':
                 h4m3_authorization()
+                h4m3_require(not args.h4m3_static_archives
+                    and args.h4m3_historical_archive is not None,'RUN_FLAGS')
+                return h4m3_dispatch(args)
             h4m3_require(args.h4m3_static_archives==(args.h4m3_historical_archive is not None),
                           'STATIC_FLAGS')
             if args.h4m3_static_archives:
