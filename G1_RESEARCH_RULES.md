@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.145  
+**Version:** 1.2.146  
 **Ngày cập nhật:** 2026-11-25 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -1646,6 +1646,14 @@ Owner explicit held implementation/static GO only. SA reopened Rules v1.2.144 an
 
 **Next owner static only:** verify branch/HEAD/evaluator/trainer/Rules blobs, full evaluator compile and AST legacy/shared-loader preservation, actual held plan/run/direct-run/mode/flags/output CLI, local46 input pins and exact archive pairs, actual external package bytes and module roots, no runtime imports, output absent, source immutability. Required final markers H4_M5_1_FULL_STATIC_PASS <common source digest>, H4_M5_1_EXTERNAL_SHA256 <external digest>, H4_M5_1_PAIR_SHA256 <pair digest>, H4_M5_1_SPEC_SHA256 <spec digest>. No H4M5_STATIC_APPROVED and no H4M5_ACTIVE_GO now. Any failure STOP preserve log, no install/source edits/actual inference/retry; SA review before acceptance. H4-M5-1 INTEGRATION STAGED / OWNER FULL STATIC PENDING; all execution/independent holdout/readiness/production/promotion/Branch B HOLD. Existing recovery acceptance gates and frozen hypothesis criteria unchanged.
 
+### M4.70-H4-M5-1 — ACTUAL FULL STATIC ACCEPTED / H4-M5-2 INFERENCE HOLD (v1.2.146; 2026-11-25)
+
+SA reopened Rules v1.2.145 and AGENTS at 2036ca2260411a3b2633a0c1f97ee2e17cae58d8, exact approved evaluator d70aa8448fc562084af9c5ba21d993e7103b418d, trainer cd423719b8d55130b3e15b33256f36c97c2eb1e7, authorization, dispatcher, runtime-only entry and origin checks. Actual uploaded owner full static log m463_runs/m470_h4_m5_1_full_static_20261125_225718_656773872.log,22764 bytes SHA256 6199b5bd17e9c0bcbcd91841242b503b6051045ef251acfe6bbe789f187b74c3; all14 nonempty lines read, required full evaluator compile, legacy reverse334238, actual CLI5/5, all execution HOLD, local46 input pins,52 archived pairs, pair/spec markers, source/external maps, report bound, zero runtime imports and final full-static marker present, no traceback. Independently recomputed canonical nine-file common 4021555ed6fc8c37289e01a17973172843beb7fbb6fac3ffa3643802a6505436, external fbe296d39d4aae848b7be69e8fd7cc9ef54f5415b608d0d3d09c963f7a27b4be, historical external subset a7d465daf7d4cc4f79173dd1f36b68703dc721a8012b07905ef059a25cb84d64 (matches H4-M4). Independently SHA256 hashed exact fetched evaluator UTF8 4e5f39df6d076ab5df14bf704104a6e193e01cd2de947b3f257a503273d689c8 and canonical evaluator spec 5b07c4a667198b0df3bed92c8466bef69fbf1f5400d62e11d297cf4e37c9f35e, matching log; pair digest 8d8233f019f2ca18d174f67e2a0371a502e5f4146b6f9d83f0d32c3974d48c15 matches frozen design and prior host archive checks. Local warmstart/typed helper/train/paper config hashes match between maps. Owner actual static log binds 14 resolved module entries,13 package trees/3933 files,36 native distribution file entries,14 package versions incl JAX/JAXlib/CUDA12 plugin/PJRT0.4.35, Brax0.12.1, Flax0.10.4, NumPy1.26.4, Orbax0.11.0. Report arithmetic 832*2048+1048576=2752512<=4194304. All seven broad flags False, no active marker. Actual local binary checkpoint/archive/dependency bytes, actual full compile and CLI are owner evidence, SA independently checks supplied log/digests and Git source, not direct labrobot access or a fresh archive replay. No repeat static regressions on unchanged source.
+
+H4M5_STATIC_APPROVED: 4021555ed6fc8c37289e01a17973172843beb7fbb6fac3ffa3643802a6505436 6199b5bd17e9c0bcbcd91841242b503b6051045ef251acfe6bbe789f187b74c3 fbe296d39d4aae848b7be69e8fd7cc9ef54f5415b608d0d3d09c963f7a27b4be m463_runs/m470_h4_m5_1_full_static_20261125_225718_656773872.log
+
+Marker is static evidence only. H4-M5-1 CLOSED / FULL STATIC PASS. No H4M5_ACTIVE_GO. H4-M5-2 requires separate explicit owner GO, exact approved source/spec/pair/static/external and archive/checkpoint pins, distinct one-use Rules-only authorization, original CUDA/NVCC-before-import bootstrap and bounded external combined log16MiB with process-group kill on overflow, fixed unused output m463_runs/m470_h4_m5_obs_attribution_v1/report.json. Maintain52 frozen pairs, six groups/16 masks, fixed command/phase and t-2 history, all104 original endpoint actions independently reproduced float32 bit-exact before any hybrid, zero hybrid on mismatch;638 unique hybrid calls, cap742/832 logical slots/90 pair-local aliases, one actor and one critic template initialization counted separately, original deterministic normalization/typed parameters, tree immutability, required module/native origins, finite/shape/dtype/envelope/alias/ledger/storage/GPU/partial report4MiB gates and all prospective attribution/interaction/classification rules. No extra calls, tolerance fallback, padding, adaptive selection, retry or package/source changes. Actual installed runtime import path, typed restore, standalone JIT exactness and scientific result not yet verified; technical completion is not a recovery or efficacy claim. No environment construction/reset/step/forward, zero physical transitions, zero optimizer/checkpoint saves/evaluation/PPO. Independent holdout, readiness, production, promotion, Branch B and all runtime HOLD. This review zero inference and zero physical transitions; only Rules changed.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -1907,6 +1915,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-25)
+
+**H4-M5-1 ACTUAL FULL STATIC PASS / CLOSED (v1.2.146):** owner log6199b5bd..., full compile/legacy334238/actual CLI5/5/local46 pins/52 pairs/installed14 modules/13 package trees/36 native entries/zero runtime imports PASS; independent source/spec/external digests and evaluator SHA match. Static approval only; H4-M5-2 separate explicit GO required, all runtime HOLD.
 
 **H4-M5-1 HELD IMPLEMENTATION / INTEGRATION STAGED (v1.2.145):** evaluator d70aa8448fc562084af9c5ba21d993e7103b418d, exact reverse legacy, actual pairs/spec and focused host mock742/832/90, attribution/STOP/alias/parser/writer PASS; owner full compile/actual CLI/local46 pins/installed dependency static pending. No static approval or active marker, all runtime HOLD.
 
@@ -2554,6 +2564,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-25 | H4-M5-1 actual full static acceptance | owner log6199b5bd..., compile/legacy/CLI5/5/46 input pins/52 pairs/installed dependency inventory and independent digests | v1.2.146 CLOSED STATIC PASS; H4-M5-2 inference HOLD | 1.2.146 |
+
 | 2026-11-25 | H4-M5-1 held observation-channel implementation/integration | exact reverse legacy,52 pairs/742 mock calls/832 slots/90 aliases, focused host checks | v1.2.145 STAGED; owner full static pending; all runtime HOLD | 1.2.145 |
 
 | 2026-11-25 | H4-M5-0 frozen observation-channel attribution design | 52 pairs/16 masks/832 slots, cap742 future inference, exact endpoints and bidirectional interactions/thresholds | v1.2.144 DESIGN CLOSED; held implementation separate GO; all runtime HOLD | 1.2.144 |
@@ -2909,6 +2921,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.146 — 2026-11-25:** Accept actual H4-M5-1 full static evidence, pin source/static/external approval, preserve all inference/runtime HOLD pending distinct H4-M5-2 GO.
 
 - **v1.2.145 — 2026-11-25:** Record held H4-M5 implementation, exact legacy reverse and actual focused offline mock regressions, owner full static pending, all runtime HOLD.
 
