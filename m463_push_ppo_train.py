@@ -2209,7 +2209,7 @@ def h4x_source_digest(root):
 
 def h4x_parse_marker(rules):
     import re
-    h4x_require(not any(line.startswith(('H4CC_ACTIVE_GO:','H4CC_EVAL_ACTIVE_GO:'))
+    h4x_require(not any(line.startswith(('H4CC_ACTIVE_GO:','H4CC_EVAL_ACTIVE_GO:','H4CC_TECH_ACTIVE_GO:'))
                         for line in rules.splitlines()),'CCRC_AUTHORIZATION_CONFLICT')
     lines=[line for line in rules.splitlines() if line.startswith('H4X_ACTIVE_GO:')]
     h4x_require(len(lines)==1,'EXECUTION_HOLD' if not lines else 'MULTIPLE_AUTHORIZATIONS')
@@ -4573,7 +4573,7 @@ def h4cc_approved_sha(rules,label):
 
 def h4cc_parse_marker(rules):
     import re
-    h4x_require(not any(x.startswith(('H4X_ACTIVE_GO:','H4CC_EVAL_ACTIVE_GO:')) for x in rules.splitlines()),'CCRC_LEGACY_CONFLICT')
+    h4x_require(not any(x.startswith(('H4X_ACTIVE_GO:','H4CC_EVAL_ACTIVE_GO:','H4CC_TECH_ACTIVE_GO:')) for x in rules.splitlines()),'CCRC_LEGACY_CONFLICT')
     hits=[x for x in rules.splitlines() if x.startswith('H4CC_ACTIVE_GO:')]
     h4x_require(len(hits)==1,'CCRC_EXECUTION_HOLD')
     m=re.fullmatch(r'H4CC_ACTIVE_GO: (H4-M2-CCRC-V1) (ref|ccrc) '
@@ -4669,6 +4669,9 @@ def h4cc_read_final_report(path,expected_sha,arm,contract=None):
     h4x_require(a['technical_sha256']==h4cc_approved_sha(rules,'TECH_REPORT')
                 and a['evidence_sha256']==(a['technical_sha256'] if arm=='ref' else h4cc_approved_sha(rules,'REF_REPORT')),
                 'CCRC_FINAL_EVIDENCE')
+    from m463_gate3_cp_eval import h4cc_tech_read_report,H4CC_TECH_OUTPUT
+    h4cc_tech_read_report(root/H4CC_TECH_OUTPUT,a['technical_sha256'],
+                          a['source_sha256'],a['generated_sha256'])
     for name,value in (('attempt.json',{'authorization':a,'reserved':True}),
                        ('dispatch.started.json',{'authorization':a}),
                        ('attempt_result.json',{'status':'COMPLETE','authorization':a})):
@@ -4719,14 +4722,9 @@ def h4cc_validate_cli(a,*,final=False):
                 and prior['recorded_physical_transitions']==1024
                 and prior['recorded_optimizer_updates']==80,'CCRC_CAUSAL_EVIDENCE')
     h4x_file_pin(a.h4_exploratory_reward_report,H4R_REWARD_SHA)
-    h4x_file_pin(a.h4cc_technical_report,auth['technical_sha256'])
-    tech=json.loads(a.h4cc_technical_report.read_bytes())
-    h4x_require(tech.get('status')=='M470_H4CC_TECH_COMPLETE'
-                and tech.get('passed') is True and tech.get('training_performed') is False
-                and type(tech.get('physical_transitions_attempted')) is int
-                and 0<tech['physical_transitions_attempted']<=2016
-                and tech.get('physical_transitions_recorded')==tech['physical_transitions_attempted'],
-                'CCRC_TECH_EVIDENCE')
+    from m463_gate3_cp_eval import h4cc_tech_read_report
+    h4cc_tech_read_report(a.h4cc_technical_report,auth['technical_sha256'],
+                          auth['source_sha256'],auth['generated_sha256'])
     if a.h4cc_arm=='ref':
         h4x_require(a.h4cc_ref_report is None,'CCRC_REF_CONFLICT')
     else:
