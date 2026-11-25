@@ -2577,12 +2577,15 @@ def run(args):
         h4cc_eval_plan(args)
         auth=h4cc_eval_authorization()
         session=getattr(args,'h3_session',None)
+        validated_pins,validated_archive=h4cc_read_inputs(args)
         h4cc_eval_require(session is not None and session['authorization']==auth
             and args.output.is_file() and not args.output.is_symlink()
             and session['status']=='M470_H4CC_EVAL_IN_PROGRESS'
             and session['physical_transitions_attempted']==session['physical_transitions_recorded']
                 ==session['logical_trajectories_completed']==0 and session['groups']==[]
-            and h4cc_read_inputs(args)[0]==session['input_sha256'],'SESSION_PROVENANCE')
+            and validated_pins==session['input_sha256'],'SESSION_PROVENANCE')
+        # Never accept a caller-provided archive as the official comparator.
+        args.h4cc_archive=validated_archive
         # Independent exclusive dispatch reservation, before runtime imports.
         with (args.output.parent/'dispatch.started.json').open('x',encoding='utf8') as f:
             json.dump({'authorization':auth},f,sort_keys=True,allow_nan=False)
@@ -3013,6 +3016,8 @@ def run(args):
             step_fn=jax.jit(one_step)
             if h3_mode:
                 session=args.h3_session
+                if cc:
+                    h4cc_eval_require(h4cc_eval_authorization()==session['authorization'],'AUTHORIZATION_CHANGED')
                 g=h3_group(args,env,step_fn,jax,jnp,np,session,name,seed,profile,
                            H4_EVAL_PHYSICAL if h4_mode else H3_EVAL_PHYSICAL)
                 session['gpu']=h3_gpu_check(args.h3_monitor)
