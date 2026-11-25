@@ -200,7 +200,7 @@ def h4_epoch_audit(counts, pending, arm, final=False):
     return {'checks':checks, 'passed':all(checks.values())}
 
 
-def h4_chunk_callback(jax,np,monitor,report,persist,arm):
+def h4_chunk_callback(jax,np,monitor,report,persist,arm,*,h4cc_arm=None):
     """Prepared callback; no H4 runtime is authorized by this source revision.
 
     The caller must bind the same monitor and report as the future H4 runner.
@@ -211,6 +211,7 @@ def h4_chunk_callback(jax,np,monitor,report,persist,arm):
     all_pending={}
     report['h4_chunks']=chunks
     report['h4_epochs']=[]
+    cc_audit = h4cc_chunk_ledger(jax,np,report,h4cc_arm) if h4cc_arm is not None else None
     def callback(index,state,env_state,metrics):
         expected_index=len(chunks)%4+1
         expected_steps=(len(chunks)+1)*5*TOTAL_STEPS_BATCH
@@ -312,6 +313,8 @@ def h4_chunk_callback(jax,np,monitor,report,persist,arm):
                 persist()
                 if not final['passed']:
                     raise RuntimeError('M470_H4_FINAL_EXPOSURE')
+        if cc_audit is not None:
+            cc_audit(index,env_state,metrics,row['counts'])
         row['passed']=True
         persist()
     return callback
@@ -4418,6 +4421,66 @@ def h4cc_epoch_audit(counts, pending, arm):
                 checks[f'exact_{side}_{w}']=n==surv
             prev=n
     return {'checks':checks,'passed':all(checks.values())}
+
+def h4cc_chunk_ledger(jax,np,report,arm):
+    """Read-only host audit at the existing five-rollout chunk boundary."""
+    if arm not in ('ref','ccrc'):
+        raise RuntimeError('M470_H4CC_ARM')
+    chunks=[]
+    epochs=[]
+    epoch_cc={}
+    epoch_h4={}
+    all_cc={}
+    all_h4={}
+    all_pending={'active':0,'pending_valid':0}
+    report['h4cc_chunks']=chunks
+    report['h4cc_epochs']=epochs
+    def add(dst,src):
+        for k,v in src.items():
+            dst[k]=dst.get(k,0)+v
+    def callback(index,env_state,metrics,h4_counts):
+        if len(chunks)>=8 or index!=len(chunks)%4+1:
+            raise RuntimeError('M470_H4CC_CHUNK_SEQUENCE')
+        cc={}
+        for key in map(h4cc_count_key,H4CC_COUNTERS):
+            arr=np.asarray(jax.device_get(metrics[key]))
+            if arr.ndim!=0 or not np.isfinite(arr).all():
+                raise RuntimeError('M470_H4CC_METRIC_SCHEMA '+key)
+            cc[key]=h4_integer_count(arr)
+        if cc[h4cc_count_key('bad')]:
+            raise RuntimeError('M470_H4CC_BAD')
+        add(epoch_cc,cc);add(all_cc,cc)
+        add(epoch_h4,h4_counts);add(all_h4,h4_counts)
+        chunks.append({'chunk':len(chunks)+1,'counts':cc})
+        if index==4:
+            pending={}
+            for name in all_pending:
+                arr=np.asarray(jax.device_get(env_state.info['h4cc_'+name]))
+                if arr.size!=8192 or not np.isin(arr,(0,1)).all():
+                    raise RuntimeError('M470_H4CC_PENDING_SCHEMA '+name)
+                pending[name]=int(np.count_nonzero(arr))
+            audit=h4cc_epoch_audit({**epoch_h4,**epoch_cc},pending,arm)
+            epochs.append({'counts':dict(epoch_cc),'pending_at_reset':pending,'audit':audit})
+            if not audit['passed']:
+                raise RuntimeError('M470_H4CC_EPOCH_LEDGER')
+            add(all_pending,pending)
+            epoch_cc.clear();epoch_h4.clear()
+            if len(chunks)==8:
+                final=h4cc_epoch_audit({**all_h4,**all_cc},all_pending,arm)
+                report['h4cc_final_counts']=dict(all_cc)
+                report['h4cc_final_censored']=dict(all_pending)
+                report['h4cc_final_audit']=final
+                if not final['passed']:
+                    raise RuntimeError('M470_H4CC_FINAL_LEDGER')
+    return callback
+
+def h4cc_matched_nominal(ref_counts,treatment_counts):
+    k='m463_h4_class_0_steps_per_rollout'
+    r,t=ref_counts[k],treatment_counts[k]
+    if any(type(v) is not int or not 0<=v<=10485760 for v in (r,t)):
+        raise RuntimeError('M470_H4CC_NOMINAL_SCHEMA')
+    return r>=1867669 and t>=1867669 and 5*t>=4*r
+
 
 def h4cc_exposure_decision(ref, treatment):
     """Only after separately accepted original and new ledger gates."""
