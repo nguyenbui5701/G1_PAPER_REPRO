@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.107  
+**Version:** 1.2.108  
 **Ngày cập nhật:** 2026-11-25 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -1181,6 +1181,16 @@ Owner submitted m470_h4_m1_3_static_20261125_111416_904251802.log, 8294 bytes, i
 
 **Decision:** H4-M1-3 implementation and actual offline gate CLOSED/PASS; READY_FOR_EXPLICIT_H4_M1_3_EXECUTION_GO. This review is not execution authorization. H4_EVAL_EXECUTION_AUTHORIZED=False, zero active H4X training markers; no executable changes. On separate owner GO, re-review exact runtime bootstrap and minimally unlock one fixed development evaluation on final CTRL/CAND only; retain exclusive output reservation, source/provenance and GPU/disk/finite/physical limits, 24 groups/120 logical/89616 max physical control transitions, unchanged push schedule, all v1.2.76/97/106 efficacy/preservation/paired gates, no C401M rerun, no intermediate selection, no PPO, checkpoint save, package install, retry or threshold relaxation. Preserve partial evidence on failure. Independent holdout, production, promotion, readiness (historical FAIL), H2C/B HOLD; no automatic holdout after DEV_PASS. SA new simulation/PPO/evaluation/save0.
 
+### M4.70-H4-M1-3 — EXPLICIT ONE-RUN CONTROLLED DEVELOPMENT EXECUTION GO (v1.2.108; 2026-11-25)
+
+Owner explicitly authorized one H4-M1-3 controlled recovery development evaluation under v1.2.107, no PPO or checkpoint save. Retrieved AGENTS/current Rules and exact held evaluator at 6c3c32faa22a507769f192483312be62be979707, rehashed owner static log8294 bytes SHA256 0e99f14e404f5875f68b73448fc5b2c367e973f422f2199b7763346864d98c9c, matches accepted evidence. Re-reviewed h4e_validate_protocol/read_inputs/run, shared H3 group/fork/decision/budget, CLI interlocks, and actual evaluator inference bootstrap with train.py blob b36b69a38d2ebb1a218342b3f34386d47624383e and paper_config.py blob6dc390de5eec3cd0b036b2d766c71e3164e1b17f. Local M462 helpers and paper config report not available on GitHub (404); rely on exact prior reviewed source pins v1.2.83/85 and current owner-local 23-pin preflight, not a fresh independent read of those files. Actual NVCC/config source SHA and resolved helper origins to be checked within owner launcher before runtime. No new independent runtime result from SA.
+
+**EDIT-FIRST minimal authorization:** change exactly H4_EVAL_EXECUTION_AUTHORIZED = False to True in m463_gate3_cp_eval.py, source commit 0cae3720e98771468950b466de529845cb229913, authorized evaluator blob fd88d67e9eb02519736407234333e64e3310960c. Reverse-normalized fetched source equals prior held blob72859117bf990f106a6adebec42d1b0493ade220 exactly. All other source, efficacy/nominal/safety/provenance/paired gates, helper pins, legacy H3 semantics unchanged; no repeat accepted static matrix. One fixed unused output m463_runs/m470_h4_m1_3_dev_v1/report.json; exclusive parent reservation, never delete/rename for retry. All PPO H4/H4R/H4C legacy flags remain False, no H4X active marker. Relock evaluation flag by reviewed follow-up commit after attempt/evidence, including failure; no automatic retry even before reservation. No new repo files.
+
+**Owner single invocation contract:** exact ff-only sync to authorized HEAD and evaluator blob, clean tracked tree; use previously verified g1_m463 environment, never clobber C/D/E/REPO/PY; actual import origin/hash of train, paper_config and local M462 helpers, previously reviewed nvcc_compat.py SHA c92cd0f79e04acc409c4d0d52c7b1cc2c5b71822aafbd1e4d957a949f5044e8f, paper_config_preflight.json SHA36ab984a162e053a58d6f4313369a95dde77fd84a4db61b54d42ab856fadd19b and dm_env resolution through existing manifest overlay before inference, no package changes. No extra runtime probe; actual single interpreter evaluation applies nvcc before JAX, verifies installed original Brax train source by spec without importing trainer, source clean/HEAD and paper config, JAX0.4.35 GPU single device/process, original reward, source random push OFF, DR OFF, deterministic inference and 25 finite leaves for each final policy. h4e_read_inputs verifies 23 actual SHA pins and matched pair before/after run. No C401M/OLD/H3 load, no intermediate selection. Budget24 groups,120 logical/max89616 physical, 0 PPO/optimizer/save; dev7331/7357/7601/7613, stand/forward_fast/turn_left, left/right nominal/single/double, push300/.50 and335/.35 body-relative, horizon1000 dt.02. GPU sampled peak<95%12288MiB, no sampler errors, disk>=2GiB. Preserve raw shared-prefix frames, actual kick and partial report/log; bounded combined log16MiB with separate producer/collector status, no automatic retry. Actual runtime still pending, no efficacy claim. SA no GPU/simulation/evaluation/PPO/save. Owner returns report and complete log/status, including partial on failure; review raw decision before further action.
+
+**Decision:** ONE_H4_DEV_EVAL_GO / RUNTIME_PENDING; all independent holdout, readiness historical FAIL, production, promotion, H2C/B HOLD. DEV_PASS does not automatically authorize holdout. If adequate exposure and efficacy NO_GO reject package at this init/budget, no threshold tuning or new train.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -1442,6 +1452,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-25)
+
+**H4-M1-3 ONE DEV EVALUATION GO (v1.2.108):** explicit owner authorization, only evaluator flag enabled (blobfd88d67e; reverse-normalized exact held source), fixed final CTRL/CAND and120 logical/89616 cap, exclusive output, no retry. Actual owner runtime pending; all PPO, independent holdout/readiness/production/promotion HOLD.
 
 **H4-M1-3 ACTUAL OFFLINE PASS (v1.2.107):** exact owner HEAD012be86e, log0e99f14e (8294 bytes), full compile and local 23-pin provenance PASS, H4/H3 plans and negative CLI gates PASS. Implementation/offline closed; ready for separate explicit one-run development GO only; evaluator unchanged and execution HOLD. No simulation/PPO; independent holdout/readiness/production/promotion HOLD.
 
@@ -2013,6 +2025,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-25 | H4-M1-3 one controlled development execution GO | re-reviewed source/bootstrap, one flag change, accepted owner static log0e99f14e | v1.2.108 one dev evaluation authorized, runtime pending, no PPO/save | 1.2.108 |
+
 | 2026-11-25 | H4-M1-3 actual offline review | owner log0e99f14e, full compile, 23-pin provenance, H4/H3 plans and interlocks PASS | v1.2.107 offline CLOSED/PASS; separate explicit evaluation GO pending; execution HOLD | 1.2.107 |
 
 | 2026-11-25 | H4-M1-3 held evaluator implementation | evaluator72859117; exact extracted functions, 50 synthetic tests PASS, source diff only evaluator | v1.2.106 source staged; owner exact offline gate pending; execution HOLD | 1.2.106 |
@@ -2292,6 +2306,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.108 — 2026-11-25:** Record explicit one-run H4 controlled development GO; minimal evaluator flag only, frozen source/inputs/gates/budget and exclusive output, owner runtime pending, all PPO/holdout/readiness/production/promotion HOLD.
 
 - **v1.2.107 — 2026-11-25:** Accept owner exact-checkout full compile, 23-pin local provenance and CLI interlock evidence; close offline gate, separate explicit bounded development evaluation GO pending; Rules-only, all execution HOLD.
 
