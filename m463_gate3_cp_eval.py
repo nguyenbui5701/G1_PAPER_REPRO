@@ -2056,6 +2056,23 @@ def h3_decide(session, *, policies=H3_EVAL_POLICIES, comparator='OLD', candidate
                     for sec in (2,5):
                         comparison['recovery'+str(sec)]={n:row['policies'][n]['recovery_'+str(sec)+'s']['recovered']
                                                            for n in policies}
+                if policies==H4_EVAL_POLICIES and kind!='nominal':
+                    # Actual support before each push, not a randomized or imposed state.
+                    comparison['prepush_support']={}
+                    for label in policies:
+                        group=groups[(seed,profile,label)]
+                        event=group['directions'][d]['first' if kind=='single' else 'second']
+                        prefix=traces[label][('nominal','none') if kind=='single' else ('single',d)][0]
+                        tick=299 if kind=='single' else 334
+                        if event['exposed']:
+                            f=prefix[tick-1]
+                            comparison['prepush_support'][label]={
+                                'step':tick,'left':int(f['lf_ground_contact']),
+                                'right':int(f['rf_ground_contact']),
+                                'phase_left_rad':f['phase_left_post_rad'],
+                                'phase_right_rad':f['phase_right_post_rad']}
+                        else:
+                            comparison['prepush_support'][label]=None
                 comparison['discordance']={}
                 for metric in ('survival','exposed','recovery2','recovery5'):
                     if metric in comparison:
@@ -2301,6 +2318,12 @@ def h4e_read_inputs(args):
                  and cand['h4_control_report_sha256']==H4_EVAL_ARTIFACTS['report.json'][0]
                  and cand['h4x_authorization']['evidence_sha256']==H4_EVAL_ARTIFACTS['report.json'][0]
                  and cand['h4_matched_nominal_pass'] is True,'MATCHED_PAIR')
+    # Frozen helper source digests in the matched training contract exclude this evaluator.
+    for name,expected in ctrl['h4_common_contract']['source_digests'].items():
+        p=H4_EVAL_ROOT/name
+        h4e_require(p.is_file() and not p.is_symlink() and sha256(p)==expected,
+                     'HELPER_SOURCE_'+name)
+        pins['source/'+name]=expected
     return pins
 
 
@@ -2359,6 +2382,9 @@ def run(args):
         h4e_require(H4_EVAL_EXECUTION_AUTHORIZED is True,'EXECUTION_HOLD')
         h4e_validate_protocol(args)
         h4e_require(getattr(args,'h3_session',None) is not None,'SESSION_REQUIRED')
+        h4e_require(args.output.is_file() and not args.output.is_symlink()
+                     and h4e_read_inputs(args)==args.h3_session['input_sha256'],
+                     'SESSION_INPUT_PROVENANCE')
     h3_mode=bool(getattr(args,'h3_m1_eval',False)) or h4_mode
     if args.output.exists() and not (h3_mode and getattr(args,'h3_session',None) is not None):
         raise FileExistsError('Refuse to overwrite output: '+str(args.output))
@@ -2378,7 +2404,7 @@ def run(args):
     if h3_mode:
         from brax.training.agents.ppo import networks
         args.h3_session['brax_source_verification']=h3_verify_brax_train_source(networks)
-        print('M470_H3_EVAL_BRAX_SOURCE_PASS',
+        print('M470_H4_EVAL_BRAX_SOURCE_PASS' if h4_mode else 'M470_H3_EVAL_BRAX_SOURCE_PASS',
               args.h3_session['brax_source_verification'],flush=True)
     else:
         from brax.training.agents.ppo import networks, train as ppo
