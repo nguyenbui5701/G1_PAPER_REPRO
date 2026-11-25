@@ -3765,6 +3765,8 @@ def h3_technical_gate(api, train_cfg, stage, instrument_meta, result, persist):
 
 
 def run(args):
+    if getattr(args,'h4cc_arm',None) is not None:
+        return h4cc_run(args)
     if getattr(args,'h4_exploratory',False):
         return h4x_run(args)
     h4x_validate_cli(args)
@@ -3772,10 +3774,10 @@ def run(args):
 
 
 def _run_impl(args,h4x=None):
-    if getattr(args,'h4cc_arm',None) is not None:
-        raise RuntimeError('M470_H4CC_EXECUTION_HOLD')
-    if getattr(args,'h4_exploratory',False):
-        h4x_require(h4x is not None and h4x['authorization']==h4x_validate_cli(args),'RUN_RESERVATION')
+    cc_arm=getattr(args,'h4cc_arm',None)
+    if cc_arm is not None or getattr(args,'h4_exploratory',False):
+        auth=h4cc_validate_cli(args) if cc_arm is not None else h4x_validate_cli(args)
+        h4x_require(h4x is not None and h4x['authorization']==auth,'RUN_RESERVATION')
         h4x_require(json.loads((args.output_dir/'attempt.json').read_bytes())==
                     {'authorization':h4x['authorization'],'reserved':True},'RUN_RESERVATION')
     else:
@@ -3786,8 +3788,9 @@ def _run_impl(args,h4x=None):
     validate_h4r_cli(args)
     if getattr(args,'h4_readiness',False):
         return h4r_run(args)
-    validate_h4_cli(args)
-    h4_arm=getattr(args,'h4_arm',None)
+    if cc_arm is None:
+        validate_h4_cli(args)
+    h4_arm='candidate' if cc_arm is not None else getattr(args,'h4_arm',None)
     if h4_arm is not None:
         if (not H4_EXECUTION_AUTHORIZED and h4x is None) or args.mode!='longtrain':
             raise RuntimeError('M470_H4_EXECUTION_HOLD')
@@ -3808,7 +3811,7 @@ def _run_impl(args,h4x=None):
         import shutil
         if shutil.disk_usage(args.output_dir.parent).free<2*1024**3:
             raise RuntimeError('M470_H4_DISK_RESERVE')
-    if h4_arm=='candidate':
+    if h4_arm=='candidate' and cc_arm is None:
         approved_sha=h4_approved_control_sha()
         if args.h4_control_report.is_symlink() or not args.h4_control_report.is_file() or digest(args.h4_control_report)!=approved_sha:
             raise RuntimeError('M470_H4_CONTROL_SHA')
@@ -3929,7 +3932,7 @@ def _run_impl(args,h4x=None):
         expected_reward=json.loads(args.h4_exploratory_reward_report.read_bytes())['train_reward_config']
         h4x_require(original_reward==expected_reward and train_cfg.to_dict()['reward_config']==expected_reward,'REWARD_PIN')
     train_env=CoverageJoystick(config=train_cfg,stage=args.stage,
-                               h1_m1=h1_m1,h1_m2=h1_m2,h3_m1=h3_m1,h4_arm=h4_arm)
+                               h1_m1=h1_m1,h1_m2=h1_m2,h3_m1=h3_m1,h4_arm=h4_arm,h4cc_arm=cc_arm)
     # Original source-driven randomized evaluation; only 2 envs as previous.
     eval_env=api['locomotion'].load(api['env_name'],config=source_cfg)
     scaled=api['scaled']
@@ -3970,7 +3973,7 @@ def _run_impl(args,h4x=None):
     instrumented_ppo,instrument_meta=build_instrumented_ppo(
         api['ppo'],out/'m463_brax_ppo_instrumented.py',
         enable_resume=longtrain, enable_h3=h3_m1,enable_h4=h4_arm is not None,
-        enable_h4x=h4x is not None)
+        enable_h4x=h4x is not None,enable_h4cc=cc_arm is not None)
     if h4x is not None:
         h4x_require(instrument_meta['instrumented_sha256']==h4x['authorization']['generated_sha256'],'GENERATED_PIN')
         h4x_storage(out)
@@ -3978,7 +3981,11 @@ def _run_impl(args,h4x=None):
     h4_control=None
     if h4_arm is not None:
         h4_contract=h4_common_contract(scaled.to_dict(),original_reward,instrument_meta)
-        if h4_arm=='candidate':
+        if cc_arm is not None:
+            h4_control=h4cc_read_historical_control(Path(__file__).resolve().parent/H4X_PATHS['control']/'report.json',h4_contract)
+            if cc_arm=='ccrc':
+                h4cc_read_final_report(args.h4cc_ref_report,h4x['authorization']['evidence_sha256'],'ref',h4_contract)
+        elif h4_arm=='candidate':
             h4_control=h4_read_control(args.h4_control_report,h4_approved_control_sha(),h4_contract)
     if h3_acceptance is not None:
         h3_acceptance['longtrain_brax_comparison']=verify_h3_longtrain_brax(api,instrument_meta)
@@ -4044,6 +4051,8 @@ def _run_impl(args,h4x=None):
         report.update(h4_arm=h4_arm,h4_spec=H4_SPEC,h4_common_contract=h4_contract,
                       h4_control_report_sha256=(h4_control['sha256'] if h4_control else None),
                       h4_resume_forbidden=True,promotion_authorized=False)
+    if cc_arm is not None:
+        report.update(h4cc_arm=cc_arm,h4cc_spec=H4CC_SPEC,h4cc_historical_control_sha256=H4CC_HISTORICAL_CONTROL_SHA)
     if h4x is not None:
         report.update(h4x_authorization=h4x['authorization'],h4x_bootstrap=h4x['pins'],
                       h4x_brax_dependencies=h4x['brax_dependencies'],h4x_exploratory=True)
@@ -4173,6 +4182,8 @@ def _run_impl(args,h4x=None):
         }
         if h4_arm is not None:
             info.update(h4_arm=h4_arm,h4_resume_forbidden=True,h4_common_contract=h4_contract)
+        if cc_arm is not None:
+            info.update(h4cc_arm=cc_arm,h4cc_authorization=h4x['authorization'])
         if h3_m1:
             info['h3_m1_enabled'] = True
             info['h3_m1_spec'] = H3_SPEC
@@ -4196,9 +4207,10 @@ def _run_impl(args,h4x=None):
 
     monitor=GPUMonitor()
     if h4_arm is not None:
-        cfg['h4_chunk_fn']=h4_chunk_callback(jax,np,monitor,report,persist,h4_arm)
+        cfg['h4_chunk_fn']=h4_chunk_callback(jax,np,monitor,report,persist,h4_arm,h4cc_arm=cc_arm)
         if h4x is not None:
-            control_dr=(h4x_verify_operational(json.loads(args.h4_control_report.read_bytes()))
+            control_dr=(H4CC_MATCHED_DR_SHA if cc_arm is not None else
+                        h4x_verify_operational(json.loads(args.h4_control_report.read_bytes()))
                         if h4_arm=='candidate' else None)
             cfg['h4x_audit_fn']=h4x_audit_callback(jax,np,monitor,report,persist,args,
                                                 h4x['authorization'],control_dr)
@@ -4237,7 +4249,7 @@ def _run_impl(args,h4x=None):
                 if h4_arm is not None and not H4_EXECUTION_AUTHORIZED and h4x is None:
                     raise RuntimeError('M470_H4_EXECUTION_HOLD')
                 if h4x is not None:
-                    h4x_require(h4x_authorization()==h4x['authorization'],'FINAL_AUTHORIZATION')
+                    h4x_require((h4cc_authorization() if cc_arm is not None else h4x_authorization())==h4x['authorization'],'FINAL_AUTHORIZATION')
                 report['training_performed']=True
                 if h3_m1 or h4_arm is not None:
                     persist()
@@ -4341,13 +4353,22 @@ def _run_impl(args,h4x=None):
         if h4_arm is not None:
             h4_final_checks(report,audit,h4_control)
         if h4x is not None:
-            h4x_verify_operational(report)
-            h4x_require(h4x_authorization()==h4x['authorization'] and h4x_bootstrap(args)==h4x['pins']
+            dr=h4x_verify_operational(report,h4cc=cc_arm is not None)
+            if cc_arm is not None:
+                h4x_require(dr==H4CC_MATCHED_DR_SHA,'CCRC_FINAL_DR')
+                h4cc_verify_ledger(report)
+                if cc_arm=='ccrc':
+                    ref=h4cc_read_final_report(args.h4cc_ref_report,h4x['authorization']['evidence_sha256'],'ref',h4_contract)
+                    h4x_require(h4cc_matched_nominal(ref['h4_final_counts'],report['h4_final_counts']),'CCRC_MATCHED_NOMINAL')
+                    report['h4cc_exposure_decision']=h4cc_exposure_decision(ref['h4cc_final_counts'],report['h4cc_final_counts'])
+            h4x_require((h4cc_authorization() if cc_arm is not None else h4x_authorization())==h4x['authorization'] and h4x_bootstrap(args)==h4x['pins']
                         and h4c_dependency_pins(api)==h4x['brax_dependencies'],'FINAL_IMMUTABILITY')
             h4x_file_pin(args.h4_exploratory_causal_report,H4X_CAUSAL_SHA)
             h4x_require(h4c_git_blob(wrapper_file.read_bytes())=='2c09c8268a29d14c832dd07050575e4541ee98af','FINAL_WRAPPER_PIN')
             read_restore_gate(args.restore_report,args.checkpoint)
-            if h4_arm=='candidate':
+            if cc_arm is not None:
+                h4cc_validate_cli(args,final=True)
+            elif h4_arm=='candidate':
                 h4x_file_pin(args.h4_control_report,h4x['authorization']['evidence_sha256'])
             h4x_storage(out)
         memory_ok=(gpu['peak_used_mib'] is not None and gpu['total_mib'] is not None
@@ -4376,7 +4397,7 @@ def _run_impl(args,h4x=None):
         persist();raise
 
 
-# H4-M2 held contract. No dispatch path in this staged revision.
+# H4-M2 distinct held contract. Requires separate owner GO and pins.
 H4CC_EXECUTION_AUTHORIZED = False
 H4CC_ID = 'H4-M2-CCRC-V1'
 H4CC_PATHS = {a:Path('m463_runs/m470_h4_m2_'+a+'_v1') for a in ('ref','ccrc')}
@@ -4664,7 +4685,7 @@ if __name__=='__main__': main()
 
 def h4cc_parse_marker(rules):
     import re
-    h4x_require(not any(x.startswith('H4X_ACTIVE_GO:') for x in rules.splitlines()),'CCRC_LEGACY_CONFLICT')
+    h4x_require(not any(x.startswith(('H4X_ACTIVE_GO:','H4CC_EVAL_ACTIVE_GO:')) for x in rules.splitlines()),'CCRC_LEGACY_CONFLICT')
     hits=[x for x in rules.splitlines() if x.startswith('H4CC_ACTIVE_GO:')]
     h4x_require(len(hits)==1,'CCRC_EXECUTION_HOLD')
     m=re.fullmatch(r'H4CC_ACTIVE_GO: (H4-M2-CCRC-V1) (ref|ccrc) '
@@ -4679,9 +4700,10 @@ def h4cc_parse_marker(rules):
                 technical_sha256=tech,evidence_sha256=evidence)
 
 def h4cc_authorization():
-    h4x_require(H4CC_EXECUTION_AUTHORIZED is True and not any(
-        (H4_EXECUTION_AUTHORIZED,H4R_EXECUTION_AUTHORIZED,H4C_EXECUTION_AUTHORIZED)),
-        'CCRC_EXECUTION_HOLD')
+    # Separate Rules marker, never a broad source-flag bypass.
+    h4x_require(not any((H4CC_EXECUTION_AUTHORIZED,H4_EXECUTION_AUTHORIZED,
+                        H4R_EXECUTION_AUTHORIZED,H4C_EXECUTION_AUTHORIZED)),
+                'CCRC_LEGACY_HOLD_REQUIRED')
     root=Path(__file__).resolve().parent
     auth=h4cc_parse_marker((root/'G1_RESEARCH_RULES.md').read_text('utf8'))
     h4x_require(h4x_source_digest(root)==auth['source_sha256'],'CCRC_SOURCE_CONTRACT')
@@ -4854,7 +4876,7 @@ def h4cc_validate_held_plan(a):
                 'independent_budget','h4_control_report','h4_exploratory_causal_report',
                 'h4_exploratory_reward_report','h4_causal_failure_report',
                 'h4_readiness_reward_report','h3_causal_report','h3_old10m_report',
-                'smoke_report','rollouts','num_evals'))):
+                'smoke_report','rollouts','num_evals','h4cc_technical_report','h4cc_ref_report'))):
         raise RuntimeError('M470_H4CC_PLAN_CONTRACT')
 
 
@@ -4888,9 +4910,17 @@ def main():
     p.add_argument('--h4-exploratory',action='store_true',help='H4-M1-2R separate Rules-only authorization')
     p.add_argument('--h4-exploratory-causal-report',type=Path)
     p.add_argument('--h4-exploratory-reward-report',type=Path)
-    p.add_argument('--h4cc-arm',choices=['ref','ccrc'],help='CCRC held plan only')
+    p.add_argument('--h4cc-arm',choices=['ref','ccrc'],help='CCRC separate held authorization')
+    p.add_argument('--h4cc-technical-report',type=Path)
+    p.add_argument('--h4cc-ref-report',type=Path)
     a=p.parse_args()
     if a.h4cc_arm is not None:
+        if a.mode!='plan':
+            try:
+                h4cc_validate_cli(a)
+            except RuntimeError as exc:
+                p.error(str(exc))
+            return h4cc_run(a)
         try:
             h4cc_validate_held_plan(a)
         except RuntimeError as exc:
@@ -4898,6 +4928,8 @@ def main():
         print('M470_H4CC_PLAN_NO_GPU',json.dumps({'arm':a.h4cc_arm,'spec':H4CC_SPEC,
               'execution_authorized':False,'training_performed':False},sort_keys=True))
         return
+    if a.h4cc_technical_report is not None or a.h4cc_ref_report is not None:
+        p.error('M470_H4CC_FLAG_REQUIRED')
     try:
         validate_h4c_cli(a)
         if not a.h4_causal:
