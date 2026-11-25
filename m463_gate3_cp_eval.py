@@ -4858,14 +4858,184 @@ def h4m3_post_capture(pre,action,next_state,env):
             'qvel_post':d.qvel,'target':next_state.info['motor_targets'],
             'raw_ctrl':d.ctrl,'actuator_force':d.actuator_force,
             'actuator_length':d.actuator_length,'actuator_velocity':d.actuator_velocity,
-            'foot_geom_pos':d.geom_xpos[[lid,rid],:],
-            'foot_geom_mat':d.geom_xmat[[lid,rid],:],
+            'lf_geom_pos':d.geom_xpos[lid],'rf_geom_pos':d.geom_xpos[rid],
+            'lf_geom_mat':d.geom_xmat[lid],'rf_geom_mat':d.geom_xmat[rid],
             'feet_sensor_velocity':d.sensordata[env._foot_linvel_sensor_adr],
             'xipos':d.xipos,'ximat':d.ximat,'cvel':d.cvel,
             'subtree_com':d.subtree_com,'contact_geom':d.contact.geom,
             'contact_pos':d.contact.pos,'contact_frame':d.contact.frame,
-            'contact_dist':d.contact.dist,'efc_force':d.efc_force,
+            'contact_dist':d.contact.dist,'contact_friction':d.contact.friction,
+            'contact_dim':d.contact.dim,'contact_address':d.contact.efc_address,
+            'efc_force':d.efc_force,
             'reward':{k:v for k,v in next_state.metrics.items() if k.startswith('reward/')}}
+
+
+
+def h4m3_read_evidence(root,current_path,historical_path,base_policy):
+    """Diagnostic evidence only; not the historical full training-report reader."""
+    root=Path(root).resolve()
+    h4m3_require(Path(current_path).resolve()==root/H4CC_EVAL_OUTPUT,'ARCHIVE_PATH')
+    lanes,current,historical=h4m3_read_archives(current_path,historical_path)
+    pins={'current_archive':H4M3_ARCHIVES[0],'historical_archive':H4M3_ARCHIVES[1]}
+    paths={'C_policy':(Path(base_policy),H4M3_POLICIES['C'])}
+    for key,expected in current['input_sha256'].items():
+        if key.startswith(('ref/','ccrc/')):
+            arm,name=key.split('/',1)
+            h4m3_require(Path(name).name==name,'ARTIFACT_NAME')
+            paths[key]=(root/'m463_runs'/('m470_h4_m2_'+arm+'_v1')/name,expected)
+        elif key.startswith('source/') and key!='source/m463_gate3_cp_eval.py':
+            name=key.split('/',1)[1]
+            h4m3_require(Path(name).name==name,'SOURCE_NAME')
+            paths[key]=(root/name,expected)
+    for key,(path,expected) in paths.items():
+        h4m3_require(path.is_file() and not path.is_symlink()
+            and path.resolve()==path.absolute() and sha256(path)==expected,'PIN_'+key)
+        pins[key]=expected
+    # Keep archived evaluator identity distinct; exact reviewed Git base required.
+    archived=subprocess.check_output(['git','-C',str(root),'show',
+        'd478c810152d2b7a1119514c94f09028d33f52da:m463_gate3_cp_eval.py'])
+    git_blob=hashlib.sha1(('blob '+str(len(archived))+'\\0').encode()+archived).hexdigest()
+    h4m3_require(git_blob=='db89c4c8516e5875fd2d3c51210a3279fe4bc435'
+        and hashlib.sha256(archived).hexdigest()==current['evaluator_sha256'],
+        'ARCHIVED_EVALUATOR_PIN')
+    pins['archived_evaluator']=current['evaluator_sha256']
+    pins['diagnostic_evaluator']=sha256(Path(__file__))
+    h4m3_require(pins['archived_evaluator']!=pins['diagnostic_evaluator'],'NEW_SOURCE_ID')
+    return lanes,pins
+
+
+def h4m3_manifest(env,np):
+    """Model metadata only, no physics; exact installed-source checks separate."""
+    m=env.mj_model
+    h4m3_require((m.nu,m.nq,m.nv,m.njnt)==(29,36,35,30)
+        and abs(float(env.dt)-.02)<1e-9 and abs(float(m.opt.timestep)-.002)<1e-9
+        and env.n_substeps==10,'MODEL_DIMENSIONS')
+    ids=np.asarray(m.actuator_trnid)[:,0]
+    h4m3_require(sorted(ids.tolist())==list(range(1,30))
+        and np.all(np.asarray(m.actuator_trntype)==0)
+        and np.all(np.asarray(m.actuator_dyntype)==0)
+        and int(m.jnt_type[0])==0 and np.all(np.asarray(m.jnt_type)[1:]==3),
+        'ACTUATOR_MAPPING')
+    qa=np.asarray(m.jnt_qposadr)[ids]; va=np.asarray(m.jnt_dofadr)[ids]
+    h4m3_require(np.array_equal(qa,np.arange(7,36)) and
+        np.array_equal(va,np.arange(6,35)), 'TARGET_ORDER')
+    h4m3_require(int(m.opt.integrator)==0,'INTEGRATOR_EULER')
+    body=np.asarray(m.body_rootid); roots=np.unique(body[1:])
+    h4m3_require(len(roots)==1 and roots[0]>0,'G1_ROOT')
+    root=int(roots[0])
+    h4m3_require(float(m.body_subtreemass[root])>0 and np.isclose(
+        np.sum(np.asarray(m.body_mass)[body==root]),m.body_subtreemass[root]),
+        'G1_MASS')
+    names=('actuator_ctrlrange','actuator_ctrllimited','actuator_forcerange',
+           'actuator_forcelimited','actuator_gainprm','actuator_biasprm',
+           'actuator_gaintype','actuator_biastype','actuator_gear',
+           'actuator_dyntype','actuator_trntype','actuator_trnid','jnt_range',
+           'jnt_limited','jnt_qposadr','jnt_dofadr','body_mass','body_inertia',
+           'body_rootid','body_parentid','body_subtreemass','geom_bodyid')
+    fields={k:np.asarray(getattr(m,k)).tolist() for k in names}
+    h4m3_require(all(np.isfinite(np.asarray(v)).all() for v in fields.values()),'MODEL_FINITE')
+    return {'fields':fields,'joint_names':[m.joint(i).name for i in range(m.njnt)],
+        'actuator_names':[m.actuator(i).name for i in range(m.nu)],
+        'qpos_addresses':qa.tolist(),'qvel_addresses':va.tolist(),'root_body_id':root,
+        'foot_geom_ids':[int(env._left_foot_geom_id),int(env._right_foot_geom_id)],
+        'floor_geom_id':int(env._floor_geom_id),'foot_site_ids':np.asarray(env._feet_site_id).tolist(),
+        'feet_sensor_addresses':np.asarray(env._foot_linvel_sensor_adr).tolist(),
+        'disableflags':int(m.opt.disableflags),'cone':int(m.opt.cone),
+        'integrator':int(m.opt.integrator),'default_pose':np.asarray(env._default_pose).tolist(),
+        'dt_s':.02,'sim_dt_s':.002,'substeps':10,
+        'stage':{'derived':'last_forward_solve','qpos_qvel':'post_integration'}}
+
+
+def h4m3_validate_core(raw,row,manifest,np):
+    shapes={'actor_input':(103,),'command':(3,),'info_phase':(2,),
+        'rng':(2,),'time_pre':(),'time_post':(),'qpos_pre':(36,),
+        'qpos_post':(36,),'qvel_pre':(35,),'qvel_post':(35,),
+        'action':(29,),'target':(29,),'raw_ctrl':(29,),'actuator_force':(29,),
+        'actuator_length':(29,),'actuator_velocity':(29,),
+        'lf_geom_pos':(3,),'rf_geom_pos':(3,),'lf_geom_mat':(3,3),'rf_geom_mat':(3,3)}
+    for k,shape in shapes.items():
+        h4m3_require(k in raw,'MISSING_'+k)
+        a=np.asarray(raw[k])
+        h4m3_require(a.shape==shape and a.dtype.kind in 'fiu' and
+            np.isfinite(a).all(),'SHAPE_FINITE_'+k)
+    obs=np.asarray(raw['actor_input']); act=np.asarray(raw['action'])
+    h4m3_require(np.array_equal(obs[9:12],raw['command']) and
+        np.array_equal(raw['command'],[0.,0.,0.]) and np.max(np.abs(act))<=1.,
+        'ACTOR_COMMAND_ACTION')
+    h4m3_require(np.asarray(raw['rng']).dtype==np.uint32,'RNG_DTYPE')
+    target=np.asarray(raw['target'])
+    default=np.asarray(manifest['default_pose'],dtype=target.dtype)
+    h4m3_require(np.allclose(target,default+.5*act,rtol=0,atol=1e-7)
+        and np.array_equal(target,raw['raw_ctrl']),'RAW_TARGET')
+    h4m3_require(abs(float(raw['time_post'])-float(raw['time_pre'])-.02)<2e-5,
+                  'SAMPLE_TIME')
+    h4m3_reward_check(raw['reward'],row[H4M3_COLUMNS.index('reward_total')],np)
+
+
+def h4m3_tree_equal(a,b,jax,np):
+    aa,ta=jax.tree_util.tree_flatten(a); bb,tb=jax.tree_util.tree_flatten(b)
+    return ta==tb and len(aa)==len(bb) and all(
+        np.asarray(x).dtype==np.asarray(y).dtype and
+        np.array_equal(np.asarray(x),np.asarray(y))
+        for x,y in zip(jax.device_get(aa),jax.device_get(bb)))
+
+
+def h4m3_replay_lane(lane,session,reset,step,clone,kick,equal,validate):
+    """Host bounded mechanics; callbacks supplied by a future authorized dispatcher.
+    No runtime imports, no own reset/physics call outside the frozen ledger.
+    """
+    h4m3_require(session['resets_attempted']<5 and
+        len(session['lanes'])==session['resets_recorded']<5,'RESET_CAP')
+    idx=len(session['lanes'])
+    h4m3_require((lane['policy'],lane['seed'],lane['direction'],lane['end'])
+        ==H4M3_LANES[idx],'LANE_ORDER')
+    out={'policy':lane['policy'],'seed':lane['seed'],'direction':lane['direction'],
+         'segments':{},'rich':[],'complete':False}
+    session['lanes'].append(out)
+    session['resets_attempted']+=1
+    state=reset(lane['seed'])
+    session['resets_recorded']+=1
+    import numpy as np
+    def advance(st,segment,start):
+        out['segments'][segment]=[]
+        for offset,expected in enumerate(lane['rows'][segment]):
+            tick=start+offset; capture=tick>=295
+            h4m3_require(session['attempted']<H4M3_CAP,'PHYSICAL_CAP')
+            if capture:
+                h4m3_require(session['rich_recorded']<H4M3_RICH_CAP,'RICH_CAP')
+            session['attempted']+=1
+            session['last_attempt']={'lane':idx,'segment':segment,'tick':tick}
+            st,raw,rich=step(st,capture)
+            row=h4m3_legacy_row(raw,expected,np)
+            if capture:
+                validate(rich,row)
+                # serialize only after validation; disallow NaN/Inf and padded contacts
+                payload=json.loads(json.dumps(rich,allow_nan=False,
+                    default=lambda a:np.asarray(a).tolist()))
+                out['rich'].append({'segment':segment,'tick':tick,'data':payload})
+                session['rich_recorded']+=1
+            out['segments'][segment].append(row)
+            session['recorded']+=1
+            if row[H4M3_COLUMNS.index('done')]:
+                h4m3_require(offset+1==len(lane['rows'][segment]),'EARLY_TERMINAL')
+                break
+        return st
+    state=advance(state,'nominal',1)
+    first,meta=kick(clone(state),lane['direction'],.50,300)
+    h4m3_require(meta==lane['first'],'FIRST_KICK_ARCHIVE')
+    state=advance(first,'first',300)
+    single=clone(state); double=clone(state)
+    h4m3_require(equal(single,double) and equal(single,state),'FORK_EQUAL')
+    double,meta=kick(double,lane['direction'],.35,335)
+    h4m3_require(meta==lane['second'] and equal(single,state),'SECOND_KICK_ARCHIVE')
+    out['first']=lane['first']; out['second']=meta
+    advance(single,'single',335); advance(double,'double',335)
+    s=next(x['data'] for x in out['rich'] if x['segment']=='single' and x['tick']==335)
+    d=next(x['data'] for x in out['rich'] if x['segment']=='double' and x['tick']==335)
+    for key in ('actor_input','rng','action','target'):
+        h4m3_require(np.array_equal(s[key],d[key]),'EVENT_EQUAL_'+key)
+    out['complete']=True
+    return out
 
 
 def h4m3_static_archive_check(current_path,historical_path):
