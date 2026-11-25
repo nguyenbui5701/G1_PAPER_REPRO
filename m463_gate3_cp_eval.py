@@ -2203,7 +2203,7 @@ def h3_run(args):
 
 
 # H4-M1-3: matched development only. Separate explicit execution GO required.
-H4_EVAL_EXECUTION_AUTHORIZED = True
+H4_EVAL_EXECUTION_AUTHORIZED = False
 H4_EVAL_POLICIES = ('CTRL', 'CAND')
 H4_EVAL_LOGICAL = 120
 H4_EVAL_PHYSICAL = 89616
