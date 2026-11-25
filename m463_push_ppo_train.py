@@ -3761,6 +3761,8 @@ def run(args):
 
 
 def _run_impl(args,h4x=None):
+    if getattr(args,'h4cc_arm',None) is not None:
+        raise RuntimeError('M470_H4CC_EXECUTION_HOLD')
     if getattr(args,'h4_exploratory',False):
         h4x_require(h4x is not None and h4x['authorization']==h4x_validate_cli(args),'RUN_RESERVATION')
         h4x_require(json.loads((args.output_dir/'attempt.json').read_bytes())==
@@ -4363,6 +4365,88 @@ def _run_impl(args,h4x=None):
         persist();raise
 
 
+# H4-M2 held contract. No dispatch path in this staged revision.
+H4CC_EXECUTION_AUTHORIZED = False
+H4CC_ID = 'H4-M2-CCRC-V1'
+H4CC_PATHS = {a:Path('m463_runs/m470_h4_m2_'+a+'_v1') for a in ('ref','ccrc')}
+H4CC_SPEC = {**H4X_SPEC,'id':H4CC_ID,'hold_ticks':250,
+             'technical_cap':2016,'dev_cap':89616,'nominal_min':1867669}
+H4CC_COUNTERS = ('start','event_terminal','tail_terminal','completed','refresh',
+    'sample_same','sample_different','deferred','published','terminal_restored','bad',
+    'qualified_1','qualified_2') + tuple(
+    f'intersection_{side}_{w}' for side in (1,2) for w in (10,25,50,100,250))
+
+def h4cc_count_key(name):
+    return 'm463_h4cc_'+name+'_per_rollout'
+
+def h4cc_epoch_audit(counts, pending, arm):
+    """Pending snapshot at explicit reset is censored, not a completed tail."""
+    if arm not in ('ref','ccrc'):
+        raise RuntimeError('M470_H4CC_ARM')
+    def c(k):
+        return counts[h4cc_count_key(k)]
+    def h(k):
+        return counts['m463_h4_'+k+'_per_rollout']
+    if any(type(c(k)) is not int or c(k)<0 for k in H4CC_COUNTERS):
+        raise RuntimeError('M470_H4CC_COUNTER_SCHEMA')
+    if set(pending)!= {'active','pending_valid'} or any(
+            type(v) is not int or v<0 for v in pending.values()):
+        raise RuntimeError('M470_H4CC_PENDING_SCHEMA')
+    checks = {
+        'no_bad':c('bad')==0,
+        'tail_conservation':c('start')==c('event_terminal')+c('tail_terminal')+
+            c('completed')+pending['active'],
+        'refresh_partition':c('refresh')==c('sample_same')+c('sample_different'),
+        'pending_conservation':c('deferred')==c('published')+
+            c('terminal_restored')+pending['pending_valid'],
+        'pending_bounds':pending['pending_valid']<=pending['active'],
+        'qualified_bound':c('qualified_1')+c('qualified_2')<=c('start'),
+        'arm_scope': (c('deferred')==c('published')==c('terminal_restored')==
+                      pending['pending_valid']==0 if arm=='ref' else
+                      c('deferred')<=c('refresh')),
+    }
+    for side in (1,2):
+        q=c(f'qualified_{side}')
+        checks[f'qualified_{side}']=q==h(f'stand_{side}_events')
+        prev=q
+        for w in (10,25,50,100,250):
+            n=c(f'intersection_{side}_{w}')
+            surv=h(f'stand_{side}_survived_2_{w}')
+            executed=h(f'stand_{side}_tail_2_{w}')
+            checks[f'window_{side}_{w}']=0<=n<=min(prev,surv) and surv<=executed<=q
+            if arm=='ccrc':
+                checks[f'exact_{side}_{w}']=n==surv
+            prev=n
+    return {'checks':checks,'passed':all(checks.values())}
+
+def h4cc_exposure_decision(ref, treatment):
+    """Only after separately accepted original and new ledger gates."""
+    rows={}
+    for side in (1,2):
+        q=[r[h4cc_count_key(f'qualified_{side}')] for r in (ref,treatment)]
+        n=[r[h4cc_count_key(f'intersection_{side}_250')] for r in (ref,treatment)]
+        if any(type(v) is not int for v in q+n) or any(not 0<=i<=d for i,d in zip(n,q)):
+            raise RuntimeError('M470_H4CC_INTERSECTION_SCHEMA')
+        rows[str(side)]={'qualified':q,'intersection':n,
+            'ceiling':not all(q) or n[0]==q[0],
+            'improved':n[1]>n[0] and n[1]*q[0]>n[0]*q[1]}
+    decision=('INCONCLUSIVE' if any(v['ceiling'] for v in rows.values()) else
+              'PASS' if all(v['improved'] for v in rows.values()) else 'NO_GO')
+    return {'decision':decision,'sides':rows,'execution_authorized':False}
+
+def h4cc_validate_held_plan(a):
+    if a.mode!='plan':
+        raise RuntimeError('M470_H4CC_EXECUTION_HOLD')
+    if (a.stage!='easy_repeat_support' or a.output_dir!=H4CC_PATHS[a.h4cc_arm]
+            or any(getattr(a,k,None) for k in ('h4_arm','h4_exploratory','h4_readiness',
+                'h4_causal','h3_m1','h3_diagnostic_only','h1_m1','h1_m2','resume_state',
+                'independent_budget','h4_control_report','h4_exploratory_causal_report',
+                'h4_exploratory_reward_report','h4_causal_failure_report',
+                'h4_readiness_reward_report','h3_causal_report','h3_old10m_report',
+                'smoke_report','rollouts','num_evals'))):
+        raise RuntimeError('M470_H4CC_PLAN_CONTRACT')
+
+
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--mode',choices=['plan','smoke','probe2','smoke3','pilot','longtrain','readiness','causal'],required=True)
@@ -4393,7 +4477,16 @@ def main():
     p.add_argument('--h4-exploratory',action='store_true',help='H4-M1-2R separate Rules-only authorization')
     p.add_argument('--h4-exploratory-causal-report',type=Path)
     p.add_argument('--h4-exploratory-reward-report',type=Path)
+    p.add_argument('--h4cc-arm',choices=['ref','ccrc'],help='CCRC held plan only')
     a=p.parse_args()
+    if a.h4cc_arm is not None:
+        try:
+            h4cc_validate_held_plan(a)
+        except RuntimeError as exc:
+            p.error(str(exc))
+        print('M470_H4CC_PLAN_NO_GPU',json.dumps({'arm':a.h4cc_arm,'spec':H4CC_SPEC,
+              'execution_authorized':False,'training_performed':False},sort_keys=True))
+        return
     try:
         validate_h4c_cli(a)
         if not a.h4_causal:
