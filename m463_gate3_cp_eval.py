@@ -7177,7 +7177,7 @@ def h4m5_dispatch(args):
 
 
 # H4-M6: independent held technical and development comparison contracts.
-H4M6_TECH_OUTPUT=Path('m463_runs/m470_h4_m6_tech_v2/report.json')
+H4M6_TECH_OUTPUT=Path('m463_runs/m470_h4_m6_tech_v3/report.json')
 H4M6_V1_STOP_PINS={
     'm463_runs/m470_h4_m6_tech_v1/report.json':'733ba14afd9fcba1d6ad17aeafb5ad9f54e24fd5d515595efe4d7b5ccfba18cc',
     'm463_runs/m470_h4_m6_tech_v1/attempt.json':'4bec71aac36e1b7e47b13d932e645eba6d2087d3e6ad3a602b501e465eafb1a1',
@@ -7185,6 +7185,33 @@ H4M6_V1_STOP_PINS={
     'm463_runs/m470_h4_m6_tech_v1/attempt_result.json':'a1219208982cd65237941304893206309fdb8f23ec98248b55578bc5f09d2bc9',
     'm463_runs/m470_h4_m6_2_technical_20261126_001405_1795626845670742063.log':'6858491e87977eb9b206755e5bd86f22e812fca1e626faf5e0bad0f6677ee700',
     'm463_runs/m470_h4_m6_1_full_static_20261126_000627_892520238.log':'4969f7e244cfe2eb37a57dcff0af44b0344f03917591c8c543f8bf9782d9ef93',
+}
+H4M6_V2_STOP_PINS={
+    'm463_runs/m470_h4_m6_tech_v2/report.json':'2d0281c5885c113d748a9947a74a8ccc7bdbc394834a2870163027bf41800ac8',
+    'm463_runs/m470_h4_m6_tech_v2/attempt.json':'24c7d103c006322d56d6827ebd4b43fab741991ef1e3121059c9eed8d2048bc1',
+    'm463_runs/m470_h4_m6_tech_v2/dispatch.started.json':'662d00152b3eb8a6706d3930239dbaf07f9dd9bbcb9da5c64acf007c8924c04b',
+    'm463_runs/m470_h4_m6_tech_v2/attempt_result.json':'b4a27140b5bbf2e4f2d53a4301bcab759d9d610fdc25ad4014c453b2439c3952',
+    'm463_runs/m470_h4_m6_2_technical_v2_20261126_002938_1795627778837596800.log':'c19b4cfd76ba5f631464e2f5963fe239209ba05b9585263bd69f4f8f98cbfe30',
+    'm463_runs/m470_h4_m6_2r_full_static_20261126_002445_697451410.log':'84675a65e896ec85cc2f9d9cc5a8416cd22a27cbac0aa8b596d9a27f946e81e6',
+}
+H4M6_ARITH_PINS={
+    'm463_runs/m470_h4_m6_arithmetic_v2/report.json':'77af67e65ef8757ba580a42e84b86c0501fd3e912cc74fea93441700e8e9903c',
+    'm463_runs/m470_h4_m6_arithmetic_v2/probe.log':'cac36fa7b239b5fc0e74c679f27308f652cfdfc81f9fa0577922f7fac83cacd0',
+    'm463_runs/m470_h4_m6_arithmetic_v2/collector.json':'83a6b5c88324752cfbe71100a287884f5298d54a3a5f2510584296df682ff9e4',
+    'm463_runs/m470_h4_m6_arithmetic_v2/attempt.json':'b6ce1009a328508cb0542d07410c43d7d3091c1f7a5e9b1f431a360953302ece',
+    'm463_runs/m470_h4_m6_arithmetic_v2/dispatch.started.json':'e303b6c9520a9ed0162eef5881fae2cd515f33b8c4989cf71d3dc2aa583fd1a5',
+    'm463_runs/m470_h4_m6_arithmetic_v2/attempt_result.json':'2142a867bfdc97633a72486c40acd5647c422ead467365cf9afddecd624752ef',
+}
+H4M6_ARITH_AUTH={
+    'source_sha256':'75edd5c776bb844f3290bded56ebe1a624fdfcd53ef6f77f4521625439135e18',
+    'manifest_sha256':'e305539ec45a12a21ef3a136230024a46a7f1828ba13685c2f30baabcc74247b',
+    'marker':'H4M6_ARITH_GO: H4-M6-2P-ARITH-V2 m463_runs/m470_h4_m6_arithmetic_v2 75edd5c776bb844f3290bded56ebe1a624fdfcd53ef6f77f4521625439135e18 e305539ec45a12a21ef3a136230024a46a7f1828ba13685c2f30baabcc74247b',
+}
+H4M6_ARITH_HLO={
+    'A':{'pre':'08a834fa394faee94be072c52e0c30485a448ad0fc564102335e02823a7d0c14',
+         'optimized':'5e8312e9229082dc4893ee320baa4ab5bf1c74d8d20a65a65f43202535ec7975'},
+    'B':{'pre':'9e69034a19ecdfe8606708055228f82eb848a01ce56e608acbf1eb3c761f43c1',
+         'optimized':'59b0d2d2ba43d0d90d899f492faf70f5ec949700adb3185ffd485d9595fbef83'},
 }
 H4M6_DEV_OUTPUT=Path('m463_runs/m470_h4_m6_dev_v1/report.json')
 H4M6_RICH_OUTPUT=Path('m463_runs/m470_h4_m6_dev_v1/mechanism.json')
@@ -7231,6 +7258,74 @@ def h4m6_external_sources(root):
     h4m3_no_runtime_imports()
     return {'common':external,'training':paths}
 
+def h4m6_native_factor(k,eligible,np):
+    """Pinned CUDA arithmetic reference; not a change to native reward."""
+    return np.float32(1)-np.float32(.01)*np.float32(51-k) if eligible else np.float32(1)
+
+
+def h4m6_read_arithmetic(root):
+    """Read immutable accepted arithmetic evidence, never execute the probe."""
+    import numpy as np
+    root=Path(root).resolve()
+    req=h4m6_eval_require
+    pins={**H4M6_V1_STOP_PINS,**H4M6_V2_STOP_PINS,**H4M6_ARITH_PINS}
+    req(len(pins)==18,'ARITH_PIN_COUNT')
+    blobs={}
+    for rel,expected in pins.items():
+        p=root/rel
+        req(p.is_file() and not p.is_symlink() and p.absolute()==p.resolve()
+            and 0<p.stat().st_size<=16*1024**2,'ARITH_PATH '+rel)
+        raw=p.read_bytes()
+        req(0<len(raw)<=16*1024**2 and hashlib.sha256(raw).hexdigest()==expected,'ARITH_SHA '+rel)
+        blobs[rel]=raw
+    old=root/'m463_runs/m470_h4_m6_arithmetic_v1'
+    req(not old.exists() and not old.is_symlink(),'ARITH_V1_RESERVATION')
+    prefix='m463_runs/m470_h4_m6_arithmetic_v2/'
+    def read(name): return json.loads(blobs[prefix+name])
+    r=read('report.json'); a=r['authorization']; m=r['manifest']; c=read('collector.json')
+    req(a==H4M6_ARITH_AUTH and h4m3_digest(m)==a['manifest_sha256']
+        and m['archive_sha256']=={**H4M6_V1_STOP_PINS,**H4M6_V2_STOP_PINS}
+        and r['provenance']['archive_sha256']==m['archive_sha256']
+        and r['provenance']['external_sha256']==m['external']
+        and h4m3_digest(r['provenance']['common_map'])==m['common'],'ARITH_PROVENANCE')
+    req(read('attempt.json')=={'authorization':a,'reserved':True}
+        and read('dispatch.started.json')=={'authorization':a}
+        and read('attempt_result.json')=={'authorization':a,'status':'COMPLETE'},'ARITH_MARKERS')
+    log=blobs[prefix+'probe.log']
+    req(c=={'authorization':a,'decision':'ARITHMETIC_CONFORMANCE_PASS','producer_rc':0,
+        'overflow':False,'error':None,'total_bytes':len(log),'stored_bytes':len(log)},'ARITH_COLLECTOR')
+    req(r['schema']=='H4M6_2P_ARITH_REPORT_V1' and r['status']=='COMPLETE'
+        and r['passed'] is True and r['post_immutability'] is True
+        and r['attempted']==r['recorded']=={'A':4896,'B':2512}
+        and r['compiled_signatures']==2 and r['archived_rows_reproduced']==6
+        and r['host_factor_negative_rejections']==104
+        and r['zero']==dict.fromkeys(('robot_resets','actor_calls','physical_transitions',
+            'optimizer_updates','evaluation_transitions','checkpoint_saves'),0)
+        and r['compiler']['jax']==r['compiler']['jaxlib']=='0.4.35'
+        and r['compiler']['device']=='cuda:0' and not r['gpu']['errors']
+        and 0<r['gpu']['peak_used_mib']<.95*12288 and r['gpu']['samples']>0,'ARITH_CONTRACT')
+    for graph,hs in H4M6_ARITH_HLO.items():
+        for key,h in hs.items():
+            req(r['hlo'][graph][key+'_sha256']==h
+                and hashlib.sha256(r['hlo'][graph][key].encode()).hexdigest()==h,'ARITH_HLO')
+    lines=log.decode('utf8').splitlines(); rows=r['rows']
+    req(len(rows)==7408 and len(lines)==14817 and lines[-1]=='ARITHMETIC_CONFORMANCE_PASS','ARITH_LEDGER')
+    counts={'A':0,'B':0}; cases={'A':[],'B':[]}; seen={'A':set(),'B':set()}
+    for j,row in enumerate(rows):
+        graph=row['graph']; case=row['case']; counts[graph]+=1; cases[graph].append(case)
+        head=lines[2*j].split(' ',3)
+        req(head[:3]==['ATTEMPT',graph,str(counts[graph])] and json.loads(head[3])==case
+            and lines[2*j+1].startswith('ROW ') and json.loads(lines[2*j+1][4:])==row,'ARITH_LOG_ROW')
+        k=case[1]; eligible=case[2] and not case[3]
+        req(row['eligible']==eligible and row['bits']==row['reference']
+            and row['bits'][0]==f'{h4m6_native_factor(k,eligible,np).view(np.uint32).item():08x}','ARITH_FACTOR')
+        if eligible: seen[graph].add(k)
+    req(counts==r['recorded'] and all(seen[g]==set(range(1,51)) for g in counts)
+        and all(h4m3_digest(cases[g])==r['case_manifest'][g+'_sha256'] for g in counts),'ARITH_DOMAIN')
+    return {'artifact_sha256':dict(pins),'authorization':dict(a),'hlo_sha256':H4M6_ARITH_HLO,
+            'factor_contract':'rounded_reciprocal_float32_v1'}
+
+
 def h4m6_tech_inputs(args,auth):
     import m463_push_ppo_train as t
     from types import SimpleNamespace
@@ -7241,10 +7336,7 @@ def h4m6_tech_inputs(args,auth):
               'restore':t.H3_CAUSAL_RESTORE_SHA,'static':auth['static_sha256']}
     for k,p in paths.items():
         t.h4x_file_pin(p,expected[k])
-    for rel,expected_sha in H4M6_V1_STOP_PINS.items():
-        old=root/rel
-        h4m6_eval_require(old.absolute()==old.resolve(),'TECH_V1_ARCHIVE_PATH')
-        t.h4x_file_pin(old,expected_sha)
+    arithmetic=h4m6_read_arithmetic(root)
     h4m6_eval_require(auth['phase']=='tech' and args.output.resolve()==root/H4M6_TECH_OUTPUT,'TECH_PATH')
     pins=t.h4x_bootstrap(SimpleNamespace(checkpoint=paths['C401M'],
         restore_report=paths['restore'],h4_exploratory_reward_report=paths['reward']),
@@ -7256,7 +7348,8 @@ def h4m6_tech_inputs(args,auth):
     h4m6_eval_require(original==TRAIN_SHA and hashlib.sha256(gen.encode()).hexdigest()==auth['generated_sha256'],'GENERATED_PIN')
     return {'input_sha256':expected,'input_paths':{k:str(p.resolve()) for k,p in paths.items()},
             'bootstrap':pins,'source_sha256':auth['source_sha256'],'external':external,
-            'v1_stop_sha256':dict(H4M6_V1_STOP_PINS),'reward_scale_contract':'native_bool_float32_v2'}
+            'v1_stop_sha256':dict(H4M6_V1_STOP_PINS),'reward_scale_contract':'native_bool_float32_v2',
+            'arithmetic_evidence':arithmetic}
 
 def h4m6_runtime_gate(phase):
     # No source flag; current Rules has neither approval nor active marker.
@@ -7500,7 +7593,7 @@ def h4m6_technical_audit(report,*,partial=False):
                 and h4m6_verify_reward_scale(names,raw,scales,w,np),'TECH_REWARD_SCALE')
             req(all(np.isfinite(float(e[x])) for x in ('factor','raw_stand','shadow_stand',
                 'actual_stand','shadow_relief','delivered_relief','base_reward','expected_reward')),'TECH_FINITE')
-            factor=np.float32(1)-np.float32(.5)*np.float32(51-k)/np.float32(50) if e['eligible'] else np.float32(1)
+            factor=h4m6_native_factor(k,e['eligible'],np)
             req(bits(factor,e['factor']) and bits(raw[idx],e['actual_stand'])
                 and bits(w[idx],-f32(e['actual_stand']))
                 and bits(e['expected_reward'],row['reward']),'TECH_REWARD_ACCOUNTING')
