@@ -2328,7 +2328,8 @@ def h4cc_eval_authorization():
         r'([0-9a-f]{64}) ([0-9a-f]{64}) ([0-9a-f]{64}) ([0-9a-f]{64})',lines[0])
     h4cc_eval_require(m is not None,'AUTHORIZATION_SCHEMA')
     ident,source,ref,ccrc,archive=m.groups()
-    h4cc_eval_require(source==trainer.h4x_source_digest(H4_EVAL_ROOT)
+    identity=trainer.h4cc_source_identity(H4_EVAL_ROOT)
+    h4cc_eval_require(source==identity['current_sha256']
         and ref==trainer.h4cc_approved_sha(rules,'REF_REPORT')
         and ccrc==trainer.h4cc_approved_sha(rules,'CCRC_REPORT')
         and archive==H4CC_ARCHIVE_SHA,'AUTHORIZATION_BINDING')
@@ -2339,6 +2340,7 @@ def h4cc_read_inputs(args):
     """Read accepted files only, no policy restore, runtime or simulator."""
     import m463_push_ppo_train as trainer
     auth=h4cc_eval_authorization()
+    identity=trainer.h4cc_source_identity(H4_EVAL_ROOT)
     archive_path=H4_EVAL_ROOT/H4_EVAL_OUTPUT
     archive=h4cc_read_archive(archive_path)
     reports={}
@@ -2346,7 +2348,8 @@ def h4cc_read_inputs(args):
     for arm in ('ref','ccrc'):
         p=H4_EVAL_ROOT/trainer.H4CC_PATHS[arm]/'report.json'
         reports[arm]=trainer.h4cc_read_final_report(p,auth[arm+'_report_sha256'],arm,
-                         reports['ref']['h4_common_contract'] if arm=='ccrc' else None)
+                         reports['ref']['h4_common_contract'] if arm=='ccrc' else None,
+                         contract_arm='ref' if arm=='ccrc' else None)
         pins[arm+'/report.json']=auth[arm+'_report_sha256']
         for name in ('m463_brax_ppo_instrumented.py','attempt.json',
                      'dispatch.started.json','attempt_result.json'):
@@ -2356,8 +2359,8 @@ def h4cc_read_inputs(args):
                 pins[arm+'/'+name]=sha256(p.parent/name)
     ref,t=reports['ref'],reports['ccrc']
     a,b=ref['h4x_authorization'],t['h4x_authorization']
-    h4cc_eval_require(a=={**b,'arm':'ref','output':str(trainer.H4CC_PATHS['ref']),
-                          'evidence_sha256':b['technical_sha256']}
+    h4cc_eval_require(a==trainer.h4cc_matched_ref_authorization(b,identity)
+        and b['source_sha256']==auth['source_sha256']
         and b['evidence_sha256']==auth['ref_report_sha256'],'MATCHED_AUTHORIZATION')
     h4cc_eval_require(trainer.h4cc_matched_nominal(ref['h4_final_counts'],t['h4_final_counts'])
         and trainer.h4cc_exposure_decision(ref['h4cc_final_counts'],t['h4cc_final_counts'])
@@ -2374,7 +2377,7 @@ def h4cc_read_inputs(args):
         h4cc_eval_require(p.is_file() and not p.is_symlink() and sha256(p)==expected,
                           'ARCHIVE_HELPER '+name)
         pins['source/'+name]=expected
-    for name,expected in ref['h4_common_contract']['source_digests'].items():
+    for name,expected in identity['current_files'].items():
         p=H4_EVAL_ROOT/name
         h4cc_eval_require(p.is_file() and not p.is_symlink() and sha256(p)==expected,
                           'FRESH_HELPER '+name)
