@@ -2614,6 +2614,12 @@ def run(args):
     if SOURCE_PIN!=PIN:raise RuntimeError('M462_SOURCE_PIN_MISMATCH')
     sys.path.insert(0,str(BASE/'G1_M4_0_G1_PPO_ONE_UPDATE_SMOKE_V1'))
     from nvcc_compat import apply
+    if placement:
+        h4m3_no_runtime_imports()
+        h4m3_require(str(Path(inspect.getfile(apply)).resolve())==
+            args.h3_session['external_sources']['nvcc_compat']['path'] and
+            sha256(inspect.getfile(apply))==args.h3_session['external_sources']['nvcc_compat']['sha256'],
+            'NVCC_RUNTIME_PIN')
     print('M463_GATE3_NVCC',apply(),flush=True)
     import jax
     import jax.numpy as jnp
@@ -4766,8 +4772,11 @@ def h4m3_authorization():
     h4m3_require(p.is_file() and not p.is_symlink() and p.resolve()==p.absolute()
         and sha256(p)==auth['static_sha256'] and p.stat().st_size<=16*1024**2,
         'STATIC_LOG')
-    h4m3_require(('H4_M3_1_FULL_STATIC_PASS '+auth['source_sha256']) in
-                  p.read_text('utf8').splitlines(),'STATIC_ACCEPTANCE')
+    lines=p.read_text('utf8').splitlines()
+    h4m3_require(('H4_M3_1_FULL_STATIC_PASS '+auth['source_sha256']) in lines,
+                  'STATIC_ACCEPTANCE')
+    h4m3_require(('H4_M3_1_EXTERNAL_SHA256 '+h4m3_digest(h4m3_external_sources(root)))
+                  in lines,'STATIC_EXTERNAL_PIN')
     return auth
 
 
@@ -5366,6 +5375,19 @@ def h4m3_installed_mjx():
     return paths
 
 
+def h4m3_external_sources(root):
+    compat=Path(root).parent/'G1_M4_0_G1_PPO_ONE_UPDATE_SMOKE_V1/nvcc_compat.py'
+    h4m3_require(compat.is_file() and not compat.is_symlink(),'NVCC_COMPAT_FILE')
+    return {'nvcc_compat':{'path':str(compat.resolve()),'sha256':sha256(compat)},
+            'mjx':h4m3_installed_mjx()}
+
+
+def h4m3_no_runtime_imports():
+    h4m3_require(not any(n.split('.')[0] in
+        ('jax','jaxlib','brax','mujoco','mujoco_playground') for n in sys.modules),
+        'RUNTIME_PREIMPORTED')
+
+
 def h4m3_runtime_dependencies(session):
     from importlib.util import find_spec
     root=Path(session['brax_train_path']).resolve().parents[3]
@@ -5413,9 +5435,13 @@ def h4m3_write(path,report,initial=False):
     import shutil
     path=Path(path)
     h4m3_require(path.parent.is_dir() and not path.parent.is_symlink()
-        and shutil.disk_usage(path.parent).free>=2*1024**3,'REPORT_STORAGE')
+        and shutil.disk_usage(path.parent).free>=2*1024**3+H4M3_REPORT_CAP,'REPORT_STORAGE')
     data=(json.dumps(report,allow_nan=False,separators=(',',':'))+'\n').encode('utf8')
     h4m3_require(len(data)<=H4M3_REPORT_CAP,'FINAL_REPORT_CAP')
+    if 'lanes' in report:
+        overhead={**report,'lanes':[{**lane,'rich':[]} for lane in report['lanes']]}
+        h4m3_require(len(json.dumps(overhead,allow_nan=False,separators=(',',':')).encode())
+                     +1<=4*1024**2,'REPORT_METADATA_CAP')
     tmp=path.with_name(path.name+'.tmp')
     h4m3_require(not tmp.exists() and not tmp.is_symlink()
         and not path.is_symlink() and path.exists()!=initial,'REPORT_PATH')
@@ -5466,7 +5492,12 @@ def h4m3_enter_runtime(args):
     auth=h4m3_authorization()
     root=Path(__file__).resolve().parent
     session=getattr(args,'h3_session',None)
-    h4m3_require(args.output.resolve()==root/H4M3_OUTPUT and
+    h4m3_no_runtime_imports()
+    h4m3_require(not any(getattr(args,k,False) for k in ('h4cc_eval','h4cc_technical',
+        'h4_m1_eval','h4_technical','h3_m1_eval','h2a','h2b'))
+        and list(args.seeds)==[x[1] for x in H4M3_LANES] and list(args.profiles)==['stand']
+        and args.checkpoint_c==root/H4M3_BASE_POLICY
+        and args.output.resolve()==root/H4M3_OUTPUT and
         args.output.absolute()==root/H4M3_OUTPUT and session is not None
         and session['authorization']==auth and session['status']=='M470_H4M3_IN_PROGRESS'
         and session['attempted']==session['recorded']==session['resets_attempted']==0
@@ -5482,7 +5513,8 @@ def h4m3_enter_runtime(args):
         f.flush(); os.fsync(f.fileno())
     lanes,pins=h4m3_read_evidence(root,root/H4CC_EVAL_OUTPUT,
         args.h4m3_historical_archive,root/H4M3_BASE_POLICY)
-    h4m3_require(pins==session['input_sha256'] and h4m3_installed_mjx()==session['mjx_sources']
+    h4m3_require(pins==session['input_sha256'] and h4m3_external_sources(root)==session['external_sources']
+        and session['external_sources']['mjx']==session['mjx_sources']
         and h4m3_digest(h4m3_source_map(root))==auth['source_sha256'],'PRE_RUNTIME_PINS')
     args.h4m3_lanes=lanes
 
@@ -5497,14 +5529,18 @@ def h4m3_dispatch(args):
         and args.output.resolve()==root/H4M3_OUTPUT,'DISPATCH_PROTOCOL')
     lanes,pins=h4m3_read_evidence(root,root/H4CC_EVAL_OUTPUT,
         args.h4m3_historical_archive,root/H4M3_BASE_POLICY)
-    mjx_sources=h4m3_installed_mjx()
+    h4m3_no_runtime_imports()
+    external=h4m3_external_sources(root)
+    mjx_sources=external['mjx']
+    h4m3_require(os.environ.get('JAX_PLATFORMS')=='cuda','CUDA_ENV')
     h4m3_require(h4m3_digest(h4m3_source_map(root))==auth['source_sha256']
         and shutil.disk_usage(args.output.parent.parent).free>=2*1024**3+H4M3_REPORT_CAP,
         'PREFLIGHT_STORAGE_SOURCE')
     from m462_ppo_warmstart_run import GPUMonitor,sample_gpu
+    h4m3_no_runtime_imports()
     train_path=json.loads((root/H4CC_EVAL_OUTPUT).read_bytes())['brax_source_verification']['path']
     session={'status':'M470_H4M3_IN_PROGRESS','authorization':auth,'plan':json.loads(json.dumps(h4m3_plan())),
-        'input_sha256':pins,'mjx_sources':mjx_sources,'brax_train_path':train_path,
+        'input_sha256':pins,'mjx_sources':mjx_sources,'external_sources':external,'brax_train_path':train_path,
         'frame_columns':list(H4M3_COLUMNS),'lanes':[],'attempted':0,'recorded':0,
         'resets_attempted':0,'resets_recorded':0,'suffixes_attempted':0,
         'suffixes_recorded':0,'rich_recorded':0,'rich_bytes':0,
@@ -5526,7 +5562,7 @@ def h4m3_dispatch(args):
         session['gpu']=h3_gpu_check(monitor)
         h4m3_require(h4m3_authorization()==auth and
             h4m3_read_evidence(root,root/H4CC_EVAL_OUTPUT,args.h4m3_historical_archive,
-                root/H4M3_BASE_POLICY)[1]==pins and h4m3_installed_mjx()==mjx_sources
+                root/H4M3_BASE_POLICY)[1]==pins and h4m3_external_sources(root)==external
             and json.loads(marker.read_bytes())=={'authorization':auth}
             and json.loads((args.output.parent/'runtime.entered.json').read_bytes())
                 =={'authorization':auth},'POST_IMMUTABILITY')
