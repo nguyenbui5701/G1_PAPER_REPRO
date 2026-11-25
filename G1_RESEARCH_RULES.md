@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.108  
+**Version:** 1.2.109  
 **Ngày cập nhật:** 2026-11-25 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -1191,6 +1191,18 @@ Owner explicitly authorized one H4-M1-3 controlled recovery development evaluati
 
 **Decision:** ONE_H4_DEV_EVAL_GO / RUNTIME_PENDING; all independent holdout, readiness historical FAIL, production, promotion, H2C/B HOLD. DEV_PASS does not automatically authorize holdout. If adequate exposure and efficacy NO_GO reject package at this init/budget, no threshold tuning or new train.
 
+### M4.70-H4-M1-3 — ACTUAL CONTROLLED DEVELOPMENT TECH PASS / EFFICACY NO_GO / RELOCK (v1.2.109; 2026-11-25)
+
+Owner submitted complete bounded launcher log m470_h4_m1_3_dev_20261125_112023_483204541.log (17569 bytes SHA256 10d0ec57a7fa7d39c0c9aa33a55d9112041b54982b8394d5f87a7eb48322e05b) and raw report (55635389 bytes SHA256 32bf04d64bafd7e80b250b862493b54a7c8db6af1bcf1010bf0df984a904f40c); SA independently read/hashed both, report matches logged hash. Owner bounded collector/producer0/0, no error/overflow, stored=total17569. Log ff-only authorized HEAD01e60bd544a589b3b4a917f87f44dcf7a9ff1929 and helper origin/SHA, manifest dm_env, NVCC pin, installed original Brax train source without trainer import, paper config and final self-check PASS; report records JAX0.4.35, original reward/PD/termination, deterministic actor, no DR/source push/training/promotion. Actual evaluator SHA256 reported 1b91899664a326e45e847962b60121efa095b4dc46877dbbf31c586c4942f6ba; owner Git blob pre/post guard passed for authorized fd88d67e9eb02519736407234333e64e3310960c. All 23 report input digests independently compared equal to accepted owner static provenance log. Owner local binary/source checks are accepted evidence, not independent SA reads of all local binaries. Actual GPU initial502MiB, peak714/12288MiB,988 samples,0 errors. 49 overflow cast warnings and one XLA HLO lexer int literal parse error logged; completed without a recorded finite/operational gate failure, cause not established, not silently classified as harmless.
+
+**Independent offline raw audit:** Python/NumPy reconstructed 24 groups, 120 full logical traces from shared prefixes/suffixes, 46 scalar fields per row, finite and recorded finite flags, terminal source flag/contact consistency and end-of-trace rules, exact physical sum82073=attempted=recorded, all 24 ordered group/cumulative counters match log, cap89616. All 96 expected kicks exposed, verified recorded requested direction/magnitude against heading, actual vector max component error6.348241082809736e-08 m/s <=2e-6, magnitude and step checks PASS. Full-state/RNG fork is by reviewed construction, not independent recreation of hidden JAX state. Recomputed survival, XY/yaw RMSE, 2s/5s matched recovery boolean/time/comparability (10 consecutive within original bands, complete nonterminal windows), paired discordance, prepush support, common-prefix safety maxima, standing pose/XY/yaw/swing gates and all 37 hard violations across 29 distinct paired cases; matching recorded report. This is raw report-only analysis, not independent physics replay or exhaustive recomputation of every diagnostic field. No new GPU, simulation, PPO, optimizer, eval or checkpoint save by SA.
+
+**Frozen efficacy verdict NO_GO:** stand double survival CTRL6/8 CAND5/8, matched-single5s double recovery6/8 vs5/8, both gain-1 vs required+2; no ceiling, common standing windows4 nominal/7 single/5 double meet minima. Primary paired survival and recovery discordance BOTH5 CTRL_ONLY1 CAND_ONLY0 NEITHER2. Nominal survival12/12 each but four per-case nominal tracking violations (7357 turn_left yaw+7.36%; 7613 forward_fast XY+6.77%; 7613 turn_left XY+5.37%, yaw+6.17%). Single survival stand7/7, forward7/8, turn7/7; double survival stand6/5, forward8/8, turn7/7 (CTRL/CAND of8). No lost single or moving double survival. Moving double recovery5 forward7/8, turn3/5, positive net gains but do not override primary/safety. Stand single recovery2 3/8 vs1/8, stand double recovery2 4/8 vs3/8; stand single recovery5 both7/8. 37 hard failures: ctrl-limit excess25, joint-limit excess5, nominal yaw2/XY2, standing yaw1/pose1, new critical foot-foot1; no force-limit or swing gate violations. Worst common-prefix joint-excess regression .02122605 -> .06031087 at7331 stand double right; ctrl-excess .10653317 -> .13779438 at7331 stand double left. These are relative evaluator metrics, not claims of measured hardware damage.
+
+**Failure localization:** 12 terminated logical trajectories (CTRL6/CAND6), all recorded cause_foot_foot only. New paired failure7331 stand double right: CTRL survives1000, CAND terminates379 (45th post-second-push tick, .90s including event tick); both have double support at334, same phase, but not identical physical state across policies. Candidate foot-center 3D distance .1844m at334 -> .0728m at379, signed contact distance-.0077m at terminal, tilt22.53deg; CTRL at379 distance .3892m and survives. Shared failures7601 stand double right CTRL367/CAND369 with right-only support at334, 7613 stand double left CTRL370/CAND372 with left-only support at334; all foot-foot. Both arms fail7601 turn_left right single/double and7613 stand left single; Control-only forward_fast single right7601 terminates419. This establishes contact termination and observed geometric convergence, not causality of specific reward, scheduler, action, actuator or phase. Support state is endogenous; do not infer randomized subgroup causal effect.
+
+**Decision:** H4-M1-3 technical completion PASS, efficacy NO_GO; reject current H4 curriculum package at frozen C401M init/seed1/budget10M despite accepted exposure floors. Not a verdict on all PPO/curricula or whether larger budget would succeed. No holdout (DEV_PASS absent), no repeat training/evaluation, no checkpoint promotion or retuning. Consumed GO restored exact H4_EVAL_EXECUTION_AUTHORIZED=False, evaluator blob72859117bf990f106a6adebec42d1b0493ade220 at relock commit8f87e31afb4bd151a8d61e8b51451058a026630e; no other executable changes or threshold changes. Preserve full raw report/log and checkpoints, no new repo files. Next proposed task H4-M1-4 offline failure mechanism / capability-map review only: exploit existing H4 raw traces and training exposure/tail report, compare prior C401M/OLD/H3 archived evidence where available with explicit cross-run limitations, characterize foot-foot geometry, same-side support, action/ctrl/joint excess and nominal tracking tradeoff; decide whether new hypothesis is warranted, no simulation/optimizer/holdout and no new reward or network design authorization. Keep H3 NO_GO, readiness historical FAIL, all production/promotion, H2C/B HOLD.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -1452,6 +1464,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-25)
+
+**H4-M1-3 ACTUAL DEV TECH PASS / EFFICACY NO_GO (v1.2.109):** report32bf04d6/log10d0ec57, 120 logical/82073 physical, all96 kicks, GPU714MiB, raw core gate recomputation confirms stand double survival/recovery5 CTRL6 CAND5 and37 hard failures/29 cases. Exposure adequate but current package rejected at init/seed/budget. Evaluator relocked exact prior blob72859117, no holdout/PPO/production/promotion. Next proposed offline failure-mechanism review only.
 
 **H4-M1-3 ONE DEV EVALUATION GO (v1.2.108):** explicit owner authorization, only evaluator flag enabled (blobfd88d67e; reverse-normalized exact held source), fixed final CTRL/CAND and120 logical/89616 cap, exclusive output, no retry. Actual owner runtime pending; all PPO, independent holdout/readiness/production/promotion HOLD.
 
@@ -2025,6 +2039,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-25 | H4-M1-3 actual controlled development review | report32bf04d6, log10d0ec57, 120 logical/82073 physical; raw audit96 kicks, primary6->5 both, 37 hard violations/29 cases | v1.2.109 TECH PASS / NO_GO; consumed GO relocked, offline failure mechanism next proposed only | 1.2.109 |
+
 | 2026-11-25 | H4-M1-3 one controlled development execution GO | re-reviewed source/bootstrap, one flag change, accepted owner static log0e99f14e | v1.2.108 one dev evaluation authorized, runtime pending, no PPO/save | 1.2.108 |
 
 | 2026-11-25 | H4-M1-3 actual offline review | owner log0e99f14e, full compile, 23-pin provenance, H4/H3 plans and interlocks PASS | v1.2.107 offline CLOSED/PASS; separate explicit evaluation GO pending; execution HOLD | 1.2.107 |
@@ -2306,6 +2322,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.109 — 2026-11-25:** Accept actual bounded controlled development technical evidence, independent raw core gate audit confirms NO_GO; reject current curriculum at frozen init/budget, relock consumed evaluation GO, holdout/PPO/readiness/production/promotion HOLD.
 
 - **v1.2.108 — 2026-11-25:** Record explicit one-run H4 controlled development GO; minimal evaluator flag only, frozen source/inputs/gates/budget and exclusive output, owner runtime pending, all PPO/holdout/readiness/production/promotion HOLD.
 
