@@ -4019,11 +4019,12 @@ def h4cc_tech_fixture_values(fixture):
             'h4_tail_kind':1,'h4_tail_cell':0,'h4_tail_age':age-first-1,
             'h4_tail_same':1,'h4_tail_motion':0}
 
-def h4cc_tech_audit(report):
+def h4cc_tech_audit(report,*,partial=False):
     """Pure replay of bounded raw rows. No JAX, simulator or policy import."""
     h4cc_tech_require(report['spec']==H4CC_TECH_SPEC,'SPEC')
     lanes=report['lanes']
-    h4cc_tech_require(len(lanes)==report['reset_lanes_attempted']==report['reset_lanes_recorded']==8,'RESET_LEDGER')
+    h4cc_tech_require(len(lanes)==report['reset_lanes_attempted']==report['reset_lanes_recorded']
+        and (0<len(lanes)<=8 if partial else len(lanes)==8),'RESET_LEDGER')
     stand=[0.,0.,0.]
     commands=[stand,[.2,0.,0.],[.6,0.,0.],[.4,0.,.8],[.4,0.,-.8],[0.,.35,0.]]
     # Compare exact float32 values by accepting only their canonical encodings.
@@ -4033,6 +4034,7 @@ def h4cc_tech_audit(report):
     for index,fixture in enumerate(H4CC_TECH_FIXTURES):
         seed,cls,direction,first,target,age,clock=fixture
         pair=lanes[index*2:index*2+2]
+        if not pair:break
         for arm,lane in zip(('ref','ccrc'),pair):
             h4cc_tech_require(lane['arm']==arm and lane['fixture']==list(fixture)
                 and lane['metadata']==h4cc_tech_fixture_values(fixture)
@@ -4119,8 +4121,10 @@ def h4cc_tech_audit(report):
                 req(row['next_source_clock']==source_clock,'SOURCE_CLOCK')
                 command,actor,critic=delivered,next_obs,next_obs
                 last_key=row['rng_after'];last_sha=row['post_sha256']
-            h4cc_tech_require(rows[-1]['metrics']['terminal']==1 or len(rows)==252,'SHORT_LANE')
+            h4cc_tech_require(rows[-1]['metrics']['terminal']==1 or len(rows)==252 or
+                (partial and lane is lanes[-1]),'SHORT_LANE')
             h4cc_tech_require(lane['physical_attempted']==lane['physical_recorded']==len(rows),'LANE_LEDGER')
+        if len(pair)<2:continue
         a,b=pair
         h4cc_tech_require(a['initial_sha256']==b['initial_sha256'] and
             a['initial_rng']==b['initial_rng'] and a['model_sha256']==b['model_sha256'],
@@ -4137,14 +4141,14 @@ def h4cc_tech_audit(report):
                 matched=False
             else:
                 h4cc_tech_require(x['post_sha256']==y['post_sha256'],'MATCHED_STATE')
-        if matched:
+        if matched and (not partial or b['rows'][-1]['metrics']['terminal']==1 or len(b['rows'])==252):
             h4cc_tech_require(len(a['rows'])==len(b['rows']),'MATCHED_LENGTH')
         if cls==1:
             h4cc_tech_require(matched,'BROAD_NON_TARGET')
             broad+=1
     h4cc_tech_require(total==report['physical_transitions_attempted']==report['physical_transitions_recorded']
         and 0<total<=2016,'PHYSICAL_LEDGER')
-    passed=distinct_release>0 and broad==1
+    passed=not partial and distinct_release>0 and broad==1
     return {'passed':passed,'decision':'PASS' if passed else 'INCONCLUSIVE',
         'different_draw_release_followed_by_action':distinct_release,'broad_pairs':broad,
         'no_refresh_completed':no_refresh_completed,'terminal_lanes':terminal_lanes,
@@ -4165,10 +4169,19 @@ def h4cc_tech_read_report(path,expected_sha,source,generated):
             'restore':t.H3_CAUSAL_RESTORE_SHA,'static':a['static_sha256']}
         and r['brax_source']['sha256']==TRAIN_SHA and r['jax_version']=='0.4.35'
         and r['training_performed'] is False and r['efficacy_evaluated'] is False
+        and r['promotion_authorized'] is False and r['further_training_authorized'] is False
         and r['ppo_steps']==r['optimizer_updates']==r['evaluation_transitions']==r['checkpoint_saves']==0
         and r['policy_sha256_before']==r['policy_sha256_after']
         and r['gpu']['total_mib']==12288 and 0<r['gpu']['peak_used_mib']<.95*12288
         and r['gpu']['samples']>0 and not r['gpu']['sampler_errors'],'REPORT_PROVENANCE')
+    h4cc_tech_require(set(r['brax_dependencies'])==set(t.H4C_BRAX_BLOBS),'DEPENDENCY_SCHEMA')
+    from m463_instrument_brax import h4c_git_blob
+    root=Path(r['brax_source']['path']).resolve().parents[3]
+    t.h4x_file_pin(Path(r['brax_source']['path']),TRAIN_SHA)
+    for name,blob in t.H4C_BRAX_BLOBS.items():
+        p=root.joinpath(*name.split('.')[1:]).with_suffix('.py')
+        h4cc_tech_require(r['brax_dependencies'][name]=={'path':str(p),'blob':blob}
+            and p.is_file() and h4c_git_blob(p.read_bytes())==blob,'REPORT_DEP '+name)
     rules=(H4_EVAL_ROOT/'G1_RESEARCH_RULES.md').read_text('utf8')
     h4cc_tech_require(t.h4cc_approved_sha(rules,'TECH_STATIC')==a['static_sha256'],'STATIC_APPROVAL')
     for name,value in (('attempt.json',{'authorization':a,'reserved':True}),
@@ -4177,6 +4190,7 @@ def h4cc_tech_read_report(path,expected_sha,source,generated):
         p=path.parent/name
         h4cc_tech_require(p.is_file() and not p.is_symlink() and
             json.loads(p.read_bytes())==value,'ATTEMPT '+name)
+    h4cc_tech_require(set(r['provenance']['input_paths'])==set(r['provenance']['input_sha256']),'INPUT_PATH_SCHEMA')
     for k,p in r['provenance']['input_paths'].items():
         t.h4x_file_pin(Path(p),r['provenance']['input_sha256'][k])
     audit=h4cc_tech_audit(r)
@@ -4184,9 +4198,21 @@ def h4cc_tech_read_report(path,expected_sha,source,generated):
     return r
 
 def h4cc_tech_actual(args,r,monitor,persist):
-    # Only reached after exclusive reservation and separately approved marker.
-    import copy
+    # Independent one-use dispatch check BEFORE runtime imports.
     import m463_push_ppo_train as t
+    auth=h4cc_tech_authorization()
+    h4cc_tech_require(args.output.resolve()==H4_EVAL_ROOT/H4CC_TECH_OUTPUT
+        and r['authorization']==auth and r['status']=='M470_H4CC_TECH_IN_PROGRESS'
+        and r['lanes']==[] and all(r[k]==0 for k in ('physical_transitions_attempted',
+            'physical_transitions_recorded','reset_lanes_attempted','reset_lanes_recorded'))
+        and r['provenance']==h4cc_tech_inputs(args,auth),'DISPATCH_CONTRACT')
+    reservation=args.output.parent/'attempt.json'
+    h4cc_tech_require(reservation.is_file() and not reservation.is_symlink()
+        and json.loads(reservation.read_bytes())=={'authorization':auth,'reserved':True}
+        and args.output.is_file() and not args.output.is_symlink()
+        and json.loads(args.output.read_bytes())==r,'DISPATCH_RESERVATION')
+    t.h4x_write_json(args.output.parent/'dispatch.started.json',{'authorization':auth},exclusive=True)
+    import copy
     from train import check_source,build_paper_config
     from paper_config import BASE,ENV,PIN as SOURCE_PIN
     check_source()
@@ -4209,9 +4235,16 @@ def h4cc_tech_actual(args,r,monitor,persist):
         and jax.process_count()==jax.local_device_count()==1,'GPU_RUNTIME')
     r['jax_version']=jax.__version__;r['brax_source']=h3_verify_brax_train_source(networks)
     root=Path(r['brax_source']['path']).parents[3]
+    from importlib.util import find_spec
+    deps={}
     for name,blob in t.H4C_BRAX_BLOBS.items():
         p=root.joinpath(*name.split('.')[1:]).with_suffix('.py')
-        h4cc_tech_require(p.is_file() and h4c_git_blob(p.read_bytes())==blob,'BRAX_DEP '+name)
+        spec=find_spec(name)
+        h4cc_tech_require(spec is not None and spec.origin is not None and
+            Path(spec.origin).resolve()==p and p.is_file() and
+            h4c_git_blob(p.read_bytes())==blob,'BRAX_DEP '+name)
+        deps[name]={'path':str(p),'blob':blob}
+    r['brax_dependencies']=deps
     h4cc_tech_require(h4c_git_blob((root/'envs/wrappers/training.py').read_bytes())==
         '2c09c8268a29d14c832dd07050575e4541ee98af','EPISODE_WRAPPER')
     h4cc_tech_require(h4c_git_blob(Path(wrapper.__file__).read_bytes())==
@@ -4248,9 +4281,13 @@ def h4cc_tech_actual(args,r,monitor,persist):
     h4cc_tech_require(randomizer is not None,'DR')
     # Raw finite checks BEFORE the pinned AutoReset replaces terminal data.
     class RawAudit(wrapper.Wrapper):
+        def raw(self,st):
+            return (st.data.qpos,st.data.qvel,st.data.qacc,st.data.ctrl,
+                st.data.actuator_force,st.data.sensordata,st.obs['state'],st.obs['privileged_state'])
         def reset(self,rng):
             st=self.env.reset(rng)
-            return st.replace(info={**st.info,'h4cc_tech_raw_finite':jp.ones_like(st.done,dtype=jp.bool_)})
+            return st.replace(info={**st.info,'h4cc_tech_raw_finite':jp.ones_like(st.done,dtype=jp.bool_),
+                                    'h4cc_tech_raw':self.raw(st)})
         def step(self,st,act):
             nxt=self.env.step(st,act)
             finite=jp.ones_like(nxt.done,dtype=jp.bool_)
@@ -4258,7 +4295,7 @@ def h4cc_tech_actual(args,r,monitor,persist):
                 nxt.data.actuator_force,nxt.data.sensordata,nxt.obs['state'],
                 nxt.obs['privileged_state'],nxt.reward,act):
                 finite=finite & jp.all(jp.isfinite(x).reshape((1,-1)),axis=1)
-            return nxt.replace(info={**nxt.info,'h4cc_tech_raw_finite':finite})
+            return nxt.replace(info={**nxt.info,'h4cc_tech_raw_finite':finite,'h4cc_tech_raw':self.raw(nxt)})
     def state_digest(st):
         # Only additive CCRC metadata omitted; all common state bytes compared.
         return digest_tree(st.replace(info={k:v for k,v in st.info.items()
@@ -4353,12 +4390,14 @@ def h4cc_tech_actual(args,r,monitor,persist):
                     rng_after=vec(nxt.info['rng']),next_source_clock=scalar(nxt.info['step']),
                     magnitude=float(host(nxt.info['m463_magnitude'])[0]),
                     delta=[float(host(nxt.info[k])[0]) for k in ('h4_actual_dx','h4_actual_dy')],
-                    action_sha256=digest_tree(action),physics_sha256=digest_tree((nxt.data,nxt.reward,nxt.metrics)),
+                    action_sha256=digest_tree(action),physics_sha256=digest_tree((nxt.data,nxt.reward,nxt.metrics,
+                        nxt.info['h4cc_tech_raw'][:6])),
                     post_sha256=state_digest(nxt))
                 lane['rows'].append(row);lane['physical_recorded']+=1
                 r['physical_transitions_recorded']+=1;persist()
                 h4cc_tech_require(finite and not m['bad'] and not m['cc_bad'] and not m['truncation']
                     and row['rng_after']==row['expected_rng'],'LIVE_CONTRACT')
+                h4cc_tech_audit(r,partial=True)
                 st=nxt
                 if m['terminal']:break
     r['policy_sha256_after']=digest_tree(params)
@@ -4370,26 +4409,28 @@ def h4cc_tech_run(args):
     import m463_push_ppo_train as t
     auth=h4cc_tech_authorization()
     provenance=h4cc_tech_inputs(args,auth)
+    h4cc_tech_require(args.mode=='run' and getattr(args,'h4cc_technical',False)
+        and args.output.absolute()==H4_EVAL_ROOT/H4CC_TECH_OUTPUT
+        and args.output.resolve()==H4_EVAL_ROOT/H4CC_TECH_OUTPUT,'RUN_PATH')
     out=args.output.parent
     h4cc_tech_require(out.parent.is_dir() and not out.parent.is_symlink()
         and not out.exists() and not out.is_symlink(),'OUTPUT_CONSUMED')
     t.h4x_storage(out,initial=True)
     out.mkdir(exist_ok=False)
     t.h4x_write_json(out/'attempt.json',{'authorization':auth,'reserved':True},exclusive=True)
-    t.h4x_write_json(out/'dispatch.started.json',{'authorization':auth},exclusive=True)
     r={'status':'M470_H4CC_TECH_IN_PROGRESS','spec':H4CC_TECH_SPEC,'authorization':auth,
         'provenance':provenance,'source_commit':PIN,'lanes':[],
         'physical_transitions_attempted':0,'physical_transitions_recorded':0,
         'reset_lanes_attempted':0,'reset_lanes_recorded':0,'training_performed':False,
-        'efficacy_evaluated':False,'ppo_steps':0,'optimizer_updates':0,
-        'evaluation_transitions':0,'checkpoint_saves':0,'passed':False}
+        'efficacy_evaluated':False,'promotion_authorized':False,'further_training_authorized':False,
+        'ppo_steps':0,'optimizer_updates':0,'evaluation_transitions':0,'checkpoint_saves':0,'passed':False}
     def persist():t.h4x_write_json(args.output,r)
     t.h4x_write_json(args.output,r,exclusive=True)
     try:
         from m462_ppo_warmstart_run import GPUMonitor,sample_gpu
         gpu=sample_gpu()
         h4cc_tech_require(gpu['total_mib']==12288 and 0<=gpu['used_mib']<.95*12288,'GPU_PREFLIGHT')
-        r['gpu_initial']=gpu
+        r['gpu_initial']=gpu;persist()
         monitor=GPUMonitor()
         with monitor:
             h4cc_tech_actual(args,r,monitor,persist)
