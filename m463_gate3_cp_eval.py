@@ -2299,10 +2299,14 @@ def h4cc_pair_decisions(archive, fresh):
     incremental=view([g for g in fresh['groups'] if g['policy']=='REF'],'FRESH_REF')
     o=official['decision']; i=incremental['decision']
     primary=i['primary_stand_double']
-    result=('NO_GO' if o['decision']=='NO_GO' or i['hard_failures'] else
-            'INCONCLUSIVE' if o['decision']!='DEV_PASS' or i['missing_standing_windows']
-            or any(v['CTRL']==8 for v in primary.values()) else
-            'DEV_PASS' if all(v['gain']>=1 for v in primary.values()) else 'NO_GO')
+    incremental_result=('NO_GO' if i['hard_failures'] else
+        'INCONCLUSIVE' if any(v['CTRL']==8 for v in primary.values()) else
+        'NO_GO' if not all(v['gain']>=1 for v in primary.values()) else
+        'INCONCLUSIVE' if i['missing_standing_windows'] else 'DEV_PASS')
+    result=('NO_GO' if o['decision']=='NO_GO' or incremental_result=='NO_GO' else
+            'DEV_PASS' if o['decision']==incremental_result=='DEV_PASS' else 'INCONCLUSIVE')
+    incremental['incremental_decision']=incremental_result
+    incremental['frozen_plus_two_decision_informational']=i['decision']
     return {'decision':result,'official':official,'incremental':incremental,
             'archived_ctrl_physical':H4CC_ARCHIVE_CTRL_PHYSICAL,
             'new_physical':fresh['physical_transitions_recorded'],
@@ -2542,8 +2546,10 @@ def h4e_run(args):
             run(args)
         report['gpu']=h3_gpu_check(monitor)
         if cc:
+            marker=args.output.parent/'dispatch.started.json'
             h4cc_eval_require(h4cc_eval_authorization()==auth and
-                h4cc_read_inputs(args)[0]==pins,'INPUT_IMMUTABILITY')
+                h4cc_read_inputs(args)[0]==pins and marker.is_file() and not marker.is_symlink()
+                and json.loads(marker.read_bytes())=={'authorization':auth},'INPUT_IMMUTABILITY')
         else:
             h4e_require(h4e_read_inputs(args)==pins,'INPUT_IMMUTABILITY')
         h4e_require(report['logical_trajectories_completed']==H4_EVAL_LOGICAL
@@ -2573,7 +2579,13 @@ def run(args):
         session=getattr(args,'h3_session',None)
         h4cc_eval_require(session is not None and session['authorization']==auth
             and args.output.is_file() and not args.output.is_symlink()
+            and session['status']=='M470_H4CC_EVAL_IN_PROGRESS'
+            and session['physical_transitions_attempted']==session['physical_transitions_recorded']
+                ==session['logical_trajectories_completed']==0 and session['groups']==[]
             and h4cc_read_inputs(args)[0]==session['input_sha256'],'SESSION_PROVENANCE')
+        # Independent exclusive dispatch reservation, before runtime imports.
+        with (args.output.parent/'dispatch.started.json').open('x',encoding='utf8') as f:
+            json.dump({'authorization':auth},f,sort_keys=True,allow_nan=False)
     elif h4_mode:
         h4e_require(H4_EVAL_EXECUTION_AUTHORIZED is True,'EXECUTION_HOLD')
         h4e_validate_protocol(args)
@@ -2603,6 +2615,18 @@ def run(args):
         if cc:
             h4cc_eval_require(args.h3_session['brax_source_verification']==args.h4cc_archive['brax_source_verification'],
                               'RUNTIME_BRAX_EQUIVALENCE')
+            from importlib.util import find_spec
+            deps=args.h3_session['input_sha256']
+            root=Path(args.h3_session['brax_source_verification']['path']).resolve().parents[3]
+            for key,expected in deps.items():
+                if not key.startswith('dependency/') or key=='dependency/episode_wrapper':
+                    continue
+                name=key.removeprefix('dependency/')
+                spec=find_spec(name)
+                intended=root.joinpath(*name.split('.')[1:]).with_suffix('.py')
+                h4cc_eval_require(spec is not None and spec.origin is not None and
+                    Path(spec.origin).resolve()==intended and sha256(intended)==expected,
+                    'RUNTIME_DEPENDENCY '+name)
         print('M470_H4_EVAL_BRAX_SOURCE_PASS' if h4_mode else 'M470_H3_EVAL_BRAX_SOURCE_PASS',
               args.h3_session['brax_source_verification'],flush=True)
     else:
