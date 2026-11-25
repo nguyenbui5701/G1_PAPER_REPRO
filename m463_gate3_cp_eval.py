@@ -4042,7 +4042,7 @@ def h4cc_tech_audit(report,*,partial=False):
             rows=lane['rows']
             h4cc_tech_require(1<=len(rows)<=252,'LANE_LENGTH')
             total+=len(rows)
-            active=False; pending=None; held=stand; same=True
+            active=False; pending=None; held=stand; same=True; event_side=0
             command=actor=critic=stand; source_clock=clock
             last_key=lane['initial_rng']; last_sha=lane['initial_sha256']
             for i,row in enumerate(rows):
@@ -4064,6 +4064,7 @@ def h4cc_tech_audit(report,*,partial=False):
                 scope=start or tick
                 req(m['event']==m['repeat']==int(i==0) and m['start']==int(start)
                     and m['mature']==int(start) and m['refresh']==int(refresh)
+                    and m['source_terminal']==m['terminal']
                     and m['boundary']==m['truncation']==m['bad']==m['cc_bad']==0
                     and m['age']==age+i and m['wrapper_steps']==age+i+1,'SCHEDULER')
                 if i==0:
@@ -4074,6 +4075,8 @@ def h4cc_tech_audit(report,*,partial=False):
                         and m['side_fallback']==1-m['side_matched']
                         and lo<=row['magnitude']<=hi
                         and abs(math.hypot(*row['delta'])-row['magnitude'])<=3e-6,'EVENT')
+                    event_side=direction-1 if start and m['side_matched'] else 0
+                    req(m['event_qual']==event_side,'EVENT_QUALIFICATION')
                 else:
                     req(row['magnitude']==0 and row['delta']==[0.,0.],'EXTRA_PUSH')
                 exact=(command==actor==critic==held)
@@ -4102,7 +4105,8 @@ def h4cc_tech_audit(report,*,partial=False):
                     'deferred':defer,'published':publish,'terminal_restored':restore,
                     'active':keep,'pending_valid':arm=='ccrc' and keep and pending is not None}
                 req(all(m[k]==int(v) for k,v in expect.items()) and
-                    m['tick_age']==(i if tick else 0),'TAIL_ACCOUNTING')
+                    m['tick_age']==(i if tick else 0) and m['tick_side']==(event_side if tick else 0)
+                    and m['event_side']==event_side,'TAIL_ACCOUNTING')
                 if publish and delivered!=held:
                     # Completion alone is insufficient: observe the next physical action.
                     if i+1<len(rows) and rows[i+1]['pre']==rows[i+1]['actor']==rows[i+1]['critic']==delivered:
@@ -4141,6 +4145,8 @@ def h4cc_tech_audit(report,*,partial=False):
                 matched=False
             else:
                 h4cc_tech_require(x['post_sha256']==y['post_sha256'],'MATCHED_STATE')
+        if matched:
+            h4cc_tech_require(len(b['rows'])<=len(a['rows']),'MATCHED_PREFIX_LENGTH')
         if matched and (not partial or b['rows'][-1]['metrics']['terminal']==1 or len(b['rows'])==252):
             h4cc_tech_require(len(a['rows'])==len(b['rows']),'MATCHED_LENGTH')
         if cls==1:
@@ -4182,6 +4188,12 @@ def h4cc_tech_read_report(path,expected_sha,source,generated):
         p=root.joinpath(*name.split('.')[1:]).with_suffix('.py')
         h4cc_tech_require(r['brax_dependencies'][name]=={'path':str(p),'blob':blob}
             and p.is_file() and h4c_git_blob(p.read_bytes())==blob,'REPORT_DEP '+name)
+    h4cc_tech_require(set(r['wrapper_pins'])=={'episode','autoreset'},'WRAPPER_SCHEMA')
+    for k,blob in (('episode','2c09c8268a29d14c832dd07050575e4541ee98af'),
+                   ('autoreset','62e2823b80b692befe29e4640d0b7a816e52271c')):
+        item=r['wrapper_pins'][k];p=Path(item['path'])
+        h4cc_tech_require(item['blob']==blob and p.is_file() and
+            h4c_git_blob(p.read_bytes())==blob,'REPORT_WRAPPER '+k)
     rules=(H4_EVAL_ROOT/'G1_RESEARCH_RULES.md').read_text('utf8')
     h4cc_tech_require(t.h4cc_approved_sha(rules,'TECH_STATIC')==a['static_sha256'],'STATIC_APPROVAL')
     for name,value in (('attempt.json',{'authorization':a,'reserved':True}),
@@ -4245,6 +4257,9 @@ def h4cc_tech_actual(args,r,monitor,persist):
             h4c_git_blob(p.read_bytes())==blob,'BRAX_DEP '+name)
         deps[name]={'path':str(p),'blob':blob}
     r['brax_dependencies']=deps
+    r['wrapper_pins']={'episode':{'path':str(root/'envs/wrappers/training.py'),
+        'blob':'2c09c8268a29d14c832dd07050575e4541ee98af'},'autoreset':{
+        'path':str(Path(wrapper.__file__).resolve()),'blob':'62e2823b80b692befe29e4640d0b7a816e52271c'}}
     h4cc_tech_require(h4c_git_blob((root/'envs/wrappers/training.py').read_bytes())==
         '2c09c8268a29d14c832dd07050575e4541ee98af','EPISODE_WRAPPER')
     h4cc_tech_require(h4c_git_blob(Path(wrapper.__file__).read_bytes())==
@@ -4302,11 +4317,12 @@ def h4cc_tech_actual(args,r,monitor,persist):
                                             if not k.startswith('h4cc_')}))
     metric_keys={'event':'m463_event','repeat':'m463_repeat','mature':'h4_mature_repeat',
         'refresh':'h4_refresh','bad':'h4_bad','cc_bad':'h4cc_bad','age':'h4_age',
+        'source_terminal':'h4_source_terminal','event_qual':'h4_event_qual',
         'boundary':'h4_boundary','truncation':'truncation','wrapper_steps':'steps',
         'gap':'m463_repeat_gap','direction':'m463_direction','support':'m463_support_side',
         'side_target':'m463_repeat_side_target','side_matched':'m463_repeat_side_matched',
         'side_fallback':'m463_repeat_side_fallback'}
-    for k in ('start','event_terminal','tick','tick_age','tick_same','tick_survived',
+    for k in ('start','event_terminal','tick','tick_age','tick_side','event_side','tick_same','tick_survived',
         'tail_terminal','completed','sample_same','sample_different','deferred','published',
         'terminal_restored','active','pending_valid'):
         metric_keys[k]='h4cc_'+k
