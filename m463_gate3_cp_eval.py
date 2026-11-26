@@ -11429,10 +11429,13 @@ def h4m12_static(root):
     allowed={'main','run','h3_group'}
     a,b=defs(old),defs(new)
     h4m12_req(all(b.get(k)==v for k,v in a.items() if k not in allowed),'LEGACY_AST')
-    def one_step(tree):
-        n=[n for n in ast.walk(tree) if isinstance(n,ast.FunctionDef) and n.name=='one_step']
-        return [ast.dump(x,include_attributes=False) for x in n]
-    h4m12_req(one_step(old)==one_step(new),'STEP_GRAPH')
+    def extract_step_graph(tree):
+        runs=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='run']
+        h4m12_req(len(runs)==1,'STEP_GRAPH_RUN_COUNT')
+        steps=[n for n in ast.walk(runs[0]) if isinstance(n,ast.FunctionDef) and n.name=='one_step']
+        h4m12_req(len(steps)==1,'STEP_GRAPH_COUNT')
+        return ast.dump(steps[0],include_attributes=False)
+    h4m12_req(extract_step_graph(old)==extract_step_graph(new),'STEP_GRAPH')
     pins,archive,ext=h4m12_inputs(root)
     source=h4m12_source(root);prov=h4m3_digest([pins,ext])
     marker='H4M12_EVAL_ACTIVE_GO: H4-M12-DEV-V1 '+str(H4M12_EVAL_OUTPUT)+' '+source+' '+prov+' m463_runs/m470_h4m12_dev_static_fixture.log '+'a'*64
@@ -11441,6 +11444,17 @@ def h4m12_static(root):
         try:fn()
         except (RuntimeError,ValueError,KeyError,TypeError):return
         raise RuntimeError('M470_H4M12_STATIC_NEGATIVE_ACCEPTED')
+    # Focused host-only verifier regressions: unrelated names are ignored,
+    # but real graph edits and missing/ambiguous graph definitions fail closed.
+    sample='def run():\n    def one_step(state):\n        return state\n'
+    base_graph=extract_step_graph(ast.parse(sample))
+    h4m12_req(extract_step_graph(ast.parse(sample+'\ndef one_step(tree): pass\n'))==base_graph,
+                'STATIC_STEP_SCOPE')
+    rejects(lambda:h4m12_req(extract_step_graph(ast.parse(sample.replace('return state','return None')))
+                             ==base_graph,'STEP_GRAPH'))
+    rejects(lambda:extract_step_graph(ast.parse('def run(): pass')))
+    rejects(lambda:extract_step_graph(ast.parse(sample+'    def one_step(state): pass\n')))
+    rejects(lambda:extract_step_graph(ast.parse(sample+'\ndef run(): pass\n')))
     for bad in ('',marker+'\n'+marker,marker+'\nH4X_ACTIVE_GO: bad',marker[:-1],
                 marker.replace(str(H4M12_EVAL_OUTPUT),'m463_runs/other/report.json')):
         rejects(lambda:h4m12_parse_eval_marker(bad))
