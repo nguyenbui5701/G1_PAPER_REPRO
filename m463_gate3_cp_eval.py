@@ -9067,6 +9067,212 @@ def h4m7_numeric_screen(values,meta,parent,np):
         'native_derivative_verified':False}
 
 
+
+def h4m7_model_meta(model,data,np):
+    # Only existing returned/reset data and immutable model metadata.
+    counts={k:int(getattr(data,k)) for k in ('ne','nf','nl','nefc','ncon')}
+    dims={k:int(getattr(model,k)) for k in ('nv','nu','nbody','nM','ngeom')}
+    meta={**counts,**dims,'storage':'sparse' if len(data.qM.shape)==1 else 'dense',
+        'cone':'pyramidal' if int(model.opt.cone)==0 else 'other',
+        'eulerdamp_disabled':bool(int(model.opt.disableflags)&16384),
+        'disableflags':int(model.opt.disableflags),'solver':int(model.opt.solver),
+        'iterations':int(model.opt.iterations),'ls_iterations':int(model.opt.ls_iterations),
+        'tolerance':float(model.opt.tolerance),'timestep':float(model.opt.timestep),
+        'epoch':dict(H4M7_EPOCH)}
+    h4m7_require(meta['iterations']>0 and meta['ls_iterations']>0
+        and math.isfinite(meta['tolerance']) and meta['tolerance']>=0
+        and abs(meta['timestep']-.002)<1e-9 and not(meta['disableflags']&4),
+        'MODEL_OPTIONS')
+    h4m7_expected_shapes(meta)
+    return meta
+
+
+def h4m7_model_shapes(meta):
+    return {'dof_parentid':(35,),'dof_armature':(35,),'dof_jntid':(35,),
+        'jnt_qposadr':(30,),'jnt_dofadr':(30,),'jnt_type':(30,),
+        'actuator_trnid':(29,2),'actuator_gear':(29,6),'actuator_gainprm':(29,10),
+        'actuator_biasprm':(29,10),'actuator_ctrlrange':(29,2),
+        'actuator_ctrllimited':(29,),'jnt_actfrcrange':(30,2),'jnt_actfrclimited':(30,)}
+
+
+def h4m7_model_bytes(model,meta,np):
+    out={}
+    shapes=h4m7_model_shapes(meta)
+    for k in sorted(shapes):
+        a=np.asarray(getattr(model,k))
+        h4m7_require(a.shape==shapes[k] and a.dtype.kind in 'fiub'
+            and a.dtype.itemsize in (1,4,8) and np.isfinite(a).all(),'MODEL_FIELD_'+k)
+        raw=a.tobytes(order='C')
+        out[k]={'dtype':a.dtype.str,'shape':list(a.shape),'hex':raw.hex(),
+                'sha256':hashlib.sha256(raw).hexdigest()}
+    h4m7_read_model(out,meta,np)
+    return out
+
+
+def h4m7_read_model(fields,meta,np):
+    shapes=h4m7_model_shapes(meta);out={}
+    h4m7_require(type(fields) is dict and set(fields)==set(shapes),'MODEL_FIELDS')
+    for k in sorted(shapes):
+        d=fields[k]
+        h4m7_require(type(d) is dict and set(d)=={'dtype','shape','hex','sha256'}
+            and d['shape']==list(shapes[k]) and type(d['hex']) is str
+            and len(d['hex'])<=math.prod(shapes[k])*16
+            and d['dtype'] in ('<f4','>f4','<f8','>f8','<i4','>i4','<i8','>i8',
+                               '<u4','>u4','<u8','>u8','|b1','|i1','|u1'),'MODEL_SCHEMA')
+        dt=np.dtype(d['dtype']);raw=bytes.fromhex(d['hex'])
+        h4m7_require(raw.hex()==d['hex'] and len(raw)==math.prod(shapes[k])*dt.itemsize
+            and hashlib.sha256(raw).hexdigest()==d['sha256'],'MODEL_SHA_SIZE')
+        a=np.frombuffer(raw,dtype=dt).reshape(shapes[k])
+        h4m7_require(np.isfinite(a).all(),'MODEL_FINITE')
+        if k in ('dof_parentid','dof_jntid','jnt_qposadr','jnt_dofadr','jnt_type','actuator_trnid'):
+            h4m7_require(a.dtype.kind in 'iu','MODEL_INTEGER')
+        elif k.endswith('limited'):
+            h4m7_require(a.dtype.kind in 'iub' and np.isin(a,[0,1]).all(),'MODEL_LIMIT_FLAG')
+        else:
+            h4m7_require(a.dtype.kind=='f','MODEL_FLOAT')
+        out[k]=a
+    h4m7_require(np.array_equal(out['jnt_qposadr'],[0,*range(7,36)])
+        and np.array_equal(out['jnt_dofadr'],[0,*range(6,35)])
+        and np.array_equal(out['jnt_type'],[0,*([3]*29)])
+        and np.array_equal(out['actuator_trnid'][:,0],np.arange(1,30))
+        and np.all(out['dof_armature']>=0)
+        and all(-1<=int(j)<i for i,j in enumerate(out['dof_parentid'])),'MODEL_MAPPING')
+    return out
+
+
+def h4m7_validate_rows(values,meta,np):
+    J=values['efc_J'];n=meta['nefc'];start=meta['ne']+meta['nf']+meta['nl']
+    h4m7_require(np.all(values['efc_D']>=0) and np.all(values['efc_frictionloss']>=0)
+        and np.isin(values['contact.dim'],[1,3,4,6]).all()
+        and np.all(values['contact.friction']>=0)
+        and np.all((values['contact.geom']>=-1)&(values['contact.geom']<meta['ngeom'])),
+        'CONSTRAINT_SCHEMA')
+    used=set()
+    for dim,adr in zip(values['contact.dim'],values['contact.efc_address']):
+        dim,adr=int(dim),int(adr)
+        if adr==-1:continue
+        width=1 if dim==1 else 2*(dim-1)
+        ix=set(range(adr,adr+width))
+        h4m7_require(start<=adr and adr+width<=n and not(used&ix),'CONTACT_ROW_MAP')
+        used.update(ix)
+    h4m7_require(used==set(range(start,n)),'CONTACT_ROW_COVERAGE')
+    h4m7_require(J.shape==(n,35) and np.array_equal(values['qacc'],values['qacc_warmstart']),
+        'SOLVER_OUTPUT')
+    return True
+
+
+def h4m7_initial_ledger():
+    return {k:0 for k in ('attempted','recorded','resets_attempted','resets_recorded',
+        'rich_recorded','snapshots_attempted','snapshots_recorded','raw_bytes')}
+
+
+def h4m7_ledger_check(report,complete=False):
+    d=report['counts'];p=h4m7_plan()
+    h4m7_require(set(d)==set(h4m7_initial_ledger()) and all(type(v) is int and v>=0 for v in d.values()),
+        'LEDGER_SCHEMA')
+    a,b=d['attempted'],d['recorded'];ra,rb=d['resets_attempted'],d['resets_recorded']
+    sa,sb=d['snapshots_attempted'],d['snapshots_recorded']
+    h4m7_require(0<=b<=a<=p['physical_cap'] and a-b<=1
+        and 0<=rb<=ra<=4 and ra-rb<=1 and 0<=sb<=sa<=24 and sa-sb<=1
+        and 0<=d['rich_recorded']<=min(b,184) and sb<=d['rich_recorded']
+        and 0<=d['raw_bytes']<=p['raw_total_cap'],'LEDGER_CAP')
+    lanes=report['lanes']
+    h4m7_require(type(lanes) is list and len(lanes)==ra and
+        sum(len(x['rows']) for x in lanes)==b and
+        sum(len(x['rich']) for x in lanes)==d['rich_recorded'] and
+        sum(len(x['snapshots']) for x in lanes)==sb,'LEDGER_COUNTS')
+    if complete:
+        h4m7_require(a==b==1360 and ra==rb==4 and sa==sb==24
+            and d['rich_recorded']==184 and all(x['complete'] is True for x in lanes),
+            'LEDGER_COMPLETE')
+    return dict(d)
+
+
+def h4m7_read_report(report,raw,lanes,expected_provenance,np):
+    h4m7_require(type(report) is dict and report['status']=='M470_H4M7_SNAPSHOT_COMPLETE'
+        and report['passed'] is False and report['plan']==h4m7_plan()
+        and report['provenance']==expected_provenance
+        and report['training_performed'] is False and report['efficacy_evaluated'] is False
+        and report['optimizer_updates']==report['checkpoint_saves']==0
+        and type(raw) is bytes and len(raw)==report['counts']['raw_bytes']
+        and len(raw)<=h4m7_plan()['raw_total_cap']
+        and hashlib.sha256(raw).hexdigest()==report['raw_sha256'],'REPORT_HEADER')
+    h4m7_ledger_check(report,complete=True)
+    h4m7_require(len(lanes)==4,'REPORT_LANES')
+    offset=0;numeric=[]
+    for lane,archive in zip(report['lanes'],lanes):
+        h4m7_require(lane['index']==archive['index'] and lane['key']==list(archive['key'])
+            and lane['rows']==archive['rows'] and lane['kicks']==archive['kicks']
+            and lane['rich']==[[t,h4m3_digest(archive['rich'][t])] for t in range(295,341)]
+            and [s['tick'] for s in lane['snapshots']]==list(range(335,341)),
+            'REPORT_ARCHIVE')
+        meta=lane['meta'];shapes=h4m7_expected_shapes(meta)
+        model=h4m7_read_model(lane['model'],meta,np)
+        h4m7_require(meta['epoch']==H4M7_EPOCH,'REPORT_EPOCH')
+        for s in lane['snapshots']:
+            h4m7_require(set(s)=={'tick','offset','size','sha256','fields'}
+                and type(s['offset']) is int and s['offset']==offset
+                and type(s['size']) is int and 0<s['size']<=512*1024
+                and offset+s['size']<=len(raw),'REPORT_SNAPSHOT_RANGE')
+            block=raw[offset:offset+s['size']]
+            h4m7_require(hashlib.sha256(block).hexdigest()==s['sha256'],'REPORT_SNAPSHOT_SHA')
+            values=h4m7_decode(s['fields'],block,shapes,np,512*1024)
+            h4m7_validate_rows(values,meta,np)
+            packed=archive['rich'][s['tick']]
+            for k,pk in (('qpos','qpos_post'),('qvel','qvel_post'),('time','time_post'),
+                ('ctrl','raw_ctrl'),('actuator_length','actuator_length'),
+                ('actuator_velocity','actuator_velocity'),('actuator_force','actuator_force'),
+                ('qfrc_actuator','qfrc_actuator')):
+                h4m7_require(np.array_equal(values[k],np.asarray(packed[pk],dtype=values[k].dtype)),
+                    'SNAPSHOT_LEGACY_'+k)
+            numeric.append({'lane':lane['index'],'tick':s['tick'],
+                'screen':h4m7_numeric_screen(values,meta,model['dof_parentid'],np)})
+            offset+=s['size']
+    h4m7_require(offset==len(raw),'REPORT_RAW_TRAILING')
+    return {'decision':'SNAPSHOT_COMPLETE_NOT_CAUSAL_PASS','numeric':numeric,
+        'native_derivative_verified':False}
+
+
+def h4m7_replay_lane(archive,report,reset,step,kick,model_snapshot,save_snapshot,persist,np):
+    # Host-only contract: callbacks may be native only after a separate dispatcher GO.
+    counts=report['counts'];idx=len(report['lanes'])
+    h4m7_require(idx<4 and archive['index']==H4M7_INDICES[idx]
+        and counts['resets_attempted']==counts['resets_recorded']==idx,'LANE_ORDER')
+    lane={'index':archive['index'],'key':list(archive['key']),'rows':[],
+        'rich':[],'snapshots':[],'kicks':[],'complete':False}
+    report['lanes'].append(lane);counts['resets_attempted']+=1;persist()
+    st=reset(archive['key'][1]);counts['resets_recorded']+=1
+    lane['meta'],lane['model']=model_snapshot(st);persist()
+    for t in range(1,341):
+        if t in (300,335):
+            j=0 if t==300 else 1
+            st,meta,audit=kick(st,archive['key'][2],.5 if j==0 else .35,t)
+            h4m7_require(meta==archive['first' if j==0 else 'second']
+                and audit==archive['kicks'][j],'KICK_ARCHIVE')
+            lane['kicks'].append(audit)
+        h4m7_require(counts['attempted']==counts['recorded']<1360,'STEP_CAP')
+        counts['attempted']+=1
+        report['last_attempt']={'lane':archive['index'],'tick':t};persist()
+        st,row,packed=step(st,t>=295)
+        h4m7_require(row==archive['rows'][t-1],'EXACT_ROW_'+str(t))
+        lane['rows'].append(row);counts['recorded']+=1
+        if t>=295:
+            h4m7_require(packed==archive['rich'][t],'EXACT_PACKED_'+str(t))
+            lane['rich'].append([t,h4m3_digest(packed)]);counts['rich_recorded']+=1
+        if t>=335:
+            h4m7_require(counts['snapshots_attempted']==counts['snapshots_recorded']<24,'SNAPSHOT_CAP')
+            counts['snapshots_attempted']+=1;persist()
+            s=save_snapshot(st,lane['meta'],t,counts['raw_bytes'])
+            h4m7_require(s['offset']==counts['raw_bytes'] and s['tick']==t
+                and 0<s['size']<=512*1024 and counts['raw_bytes']+s['size']<=12*1024**2,
+                'SNAPSHOT_LEDGER')
+            lane['snapshots'].append(s);counts['raw_bytes']+=s['size']
+            counts['snapshots_recorded']+=1
+        persist()
+    lane['complete']=True;persist()
+    return lane
+
+
 def h4m7_static_archive(root):
     h4m3_no_runtime_imports()
     lanes,_=h4m7_archive_inputs(root)
