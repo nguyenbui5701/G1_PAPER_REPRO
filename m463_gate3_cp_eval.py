@@ -2589,7 +2589,7 @@ def h4e_run(args):
 
 
 def h4_shared_frozen_loader(action_size,paper,networks,running_statistics,serialization,jax,jnp,np,
-                            audit=None,template_event=None):
+                            audit=None,template_event=None,*,typed=False):
     obs_shape={'state':(103,),'privileged_state':(216,)}
     ppo_nets=networks.make_ppo_networks(obs_shape,action_size,
                 preprocess_observations_fn=running_statistics.normalize,
@@ -2616,6 +2616,8 @@ def h4_shared_frozen_loader(action_size,paper,networks,running_statistics,serial
         if any(not np.all(np.isfinite(np.asarray(jax.device_get(x)))) for x in leaves):
             raise RuntimeError('M462_NONFINITE_POLICY')
         if audit is not None: audit(path,(norm,actor,critic),(norm_template,actor_template,critic_template))
+        if typed:
+            return ppo_nets,(norm,actor,critic)
         inf=networks.make_inference_fn(ppo_nets)((norm,actor),deterministic=True)
         return inf
     return load_policy
@@ -9738,6 +9740,935 @@ def h4m7_static_archive(root):
         'mock':h4m7_static_selftest()}
 
 
+# H4-M10-OBS-LITE-V1: isolated observation; no training or native graph edits.
+H4LITE_OUTPUT=Path('m463_runs/m470_h4_m10_obs_lite_v1/report.json')
+H4LITE_BASE='190a2cb5df463c2ac92c5a42b1ec9df67cdff220'
+H4LITE_ID='H4-M10-OBS-LITE-V1'
+H4LITE_SEEDS=(8101,8102)
+H4LITE_N=1024
+H4LITE_BLOCKS=13
+H4LITE_T=32
+H4LITE_MIB=1024**2
+H4LITE_GIB=1024**3
+
+def h4lite_require(ok,label):
+    if not bool(ok):
+        raise RuntimeError('M470_H4LITE_'+label)
+
+def h4lite_fields():
+    from m463_instrument_brax import EXT_FIELDS,H4_EXT_FIELDS,H4CC_EXT_FIELDS
+    fields=('truncation',)+EXT_FIELDS+H4_EXT_FIELDS+H4CC_EXT_FIELDS
+    h4lite_require(len(fields)==len(set(fields))==80,'EXTRA_SCHEMA')
+    return fields
+
+def h4lite_plan():
+    return dict(id=H4LITE_ID,seeds=list(H4LITE_SEEDS),worlds=1024,
+        blocks_per_cohort=13,unroll=32,transitions=851968,reset_lanes=2048,
+        actor_calls=832,actor_samples=851968,critic_calls=52,critic_samples=878592,
+        templates=2,gae32=26,gae64=24,optimizer_updates=0,checkpoint_saves=0,
+        row_cap=4096,output_cap=4*H4LITE_GIB,disk_reserve=2*H4LITE_GIB,
+        staging_cap=512*H4LITE_MIB,log_cap=16*H4LITE_MIB,
+        watchdog_seconds=5400,output=str(H4LITE_OUTPUT),gamma=.98,lambda_=.95,
+        reward_scaling=.1,extra_fields=list(h4lite_fields()),
+        production_equivalence=False,training_performed=False)
+
+def h4lite_json(path):
+    def pairs(xs):
+        d={}
+        for k,v in xs:
+            h4lite_require(k not in d,'JSON_DUPLICATE')
+            d[k]=v
+        return d
+    path=Path(path)
+    h4lite_require(path.is_file() and not path.is_symlink()
+        and path.resolve()==path.absolute() and 0<path.stat().st_size<=16*H4LITE_MIB,
+        'JSON_PATH')
+    return json.loads(path.read_bytes(),object_pairs_hook=pairs,
+        parse_constant=lambda x: (_ for _ in ()).throw(ValueError(x)))
+
+def h4lite_storage(out,extra=0,initial=False):
+    import shutil
+    h4lite_require(type(extra) is int and extra>=0,'STORAGE_ARGUMENT')
+    if initial:
+        h4lite_require(out.parent.is_dir() and out.parent.resolve()==out.parent.absolute()
+            and not out.exists() and not out.is_symlink()
+            and shutil.disk_usage(out.parent).free>=6*H4LITE_GIB,'DISK_INITIAL')
+        return
+    total=0
+    for x in out.iterdir():
+        h4lite_require(x.is_file() and not x.is_symlink(),'OUTPUT_FILE')
+        total+=x.stat().st_size
+    # Reserve full report/log space even while writing temporary files.
+    h4lite_require(total+extra+32*H4LITE_MIB<=4*H4LITE_GIB
+        and shutil.disk_usage(out).free>=2*H4LITE_GIB+extra+32*H4LITE_MIB,'STORAGE_CAP')
+
+def h4lite_persist(path,r,exclusive=False):
+    raw=json.dumps(r,sort_keys=True,separators=(',',':'),allow_nan=False).encode()
+    h4lite_require(len(raw)<=16*H4LITE_MIB,'REPORT_CAP')
+    h4lite_storage(path.parent,len(raw))
+    h4m6_write_bounded(path,r,exclusive=exclusive)
+
+def h4lite_inputs(root):
+    import m463_push_ppo_train as t
+    paths={'checkpoint':root/H4M3_BASE_POLICY,
+        'restore':root/'m462_runs/typed_restore_20261120_162901.json',
+        'reward':root/'m463_runs/m470_h3_m1_2_independent_10M_20261124_183319_225465810/report.json'}
+    pins={'checkpoint':t.SEED1_SHA,'restore':t.H3_CAUSAL_RESTORE_SHA,'reward':t.H4R_REWARD_SHA}
+    for k,v in paths.items():
+        h4lite_require(v.is_file() and not v.is_symlink() and v.resolve()==v.absolute()
+            and sha256(v)==pins[k],'INPUT_'+k)
+    paths['inventory']=root/'m463_runs/m470_h4_m10_1_inventory_20261126_144140_IFMBEt.log'
+    pins['inventory']='e28eefefc878e4841efc2828db23e3eec08a9102ca7307bb2710520b13d6ec42'
+    h4lite_require(paths['inventory'].is_file() and not paths['inventory'].is_symlink()
+        and paths['inventory'].resolve()==paths['inventory'].absolute()
+        and sha256(paths['inventory'])==pins['inventory'],'INVENTORY_PIN')
+    return {k:{'path':str(v),'sha256':pins[k]} for k,v in paths.items()}
+
+def h4lite_provenance(root):
+    # Read-only, before native imports. Existing historical authorizations are not used.
+    import m463_push_ppo_train as t
+    from importlib import metadata
+    h4m3_no_runtime_imports()
+    source=h4m3_source_map(root)
+    h4lite_require(subprocess.check_output(['git','status','--porcelain','--untracked-files=no'],
+        cwd=root)==b'','TRACKED_TREE')
+    for name in ('m463_coverage_env','m463_instrument_brax','m463_push_ppo_train'):
+        h4lite_require(h4m5_find_source(name)==root/(name+'.py'),'LOCAL_ORIGIN_'+name)
+    for name in ('m463_gate3_cp_eval.py','m463_coverage_env.py','m463_instrument_brax.py',
+                 'm463_push_ppo_train.py','train.py','paper_config.py'):
+        h4lite_require(subprocess.check_output(['git','show','HEAD:'+name],cwd=root)
+            ==(root/name).read_bytes(),'TRACKED_SOURCE_'+name)
+    for k,v in {**t.H4R_LOCAL_SHA,'m463_coverage_env':
+            'f5782e1fa069e62e30a3fd0e28ab535148ebc28fe969ab08603a6db5d185debc'}.items():
+        if k=='nvcc_compat':
+            p=root.parent/'G1_M4_0_G1_PPO_ONE_UPDATE_SMOKE_V1/nvcc_compat.py'
+        else:
+            p=root/(k+'.py')
+        h4lite_require(p.is_file() and not p.is_symlink() and sha256(p)==v,'LOCAL_'+k)
+    for k,v in {'m463_instrument_brax.py':'0c7f0a1de06201e92b9a6f10abc98b774b6856d9',
+        'm463_push_ppo_train.py':'6b3d0e45ed85dbe0d852ac8a9da165c548ecae6d',
+        'train.py':'b36b69a38d2ebb1a218342b3f34386d47624383e',
+        'paper_config.py':'6dc390de5eec3cd0b036b2d766c71e3164e1b17f'}.items():
+        h4lite_require(h4m3_git_blob(root/k)==v,'BLOB_'+k)
+    h4lite_require(source['paper_config_preflight.json']==t.H4R_CONFIG_SHA,'CONFIG_PIN')
+    base=root.parent
+    expected=[base/'G1_M3_11E_PPO_CLOUDPICKLE_OVERLAY_V1/overlays/cloudpickle_20261107_111524_3962615',
+        base/'G1_M3_11D_PPO_GYM_ISOLATED_REPAIR_V1/overlays/wheels_20261107_111000_3952924',
+        base/'G1_M3_11C_PPO_MANIFEST_REPAIR_V1/overlays/wheels_20261107_110316_3940764',
+        base/'G1_M3_7_G1_MJX_GPU_ONE_STEP_V1/source/mujoco_playground_2025',root]
+    venv=base/'G1_M3_7_G1_MJX_GPU_ONE_STEP_V1/.venv_m37_jax0435_mjx327'
+    h4lite_require([Path(x).resolve() for x in os.environ.get('PYTHONPATH','').split(os.pathsep)]
+        ==[x.resolve() for x in expected] and Path(sys.executable)==venv/'bin/python'
+        and Path(sys.prefix).resolve()==venv.resolve(),'LAUNCHER')
+    dm=h4m5_find_source('dm_env')
+    h4lite_require(dm==(expected[2]/'dm_env/__init__.py').resolve()
+        and metadata.version('dm-env')=='1.6','DM_ENV')
+    ext=h4m6_external_sources(root)
+    for name,blob in {'brax.training.types':'19de3a7dab3bfc6b6232026fdf9823c77f3d113a',
+        'mujoco_playground._src.locomotion.g1.randomize':'1a9ae02da762168dcf4de0be249b1a5db0e676db'}.items():
+        path=h4m5_find_source(name)
+        h4lite_require(h4m3_git_blob(path)==blob,'DEPENDENCY_'+name)
+        ext['training'][name]={'path':str(path),'blob':blob,'sha256':sha256(path)}
+    inputs=h4lite_inputs(root)
+    from m462_ppo_warmstart_run import read_restore_gate
+    gate,_=read_restore_gate(Path(inputs['restore']['path']),Path(inputs['checkpoint']['path']))
+    h4lite_require(gate['orbax_dir_sha256']==t.H4_ORBAX_SHA,'ORBAX_PIN')
+    h4m3_no_runtime_imports()
+    return {'source':source,'external':ext,'inputs':inputs,
+        'orbax_sha256':t.H4_ORBAX_SHA,'inventory_sha256':
+        'e28eefefc878e4841efc2828db23e3eec08a9102ca7307bb2710520b13d6ec42'}
+
+def h4lite_marker(rules):
+    import re
+    lines=rules.splitlines()
+    a=[x.split() for x in lines if x.startswith('H4LITE_STATIC_APPROVED:')]
+    b=[x.split() for x in lines if x.startswith('H4LITE_ACTIVE_GO:')]
+    h4lite_require(len(a)==len(b)==1,'EXECUTION_HOLD')
+    h4lite_require([x for x in lines if re.match(r'^[A-Z0-9_]+_GO:',x)]==
+        [' '.join(b[0])],'AUTH_CONFLICT')
+    a,b=a[0],b[0]
+    h4lite_require(len(a)==6 and len(b)==7 and b[1]==H4LITE_ID
+        and b[2]==str(H4LITE_OUTPUT) and b[3:]==a[1:5]
+        and all(re.fullmatch(r'[0-9a-f]{64}',v) for v in a[1:5]),'AUTH_SCHEMA')
+    path=Path(a[5])
+    h4lite_require(path.parent==Path('m463_runs') and
+        path.name.startswith('m470_h4lite_static_') and path.suffix=='.log','STATIC_PATH')
+    return dict(id=b[1],output=b[2],source=a[1],spec=a[2],external=a[3],
+        static_sha256=a[4],static_path=str(path))
+
+def h4lite_authorization(root):
+    auth=h4lite_marker((root/'G1_RESEARCH_RULES.md').read_text('utf8'))
+    prov=h4lite_provenance(root)
+    h4lite_require(auth['source']==h4m3_digest(prov['source'])
+        and auth['spec']==h4m3_digest(h4lite_plan())
+        and auth['external']==h4m3_digest(prov),'AUTH_PROVENANCE')
+    p=root/auth['static_path']
+    h4lite_require(p.is_file() and not p.is_symlink() and p.resolve()==p.absolute()
+        and 0<p.stat().st_size<=16*H4LITE_MIB and sha256(p)==auth['static_sha256'],'STATIC_LOG')
+    lines=p.read_text('utf8').splitlines()
+    for k,v in (('SOURCE',auth['source']),('SPEC',auth['spec']),('PROVENANCE',auth['external'])):
+        h4lite_require([x for x in lines if x.startswith('H4LITE_'+k+' ')]==
+            ['H4LITE_'+k+' '+v],'STATIC_'+k)
+    h4lite_require(lines.count('H4LITE_FULL_STATIC_PASS')==1,'STATIC_APPROVAL')
+    return auth,prov
+
+def h4lite_schema(n=H4LITE_N):
+    d={}
+    for pre in ('obs','next'):
+        for k,m in (('state',103),('privileged_state',216)):
+            d[pre+'/'+k]=('<f4',(32,n,m))
+    for k in ('action','raw_action'):
+        d[k]=('<f4',(32,n,29))
+    for k in ('log_prob','reward','discount','value'):
+        d[k]=('<f4',(32,n))
+    floats={'truncation','m463_magnitude','m470_m1_weighted','m470_m2_weighted',
+            'h4_actual_dx','h4_actual_dy'}
+    for k in h4lite_fields():
+        d['extra/'+k]=('<f4' if k in floats else '<i4',(32,n))
+    d['bootstrap']=('<f4',(n,))
+    return d
+
+def h4lite_validate(np,data,n=H4LITE_N,*,schema_only=False):
+    spec=h4lite_schema(n)
+    h4lite_require(set(data)==set(spec),'BLOCK_KEYS')
+    for k,(dtype,shape) in spec.items():
+        a=data[k]
+        h4lite_require(a.dtype.str==dtype and a.shape==shape
+            and (schema_only or np.isfinite(a).all()),'BLOCK_FIELD_'+k)
+    h4lite_require(sum(a.nbytes for a in data.values())<=32*n*4096+4*n,'ROW_CAP')
+    if schema_only:return True
+    x=lambda k:data['extra/'+k]
+    h4lite_require(np.isin(data['discount'],(0,1)).all() and
+        np.isin(x('h4_source_terminal'),(0,1)).all() and
+        np.array_equal(1-data['discount'],x('h4_source_terminal'))
+        and not x('truncation').any(),'TERMINAL_TRUNCATION')
+    h4lite_require(np.max(np.abs(data['action']))<=1
+        and not x('h4_bad').any() and not x('h4cc_bad').any()
+        and not x('h4cc_deferred').any() and not x('h4cc_published').any()
+        and not x('h4cc_terminal_restored').any(),'NATIVE_GUARD')
+    for k in ('h4_boundary','h4_tick_same','h4_tick_survived','h4cc_tick',
+              'h4cc_tick_same','h4cc_tick_survived','h4_changed','h4_event_terminal',
+              'm463_event','m463_repeat','m463_no_push','h4_mature_repeat'):
+        h4lite_require(np.isin(x(k),(0,1)).all(),'FLAG_RANGE_'+k)
+    q=x('h4_event_qual'); m=q>0
+    h4lite_require(np.isin(q,(0,1,2)).all() and
+        np.all((~m)|((x('m463_event')==1)&(x('m463_repeat')==1)&
+            (x('h4_class')==3)&(x('h4_mature_repeat')==1)&
+            (x('h4cc_start')==1)&(x('h4cc_event_side')==q)&
+            (x('h4_motion')==0)&(x('h4_actor_motion')==0)&
+            (x('m463_repeat_side_matched')==1)&(x('m463_support_side')==q)&
+            (x('m463_direction')==q+1)&(x('h4_age')>=270)&(x('h4_age')<=348)&
+            (x('m463_repeat_gap')>=30)&(x('m463_repeat_gap')<=40)&
+            (x('m463_magnitude')>=np.float32(.30))&
+            (x('m463_magnitude')<=np.float32(.40)))),'EVENT_QUAL')
+    h4lite_require(np.array_equal(q,np.where((x('h4_mature_repeat')==1)&
+        (x('h4_motion')==0)&(x('m463_repeat_side_matched')==1),
+        x('m463_repeat_side_target'),0)),'EVENT_QUAL_CONSERVATION')
+    h4lite_require(np.array_equal(x('h4_event_terminal')>0,
+        (x('m463_event')>0)&(x('h4_source_terminal')>0)),'EVENT_TERMINAL')
+    return True
+
+def h4lite_write_block(path,np,data,n=H4LITE_N):
+    h4lite_validate(np,data,n,schema_only=True)
+    schema=h4lite_schema(n);offset=0;rows=[]
+    h4lite_storage(path.parent,sum(a.nbytes for a in data.values()))
+    tmp=path.with_suffix('.tmp')
+    h4lite_require(not path.exists() and not path.is_symlink(),'BLOCK_EXISTS')
+    whole=hashlib.sha256()
+    with tmp.open('xb') as f:
+        for k in schema:
+            a=np.ascontiguousarray(data[k])
+            b=memoryview(a).cast('B')
+            f.write(b);whole.update(b)
+            rows.append(dict(name=k,dtype=a.dtype.str,shape=list(a.shape),
+                offset=offset,bytes=a.nbytes,sha256=hashlib.sha256(b).hexdigest()))
+            offset+=a.nbytes
+        f.flush();os.fsync(f.fileno())
+    tmp.rename(path)
+    return dict(file=path.name,bytes=offset,sha256=whole.hexdigest(),arrays=rows)
+
+def h4lite_read_block(path,np,meta,n=H4LITE_N,*,schema_only=False):
+    schema=h4lite_schema(n)
+    h4lite_require(set(meta)=={'file','bytes','sha256','arrays'}
+        and meta['file']==path.name and path.is_file() and not path.is_symlink()
+        and path.resolve()==path.absolute()
+        and len(meta['arrays'])==len(schema)
+        and type(meta['bytes']) is int and path.stat().st_size==meta['bytes']
+        and 0<meta['bytes']<=32*n*4096+4*n,'BLOCK_HEADER')
+    result={};offset=0;whole=hashlib.sha256()
+    with path.open('rb') as f:
+        for row,(k,(dt,shape)) in zip(meta['arrays'],schema.items()):
+            size=math.prod(shape)*np.dtype(dt).itemsize
+            h4lite_require(set(row)=={'name','dtype','shape','offset','bytes','sha256'}
+                and (row['name'],row['dtype'],row['shape'],row['offset'],row['bytes'])==
+                (k,dt,list(shape),offset,size),'BLOCK_INDEX')
+            a=np.fromfile(f,dtype=np.dtype(dt),count=math.prod(shape))
+            h4lite_require(a.size==math.prod(shape),'BLOCK_SHORT')
+            a=a.reshape(shape);raw=memoryview(a).cast('B');whole.update(raw)
+            h4lite_require(hashlib.sha256(raw).hexdigest()==row['sha256'],'BLOCK_HASH')
+            result[k]=a;offset+=size
+        h4lite_require(not f.read(1) and offset==meta['bytes']
+            and whole.hexdigest()==meta['sha256'],'BLOCK_TRAILING')
+    h4lite_validate(np,result,n,schema_only=schema_only)
+    return result
+
+def h4lite_gae(np,reward,values,bootstrap,discount,truncation):
+    # Operation order of pinned compute_gae, host arithmetic (not a compiled
+    # JAX equivalence claim). Native input reward is scaled here exactly once.
+    h4lite_require(reward.shape==values.shape==discount.shape==truncation.shape
+        and reward.ndim==2 and reward.shape[0] in (32,64)
+        and bootstrap.shape==reward.shape[1:],'GAE_SHAPE')
+    g=np.float32(.98);lam=np.float32(.95);r=reward*np.float32(.1)
+    mask=1-truncation;term=(1-discount)*mask
+    nxt=np.concatenate((values[1:],bootstrap[None]),axis=0)
+    delta=(r+g*(1-term)*nxt-values)*mask
+    acc=np.zeros_like(bootstrap);carry=np.empty_like(values)
+    for k in range(len(reward)-1,-1,-1):
+        acc=delta[k]+g*(1-term[k])*mask[k]*lam*acc
+        carry[k]=acc
+    vs=values+carry
+    a=(r+g*(1-term)*np.concatenate((vs[1:],bootstrap[None]),axis=0)-values)*mask
+    h4lite_require(all(np.isfinite(x).all() for x in (delta,vs,a)),'GAE_FINITE')
+    return delta,vs,a
+
+def h4lite_pinned_gae(path,np):
+    """Execute only the exact pinned compute_gae AST with a synchronous host scan."""
+    import ast
+    from types import SimpleNamespace
+    h4lite_require(h4m3_git_blob(path)=='93d0b1e39a610d55a5a8ed5d5027fc8684945417',
+        'GAE_SOURCE_PIN')
+    tree=ast.parse(path.read_text('utf8'))
+    funcs=[x for x in tree.body if isinstance(x,ast.FunctionDef) and x.name=='compute_gae']
+    h4lite_require(len(funcs)==1,'GAE_FUNCTION')
+    def scan(f,carry,xs,length,reverse):
+        h4lite_require(reverse and length==len(xs[0]),'GAE_SCAN')
+        rows=[]
+        for k in range(length-1,-1,-1):
+            carry,y=f(carry,tuple(x[k] for x in xs));rows.append(y)
+        return carry,np.stack(rows[::-1])
+    ns={'jnp':np,'jax':SimpleNamespace(lax=SimpleNamespace(scan=scan,stop_gradient=lambda x:x))}
+    exec(compile(ast.Module(body=funcs,type_ignores=[]),str(path),'exec'),ns)
+    def compute(reward,values,bootstrap,discount,truncation):
+        delta,vs0,a0=h4lite_gae(np,reward,values,bootstrap,discount,truncation)
+        vs,a=ns['compute_gae'](truncation=truncation,
+            termination=(1-discount)*(1-truncation),rewards=reward*np.float32(.1),
+            values=values,bootstrap_value=bootstrap,lambda_=np.float32(.95),discount=np.float32(.98))
+        h4lite_require(h4lite_bit_equal(np,vs,vs0) and h4lite_bit_equal(np,a,a0),'GAE_PINNED_ARITHMETIC')
+        return delta,vs,a
+    return compute
+
+def h4lite_bit_equal(np,a,b):
+    return a.shape==b.shape and a.dtype==b.dtype and np.array_equal(
+        a.view(np.uint8),b.view(np.uint8))
+
+def h4lite_continuity(np,data,previous):
+    x=lambda k:data['extra/'+k]
+    bound=x('h4_boundary');done=x('h4_source_terminal');age=x('h4_age');ep=x('h4cc_episode')
+    h4lite_require(np.isin(bound,(0,1)).all() and np.array_equal(bound[1:],done[:-1])
+        and np.array_equal(age[1:],np.where(bound[1:]>0,0,age[:-1]+1))
+        and np.array_equal(ep[1:],ep[:-1]+bound[1:]),'WITHIN_BLOCK_EPISODE')
+    for k in ('state','privileged_state'):
+        h4lite_require(h4lite_bit_equal(np,data['next/'+k][:-1],data['obs/'+k][1:]),
+            'WITHIN_BLOCK_OBS')
+        if previous is not None:
+            h4lite_require(h4lite_bit_equal(np,previous['next/'+k],data['obs/'+k][0]),
+                'CROSS_BLOCK_OBS')
+    if previous is None:
+        h4lite_require(np.all(bound[0]==1) and np.all(age[0]==0) and np.all(ep[0]==1),
+            'INITIAL_EPISODE')
+    else:
+        h4lite_require(np.array_equal(bound[0],previous['done'])
+            and np.array_equal(age[0],np.where(bound[0]>0,0,previous['age']+1))
+            and np.array_equal(ep[0],previous['episode']+bound[0]),'CROSS_BLOCK_EPISODE')
+    return {'done':done[-1].copy(),'age':age[-1].copy(),'episode':ep[-1].copy(),
+        **{'next/'+k:data['next/'+k][-1].copy() for k in ('state','privileged_state')}}
+
+def h4lite_event(np,x,episode,e,lane):
+    # x contains only scalar archived extras and pre-action command agreement.
+    side=int(x['h4_event_qual'][e,lane])
+    if x['h4_source_terminal'][e,lane]:
+        return {'side':side,'tick':e,'lane':lane,'label':'E','reason':'event_terminal'}
+    label='C';reason='study_edge'
+    if x['h4_changed'][e,lane] or not x['stand_obs'][e,lane]:
+        return {'side':side,'tick':e,'lane':lane,'label':'C','reason':'event_command'}
+    for t in range(e+1,min(e+51,len(episode))):
+        if episode[t,lane]!=1 or x['h4_tick_kind'][t,lane]!=2 or \
+            x['h4_tick_cell'][t,lane]!=side or x['h4_tick_age'][t,lane]!=t-e:
+            reason='continuity';break
+        h4lite_require(x['h4cc_tick'][t,lane]==1 and x['h4cc_tick_age'][t,lane]==t-e
+            and x['h4cc_tick_side'][t,lane]==side
+            and x['h4cc_tick_survived'][t,lane]==x['h4_tick_survived'][t,lane],'SHADOW_TAIL')
+        if not x['h4_tick_same'][t,lane] or not x['h4cc_tick_same'][t,lane] \
+            or x['h4_changed'][t,lane] or not x['stand_obs'][t,lane]:
+            reason='command';break
+        h4lite_require(x['h4_tick_survived'][t,lane]==1-x['h4_source_terminal'][t,lane],
+            'TAIL_SURVIVAL')
+        if x['h4_source_terminal'][t,lane]:
+            label='F';reason='physical_terminal';break
+        if t==e+50:
+            label='S';reason='survived50'
+    return {'side':side,'tick':e,'lane':lane,'label':label,'reason':reason}
+
+def h4lite_decision(events):
+    from fractions import Fraction
+    eligible=[r for r in events if r['label'] in ('S','F')]
+    counts={str(s):sum(r['side']==s for r in eligible) for s in (1,2)}
+    exposed=len(eligible)>=24 and min(counts.values())>=12 and all(
+        sum(r['side']==s and r['cohort']==c for r in eligible)>=4
+        for s in (1,2) for c in H4LITE_SEEDS)
+    cells={}
+    for r in eligible:
+        if r.get('credit') is not None:
+            k=(r['cohort'],r['side'],((r['tick']+1)%32)//16)
+            cells.setdefault(k,{'S':[],'F':[]})[r['label']].append(r)
+    common={k:v for k,v in cells.items() if v['S'] and v['F']}
+    selected=[r for v in common.values() for a in v.values() for r in a]
+    enough=all(sum(r['side']==s and r['label']==o for r in selected)>=4
+        for s in (1,2) for o in ('S','F')) and all(
+        any(r['cohort']==c and r['label']==o for r in selected)
+        for c in H4LITE_SEEDS for o in ('S','F'))
+    def rate(rows):
+        return Fraction(sum(r['credit'] for r in rows),len(rows))
+    def rates(o):
+        a=[r for r in selected if r['label']==o]
+        return rate(a),sum((rate(v[o]) for v in common.values()),Fraction(0))/len(common)
+    result={'exposure':counts,'adjudicable':len(eligible),'common_cells':len(common),
+        'common_events':len(selected),'decision':'INCONCLUSIVE'}
+    if not exposed:
+        result['decision']='EXPOSURE_INSUFFICIENT';return result
+    result['boundary_value_mismatches']=sum(r.get('credit_reason')=='boundary_value_mismatch'
+        for r in eligible)
+    if not enough or result['boundary_value_mismatches']:return result
+    sr,se=rates('S');fr,fe=rates('F')
+    result['rates']={'S':[float(sr),float(se)],'F':[float(fr),float(fe)]}
+    def consistent(key,vals):
+        for z in vals:
+            a=[r for r in selected if r[key]==z and r['label']=='S']
+            b=[r for r in selected if r[key]==z and r['label']=='F']
+            if not a or not b or not any(r['credit'] for r in a) or rate(a)<=rate(b):
+                return False
+        return True
+    if min(sr,se)>=Fraction(1,3) and max(fr,fe)<=Fraction(1,6) \
+        and consistent('side',(1,2)) and consistent('cohort',H4LITE_SEEDS):
+        result['decision']='PRIORITIZE_CREDIT_RESEARCH'
+    return result
+
+def h4lite_analyze(np,out,blocks,gae,watchdog=lambda:None,*,n=H4LITE_N):
+    # Read one raw block at a time; retain only small scalar windows.
+    events=[];context=[];gae32=gae64=0
+    names=('h4_boundary','h4_age','h4cc_episode','h4_event_qual','h4_source_terminal',
+        'h4_tick_kind','h4_tick_cell','h4_tick_age','h4_tick_same','h4cc_tick_same',
+        'h4_changed','h4_tick_survived','m463_no_push','h4_actor_motion',
+        'h4cc_tick','h4cc_tick_age','h4cc_tick_side','h4cc_tick_survived',
+        'h4_assigned','h4_first_due','h4_first_closed','h4_repeat_assigned',
+        'h4_repeat_due','h4_repeat_closed','m463_event','m463_repeat',
+        'm463_repeat_side_fallback','h4_event_terminal')
+    for c,seed in enumerate(H4LITE_SEEDS):
+        xs={k:[] for k in names};xs['stand_obs']=[]
+        scalar=[];previous=None
+        for b in range(13):
+            watchdog()
+            item=blocks[c*13+b]
+            h4lite_require(item['cohort']==seed and item['block']==b,'BLOCK_ORDER')
+            data=h4lite_read_block(out/('c%d_b%02d.bin'%(seed,b)),np,item['raw'],n)
+            held=sum(q.nbytes for arr in xs.values() for q in arr)+sum(q.nbytes for a in scalar for q in a.values() if hasattr(q,'nbytes'))
+            h4lite_require(held+3*sum(q.nbytes for q in data.values())<=512*H4LITE_MIB,'ANALYSIS_STAGING')
+            previous=h4lite_continuity(np,data,previous)
+            for k in names:xs[k].append(data['extra/'+k].copy())
+            xs['stand_obs'].append((data['obs/state'][...,9:12]==0).all(-1)&
+                (data['obs/privileged_state'][...,9:12]==0).all(-1))
+            a={k:data[k].copy() for k in ('reward','discount','value','bootstrap')}
+            a['trunc']=data['extra/truncation'].copy()
+            a['delta'],a['vs'],a['A']=gae(a['reward'],a['value'],a['bootstrap'],
+                a['discount'],a['trunc'])
+            gae32+=1;scalar.append(a)
+            if len(scalar)>1:
+                prev=scalar[-2]
+                _,_,diag=gae(*[np.concatenate((prev[k],a[k])) for k in ('reward','value')],
+                    a['bootstrap'],np.concatenate((prev['discount'],a['discount'])),
+                    np.concatenate((prev['trunc'],a['trunc'])))
+                prev['A64']=diag[:32].copy();gae64+=1
+                # The realized next-block return stops at physical terminal.
+                g=np.float32(.98);ret=a['bootstrap'].copy()
+                for k in range(31,-1,-1):
+                    ret=a['reward'][k]*np.float32(.1)+g*a['discount'][k]*ret
+                prev['residual']=ret-prev['bootstrap']
+                prev['boundary_value_exact']=(prev['bootstrap'].view(np.uint32)==
+                    a['value'][0].view(np.uint32))
+            del data
+        x={k:np.concatenate(v,axis=0) for k,v in xs.items()}
+        done=x['h4_source_terminal'];bound=x['h4_boundary'];episode=x['h4cc_episode']
+        h4lite_require(np.all(bound[0]==1) and np.array_equal(bound[1:],done[:-1])
+            and np.array_equal(episode,np.cumsum(bound,axis=0)),'EPISODE_LEDGER')
+        h4lite_require(np.all(x['h4_age'][0]==0) and
+            np.array_equal(x['h4_age'][1:],np.where(bound[1:]>0,0,x['h4_age'][:-1]+1)),
+            'AGE_LEDGER')
+        for e,lane in zip(*np.where((episode==1)&(x['h4_event_qual']>0))):
+            e=int(e);lane=int(lane)
+            r=h4lite_event(np,x,episode,e,lane);r['cohort']=seed;r['credit']=None
+            r['secondary']=[];r['credit_reason']='not_adjudicated'
+            if r['label'] in ('S','F'):
+                for anchor in range(e+1,e+11):
+                    b,k=divmod(anchor,32)
+                    if b>=12:break
+                    # Require native boundary continuation and no command change
+                    # until the longer return ends or true termination.
+                    end=(b+2)*32;boundary=(b+1)*32
+                    if np.any(done[e+1:anchor,lane]):break
+                    ok=True
+                    for t in range(e+1,end):
+                        if episode[t,lane]!=1 or not x['stand_obs'][t,lane] or \
+                            x['h4_changed'][t,lane] or not x['h4_tick_same'][t,lane]:
+                            ok=False;break
+                        if done[t,lane]:
+                            if t<boundary:ok=False
+                            break
+                    a=scalar[b]
+                    if not ok:
+                        if anchor==e+1:r['credit_reason']='boundary_or_command'
+                        continue
+                    if not a['boundary_value_exact'][lane]:
+                        if anchor==e+1:r['credit_reason']='boundary_value_mismatch'
+                        continue
+                    a32=float(a['A'][k,lane]);a64=float(a['A64'][k,lane])
+                    residual=float(a['residual'][lane])
+                    item={'anchor':anchor,'A32':a32,'A64':a64,'bootstrap_residual':residual,
+                        'delta':float(a['delta'][k,lane]),'vs':float(a['vs'][k,lane])}
+                    r['secondary'].append(item)
+                    if anchor==e+1:
+                        r['credit']=bool(a32<=0 and a64>=.01 and residual>=.01)
+                        r['credit_reason']='valid';r['primary']=item
+            r['secondary_median']={k:float(np.median([z[k] for z in r['secondary']])) for k in ('A32','A64','bootstrap_residual')} if r['secondary'] else None
+            events.append(r)
+        context.append({'cohort':seed,'all_qualified':int((x['h4_event_qual']>0).sum()),
+            'first_episode_qualified':int(((episode==1)&(x['h4_event_qual']>0)).sum()),
+            'autoreset_substitutions':int(done.sum()),
+            'waterfall':{k:{'all':int((x[k]>0).sum()),
+                'first_episode':int(((x[k]>0)&(episode==1)).sum())} for k in (
+                'h4_assigned','h4_first_due','h4_first_closed','h4_repeat_assigned',
+                'h4_repeat_due','h4_repeat_closed','m463_event','m463_repeat',
+                'm463_repeat_side_fallback','h4_event_terminal')},
+            'outcomes':{o:sum(y['cohort']==seed and y['label']==o for y in events)
+                for o in ('S','F','C','E')},'nominal_rows':[
+                int(((x['m463_no_push']>0)&(x['h4_actor_motion']==m)).sum()) for m in range(6)]})
+        del xs,scalar,x,previous
+    h4lite_require(gae32==26 and gae64==24,'GAE_COUNTS')
+    return {'events':events,'context':context,'gae32':gae32,'gae64':gae64,
+        'decision':h4lite_decision(events),'advantage_semantics':'frozen_unnormalized_host_pinned_arithmetic'}
+
+def h4lite_charge(r,kind,n,recorded=False):
+    caps={'resets':2048,'templates':2,'transitions':851968,'actor_calls':832,
+        'actor_samples':851968,'critic_calls':52,'critic_samples':878592}
+    h4lite_require(kind in caps and type(n) is int and n>0,'COUNTER_KIND')
+    dst=r['recorded' if recorded else 'attempted']
+    target=dst[kind]+n
+    h4lite_require(target<=caps[kind] and (not recorded or target<=r['attempted'][kind]),
+        'COUNTER_'+kind)
+    dst[kind]=target
+
+def h4lite_worker(root,auth,prov):
+    # Direct function calls also require the live distinct authorization.
+    h4lite_require(h4lite_authorization(root)==(auth,prov),'WORKER_AUTH')
+    h4m3_no_runtime_imports()
+    path=root/H4LITE_OUTPUT;out=path.parent
+    h4lite_require(h4lite_json(out/'attempt.json')=={'authorization':auth,'reserved':True}
+        and h4lite_json(out/'parent.json')=={'authorization':auth,'pid':os.getppid()},'PARENT')
+    h4lite_persist(out/'dispatch.started.json',{'authorization':auth,'pid':os.getpid()},True)
+    caps={'resets':0,'templates':0,'transitions':0,'actor_calls':0,'actor_samples':0,
+        'critic_calls':0,'critic_samples':0}
+    r={'status':'IN_PROGRESS','authorization':auth,'provenance':prov,
+        'attempted':dict(caps),'recorded':dict(caps),'archived_transitions':0,'blocks':[],'cohorts':[],
+        'optimizer_updates':0,'checkpoint_saves':0,'training_performed':False}
+    h4lite_persist(path,r,True)
+    def save():h4lite_persist(path,r)
+    def charge(kind,n,recorded=False):h4lite_charge(r,kind,n,recorded);save()
+    from m462_ppo_warmstart_run import GPUMonitor,sample_gpu
+    monitor=GPUMonitor()
+    try:
+        initial=sample_gpu()
+        h4lite_require(initial['total_mib']==12288 and 0<=initial['used_mib']<.95*12288,'GPU_INITIAL')
+        with monitor:
+            from train import check_source,build_paper_config
+            from paper_config import BASE,ENV,REPO
+            check_source()
+            sys.path.insert(0,str(BASE/'G1_M4_0_G1_PPO_ONE_UPDATE_SMOKE_V1'))
+            from nvcc_compat import apply
+            r['nvcc']=apply()
+            import jax
+            import numpy as np
+            import jax.numpy as jp
+            from flax import serialization
+            from brax.training import acting
+            from brax.training.acme import running_statistics
+            from brax.training.agents.ppo import networks
+            from mujoco_playground import locomotion
+            from mujoco_playground._src import wrapper
+            import m463_coverage_env as ce
+            import m463_push_ppo_train as trainer
+            h4lite_require(jax.default_backend()=='gpu' and jax.__version__=='0.4.35'
+                and jax.process_count()==jax.local_device_count()==1,'GPU_RUNTIME')
+            h4lite_require(all(Path(m.__file__).resolve().is_relative_to(Path(REPO).resolve())
+                for m in (locomotion,wrapper,ce.joystick)),'NATIVE_ORIGIN')
+            def guard():
+                h4lite_require('brax.training.agents.ppo.train' not in sys.modules,'TRAIN_IMPORT')
+                r['gpu']=h3_gpu_check(monitor);h4lite_storage(out);save()
+            def tree_hash(tree):
+                return trainer.h4x_model_digest(jax,np,tree,())
+            def template_event(name,phase):
+                charge('templates',1,phase=='recorded')
+            loader=h4_shared_frozen_loader(29,build_paper_config(),networks,running_statistics,
+                serialization,jax,jp,np,template_event=template_event,typed=True)
+            nets,params=loader(Path(prov['inputs']['checkpoint']['path']))
+            norm,actor,critic=params
+            r['params_before']=tree_hash(params);save()
+            policy=networks.make_inference_fn(nets)((norm,actor),deterministic=False)
+            values=jax.jit(lambda obs:nets.value_network.apply(norm,critic,obs))
+            randomizer=locomotion.get_domain_randomizer(ENV)
+            h4lite_require(randomizer is not None,'DR')
+            for seed in H4LITE_SEEDS:
+                cfg=locomotion.get_default_config(ENV)
+                reward=h4lite_json(Path(prov['inputs']['reward']['path']))['train_reward_config']
+                h4lite_require(cfg.reward_config.to_dict()==reward and bool(cfg.push_config.enable)
+                    and list(cfg.push_config.interval_range)==[5.,10.]
+                    and list(cfg.push_config.magnitude_range)==[.1,2.],'REWARD_CONFIG')
+                cfg.push_config.enable=False
+                env=ce.CoverageJoystick(config=cfg,stage='easy_repeat_support',
+                    h4_arm='candidate',h4cc_arm='ref')
+                h4lite_require(env.action_size==29 and float(env.dt)==.02,'ENV_CONFIG')
+                drkey,resetkey,actkey=jax.random.split(jax.random.PRNGKey(seed),3)
+                wrapped=wrapper.wrap_for_brax_training(env,episode_length=1000,action_repeat=1,
+                    randomization_fn=functools.partial(randomizer,rng=jax.random.split(drkey,1024)))
+                dr=wrapped.env.env
+                h4lite_require(isinstance(dr,wrapper.BraxDomainRandomizationVmapWrapper)
+                    and dr.env is env,'WRAPPER')
+                digest=trainer.h4x_model_digest(jax,np,dr._mjx_model_v,dr._in_axes)
+                def key(v):return np.asarray(jax.device_get(v)).tolist()
+                c={'seed':seed,'dr_key':key(drkey),'reset_key':key(resetkey),
+                    'actor_key':key(actkey),'model_before':digest}
+                r['cohorts'].append(c);save()
+                guard();charge('resets',1024)
+                state=jax.jit(wrapped.reset)(jax.random.split(resetkey,1024))
+                jax.block_until_ready(state)
+                h4lite_require(state.obs['state'].shape==(1024,103)
+                    and state.obs['privileged_state'].shape==(1024,216)
+                    and not np.asarray(state.done).any(),'RESET')
+                charge('resets',1024,True);guard()
+                collect=jax.jit(lambda st,k:acting.generate_unroll(wrapped,st,policy,k,32,
+                    extra_fields=h4lite_fields()))
+                previous=None
+                for b in range(13):
+                    guard();actkey,blockkey=jax.random.split(actkey)
+                    r['inflight']={'cohort':seed,'block':b,'actor_key':key(blockkey)};save()
+                    for k,n in (('transitions',32768),('actor_calls',32),('actor_samples',32768)):
+                        charge(k,n)
+                    state,tr=collect(state,blockkey);jax.block_until_ready((state,tr))
+                    for k,n in (('transitions',32768),('actor_calls',32),('actor_samples',32768)):
+                        charge(k,n,True)
+                    charge('critic_calls',1);charge('critic_samples',32768)
+                    v=values(tr.observation);jax.block_until_ready(v)
+                    charge('critic_calls',1,True);charge('critic_samples',32768,True)
+                    charge('critic_calls',1);charge('critic_samples',1024)
+                    boot=values(jax.tree_util.tree_map(lambda x:x[-1],tr.next_observation))
+                    jax.block_until_ready(boot)
+                    charge('critic_calls',1,True);charge('critic_samples',1024,True)
+                    h4lite_require(set(tr.extras)=={'policy_extras','state_extras'}
+                        and set(tr.extras['policy_extras'])=={'raw_action','log_prob'}
+                        and set(tr.extras['state_extras'])==set(h4lite_fields()),'TRANSITION_EXTRAS')
+                    data={'action':tr.action,'reward':tr.reward,'discount':tr.discount,'value':v,'bootstrap':boot,
+                        **tr.extras['policy_extras']}
+                    for pre,ob in (('obs',tr.observation),('next',tr.next_observation)):
+                        h4lite_require(set(ob)=={'state','privileged_state'},'OBS_KEYS')
+                        data.update({pre+'/'+k:x for k,x in ob.items()})
+                    data.update({'extra/'+k:x for k,x in tr.extras['state_extras'].items()})
+                    host={k:np.asarray(jax.device_get(a)) for k,a in data.items()}
+                    h4lite_require(3*sum(q.nbytes for q in host.values())<=512*H4LITE_MIB,'COLLECTION_STAGING')
+                    raw=h4lite_write_block(out/('c%d_b%02d.bin'%(seed,b)),np,host)
+                    r['blocks'].append({**r['inflight'],'raw':raw})
+                    r['archived_transitions']+=32768;save()
+                    # Invalid native flags/NaNs remain archived as bounded evidence.
+                    h4lite_validate(np,host)
+                    previous=h4lite_continuity(np,host,previous)
+                    r.pop('inflight');save()
+                    del tr,data,host,v,boot
+                    guard()
+                c['model_after']=trainer.h4x_model_digest(jax,np,dr._mjx_model_v,dr._in_axes)
+                h4lite_require(c['model_after']==digest,'MODEL_CHANGED');save()
+                del state,collect,wrapped,dr,env
+            r['params_after']=tree_hash(params)
+            h4lite_require(r['params_after']==r['params_before'],'PARAM_MUTATION')
+            guard()
+        r['gpu']=h3_gpu_check(monitor);r['status']='COLLECTED';save()
+    except BaseException as exc:
+        r['status']='STOP';r['error']=(type(exc).__name__+': '+str(exc))[:4096]
+        try:save()
+        except BaseException as err:print('H4LITE_PARTIAL_WRITE_FAILED',repr(err),flush=True)
+        raise
+
+def h4lite_ledger_check(r,complete=False):
+    caps={'resets':2048,'templates':2,'transitions':851968,'actor_calls':832,
+        'actor_samples':851968,'critic_calls':52,'critic_samples':878592}
+    h4lite_require(set(r['attempted'])==set(r['recorded'])==set(caps) and all(
+        type(r['attempted'][k]) is int and type(r['recorded'][k]) is int and
+        0<=r['recorded'][k]<=r['attempted'][k]<=v for k,v in caps.items()),'LEDGER_BOUNDS')
+    blocks=r['blocks']
+    h4lite_require(type(blocks) is list and len(blocks)<=26 and
+        type(r['archived_transitions']) is int and r['archived_transitions']==len(blocks)*32768
+        <=r['recorded']['transitions'],'LEDGER_ARCHIVED')
+    for i,q in enumerate(blocks):
+        h4lite_require(q['cohort']==H4LITE_SEEDS[i//13] and q['block']==i%13
+            and q['raw']['file']=='c%d_b%02d.bin'%(q['cohort'],q['block']),'LEDGER_ORDER')
+    if complete:
+        h4lite_require(r['attempted']==r['recorded']==caps and len(blocks)==26
+            and 'inflight' not in r,'LEDGER_COMPLETE')
+    return True
+
+def h4lite_read_final(root,auth,prov,watchdog=lambda:None):
+    import numpy as np
+    path=root/H4LITE_OUTPUT;out=path.parent
+    r=h4lite_json(path)
+    h4lite_ledger_check(r,complete=True)
+    caps={'resets':2048,'templates':2,'transitions':851968,'actor_calls':832,
+        'actor_samples':851968,'critic_calls':52,'critic_samples':878592}
+    h4lite_require(r['status'] in ('COLLECTED','OBSERVATION_COMPLETE') and
+        r['authorization']==auth and r['provenance']==prov
+        and r['attempted']==r['recorded']==caps and len(r['blocks'])==26
+        and r['optimizer_updates']==r['checkpoint_saves']==0 and r['training_performed'] is False
+        and r['archived_transitions']==851968 and 'inflight' not in r
+        and r['params_before']==r['params_after']
+        and len(r['cohorts'])==2 and [x['seed'] for x in r['cohorts']]==list(H4LITE_SEEDS)
+        and all(x['model_before']==x['model_after'] for x in r['cohorts']),'FINAL_CONTRACT')
+    for k in ('params_before','params_after'):
+        h4lite_require(len(r[k])==64 and all(x in '0123456789abcdef' for x in r[k]),'PARAM_HASH')
+    g=r['gpu']
+    h4lite_require(g['total_mib']==12288 and 0<g['peak_used_mib']<.95*12288
+        and g['samples']>0 and not g['sampler_errors'],'FINAL_GPU')
+    h4lite_storage(out)
+    gae=h4lite_pinned_gae(Path(prov['external']['training']['brax.training.agents.ppo.losses']['path']),np)
+    expected={'status','authorization','provenance','attempted','recorded','archived_transitions',
+        'blocks','cohorts','optimizer_updates','checkpoint_saves','training_performed','nvcc',
+        'params_before','params_after','gpu'}
+    h4lite_require(set(r)==expected|({'analysis'} if r['status']=='OBSERVATION_COMPLETE' else set()),'REPORT_KEYS')
+    allowed={'attempt.json','parent.json','dispatch.started.json','probe.log','report.json'}
+    allowed.update('c%d_b%02d.bin'%(seed,b) for seed in H4LITE_SEEDS for b in range(13))
+    if r['status']=='OBSERVATION_COMPLETE':
+        allowed.add('attempt_result.json')
+        receipt=h4lite_json(out/'attempt_result.json')
+        h4lite_require(receipt['authorization']==auth and receipt['decision']=='OBSERVATION_COMPLETE'
+            and receipt['producer_rc']==0 and receipt['error'] is None,'FINAL_RECEIPT')
+    h4lite_require(h4lite_json(out/'attempt.json')=={'authorization':auth,'reserved':True},
+        'FINAL_RESERVATION')
+    marker=h4lite_json(out/'dispatch.started.json')
+    h4lite_require(set(marker)=={'authorization','pid'} and marker['authorization']==auth
+        and type(marker['pid']) is int and marker['pid']>0,'FINAL_DISPATCH')
+    keys=[]
+    for block in r['blocks']:
+        h4lite_require(set(block)=={'cohort','block','actor_key','raw'},'BLOCK_RECORD')
+        keys.append(block['actor_key'])
+    h4lite_require(all(type(k) is list and len(k)==2 and
+        all(type(v) is int and 0<=v<2**32 for v in k) for k in keys)
+        and len({tuple(k) for k in keys})==26,'BLOCK_KEYS_LEDGER')
+    h4lite_require({x.name for x in out.iterdir()}==allowed,'FILE_INVENTORY')
+    analysis=h4lite_analyze(np,out,r['blocks'],gae,watchdog)
+    if r['status']=='OBSERVATION_COMPLETE':
+        h4lite_require(analysis==r['analysis'],'ANALYSIS_REPLAY')
+    return r,analysis
+
+def h4lite_dispatch(args):
+    import selectors
+    import signal
+    import time
+    root=Path(__file__).resolve().parent;path=root/H4LITE_OUTPUT;out=path.parent
+    auth,prov=h4lite_authorization(root)
+    h4lite_require(os.environ.get('JAX_PLATFORMS')=='cuda' and
+        os.environ.get('JAX_DEFAULT_MATMUL_PRECISION')=='highest' and
+        os.environ.get('XLA_PYTHON_CLIENT_PREALLOCATE')=='false','GPU_FLAGS')
+    if args.h4lite_child:
+        return h4lite_worker(root,auth,prov)
+    h4lite_storage(out,initial=True);out.mkdir(exist_ok=False)
+    h4lite_persist(out/'attempt.json',{'authorization':auth,'reserved':True},True)
+    h4lite_persist(out/'parent.json',{'authorization':auth,'pid':os.getpid()},True)
+    cmd=[sys.executable,'-B','-u',str(Path(__file__).resolve()),'--mode','run',
+        '--h4lite','--h4lite-child','--output',str(path)]
+    proc=None;rc=None;stored=0;total_seen=0;error=None;decision='STOP'
+    def kill():
+        if proc is not None:
+            try:os.killpg(proc.pid,signal.SIGKILL)
+            except ProcessLookupError:pass
+    try:
+        with (out/'probe.log').open('xb') as log,selectors.DefaultSelector() as sel:
+            proc=subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,
+                start_new_session=True)
+            sel.register(proc.stdout,selectors.EVENT_READ);deadline=time.monotonic()+5400
+            while True:
+                remain=deadline-time.monotonic()
+                h4lite_require(remain>0,'WATCHDOG')
+                if not sel.select(min(1,remain)):continue
+                b=os.read(proc.stdout.fileno(),65536)
+                if not b:break
+                total_seen+=len(b)
+                part=b[:max(0,16*H4LITE_MIB-stored)];log.write(part);stored+=len(part)
+                h4lite_require(len(part)==len(b),'LOG_CAP')
+            rc=proc.wait(timeout=max(.01,deadline-time.monotonic()))
+            log.flush();os.fsync(log.fileno())
+        h4lite_require(rc==0 and h4lite_authorization(root)==(auth,prov),'PARENT_POST')
+        h4lite_require(h4lite_json(out/'dispatch.started.json')==
+            {'authorization':auth,'pid':proc.pid},'DISPATCH_MARKER')
+        def watchdog():
+            h4lite_require(time.monotonic()<deadline,'WATCHDOG')
+        watchdog()
+        r,analysis=h4lite_read_final(root,auth,prov,watchdog)
+        watchdog()
+        r['analysis']=analysis;r['status']='OBSERVATION_COMPLETE'
+        h4lite_persist(path,r);h4lite_require(h4lite_json(path)==r,'FINAL_REPORT_ROUNDTRIP')
+        decision='OBSERVATION_COMPLETE'
+    except BaseException as exc:
+        error=(type(exc).__name__+': '+str(exc))[:4096]
+        kill()
+        if proc is not None:rc=proc.wait()
+    # Independent partial-file inventory includes uncommitted temporary blocks.
+    files=[]
+    for p in sorted(out.iterdir()):
+        h4lite_require(p.is_file() and not p.is_symlink(),'PARTIAL_FILE')
+        files.append({'file':p.name,'bytes':p.stat().st_size})
+    partial=None;partial_error=None
+    try:
+        pr=h4lite_json(path)
+        h4lite_require(pr['authorization']==auth and pr['provenance']==prov,'PARTIAL_PROVENANCE')
+        partial={k:pr.get(k) for k in ('status','attempted','recorded','archived_transitions','inflight')}
+        h4lite_ledger_check(pr)
+        partial['blocks']=[{'cohort':q['cohort'],'block':q['block'],
+            'file':q['raw']['file'],'sha256':q['raw']['sha256']} for q in pr['blocks']]
+    except BaseException as exc:
+        partial_error=(type(exc).__name__+': '+str(exc))[:1024]
+    h4lite_persist(out/'attempt_result.json',{'authorization':auth,'decision':decision,
+        'producer_rc':rc,'error':error,'log_bytes':stored,'total_seen_log_bytes':total_seen,'files':files,
+        'partial':partial,'partial_error':partial_error},True)
+    h4lite_require(decision=='OBSERVATION_COMPLETE','STOP')
+    print('H4LITE_OBSERVATION_COMPLETE',flush=True)
+
+def h4lite_static(root):
+    import numpy as np
+    import tempfile
+    import ast
+    source=Path(__file__).read_text('utf8')
+    compile(source,str(__file__),'exec')
+    old=subprocess.check_output(['git','show',H4LITE_BASE+':m463_gate3_cp_eval.py'],
+        cwd=root).decode()
+    # Reverse only the opt-in changes; require exact legacy bytes.
+    projected=source[:source.index('\n# H4-M10-OBS-LITE-V1:')]+source[source.index('\ndef main():'):]
+    projected=projected.replace('audit=None,template_event=None,*,typed=False):',
+        'audit=None,template_event=None):',1).replace(
+        '        if typed:\n            return ppo_nets,(norm,actor,critic)\n','',1)
+    start=projected.index('    # H4LITE_CLI_BEGIN\n');end=projected.index('    # H4LITE_CLI_END\n',start)
+    projected=projected[:start]+projected[end+len('    # H4LITE_CLI_END\n'):]
+    start=projected.index('    # H4LITE_DISPATCH_BEGIN\n');end=projected.index('    # H4LITE_DISPATCH_END\n',start)
+    projected=projected[:start]+projected[end+len('    # H4LITE_DISPATCH_END\n'):]
+    h4lite_require(projected==old,'LEGACY_SOURCE')
+    h4m3_no_runtime_imports()
+    schema=h4lite_schema(2);data={k:np.zeros(shape,dtype=dt) for k,(dt,shape) in schema.items()}
+    data['discount'][:]=1
+    # Pure host fixture: no reset, model, actor, or native graph.
+    h4lite_validate(np,data,2)
+    def rejects(fn):
+        try:fn()
+        except (RuntimeError,ValueError,KeyError,OSError):return
+        raise RuntimeError('M470_H4LITE_NEGATIVE_ACCEPTED')
+    data['extra/h4_boundary'][0]=1
+    data['extra/h4_age'][:]=np.arange(32,dtype=np.int32)[:,None]
+    data['extra/h4cc_episode'][:]=1
+    previous=h4lite_continuity(np,data,None)
+    other={k:a.copy() for k,a in data.items()}
+    other['extra/h4_boundary'][0]=0;other['extra/h4_age']+=32
+    h4lite_continuity(np,other,previous)
+    other['extra/h4_age'][0,0]+=1
+    rejects(lambda:h4lite_continuity(np,other,previous))
+    other['extra/h4_age'][0,0]-=1;other['extra/h4_bad'][0,0]=1
+    rejects(lambda:h4lite_validate(np,other,2))
+    with tempfile.TemporaryDirectory(dir=root/'m463_runs') as tmp:
+        p=Path(tmp)/'block.bin'
+        # Storage fixture is on owner disk and respects frozen reserve.
+        meta=h4lite_write_block(p,np,data,2)
+        got=h4lite_read_block(p,np,meta,2)
+        h4lite_require(all(h4lite_bit_equal(np,got[k],data[k]) for k in data),'ROUNDTRIP')
+        import copy
+        broken=copy.deepcopy(meta);broken['arrays'][0]['offset']=4
+        rejects(lambda:h4lite_read_block(p,np,broken,2))
+        broken=copy.deepcopy(meta);broken['bytes']=32*2*4096+8+1
+        rejects(lambda:h4lite_read_block(p,np,broken,2))
+        bad_json=p.parent/'duplicate.json';bad_json.write_text('{"x":1,"x":2}')
+        rejects(lambda:h4lite_json(bad_json))
+        with p.open('r+b') as f:f.write(b'\x01')
+        try:h4lite_read_block(p,np,meta,2)
+        except RuntimeError:pass
+        else:raise RuntimeError('M470_H4LITE_CORRUPT_ACCEPTED')
+    v=np.zeros((64,2),np.float32);rew=v.copy();rew[20]=-.1;rew[32]=1
+    d=np.ones_like(v);tr=np.zeros_like(v);boot=v[0]
+    _,_,a32=h4lite_gae(np,rew[:32],v[:32],boot,d[:32],tr[:32])
+    _,_,a64=h4lite_gae(np,rew,v,boot,d,tr)
+    h4lite_require(np.all(a32[20]<0) and np.all(a64[20]>0),'GAE_DELAY')
+    d[25]=0
+    _,_,a=h4lite_gae(np,rew,v,boot,d,tr)
+    h4lite_require(np.array_equal(a[20],a32[20]),'GAE_TERMINAL')
+    d[25]=1;tr[25]=1
+    _,_,a=h4lite_gae(np,rew,v,boot,d,tr)
+    h4lite_require(np.array_equal(a[20],a32[20]) and not a[25].any(),'GAE_TRUNC')
+    # Minimal exposure/credit decision fixtures; all cohort/side cells represented.
+    rows=[dict(cohort=c,side=s,tick=270,label=o,credit=(o=='S'))
+        for c in H4LITE_SEEDS for s in (1,2) for o in ('S','F') for _ in range(4)]
+    h4lite_require(h4lite_decision(rows)['decision']=='PRIORITIZE_CREDIT_RESEARCH'
+        and h4lite_decision(rows[:2])['decision']=='EXPOSURE_INSUFFICIENT','DECISION_FIXTURE')
+    # Endpoint fixtures: S, F, command censor, event-terminal.
+    kset=('h4_event_qual','h4_source_terminal','h4_tick_kind','h4_tick_cell',
+        'h4_tick_age','h4_tick_same','h4cc_tick_same','h4_changed','stand_obs',
+        'h4_tick_survived','h4cc_tick','h4cc_tick_age','h4cc_tick_side','h4cc_tick_survived')
+    x={k:np.zeros((64,1),np.int32) for k in kset}
+    x['h4_event_qual'][0]=1
+    for k in ('h4_tick_kind','h4_tick_cell','h4_tick_same','h4cc_tick_same','stand_obs',
+        'h4_tick_survived','h4cc_tick','h4cc_tick_side','h4cc_tick_survived'):x[k][:]=1
+    x['h4_tick_kind'][1:]=2
+    x['h4_tick_age'][:,0]=x['h4cc_tick_age'][:,0]=np.arange(64)
+    ep=np.ones((64,1),np.int32)
+    h4lite_require(h4lite_event(np,x,ep,0,0)['label']=='S','S_FIXTURE')
+    x['h4_source_terminal'][25]=1;x['h4_tick_survived'][25]=0;x['h4cc_tick_survived'][25]=0
+    h4lite_require(h4lite_event(np,x,ep,0,0)['label']=='F','F_FIXTURE')
+    x['h4_changed'][5]=1
+    h4lite_require(h4lite_event(np,x,ep,0,0)['label']=='C','C_FIXTURE')
+    x['h4_source_terminal'][0]=1
+    h4lite_require(h4lite_event(np,x,ep,0,0)['label']=='E','E_FIXTURE')
+    ledger={'attempted':{'resets':0},'recorded':{'resets':0}}
+    rejects(lambda:h4lite_charge(ledger,'resets',1,True))
+    h4lite_charge(ledger,'resets',2048)
+    rejects(lambda:h4lite_charge(ledger,'resets',1))
+    h4lite_charge(ledger,'resets',2048,True)
+    h4lite_require(ledger['attempted']==ledger['recorded']=={'resets':2048},'COUNTER_FIXTURE')
+    cli=[sys.executable,'-B',str(Path(__file__).resolve()),'--h4lite','--output',str(root/H4LITE_OUTPUT)]
+    for args,ok in ((['--mode','plan'],True),(['--mode','run'],False),
+        (['--mode','run','--h4lite-child'],False),(['--mode','plan','--h4-m1-eval'],False),
+        (['--mode','run','--h4lite-static'],False)):
+        proc=subprocess.run(cli+args,cwd=root,capture_output=True,text=True,timeout=20)
+        h4lite_require((proc.returncode==0)==ok and
+            ('H4LITE_PLAN' in proc.stdout if ok else 'M470_H4LITE_' in proc.stderr),'CLI_FIXTURE')
+    rules=(root/'G1_RESEARCH_RULES.md').read_text('utf8')
+    try:h4lite_marker(rules)
+    except RuntimeError as e:h4lite_require('EXECUTION_HOLD' in str(e),'HOLD_FIXTURE')
+    else:raise RuntimeError('M470_H4LITE_ACTIVE_DURING_STATIC')
+    prov=h4lite_provenance(root)
+    reference=h4lite_pinned_gae(Path(prov['external']['training']['brax.training.agents.ppo.losses']['path']),np)
+    rng=np.random.default_rng(8101)
+    for size in (32,64):
+        rw=rng.normal(size=(size,3)).astype(np.float32);vv=rng.normal(size=(size,3)).astype(np.float32)
+        bb=rng.normal(size=(3,)).astype(np.float32);dd=np.ones_like(rw);tt=np.zeros_like(rw)
+        dd[12,0]=0;dd[24,1]=0;tt[24,1]=1
+        reference(rw,vv,bb,dd,tt)
+    h4m3_no_runtime_imports()
+    print('H4LITE_SOURCE',h4m3_digest(prov['source']))
+    print('H4LITE_SPEC',h4m3_digest(h4lite_plan()))
+    print('H4LITE_PROVENANCE',h4m3_digest(prov))
+    h4lite_require(not (root/H4LITE_OUTPUT).parent.exists(),'STATIC_NAMESPACE')
+    print('H4LITE_STATIC_ZERO physical_transitions=0 resets=0 optimizer_updates=0 native_inference=0')
+    print('H4LITE_FULL_STATIC_PASS')
+
+
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--mode',choices=('plan','run'),required=True)
@@ -9783,7 +10714,27 @@ def main():
     p.add_argument('--h4m7-snapshot',action='store_true')
     p.add_argument('--h4m7-static-archives',action='store_true')
     p.add_argument('--h4m7-child',action='store_true',help=argparse.SUPPRESS)
+    # H4LITE_CLI_BEGIN
+    p.add_argument('--h4lite',action='store_true')
+    p.add_argument('--h4lite-static',action='store_true')
+    p.add_argument('--h4lite-child',action='store_true',help=argparse.SUPPRESS)
+    # H4LITE_CLI_END
     args=p.parse_args()
+    # H4LITE_DISPATCH_BEGIN
+    if args.h4lite:
+        try:
+            root=Path(__file__).resolve().parent
+            allowed={'mode','output','h4lite',('h4lite_static' if args.mode=='plan' else 'h4lite_child')}
+            h4lite_require(all(getattr(args,k)==p.get_default(k) for k in vars(args)
+                if k not in allowed),'FLAG_CONFLICT')
+            h4lite_require(args.output.absolute()==args.output.resolve()==root/H4LITE_OUTPUT,'OUTPUT')
+            if args.mode=='run':return h4lite_dispatch(args)
+            if args.h4lite_static:return h4lite_static(root)
+            print('H4LITE_PLAN',json.dumps(h4lite_plan(),sort_keys=True));return
+        except (RuntimeError,ValueError,KeyError,OSError) as exc:
+            p.error(str(exc))
+    if args.h4lite_static or args.h4lite_child:p.error('H4LITE_FLAG_REQUIRED')
+    # H4LITE_DISPATCH_END
     if args.h4m7_snapshot:
         try:
             allowed=('mode','output','h4m7_snapshot')
