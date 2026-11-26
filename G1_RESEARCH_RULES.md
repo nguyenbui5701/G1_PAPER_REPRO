@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.185  
+**Version:** 1.2.186  
 **Ngày cập nhật:** 2026-11-26 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -2095,6 +2095,10 @@ Actual SA offline tests: exact final extracted constants and20 host functions co
 Decision: H4-M7-4A HELD IMPLEMENTATION STAGED / SA FOCUSED HOST PASS / OWNER FULL STATIC PENDING; NOT technical acceptance or native GO. Owner run focused full-file compile, exact legacy/native one_step preservation, actual local source-map/archives/installed external/dependency/frozen policy preflight using mock auth only, actual CLI plan/--h4m7-static-archives/HOLD/conflict/child/orphan/output regressions with no runtime marker, zero native imports/output namespace, source/spec/external SHA and bounded static log. SA must review actual Owner static log and resolve any blockers before issuing separate one-use native authorization. No repeat H4-M6, no runtime automatic retry. H-R1..H-R5b unchanged, H-R5a/b intervention UNTESTED, H4-M6 CLOSED INCONCLUSIVE/HOLD historical323, STOPs/positive4101/two NOT_REPRODUCED preserved; official H4 CTRL unchanged, all runtime/independent holdout/readiness/production/promotion/Branch B HOLD. Rollback only reviewed inverse evaluator changes preserving history and all original artifacts, never reset main or old evidence. Rules update only after executable staging.
 
 
+### H4-M7-4A — Owner static launcher blocked before Python entry (v1.2.186; 2026-11-26)
+
+Actual uploaded m470_h4_m7_4a_full_static_20261126_111042_160866426.log,125 bytes,SHA256 40fcb9dbe683a2ef1ac56528b35b85bf687395e3e41259644ee10c46aadb20ed: shell reports Command 'python' not found and suggests system python3. SA previous launcher incorrectly used bare python despite pinned g1_m463 Rules. No Python static body entered; no full compile, provenance or CLI regression result. Remote HEAD07fea016d32c9ce2bdcb6b527b30db6e746b3f1f, Rules1.2.185 blob4de827f15d890c93c315b7fe2cfc4542dd6769b4 reviewed; no M7 active/static approval markers. Preserve failed log. Correct only launcher: verify existing g1_m463 shell function/executable in same successful environment, then use g1_m463 -B -u with identical static heredoc and new log, no system Python substitution, package installation, backend change or executable edit. If launcher unresolved STOP and recover established shell setup, do not guess venv. This is not native execution retry. Owner full static remains PENDING; SA focused checks unchanged; H4-M6 closed323, all native execution/PPO/Branch B HOLD. Zero new physical transitions/inference/simulation/evaluation/PPO. Rules-only record. No local environment access or verified shell exit code in uploaded log.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -2356,6 +2360,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-26)
+
+**H4-M7-4A OWNER STATIC LAUNCHER BLOCKED (v1.2.186):** log40fcb9db... bare python unavailable before body; use established g1_m463, identical static test, new log; full static PENDING, no native GO.
 
 **H4-M7-4A HELD IMPLEMENTATION STAGED / SA FOCUSED HOST PASS / OWNER FULL STATIC PENDING (v1.2.185):** evaluator d3d613485d8c23b646f32b12d7045cc020cda192/blob1f3c0b45392dec496c970771051bb0c1f44f5135, opt-in host snapshot/collector/reader, exact native one_step preserved; actual archive1360/184,24 core mocks + full mock report24 snapshots/10 negatives + isolated CLI7. Full-file/actual local CLI/installed provenance pending; no active marker, zero native transitions. H-R5a/b UNTESTED, H4-M6 closed323, Branch B HOLD.
 
@@ -3079,6 +3085,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-26 | H4-M7-4A Owner static launcher review | actual125-byte log SHA40fcb9db... | shell blocked before Python; correct launcher only; full static PENDING; runtime HOLD | 1.2.186 |
+
 | 2026-11-26 | H4-M7-4A held native snapshot implementation | evaluator staged, exact archive1360/184;20 extracted host functions + auth/CLI prefix compiled,24 core mocks, mock replay/reader,10 corruption negatives,7 isolated CLI checks | SA FOCUSED HOST PASS; full Owner static pending, all native HOLD; zero transitions | 1.2.185 |
 
 | 2026-11-26 | H4-M7-4 Owner-local inventory review | six original M3/M4 files, report sizes match, no separate snapshot listed | scoped inventory accepted; H4-M7-4A pending explicit held implementation GO; zero runtime | 1.2.184 |
@@ -3511,6 +3519,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.186 — 2026-11-26:** Record bare Python launcher error and require existing g1_m463 for unchanged full static verification; no executable changes or native authorization.
 
 - **v1.2.185 — 2026-11-26:** Stage isolated M7 native snapshot host mode and strict bounded collector/reader, freeze prospective arithmetic screens; focused host tests accepted within scope, full local static acceptance pending, no native authorization or changed scientific criteria; preserve H4-M6 closure.
 
