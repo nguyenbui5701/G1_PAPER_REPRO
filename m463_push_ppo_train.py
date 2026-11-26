@@ -5343,6 +5343,207 @@ def h4m6_fixed_gae(np,reward,values,bootstrap,discount,truncation):
     normalized=(adv-adv.mean())/(adv.std()+np.float32(1e-8))
     return {'vs':vs,'adv':adv,'normalized':normalized}
 
+# H4-M8-CAM-V1 held core. No executable dispatcher or runtime authorization.
+H4M8_EXECUTION_AUTHORIZED = False
+H4M8_SPEC = {'id':'H4-M8-CAM-V1','length_m':.793,'dv_ref_mps':.35,
+    'alpha':.25,'dt':.02,'window_ticks':50,'delay_ticks':7,'ramp_ticks':8,
+    'weight8_total':288,'max_window_penalty':.18,'reward_scaling':.1,
+    'checkpoint_sha256':SEED1_SHA,'restore_sha256':H3_CAUSAL_RESTORE_SHA,
+    'orbax_sha256':H4_ORBAX_SHA,'config_fingerprint':H3_FP,
+    'arms':('cam-ref','cam'),'training_budget_authorized':False}
+H4M8_PATHS = {'cam-ref':'m463_runs/m470_h4_m8_cam_ref_v1',
+               'cam':'m463_runs/m470_h4_m8_cam_v1'}
+H4M8_BASE_HEAD = '72940da43157a1190554827806e04de4a1c2d970'
+
+
+def h4m8_held_plan(a):
+    # Plan-only and fail closed. No implicit mapping to any old runtime.
+    if a.mode!='plan':
+        raise RuntimeError('M470_H4M8_EXECUTION_HOLD')
+    if a.stage!='easy_repeat_support' or a.h4m8_arm not in H4M8_PATHS:
+        raise RuntimeError('M470_H4M8_PLAN_SCOPE')
+    allowed={'mode','stage','checkpoint','restore_report','output_dir','h4m8_arm'}
+    if any(v is not None and v is not False for k,v in vars(a).items() if k not in allowed):
+        raise RuntimeError('M470_H4M8_CONFLICTING_FLAG')
+    if a.output_dir.resolve()!=Path(H4M8_PATHS[a.h4m8_arm]).resolve():
+        raise RuntimeError('M470_H4M8_PLAN_NAMESPACE')
+    if a.output_dir.exists() or a.output_dir.is_symlink():
+        raise RuntimeError('M470_H4M8_PLAN_OUTPUT_EXISTS')
+    return {'arm':a.h4m8_arm,'spec':H4M8_SPEC,'execution_authorized':False,
+            'training_performed':False,'implementation_complete':False,
+            'checkpoint_verified':False,'restore_verified':False}
+
+
+def h4m8_window_ledger(counts,pending_before,pending_after):
+    """Per-side integer conservation; pending includes host epoch reset disposition."""
+    keys={'qualified','start','event_terminal','eligible','positive_start',
+          'completed','close_terminal','close_truncation','close_boundary',
+          'close_command','close_event','weight8','reach25','opportunities',
+          'attempts','host_reset'}
+    if set(counts)!=keys or any(type(v) is not int or v<0 for v in
+            (*counts.values(),pending_before,pending_after)):
+        raise RuntimeError('M470_H4M8_LEDGER_SCHEMA')
+    c=counts
+    closes=sum(c[k] for k in ('completed','close_terminal','close_truncation',
+                               'close_boundary','close_command','close_event','host_reset'))
+    if (c['qualified']!=c['start']+c['event_terminal'] or
+            pending_before+c['start']!=closes+pending_after or
+            c['positive_start']>pending_before+c['start'] or
+            c['reach25']>pending_before+c['start'] or
+            c['weight8']>8*c['eligible'] or c['weight8']>288*(pending_before+c['start'])):
+        raise RuntimeError('M470_H4M8_LEDGER_CONSERVATION')
+    return True
+
+
+def h4m8_static_regression(root,brax_train_path):
+    """Actual source AST/compile and NumPy fixture only. No native imports."""
+    import ast
+    import subprocess
+    import numpy as np
+    import m463_instrument_brax as gen
+    root=Path(root).resolve()
+    def require(ok,label):
+        if not ok:
+            raise RuntimeError('M470_H4M8_STATIC_'+label)
+    def old(name):
+        return subprocess.check_output(['git','show',H4M8_BASE_HEAD+':'+name],cwd=root)
+    def bits(a,b):
+        return a.dtype==b.dtype and a.shape==b.shape and a.tobytes()==b.tobytes()
+    files=('m463_coverage_env.py','m463_instrument_brax.py','m463_push_ppo_train.py','m463_gate3_cp_eval.py')
+    src={name:(root/name).read_bytes() for name in files}
+    for name,raw in src.items():
+        compile(raw,name,'exec')
+    require(src[files[3]]==old(files[3]),'EVALUATOR_IDENTITY')
+    require(src[files[1]].startswith(old(files[1])),'LEGACY_INSTRUMENT_PREFIX')
+    tree=ast.parse(src[files[0]])
+    base_tree=ast.parse(old(files[0]))
+    def method(tree,name):
+        cls=next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=='CoverageJoystick')
+        return next(n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name==name)
+    require(ast.dump(method(tree,'_get_reward'))==ast.dump(method(base_tree,'_get_reward')),'NATIVE_REWARD')
+    for name in ('reset','step'):
+        n=copy.deepcopy(method(tree,name))
+        n.body=[x for x in n.body if not (isinstance(x,ast.If) and
+                '_h4m8_common' in ast.unparse(x.test))]
+        require(ast.dump(n)==ast.dump(method(base_tree,name)),'LEGACY_'+name.upper())
+    nodes=[n for n in tree.body if (isinstance(n,ast.FunctionDef) and n.name.startswith('h4m8_')) or
+        (isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id.startswith('H4M8_') for t in n.targets))]
+    ns={}
+    exec(compile(ast.Module(body=nodes,type_ignores=[]),'<CAM pure helpers>','exec'),ns)
+    pre,post,momentum=(ns[k] for k in ('h4m8_pre','h4m8_post','h4m8_momentum'))
+    require(tuple('h4m8_'+k for k in ns['H4M8_FIELDS'])==gen.H4M8_EXT_FIELDS,'EXTRA_FIELDS')
+    # Analytic rigid-body spin fixture: zero orbital term; mass variation changes normalization.
+    m=np.ones(31,np.float32);m[0]=0
+    I=np.ones((31,3),np.float32);I[0]=0
+    r=np.zeros((31,3),np.float32)
+    R=np.repeat(np.eye(3,dtype=np.float32)[None],31,axis=0)
+    cv=np.zeros((31,6),np.float32);cv[1:,0]=1
+    ids=np.r_[0,np.ones(30,dtype=np.int32)].astype(np.int32)
+    M,h2,c,good=momentum(np,m,I,r,R,cv,r,ids)
+    require(bool(good) and M==30 and h2==900 and 0<c<1,'MOMENTUM_ANALYTIC')
+    m2=m.copy();m2[16]+=np.float32(.5)
+    M2,h22,c2,good2=momentum(np,m2,I,r,R,cv,r,ids)
+    require(bool(good2) and M2==30.5 and h22==h2 and c2<c,'MASS_NORMALIZATION')
+    badids=ids.copy();badids[3]=0
+    require(not bool(momentum(np,m,I,r,R,cv,r,badids)[3]),'ROOT_MASK_NEGATIVE')
+    zero=np.zeros(3,np.float32)
+    def initial():
+        return {'h4m8_'+k:np.int32(0) for k in ns['H4M8_STATE']}
+    def step(old,side,k,*,event=False,done=False,boundary=False,command=None,clock=None,wrapper=None):
+        age=335+k
+        cmd=zero if command is None else command
+        q=pre(np,old,event=np.bool_(event),repeat=np.bool_(event),cls=np.int32(3),
+            first_age=np.int32(300),first_mag=np.float32(.5),gap=np.int32(35),
+            magnitude=np.float32(.35),first_motion=np.int32(0),pre_motion=np.int32(0),
+            actor_motion=np.int32(0),direction=np.int32(side+1),support_side=np.int32(side),
+            boundary=np.bool_(boundary),age=np.int32(age),clock=np.int32(age if clock is None else clock),
+            wrapper_steps=np.float32(age if wrapper is None else wrapper),
+            command=cmd,actor_command=cmd,critic_command=cmd)
+        return post(np,old,q,done=np.bool_(done),post_zero=np.bool_(np.all(cmd==0)),
+            post_coherent=np.bool_(True),native_mature=np.bool_(event),native_side=np.int32(side if event else 0),
+            mass=M,h2=h2,cost=c,momentum_good=good)
+    rows=[]
+    for side in (1,2):
+        x=step(initial(),side,0,event=True)
+        require(x['h4m8_start']==1 and x['h4m8_weight8']==0 and x['h4m8_bad']==0,'START')
+        data=[]
+        for k in range(1,51):
+            x=step(x,side,k)
+            require(x['h4m8_tick_age']==k and x['h4m8_bad']==0,'AGE')
+            data.append(x)
+        require(sum(int(x['h4m8_weight8']) for x in data)==288 and
+            sum(x['h4m8_weight8']>0 for x in data)==43 and x['h4m8_completed']==1 and
+            x['h4m8_active']==0 and x['h4m8_consumed']==1,'WINDOW')
+        require(sum(x['h4m8_positive_start'] for x in data)==1,'POSITIVE_START')
+        rows.extend(data)
+        for reason,kwargs in [('terminal',{'done':True}),('truncation',{'wrapper':999}),
+                              ('command',{'command':np.ones(3,np.float32)})]:
+            x=step(initial(),side,0,event=True)
+            x=step(x,side,1,**kwargs)
+            require(x['h4m8_close_'+reason]==1 and x['h4m8_shadow']==0 and x['h4m8_active']==0,'CLOSE_'+reason)
+        x=step(initial(),side,0,event=True,done=True)
+        require(x['h4m8_event_terminal']==1 and x['h4m8_start']==0,'EVENT_TERMINAL')
+        x=step(initial(),side,0,event=True)
+        x=step(x,side,1,boundary=True)
+        require(x['h4m8_close_boundary']==1 and x['h4m8_bad']==1 and x['h4m8_active']==0,'BOUNDARY_NEGATIVE')
+    # Preserve exact raw reward bits on all ineligible rows, including -0.
+    shape=(5,32)
+    ex={key:np.zeros(shape,np.float32 if key in ('h4m8_mass','h4m8_h2','h4m8_cost','h4m8_shadow') else np.int32)
+        for key in gen.H4M8_EXT_FIELDS}
+    for key,val in [('h4m8_mass',M),('h4m8_h2',h2),('h4m8_cost',c)]:
+        ex[key].fill(val)
+    for i,row in enumerate(rows):
+        for key in ex:
+            ex[key].flat[i]=row[key]
+    native=np.full(shape,-0.,np.float32);native[0,12]=np.float32(-.2)
+    discount=np.ones(shape,np.float32);trunc=np.zeros(shape,np.float32)
+    discount[4,30:]=0;trunc[4,31]=1
+    ref,desired,actual,bad=gen.h4m8_learning_reward(np,native,discount,trunc,ex,np.bool_(False))
+    require(bits(ref,native) and not bad.any() and not actual.any(),'SHAM')
+    cam,desired,actual,bad=gen.h4m8_learning_reward(np,native,discount,trunc,ex,np.bool_(True))
+    mask=desired>0
+    require(not bad.any() and mask.sum()==86 and bits(cam[~mask],native[~mask]) and
+        bits(cam[mask],(native-desired)[mask]) and np.all(actual>=0),'CAM_REWARD')
+    corrupt={key:value.copy() for key,value in ex.items()}
+    corrupt['h4m8_weight8'][0,8]=9
+    require(gen.h4m8_learning_reward(np,native,discount,trunc,corrupt,np.bool_(True))[3].any(),'NEGATIVE_WEIGHT')
+    # Historical fixed-V arithmetic helper; no JAX, no optimizer.
+    v=np.zeros(shape[::-1],np.float32);boot=np.zeros(5,np.float32)
+    ga=lambda z:h4m6_fixed_gae(np,z.T,v,boot,discount.T,trunc.T)
+    g0,g1,g2=ga(native),ga(ref),ga(cam)
+    require(all(bits(g0[k],g1[k]) for k in g0) and g2['adv'][-1,4]==0 and
+        np.any(g2['vs']!=g0['vs']),'GAE')
+    counts=dict(qualified=1,start=1,event_terminal=0,eligible=50,positive_start=1,
+        completed=1,close_terminal=0,close_truncation=0,close_boundary=0,close_command=0,
+        close_event=0,weight8=288,reach25=1,opportunities=1,attempts=1,host_reset=0)
+    require(h4m8_window_ledger(counts,0,0),'LEDGER')
+    try:
+        h4m8_window_ledger(dict(counts,completed=0),0,0)
+    except RuntimeError:
+        pass
+    else:
+        raise RuntimeError('M470_H4M8_STATIC_LEDGER_NEGATIVE')
+    raw=Path(brax_train_path).read_bytes()
+    prev={'__name__':'_h4m8_previous_instrumenter'}
+    exec(compile(old(files[1]),'<previous instrumenter>','exec'),prev)
+    for fn,kw in [('make_h4_exploratory_source',{}),
+                  ('make_h4_exploratory_source',{'enable_h4cc':True}),('make_h4m6_source',{})]:
+        require(getattr(gen,fn)(raw,**kw)==prev[fn](raw,**kw),'LEGACY_GENERATOR')
+    generated,original=gen.make_h4m8_source(raw)
+    require(original==H3_CAUSAL_ORIGINAL_BRAX_SHA and
+        generated.count("raise RuntimeError('M470_H4M8_GENERATED_EXECUTION_HOLD')")==1 and
+        generated.count('sgd_step, data=learning_data, normalizer_params=normalizer_params')==1,'GENERATED_HOLD')
+    compile(generated,'<CAM generated>','exec')
+    require(not H4M8_EXECUTION_AUTHORIZED and not any(x in sys.modules for x in
+        ('jax','mujoco','brax.training.agents.ppo.train')),'NO_NATIVE_IMPORT')
+    return {'decision':'HELD_CORE_STATIC_PASS','implementation_complete':False,
+        'original_brax_sha256':original,'generated_sha256':hashlib.sha256(generated.encode()).hexdigest(),
+        'files_sha256':{k:hashlib.sha256(v).hexdigest() for k,v in src.items()},
+        'window_rows':len(rows),'nonzero_reward_rows':int(mask.sum()),
+        'physical_transitions':0,'resets':0,'optimizer_updates':0,
+        'runtime_authorized':False,'full_integration_pending':True}
+
+
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--mode',choices=['plan','smoke','probe2','smoke3','pilot','longtrain','readiness','causal'],required=True)
@@ -5379,7 +5580,15 @@ def main():
     p.add_argument('--h4m6-arm',choices=['ref','rss'],help='H4-M6 held plan only')
     p.add_argument('--h4m6-technical-report',type=Path)
     p.add_argument('--h4m6-ref-report',type=Path)
+    p.add_argument('--h4m8-arm',choices=['cam-ref','cam'],help='H4-M8 held plan only; runtime unavailable')
     a=p.parse_args()
+    if a.h4m8_arm is not None:
+        try:
+            plan=h4m8_held_plan(a)
+        except RuntimeError as exc:
+            p.error(str(exc))
+        print('M470_H4M8_PLAN_NO_GPU',json.dumps(plan,sort_keys=True))
+        return
     if a.h4m6_arm is not None:
         try:
             if a.mode!='plan':
