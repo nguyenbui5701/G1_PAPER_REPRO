@@ -1092,17 +1092,21 @@ def h4r_audit_callback(api,args,report,persist,gpu_check):
     return callback
 
 
-def h4r_bootstrap_pins(args,*,h4cc=False,h4m6=None,h4m12=False):
+def h4r_bootstrap_pins(args,*,h4cc=False,h4m6=None,h4m12=False,red=False):
     from importlib.machinery import PathFinder
     root=Path(__file__).resolve().parent
     compat=root.parent/'G1_M4_0_G1_PPO_ONE_UPDATE_SMOKE_V1'
     paths={}
     local_pins=dict(H4R_LOCAL_SHA)
+    h4m12_require(type(red) is bool and (not red or h4m12),'RED_BOOTSTRAP_MODE')
     if h4m12:
         h4m12_require(not h4cc and h4m6 is None,'BOOTSTRAP_CONFLICT')
         env_file=root/'m463_coverage_env.py'
         from m463_instrument_brax import h4c_git_blob
-        h4m12_require(h4c_git_blob(env_file.read_bytes())==H4M12_CURRENT_ENV,'ENV_PIN')
+        if red:
+            h4red_project_env(env_file.read_bytes())
+        else:
+            h4m12_require(h4c_git_blob(env_file.read_bytes())==H4M12_CURRENT_ENV,'ENV_PIN')
         local_pins['m463_coverage_env']=digest(env_file)
     if h4cc:
         local_pins['m463_coverage_env']='d131e0bd14f6f1c8730eef5aaac32a6ef11e30ca19b7efb0a0751d1822991d01'
@@ -2376,11 +2380,11 @@ def h4x_generated_guard(audit,generated_file):
     h4x_write_json(out/'dispatch.started.json',{'authorization':auth},exclusive=True)
 
 
-def h4x_bootstrap(args,*,h4cc=False,h4m6=None,h4m12=False):
+def h4x_bootstrap(args,*,h4cc=False,h4m6=None,h4m12=False,red=False):
     from types import SimpleNamespace
     proxy=SimpleNamespace(checkpoint=args.checkpoint,restore_report=args.restore_report,
                           h4_readiness_reward_report=args.h4_exploratory_reward_report)
-    pins=h4r_bootstrap_pins(proxy,h4cc=h4cc,h4m6=h4m6, h4m12=h4m12)
+    pins=h4r_bootstrap_pins(proxy,h4cc=h4cc,h4m6=h4m6, h4m12=h4m12,red=red)
     # Exact launcher overlay resolution before JAX is imported.
     from importlib import metadata
     from importlib.machinery import PathFinder
@@ -5923,6 +5927,10 @@ def h4m8_integration_static(root,brax_train_path):
 
 
 def main():
+    if sys.argv[1:2]==['--h4red-continuation']:
+        return h4m12_main(sys.argv[2:],red=True)
+    if sys.argv[1:2]==['--h4red-static']:
+        return h4red_static_main(sys.argv[2:])
     if sys.argv[1:2]==['--h4m12-continuation']:
         return h4m12_main(sys.argv[2:])
     p=argparse.ArgumentParser(description=__doc__)
@@ -6340,10 +6348,11 @@ def h4m12_auth(root):
     return auth
 
 
-def h4m12_generated_guard(audit, generated_file, environment, resume):
+def h4m12_generated_guard(audit, generated_file, environment, resume, *,red=False):
     root=Path(__file__).resolve().parent
-    auth=h4m12_auth(root)
-    out=root/H4M12_OUTPUT
+    h4m12_require(type(red) is bool,'RED_MODE')
+    auth=(h4red_auth if red else h4m12_auth)(root)
+    out=root/(H4RED_OUTPUT if red else H4M12_OUTPUT)
     generated=Path(generated_file)
     h4m12_require(callable(audit) and getattr(audit,'h4m12_auth',None)==auth and
         generated.resolve()==out/'m463_brax_ppo_instrumented.py' and
@@ -6353,6 +6362,7 @@ def h4m12_generated_guard(audit, generated_file, environment, resume):
     from m463_coverage_env import CoverageJoystick
     h4m12_require(type(environment) is CoverageJoystick and
         getattr(environment,'_h4_arm',None)=='control' and
+        getattr(environment,'_h4red',False) is red and
         all(getattr(environment,k,None) is None for k in ('_h4cc_arm','_h4m6_arm')) and
         not getattr(environment,'_h4m6_tech_capture',False) and
         not getattr(environment,'_h4m8_common',False),'ENVIRONMENT_ARM')
@@ -6399,11 +6409,11 @@ def h4m12_exposure_replay(r):
     return dict(counts=counts,pending=ep['pending_at_reset'],audit=audit,coverage=legacy)
 
 
-def h4m12_check_complete(out,r,auth):
+def h4m12_check_complete(out,r,auth,*,red=False):
     """Strict host replay and byte checks, not a claim of recovery efficacy."""
     out=Path(out)
     h4m12_require(r['status']=='TECHNICAL_PASS' and r['authorization']==auth and
-                  r['spec']==H4M12_SPEC and r['promotion_authorized'] is False,'FINAL_STATUS')
+                  r['spec']==(H4RED_SPEC if red else H4M12_SPEC) and r['promotion_authorized'] is False,'FINAL_STATUS')
     expected=dict(r['parent']['original_contract']['config'],num_timesteps=5242880,num_evals=2)
     h4m12_require(r['hardware_scaled_config']==expected and r['reward']==r['parent']['original_contract']['reward'],'FINAL_CONFIG')
     b=H4M12Budget()
@@ -6450,6 +6460,8 @@ def h4m12_check_complete(out,r,auth):
     h4m12_require(evb['step']==eva['step']==15728640 and evb['key']==H4M12_EVAL
         and eva['key']==evb['expected_key'] and eva['finite'] is True,'FINAL_EVAL')
     h4m12_require(h4m12_exposure_replay(r)==r['exposure'],'FINAL_EXPOSURE')
+    if red:
+        h4m12_require(h4red_exposure_replay(r)==r['red_exposure'],'RED_FINAL_EXPOSURE')
     gpu=r['gpu']
     h4m12_require(gpu['total_mib']==12288 and 0<gpu['peak_used_mib']<.95*12288
         and not gpu['sampler_errors'] and gpu['samples']>0 and r['returned_policy_exact'] is True,
@@ -6460,15 +6472,15 @@ def h4m12_check_complete(out,r,auth):
     for name,sha in files.items():
         h4x_file_pin(out/name,sha)
     meta=json.loads((out/Path(H4M12_NEW_FULL).with_suffix('.json')).read_bytes())
-    h4m12_require(meta==h4m12_checkpoint_meta(auth,files[H4M12_NEW_FULL],files[H4M12_NEW_POLICY]),
+    h4m12_require(meta==h4m12_checkpoint_meta(auth,files[H4M12_NEW_FULL],files[H4M12_NEW_POLICY],red=red),
                   'FINAL_MANIFEST')
     h4x_file_pin(out/'m463_brax_ppo_instrumented.py',auth['generated_sha256'])
     h4x_storage(out)
     return True
 
 
-def h4m12_checkpoint_meta(auth,full_sha,policy_sha):
-    return dict(format='H4-M12-CTRL-RESET-EDGE-V1',authorization=auth,
+def h4m12_checkpoint_meta(auth,full_sha,policy_sha,*,red=False):
+    return dict(format=(H4RED_SPEC['id'] if red else 'H4-M12-CTRL-RESET-EDGE-V1'),authorization=auth,
         cumulative_steps=15728640,adam_count=2400,normalizer_count=416808960,
         fullstate_sha256=full_sha,policy_sha256=policy_sha,
         parent_resume_sha256=H4M12_PARENT_PINS[H4M12_FULL],
@@ -6477,9 +6489,9 @@ def h4m12_checkpoint_meta(auth,full_sha,policy_sha):
         promotion_authorized=False)
 
 
-def h4m12_read_final(root,expected_sha,auth):
+def h4m12_read_final(root,expected_sha,auth,*,red=False):
     root=Path(root).resolve()
-    out=root/H4M12_OUTPUT
+    out=root/(H4RED_OUTPUT if red else H4M12_OUTPUT)
     h4x_file_pin(out/'report.json',expected_sha)
     r=json.loads((out/'report.json').read_bytes())
     for name in ('dispatch.started.json','attempt.json','worker.started.json','attempt_result.json'):
@@ -6495,12 +6507,13 @@ def h4m12_read_final(root,expected_sha,auth):
     result=json.loads((out/'attempt_result.json').read_bytes())
     h4m12_require(result=={'status':'COMPLETE','authorization':auth,
                           'report_sha256':expected_sha,'producer_rc':0},'FINAL_RECEIPT')
-    h4m12_require(h4m12_parent_preflight(root,require_unused=False)==r['parent'],'FINAL_PARENT')
-    h4m12_check_complete(out,r,auth)
+    parent_check=h4red_parent_preflight if red else h4m12_parent_preflight
+    h4m12_require(parent_check(root,require_unused=False)==r['parent'],'FINAL_PARENT')
+    h4m12_check_complete(out,r,auth,red=red)
     return r
 
 
-def h4m12_worker(a,auth,root,out):
+def h4m12_worker(a,auth,root,out,*,red=False):
     """One authorized worker only; no generic longtrain or warmstart fallback."""
     import inspect
     import importlib.util
@@ -6508,11 +6521,13 @@ def h4m12_worker(a,auth,root,out):
     h4m12_require(json.loads((out/'attempt.json').read_bytes())==
         {'authorization':auth,'parent_pid':os.getppid()},'WORKER_RESERVATION')
     h4x_write_json(out/'worker.started.json',{'authorization':auth,'pid':os.getpid()},exclusive=True)
-    parent=h4m12_parent_preflight(root,require_unused=False)
+    parent_check=h4red_parent_preflight if red else h4m12_parent_preflight
+    authorize=h4red_auth if red else h4m12_auth
+    parent=parent_check(root,require_unused=False)
     for path,sha in ((a.checkpoint,SEED1_SHA),(a.restore_report,H3_CAUSAL_RESTORE_SHA),(a.reward_report,H4R_REWARD_SHA)):
         h4x_file_pin(path,sha)
     a.h4_exploratory_reward_report=a.reward_report
-    pins=h4x_bootstrap(a,h4m12=True)
+    pins=h4x_bootstrap(a,h4m12=True,red=red)
     old=json.loads((root/H4M12_PARENT/'report.json').read_bytes())
     for name,sha in old['h4_common_contract']['source_digests'].items():
         if name not in ('m463_coverage_env.py','m463_instrument_brax.py','m463_push_ppo_train.py'):
@@ -6541,7 +6556,7 @@ def h4m12_worker(a,auth,root,out):
     train_cfg.push_config.enable=False
     h4m12_require(train_cfg.to_dict()['reward_config']==old['train_reward_config']
         ==json.loads(a.reward_report.read_bytes())['train_reward_config'],'REWARD')
-    env=CoverageJoystick(config=train_cfg,stage='easy_repeat_support',h4_arm='control')
+    env=CoverageJoystick(config=train_cfg,stage='easy_repeat_support',h4_arm='control',h4red=red)
     ev=api['locomotion'].load(api['env_name'],config=source_cfg)
     h4m12_require(env.action_size==29 and float(env.dt)==.02,'ENV')
     scaled=api['scaled']
@@ -6553,7 +6568,10 @@ def h4m12_worker(a,auth,root,out):
     net=cfg.pop('network_factory')
     cfg.update(seed=1,randomization_fn=api['randomizer'],restore_checkpoint_path=None,
         m470_resume_state_path=str(root/H4M12_PARENT/H4M12_FULL),m470_resume_expected_steps=10485760)
-    source,_=make_h4m12_integrated_source(Path(inspect.getfile(api['ppo'].train)).read_bytes())
+    if red:
+        from m463_instrument_brax import make_h4red_integrated_source
+    build=make_h4red_integrated_source if red else make_h4m12_integrated_source
+    source,_=build(Path(inspect.getfile(api['ppo'].train)).read_bytes())
     raw=source.encode('utf8')
     h4m12_require(hashlib.sha256(raw).hexdigest()==auth['generated_sha256'],'GENERATED_SHA')
     generated=out/'m463_brax_ppo_instrumented.py'
@@ -6564,7 +6582,7 @@ def h4m12_worker(a,auth,root,out):
     mod=importlib.util.module_from_spec(modspec)
     modspec.loader.exec_module(mod)
     budget=H4M12Budget()
-    r=dict(status='RUNNING',authorization=auth,spec=H4M12_SPEC,parent=parent,
+    r=dict(status='RUNNING',authorization=auth,spec=(H4RED_SPEC if red else H4M12_SPEC),parent=parent,
         operational_rows=[],budget=budget.snapshot(),report_history=[],artifacts={},
         promotion_authorized=False,hardware_scaled_config=expected,
         reward=old['train_reward_config'],dependencies=deps)
@@ -6573,6 +6591,8 @@ def h4m12_worker(a,auth,root,out):
         h4x_write_json(out/'report.json',r)
     monitor=GPUMonitor()
     chunk_fn=h4_chunk_callback(jax,np,monitor,r,persist,'control',step_offset=10485760)
+    if red:
+        chunk_fn=h4red_chunk_guard(chunk_fn,r,persist)
     restored_ts=last_reset=last_carry=model_ref=axes_ref=None
     local=eval_key=env_keys=epoch_keys=next_chunk_key=None
     policy_template=None
@@ -6583,7 +6603,7 @@ def h4m12_worker(a,auth,root,out):
         h4m12_require(x.shape==y.shape and x.dtype==y.dtype and x.tobytes()==y.tobytes(),'KEY_'+label)
     def keylist(x): return arr(x).tolist()
     def safe():
-        h4m12_require(h4m12_auth(root)==auth,'AUTH_CHANGED')
+        h4m12_require(authorize(root)==auth,'AUTH_CHANGED')
         h4x_storage(out)
         g=sample_gpu(); snap=monitor.snapshot()
         h4m12_require(g['total_mib']==12288 and 0<=g['used_mib']<.95*12288
@@ -6720,6 +6740,8 @@ def h4m12_worker(a,auth,root,out):
             values[k]=float(x)
         r['report_history'].append(dict(additional_steps=step,metrics=values))
         r['exposure']=h4m12_exposure_replay(r)
+        if red:
+            r['red_exposure']=h4red_exposure_replay(r)
         persist()
     def save_policy(step,make_policy,params):
         nonlocal pending_policy
@@ -6743,7 +6765,7 @@ def h4m12_worker(a,auth,root,out):
             persist()
         name=Path(H4M12_NEW_FULL).with_suffix('.json').name
         h4x_write_json(out/name,h4m12_checkpoint_meta(auth,r['artifacts'][H4M12_NEW_FULL],
-                       r['artifacts'][H4M12_NEW_POLICY]),exclusive=True)
+                       r['artifacts'][H4M12_NEW_POLICY],red=red),exclusive=True)
         r['artifacts'][name]=digest(out/name)
         record('checkpoint',dict(step=step))
     persist()
@@ -6759,12 +6781,12 @@ def h4m12_worker(a,auth,root,out):
                  (pending_policy[0],{'policy':pending_policy[1].policy,'value':pending_policy[1].value}),'RETURNED_POLICY')
             safe()
         r['gpu']=monitor.snapshot()
-        h4m12_require(h4m12_parent_preflight(root,require_unused=False)==parent
-            and h4x_bootstrap(a,h4m12=True)==pins and h4c_dependency_pins(api)==deps
+        h4m12_require(parent_check(root,require_unused=False)==parent
+            and h4x_bootstrap(a,h4m12=True,red=red)==pins and h4c_dependency_pins(api)==deps
             and h4c_git_blob(wrapper.read_bytes())=='2c09c8268a29d14c832dd07050575e4541ee98af'
-            and h4m12_auth(root)==auth,'FINAL_IMMUTABILITY')
+            and authorize(root)==auth,'FINAL_IMMUTABILITY')
         r.update(status='TECHNICAL_PASS',returned_policy_exact=True)
-        h4m12_check_complete(out,r,auth)
+        h4m12_check_complete(out,r,auth,red=red)
         persist()
     except BaseException as exc:
         r.update(status='STOP',error=repr(exc)[:2048])
@@ -6772,11 +6794,11 @@ def h4m12_worker(a,auth,root,out):
         raise
 
 
-def h4m12_main(argv):
+def h4m12_main(argv,*,red=False):
     import subprocess
     import selectors
     import signal
-    p=argparse.ArgumentParser(description='H4-M12 isolated original CTRL continuation')
+    p=argparse.ArgumentParser(description=('H4RED isolated continuation' if red else 'H4-M12 isolated original CTRL continuation'))
     p.add_argument('--checkpoint',type=Path,required=True)
     p.add_argument('--restore-report',type=Path,required=True)
     p.add_argument('--reward-report',type=Path,required=True)
@@ -6784,11 +6806,14 @@ def h4m12_main(argv):
     a=p.parse_args(argv)
     root=Path(__file__).resolve().parent
     h4m12_require(Path.cwd().resolve()==root,'WORKDIR')
-    auth=h4m12_auth(root)
-    out=root/H4M12_OUTPUT
+    h4m12_require(type(red) is bool,'RED_MODE')
+    authorize=h4red_auth if red else h4m12_auth
+    parent_check=h4red_parent_preflight if red else h4m12_parent_preflight
+    auth=authorize(root)
+    out=root/(H4RED_OUTPUT if red else H4M12_OUTPUT)
     if a.worker:
-        return h4m12_worker(a,auth,root,out)
-    h4m12_parent_preflight(root)
+        return h4m12_worker(a,auth,root,out,red=red)
+    parent_check(root)
     h4x_file_pin(a.checkpoint,SEED1_SHA)
     h4x_file_pin(a.restore_report,H3_CAUSAL_RESTORE_SHA)
     h4x_file_pin(a.reward_report,H4R_REWARD_SHA)
@@ -6799,7 +6824,7 @@ def h4m12_main(argv):
     child=None; rc=None; total=0
     try:
         child=subprocess.Popen([sys.executable,'-u',str(Path(__file__).resolve()),
-            '--h4m12-continuation',*argv,'--worker'],stdout=subprocess.PIPE,
+            ('--h4red-continuation' if red else '--h4m12-continuation'),*argv,'--worker'],stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,start_new_session=True)
         deadline=time.monotonic()+H4M12_WATCHDOG_SECONDS
         with selectors.DefaultSelector() as sel, (out/'worker.log').open('xb') as log:
@@ -6815,13 +6840,16 @@ def h4m12_main(argv):
         h4m12_require(rc==0,'PRODUCER_RC')
         report=out/'report.json'
         r=json.loads(report.read_bytes())
-        h4m12_check_complete(out,r,auth)
-        h4m12_require(h4m12_parent_preflight(root,require_unused=False)==r['parent'] and h4m12_auth(root)==auth,'SUPERVISOR_IMMUTABILITY')
+        h4m12_check_complete(out,r,auth,red=red)
+        h4m12_require(parent_check(root,require_unused=False)==r['parent'] and authorize(root)==auth,'SUPERVISOR_IMMUTABILITY')
         sha=digest(report)
         h4x_write_json(out/'attempt_result.json',dict(status='COMPLETE',authorization=auth,
                        report_sha256=sha,producer_rc=0),exclusive=True)
-        h4m12_read_final(root,sha,auth)
-        print('H4M12_TECHNICAL_PASS',sha,flush=True)
+        h4m12_read_final(root,sha,auth,red=red)
+        if red:
+            print('H4RED_TECHNICAL_PASS',sha,r['red_exposure']['decision'],flush=True)
+        else:
+            print('H4M12_TECHNICAL_PASS',sha,flush=True)
     except BaseException as exc:
         if child is not None and child.poll() is None:
             try: os.killpg(child.pid,signal.SIGKILL)
@@ -6988,4 +7016,355 @@ def h4m12_full_static(root,brax_train_path):
     print('H4M12_STATIC_ZERO physical_transitions=0 resets=0 optimizer_updates=0 native_inference=0',flush=True)
     print('H4M12_FULL_STATIC_PASS',flush=True)
 
+
+# H4RED_TRAINER_BEGIN
+H4RED_BASE_HEAD='2ac406d59a5701f1227a1ca7c438d8f2e5a6d2ed'
+H4RED_OUTPUT=Path('m463_runs/m470_h4_m13_red_v1')
+H4RED_SPEC=dict(H4M12_SPEC,id='H4-M13-RED-V1',first_target=[12,343],
+                late_age=240,late_fraction_denominator=5,nominal_control_count=1145928,
+                nominal_ratio=[4,5],joint_gap=[30,38],joint_min_per_side=1)
+H4RED_M12_REPORT='a28ebc6f5dd3fda5fc78c9bac60d6441b67e09081683a485a3c296e44ce2872e'
+H4RED_M12_GENERATED='7f9abc070e38bc287ae1948a3f55ee625d457d0abed6fe99bebf5fdf2ed9c37a'
+H4RED_M12_DEV=Path('m463_runs/m470_h4_m12_3_dev_v1/report.json')
+H4RED_M12_DEV_SHA='eb44c364983078fc35b89152d7a42eae310ed31caba6d4a9b4abf335027826b1'
+H4RED_CTRL_DEV=Path('m463_runs/m470_h4_m1_3_dev_v1/report.json')
+H4RED_CTRL_DEV_SHA='32bf04d64bafd7e80b250b862493b54a7c8db6af1bcf1010bf0df984a904f40c'
+H4RED_NAMES=('bad','assigned','late_assigned','first','late_first','repeat','late_repeat',
+             'matched_1','joint_1','gap_1','matched_2','joint_2','gap_2')
+
+
+def h4red_require(ok,label):
+    if not bool(ok):
+        raise RuntimeError('M470_H4RED_'+label)
+
+
+def h4red_once(s,old,new):
+    h4red_require(s.count(old)==1,'PROJECTION_ANCHOR')
+    return s.replace(old,new,1)
+
+
+def h4red_project_env(raw):
+    from m463_instrument_brax import h4c_git_blob
+    s=raw.decode('utf8')
+    for old,new in reversed(H4RED_ENV_PATCHES):
+        s=h4red_once(s,new,old)
+    b=s.encode('utf8')
+    h4red_require(h4c_git_blob(b)==H4M12_CURRENT_ENV,'ENV_PROJECTION_PIN')
+    return b
+
+
+def h4red_project_sources(root):
+    import re, subprocess
+    from m463_instrument_brax import h4c_git_blob
+    def historical(name,sha):
+        raw=subprocess.check_output(['git','show',H4RED_BASE_HEAD+':'+name],cwd=root)
+        h4red_require(h4c_git_blob(raw)==sha,'BASE_PIN_'+name)
+        return raw
+    for name in ('m463_coverage_env.py','m463_instrument_brax.py','m463_push_ppo_train.py'):
+        compile((root/name).read_bytes(),name,'exec')
+    e=h4red_project_env((root/'m463_coverage_env.py').read_bytes())
+    h4red_require(e==historical('m463_coverage_env.py',H4M12_CURRENT_ENV),'ENV_PROJECTION')
+    old=subprocess.check_output(['git','show',H4M12_HISTORICAL_HEAD+':m463_coverage_env.py'],cwd=root)
+    h4m12_env_projection(old,e)
+    def strip(s,label):
+        # Construct sentinels rather than embedding a second complete marker.
+        begin='\n# H4RED_'+label+'_BEGIN\n'
+        end='# H4RED_'+label+'_END\n'
+        h4red_require(s.count(begin)==s.count(end)==1,'BLOCK_'+label)
+        i=s.index(begin);j=s.index(end,i)+len(end)
+        return s[:i]+s[j:]
+    g=strip((root/'m463_instrument_brax.py').read_text('utf8'),'GENERATOR')
+    h4red_require(g.encode('utf8')==historical('m463_instrument_brax.py',
+        '4baac41d654a6d22e1d159470b2276d5a76e5d8d'),'INSTRUMENTER_PROJECTION')
+    t=strip((root/'m463_push_ppo_train.py').read_text('utf8'),'TRAINER')
+    for name,old,new in reversed(H4RED_TRAIN_PATCHES):
+        m=list(re.finditer(r'(?m)^def '+re.escape(name)+r'\(',t))
+        h4red_require(len(m)==1,'TRAINER_FUNCTION_'+name)
+        i=m[0].start()
+        after=re.search(r'\n(?:def |class )',t[i+1:])
+        j=i+1+after.start() if after else len(t)
+        t=t[:i]+h4red_once(t[i:j],new,old)+t[j:]
+    h4red_require(t.encode('utf8')==historical('m463_push_ppo_train.py',
+        '9523fb51d536e38095c339165f0041cfbba70214'),'TRAINER_PROJECTION')
+    return True
+
+
+def h4red_parent_preflight(root,*,require_unused=True):
+    root=Path(root).resolve()
+    p=h4m12_parent_preflight(root,require_unused=False)
+    report=root/H4M12_OUTPUT/'report.json'
+    h4x_file_pin(report,H4RED_M12_REPORT)
+    old=json.loads(report.read_bytes())
+    h4red_require(old['authorization']['generated_sha256']==H4RED_M12_GENERATED and
+                  old['parent']==p,'M12_CONTROL_CONTRACT')
+    # Validate archived M12 with its historical authorization, not active auth.
+    old=h4m12_read_final(root,H4RED_M12_REPORT,old['authorization'])
+    h4red_require(old['exposure']['counts']['m463_h4_class_0_steps_per_rollout']==1145928 and
+                  old['artifacts'][H4M12_NEW_POLICY]=='50b7d2034692ec9fa49699d541b8bd98dd502322e5bf28cacfa3475c158e0f5a',
+                  'M12_CONTROL_PINS')
+    h4x_file_pin(root/H4RED_CTRL_DEV,H4RED_CTRL_DEV_SHA)
+    h4x_file_pin(root/H4RED_M12_DEV,H4RED_M12_DEV_SHA)
+    if require_unused:
+        out=root/H4RED_OUTPUT
+        h4red_require(not out.exists() and not out.is_symlink(),'OUTPUT_USED')
+    return dict(p,matched_control=dict(report_sha256=H4RED_M12_REPORT,
+        generated_sha256=H4RED_M12_GENERATED,ctrl_dev_sha256=H4RED_CTRL_DEV_SHA,
+        m12_dev_sha256=H4RED_M12_DEV_SHA,policy_sha256=old['artifacts'][H4M12_NEW_POLICY]))
+
+
+def h4red_parse_marker(rules):
+    import re
+    active=[x for x in rules.splitlines() if re.match(r'^[A-Z0-9_]+_GO:',x)]
+    h4red_require(len(active)==1,'EXECUTION_HOLD_OR_CONFLICT')
+    m=re.fullmatch(r'H4RED_ACTIVE_GO: H4-M13-RED-V1 m463_runs/m470_h4_m13_red_v1 '
+                   r'([0-9a-f]{64}) ([0-9a-f]{64}) '
+                   r'(m463_runs/m470_h4red_static_[A-Za-z0-9_]+\.log) ([0-9a-f]{64})',active[0])
+    h4red_require(m is not None,'AUTHORIZATION_SCHEMA')
+    source,generated,static_path,static_sha=m.groups()
+    return dict(id=H4RED_SPEC['id'],output=str(H4RED_OUTPUT),source_sha256=source,
+                generated_sha256=generated,static_path=static_path,static_sha256=static_sha)
+
+
+def h4red_auth(root):
+    root=Path(root).resolve()
+    h4red_require(not any((H4_EXECUTION_AUTHORIZED,H4R_EXECUTION_AUTHORIZED,
+        H4C_EXECUTION_AUTHORIZED,H4CC_EXECUTION_AUTHORIZED,H4M8_EXECUTION_AUTHORIZED)),'LEGACY_HOLD')
+    auth=h4red_parse_marker((root/'G1_RESEARCH_RULES.md').read_text('utf8'))
+    h4red_require(h4x_source_digest(root)==auth['source_sha256'],'SOURCE_PIN')
+    log=root/auth['static_path']
+    h4x_file_pin(log,auth['static_sha256'])
+    h4red_require(log.stat().st_size<=H4RED_SPEC['external_log_reserve'],'STATIC_SIZE')
+    lines=log.read_text('utf8').splitlines()
+    h4red_require(lines.count('H4RED_FULL_STATIC_PASS')==1 and
+        lines.count('H4RED_SOURCE '+auth['source_sha256'])==1 and
+        lines.count('H4RED_GENERATED '+auth['generated_sha256'])==1,'STATIC_ACCEPTANCE')
+    return auth
+
+
+def h4red_chunk_counts(q):
+    def c(k):
+        v=q['m463_h4_'+k+'_per_rollout']
+        h4red_require(type(v) is int and 0<=v<=1310720,'COUNT_'+k)
+        return v
+    actual={k:c('red_'+k) for k in H4RED_NAMES}
+    expected={'m463_h4_red_'+k+'_per_rollout' for k in H4RED_NAMES}
+    h4red_require({k for k in q if k.startswith('m463_h4_red_')}==expected,'COUNT_SCHEMA')
+    h4red_require(actual['bad']==0 and actual['assigned']==c('assigned') and
+        0<=actual['late_assigned']<=actual['assigned'],'ASSIGNMENT')
+    for k,kind in (('first',1),('repeat',2)):
+        h4red_require(actual[k]==c(k+'_events') and actual['late_'+k]==sum(
+            c(f'age_{kind}_{lo}_{hi}') for lo,hi in ((240,308),(309,348),(349,639))) and
+            0<=actual['late_'+k]<=actual[k],'AGE_'+k)
+    h4red_require(c('gap_41_639')==0,'GAP')
+    h4red_require(actual['matched_1']+actual['matched_2']==c('repeat_matched'),'MATCHED')
+    for s in (1,2):
+        h4red_require(0<=actual[f'gap_{s}']<=actual[f'joint_{s}']<=actual[f'matched_{s}']
+            and actual[f'joint_{s}']<=c(f'support_2_{s}'),'JOINT_'+str(s))
+    h4red_require(actual['joint_1']+actual['joint_2']<=actual['late_repeat'] and
+        actual['gap_1']+actual['gap_2']<=c('gap_30_40'),'JOINT_PARTITION')
+    return actual
+
+
+def h4red_chunk_guard(callback,r,persist):
+    def checked(index,state,env_state,metrics):
+        callback(index,state,env_state,metrics)
+        row=r['h4_chunks'][-1]
+        try:
+            h4red_chunk_counts(row['counts'])
+        except BaseException:
+            row['passed']=False
+            persist()
+            raise
+    return checked
+
+
+def h4red_exposure_replay(r):
+    h4red_require(len(r['h4_chunks'])==4 and len(r['h4_epochs'])==1,'CHUNKS')
+    chunks=[h4red_chunk_counts(row['counts']) for row in r['h4_chunks']]
+    totals={k:sum(row[k] for row in chunks) for k in H4RED_NAMES}
+    ep=r['h4_epochs'][0]['counts']
+    hist=r['report_history'][0]['metrics']
+    for k,v in totals.items():
+        field='m463_h4_red_'+k+'_per_rollout'
+        h4red_require(ep[field]==v and h4_integer_count(hist['training/'+field],rollouts=20)==v,
+                      'EPOCH_RECONCILE_'+k)
+    nominal=ep['m463_h4_class_0_steps_per_rollout']
+    checks=dict(nominal_matched=5*nominal>=4*1145928,
+        first_late=totals['first']>0 and 5*totals['late_first']>=totals['first'],
+        repeat_late=totals['repeat']>0 and 5*totals['late_repeat']>=totals['repeat'],
+        left_joint=totals['gap_1']>=1,right_joint=totals['gap_2']>=1)
+    return dict(decision='EXPOSURE_PASS' if all(checks.values()) else 'EXPOSURE_INCONCLUSIVE',
+                checks=checks,totals=totals,chunks=chunks,nominal=nominal,
+                control_nominal=1145928)
+
+
+def h4red_static_fixtures(root,parent,auth,src):
+    """Synthetic manipulation counters, actual archived M12 report only as template."""
+    import tempfile
+    import numpy as np
+    from types import SimpleNamespace
+    r=json.loads((root/H4M12_OUTPUT/'report.json').read_bytes())
+    r.update(authorization=auth,spec=H4RED_SPEC,parent=parent)
+    # Preserve original ledger/config/budget; alter only synthetic event bins
+    # and added counters to exercise both exposure decisions. Not new evidence.
+    def rejected(fn):
+        try: fn()
+        except (RuntimeError,KeyError,ValueError): return
+        raise RuntimeError('M470_H4RED_NEGATIVE_ACCEPTED')
+    mock=SimpleNamespace(device_get=lambda x:x,tree_util=SimpleNamespace(
+        tree_flatten=lambda x:(list(x),('tuple',len(x)))))
+    x=(np.asarray([0.,1.],np.float32),np.asarray([4],np.int32))
+    h4red_require(h4m12_tree_equal(mock,np,x,copy.deepcopy(x),'RED_FIXTURE')==2,'TYPED_FIXTURE')
+    for y in ((np.asarray([-0.,1.],np.float32),x[1]),(x[0].astype(np.float64),x[1]),
+              (x[0].reshape(1,2),x[1]),(np.asarray([0.,np.nan],np.float32),x[1]),(x[0],)):
+        rejected(lambda:h4m12_tree_equal(mock,np,x,y,'RED_FIXTURE_NEGATIVE'))
+    def field(k):
+        return 'm463_h4_'+k+'_per_rollout'
+    def synth(late):
+        z=copy.deepcopy(r)
+        for row in z['h4_chunks']:
+            q=row['counts']
+            first,repeat,assigned,matched=(q[field(k)] for k in
+                ('first_events','repeat_events','assigned','repeat_matched'))
+            values=dict(bad=0,assigned=assigned,late_assigned=(assigned//3 if late else 0),
+                        first=first,late_first=(first if late else 0),
+                        repeat=repeat,late_repeat=(repeat if late else 0))
+            for k,kind in ((first,1),(repeat,2)):
+                if late:
+                    for lo,hi in ((0,32),(33,239),(240,308),(309,348),(349,639)):
+                        q[field(f'age_{kind}_{lo}_{hi}')]=k if lo==240 else 0
+            # Synthetic matched partition respecting actual template side caps.
+            a=min(matched,q[field('support_2_1')])
+            d=matched-a
+            h4red_require(d<=q[field('support_2_2')],'FIXTURE_MATCHED')
+            remain=q[field('gap_30_40')]
+            for s,m in ((1,a),(2,d)):
+                joint=min(m,repeat,remain,1) if late else 0
+                remain-=joint
+                values.update({f'matched_{s}':m,f'joint_{s}':joint,f'gap_{s}':joint})
+            q.update({field('red_'+k):v for k,v in values.items()})
+        counts={}
+        for row in z['h4_chunks']:
+            for k,v in row['counts'].items():
+                counts[k]=counts.get(k,0)+v
+        ep=z['h4_epochs'][0]
+        ep['counts']=counts
+        ep['audit']=h4_epoch_audit(counts,ep['pending_at_reset'],'control')
+        for k in H4RED_NAMES:
+            f=field('red_'+k)
+            z['report_history'][0]['metrics']['training/'+f]=counts[f]/20
+        z['exposure']=h4m12_exposure_replay(z)
+        z['red_exposure']=h4red_exposure_replay(z)
+        return z
+    yes,no=synth(True),synth(False)
+    h4red_require(yes['red_exposure']['decision']=='EXPOSURE_PASS' and
+        no['red_exposure']['decision']=='EXPOSURE_INCONCLUSIVE','EXPOSURE_FIXTURES')
+    with tempfile.TemporaryDirectory(prefix='h4red_static_') as tmp:
+        out=Path(tmp)
+        (out/'m463_brax_ppo_instrumented.py').write_text(src,encoding='utf8')
+        for name in (H4M12_NEW_POLICY,H4M12_NEW_FULL):
+            (out/name).write_bytes(b'HOST_FIXTURE_NOT_CHECKPOINT')
+        meta=Path(H4M12_NEW_FULL).with_suffix('.json').name
+        for z in (yes,no):
+            z['artifacts']={name:digest(out/name) for name in (H4M12_NEW_POLICY,H4M12_NEW_FULL)}
+            (out/meta).write_text(json.dumps(h4m12_checkpoint_meta(auth,
+                z['artifacts'][H4M12_NEW_FULL],z['artifacts'][H4M12_NEW_POLICY],red=True)),encoding='utf8')
+            z['artifacts'][meta]=digest(out/meta)
+            h4red_require(h4m12_check_complete(out,z,auth,red=True),'FINAL_FIXTURE')
+        for fieldname in ('bad','missing','late','joint','gap','history','decision',
+                          'budget','restore','counter','carry','config','artifact','gpu','manifest'):
+            z=copy.deepcopy(yes);q=z['h4_chunks'][0]['counts']
+            if fieldname=='bad': q[field('red_bad')]=1
+            elif fieldname=='missing': del q[field('red_gap_1')]
+            elif fieldname=='late': q[field('red_late_repeat')]+=1
+            elif fieldname=='joint': q[field('red_joint_1')]=q[field('red_matched_1')]+1
+            elif fieldname=='gap': q[field('red_gap_1')]=q[field('red_joint_1')]+1
+            elif fieldname=='history': z['report_history'][0]['metrics']['training/'+field('red_first')]+=1
+            elif fieldname=='decision': z['red_exposure']['decision']='EXPOSURE_INCONCLUSIVE'
+            elif fieldname=='budget': z['budget']['recorded']['optimizer']-=1
+            elif fieldname=='restore': next(v for v in z['operational_rows'] if v['event']=='restore_payload')['policy_exact']=False
+            elif fieldname=='counter': next(v for v in z['operational_rows'] if v['event']=='chunk_after')['adam']+=1
+            elif fieldname=='carry': next(v for v in z['operational_rows'] if v['event']=='chunk_after')['key']=[[99,99]]
+            elif fieldname=='config': z['hardware_scaled_config']['learning_rate']*=2
+            elif fieldname=='artifact': z['artifacts'][H4M12_NEW_FULL]='0'*64
+            elif fieldname=='gpu': z['gpu']['peak_used_mib']=12288
+            elif fieldname=='manifest':
+                p=out/meta;original=p.read_bytes()
+                m=json.loads(original);m['format']='H4-M12-CTRL-RESET-EDGE-V1'
+                p.write_text(json.dumps(m),encoding='utf8');z['artifacts'][meta]=digest(p)
+                rejected(lambda:h4m12_check_complete(out,z,auth,red=True))
+                p.write_bytes(original)
+                continue
+            rejected(lambda:h4m12_check_complete(out,z,auth,red=True))
+    return dict(typed_negative=5,reader_negative=15,positive=2,fixture_only=True,native_calls=0)
+
+
+def h4red_full_static(root,brax_train_path,a):
+    import subprocess
+    from m463_instrument_brax import make_h4red_integrated_source
+    root=Path(root).resolve()
+    h4red_require(not any(k.split('.')[0] in ('jax','jaxlib','mujoco','brax','mujoco_playground')
+                         for k in sys.modules),'STATIC_NATIVE_IMPORT')
+    h4red_require(Path.cwd().resolve()==root,'STATIC_WORKDIR')
+    h4red_project_sources(root)
+    parent=h4red_parent_preflight(root)
+    a.h4_exploratory_reward_report=a.reward_report
+    h4x_bootstrap(a,h4m12=True,red=True)
+    raw=Path(brax_train_path).read_bytes()
+    src,original=make_h4red_integrated_source(raw)
+    h4red_require(original=='e20613d42bf0868a13003e0312998816cc8d3593bb5ccaf9f1d070fd09c44bd7','STATIC_BRAX')
+    # Exhaustively verify the schedule bound with ordinary host integers.
+    low=9999;high=-1;last=-1
+    for t in range(12,344):
+        for w1 in range(9):
+            for g in range(15,31):
+                for w2 in range(9):
+                    f=t+w1;r=f+g+w2
+                    low=min(low,r);high=max(high,r);last=max(last,r+250)
+    h4red_require((low,high,last)==(27,389,639),'STATIC_SCHEDULE')
+    source=h4x_source_digest(root);generated=hashlib.sha256(src.encode('utf8')).hexdigest()
+    marker='H4RED_ACTIVE_GO: '+H4RED_SPEC['id']+' '+str(H4RED_OUTPUT)+' '+source+' '+generated+' m463_runs/m470_h4red_static_fixture.log '+'a'*64
+    auth=h4red_parse_marker(marker)
+    def rejected(fn):
+        try: fn()
+        except RuntimeError: return
+        raise RuntimeError('M470_H4RED_STATIC_NEGATIVE_ACCEPTED')
+    for bad in ('',marker+'\n'+marker,marker+'\nH4M12_ACTIVE_GO: bad',
+                marker.replace(str(H4RED_OUTPUT),str(H4M12_OUTPUT)),marker[:-1]):
+        rejected(lambda:h4red_parse_marker(bad))
+    try: h4red_auth(root)
+    except RuntimeError as exc:
+        h4red_require('EXECUTION_HOLD_OR_CONFLICT' in str(exc),'STATIC_HOLD')
+    else: raise RuntimeError('M470_H4RED_STATIC_AUTH_OPEN')
+    fixture=h4red_static_fixtures(root,parent,auth,src)
+    for flag,reason in (('--h4red-continuation','M470_H4RED_EXECUTION_HOLD_OR_CONFLICT'),
+                        ('--h4m12-continuation','M470_H4M12_EXECUTION_HOLD_OR_CONFLICT')):
+        proc=subprocess.run([sys.executable,'-B',str(root/'m463_push_ppo_train.py'),flag,
+            '--checkpoint','unused','--restore-report','unused','--reward-report','unused'],
+            cwd=root,capture_output=True,text=True,timeout=30)
+        h4red_require(proc.returncode!=0 and reason in proc.stderr,'CLI_HOLD')
+    h4red_require(not any(k.split('.')[0] in ('jax','jaxlib','mujoco','brax','mujoco_playground')
+                         for k in sys.modules),'STATIC_NATIVE_IMPORT_AFTER')
+    h4red_require(not (root/H4RED_OUTPUT).exists() and not (root/H4RED_OUTPUT).is_symlink(),'STATIC_RESERVED')
+    print('H4RED_SOURCE',source,flush=True)
+    print('H4RED_GENERATED',generated,flush=True)
+    print('H4RED_CONTROL',json.dumps(parent['matched_control'],sort_keys=True),flush=True)
+    print('H4RED_STATIC_FIXTURES',json.dumps(fixture,sort_keys=True),flush=True)
+    print('H4RED_STATIC_ZERO physical_transitions=0 resets=0 optimizer_updates=0 native_inference=0',flush=True)
+    print('H4RED_FULL_STATIC_PASS',flush=True)
+
+
+def h4red_static_main(argv):
+    from importlib import metadata
+    p=argparse.ArgumentParser(description='RED-V1 exact offline static, no native import')
+    p.add_argument('--checkpoint',type=Path,required=True)
+    p.add_argument('--restore-report',type=Path,required=True)
+    p.add_argument('--reward-report',type=Path,required=True)
+    a=p.parse_args(argv)
+    brax_path=Path(metadata.distribution('brax').locate_file('brax/training/agents/ppo/train.py'))
+    return h4red_full_static(Path(__file__).resolve().parent,brax_path,a)
+
+H4RED_ENV_PATCHES=[["h4m8_common=False):\n        if stage not in STAGES:","h4m8_common=False, h4red=False):\n        if stage not in STAGES:"],["        self._h4m8_common = h4m8_common\n","        if type(h4red) is not bool or (h4red and (\n                stage != 'easy_repeat_support' or h4_arm != 'control' or\n                h4cc_arm is not None or h4m6_arm is not None or\n                h4m6_tech_capture or h4m8_common)):\n            raise ValueError('M470_H4RED_ENV_CONTRACT')\n        self._h4red = h4red\n        self._h4m8_common = h4m8_common\n"],["            target_first = jax.random.randint(k_time, (), 12, 25)\n","            target_first = jax.random.randint(k_time, (), 12, 344 if self._h4red else 25)\n"]]
+H4RED_TRAIN_PATCHES=[["main","def main():\n","def main():\n    if sys.argv[1:2]==['--h4red-continuation']:\n        return h4m12_main(sys.argv[2:],red=True)\n    if sys.argv[1:2]==['--h4red-static']:\n        return h4red_static_main(sys.argv[2:])\n"],["h4r_bootstrap_pins","def h4r_bootstrap_pins(args,*,h4cc=False,h4m6=None,h4m12=False):","def h4r_bootstrap_pins(args,*,h4cc=False,h4m6=None,h4m12=False,red=False):"],["h4r_bootstrap_pins","    if h4m12:\n","    h4m12_require(type(red) is bool and (not red or h4m12),'RED_BOOTSTRAP_MODE')\n    if h4m12:\n"],["h4r_bootstrap_pins","        h4m12_require(h4c_git_blob(env_file.read_bytes())==H4M12_CURRENT_ENV,'ENV_PIN')\n","        if red:\n            h4red_project_env(env_file.read_bytes())\n        else:\n            h4m12_require(h4c_git_blob(env_file.read_bytes())==H4M12_CURRENT_ENV,'ENV_PIN')\n"],["h4x_bootstrap","def h4x_bootstrap(args,*,h4cc=False,h4m6=None,h4m12=False):","def h4x_bootstrap(args,*,h4cc=False,h4m6=None,h4m12=False,red=False):"],["h4x_bootstrap","pins=h4r_bootstrap_pins(proxy,h4cc=h4cc,h4m6=h4m6, h4m12=h4m12)","pins=h4r_bootstrap_pins(proxy,h4cc=h4cc,h4m6=h4m6, h4m12=h4m12,red=red)"],["h4m12_generated_guard","def h4m12_generated_guard(audit, generated_file, environment, resume):","def h4m12_generated_guard(audit, generated_file, environment, resume, *,red=False):"],["h4m12_generated_guard","    auth=h4m12_auth(root)\n    out=root/H4M12_OUTPUT\n","    h4m12_require(type(red) is bool,'RED_MODE')\n    auth=(h4red_auth if red else h4m12_auth)(root)\n    out=root/(H4RED_OUTPUT if red else H4M12_OUTPUT)\n"],["h4m12_generated_guard","        getattr(environment,'_h4_arm',None)=='control' and\n","        getattr(environment,'_h4_arm',None)=='control' and\n        getattr(environment,'_h4red',False) is red and\n"],["h4m12_check_complete","def h4m12_check_complete(out,r,auth):","def h4m12_check_complete(out,r,auth,*,red=False):"],["h4m12_check_complete","r['spec']==H4M12_SPEC and r['promotion_authorized'] is False","r['spec']==(H4RED_SPEC if red else H4M12_SPEC) and r['promotion_authorized'] is False"],["h4m12_check_complete","    h4m12_require(h4m12_exposure_replay(r)==r['exposure'],'FINAL_EXPOSURE')\n","    h4m12_require(h4m12_exposure_replay(r)==r['exposure'],'FINAL_EXPOSURE')\n    if red:\n        h4m12_require(h4red_exposure_replay(r)==r['red_exposure'],'RED_FINAL_EXPOSURE')\n"],["h4m12_check_complete","h4m12_checkpoint_meta(auth,files[H4M12_NEW_FULL],files[H4M12_NEW_POLICY])","h4m12_checkpoint_meta(auth,files[H4M12_NEW_FULL],files[H4M12_NEW_POLICY],red=red)"],["h4m12_checkpoint_meta","def h4m12_checkpoint_meta(auth,full_sha,policy_sha):\n    return dict(format='H4-M12-CTRL-RESET-EDGE-V1',authorization=auth,","def h4m12_checkpoint_meta(auth,full_sha,policy_sha,*,red=False):\n    return dict(format=(H4RED_SPEC['id'] if red else 'H4-M12-CTRL-RESET-EDGE-V1'),authorization=auth,"],["h4m12_read_final","def h4m12_read_final(root,expected_sha,auth):","def h4m12_read_final(root,expected_sha,auth,*,red=False):"],["h4m12_read_final","    out=root/H4M12_OUTPUT\n","    out=root/(H4RED_OUTPUT if red else H4M12_OUTPUT)\n"],["h4m12_read_final","    h4m12_require(h4m12_parent_preflight(root,require_unused=False)==r['parent'],'FINAL_PARENT')\n    h4m12_check_complete(out,r,auth)","    parent_check=h4red_parent_preflight if red else h4m12_parent_preflight\n    h4m12_require(parent_check(root,require_unused=False)==r['parent'],'FINAL_PARENT')\n    h4m12_check_complete(out,r,auth,red=red)"],["h4m12_worker","def h4m12_worker(a,auth,root,out):","def h4m12_worker(a,auth,root,out,*,red=False):"],["h4m12_worker","    parent=h4m12_parent_preflight(root,require_unused=False)\n","    parent_check=h4red_parent_preflight if red else h4m12_parent_preflight\n    authorize=h4red_auth if red else h4m12_auth\n    parent=parent_check(root,require_unused=False)\n"],["h4m12_worker","pins=h4x_bootstrap(a,h4m12=True)","pins=h4x_bootstrap(a,h4m12=True,red=red)"],["h4m12_worker","    env=CoverageJoystick(config=train_cfg,stage='easy_repeat_support',h4_arm='control')","    env=CoverageJoystick(config=train_cfg,stage='easy_repeat_support',h4_arm='control',h4red=red)"],["h4m12_worker","    source,_=make_h4m12_integrated_source(Path(inspect.getfile(api['ppo'].train)).read_bytes())","    if red:\n        from m463_instrument_brax import make_h4red_integrated_source\n    build=make_h4red_integrated_source if red else make_h4m12_integrated_source\n    source,_=build(Path(inspect.getfile(api['ppo'].train)).read_bytes())"],["h4m12_worker","spec=H4M12_SPEC,parent=parent,","spec=(H4RED_SPEC if red else H4M12_SPEC),parent=parent,"],["h4m12_worker","    chunk_fn=h4_chunk_callback(jax,np,monitor,r,persist,'control',step_offset=10485760)\n","    chunk_fn=h4_chunk_callback(jax,np,monitor,r,persist,'control',step_offset=10485760)\n    if red:\n        chunk_fn=h4red_chunk_guard(chunk_fn,r,persist)\n"],["h4m12_worker","        h4m12_require(h4m12_auth(root)==auth,'AUTH_CHANGED')","        h4m12_require(authorize(root)==auth,'AUTH_CHANGED')"],["h4m12_worker","        r['exposure']=h4m12_exposure_replay(r)\n        persist()","        r['exposure']=h4m12_exposure_replay(r)\n        if red:\n            r['red_exposure']=h4red_exposure_replay(r)\n        persist()"],["h4m12_worker","r['artifacts'][H4M12_NEW_POLICY]),exclusive=True)","r['artifacts'][H4M12_NEW_POLICY],red=red),exclusive=True)"],["h4m12_worker","        h4m12_require(h4m12_parent_preflight(root,require_unused=False)==parent\n            and h4x_bootstrap(a,h4m12=True)==pins","        h4m12_require(parent_check(root,require_unused=False)==parent\n            and h4x_bootstrap(a,h4m12=True,red=red)==pins"],["h4m12_worker","            and h4m12_auth(root)==auth,'FINAL_IMMUTABILITY')","            and authorize(root)==auth,'FINAL_IMMUTABILITY')"],["h4m12_worker","        h4m12_check_complete(out,r,auth)\n","        h4m12_check_complete(out,r,auth,red=red)\n"],["h4m12_main","def h4m12_main(argv):","def h4m12_main(argv,*,red=False):"],["h4m12_main","    p=argparse.ArgumentParser(description='H4-M12 isolated original CTRL continuation')","    p=argparse.ArgumentParser(description=('H4RED isolated continuation' if red else 'H4-M12 isolated original CTRL continuation'))"],["h4m12_main","    auth=h4m12_auth(root)\n    out=root/H4M12_OUTPUT\n    if a.worker:\n        return h4m12_worker(a,auth,root,out)\n    h4m12_parent_preflight(root)\n","    h4m12_require(type(red) is bool,'RED_MODE')\n    authorize=h4red_auth if red else h4m12_auth\n    parent_check=h4red_parent_preflight if red else h4m12_parent_preflight\n    auth=authorize(root)\n    out=root/(H4RED_OUTPUT if red else H4M12_OUTPUT)\n    if a.worker:\n        return h4m12_worker(a,auth,root,out,red=red)\n    parent_check(root)\n"],["h4m12_main","            '--h4m12-continuation',*argv,'--worker'],stdout=subprocess.PIPE,","            ('--h4red-continuation' if red else '--h4m12-continuation'),*argv,'--worker'],stdout=subprocess.PIPE,"],["h4m12_main","        h4m12_check_complete(out,r,auth)\n        h4m12_require(h4m12_parent_preflight(root,require_unused=False)==r['parent'] and h4m12_auth(root)==auth,'SUPERVISOR_IMMUTABILITY')","        h4m12_check_complete(out,r,auth,red=red)\n        h4m12_require(parent_check(root,require_unused=False)==r['parent'] and authorize(root)==auth,'SUPERVISOR_IMMUTABILITY')"],["h4m12_main","        h4m12_read_final(root,sha,auth)\n        print('H4M12_TECHNICAL_PASS',sha,flush=True)","        h4m12_read_final(root,sha,auth,red=red)\n        if red:\n            print('H4RED_TECHNICAL_PASS',sha,r['red_exposure']['decision'],flush=True)\n        else:\n            print('H4M12_TECHNICAL_PASS',sha,flush=True)"]]
+# H4RED_TRAINER_END
 if __name__=='__main__': main()
