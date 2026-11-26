@@ -12472,7 +12472,9 @@ class H4AbsJournal:
     def record(self,row,rich_sha=None):
         key=[int(row[k]) for k in ('lane','branch','candidate','tick')]
         h4abs_req(self.pending==key,'ABS record pending')
-        b=row.tobytes();h4abs_req(len(b)==h4abs_row_dtype().itemsize and self.raw_bytes+len(b)+self.event_bytes<=H4ABS_RAW_CAP,'ABS record cap')
+        import shutil
+        b=row.tobytes();h4abs_req(len(b)==h4abs_row_dtype().itemsize and self.raw_bytes+len(b)+self.event_bytes+4096<=H4ABS_RAW_CAP
+            and shutil.disk_usage(self.path).free>=2*1024**3+len(b)+4096,'ABS record cap')
         with self.raw.open('ab') as f:
             f.write(b);f.flush();os.fsync(f.fileno())
         self.event(['record',hashlib.sha256(b).hexdigest(),rich_sha])
@@ -12760,7 +12762,8 @@ def h4abs_read_records(path,inputs,complete=False,deadline=None):
     if complete:h4abs_req(lane_idx==5 and pending is None and key is None and reset_state==0 and actor_pending is None and actor_value is None and actor_recorded==actor_attempted,'ABS final completeness')
     return dict(attempted=attempted,recorded=recorded,pending=pending,lanes=results,
         reset_attempted=lane_idx+int(reset_state>=1),reset_recorded=lane_idx+int(reset_state==2),templates=templates,
-        actor_attempted=actor_attempted,actor_recorded=actor_recorded,actor_pending=actor_pending,open_branch=key,
+        actor_attempted=actor_attempted,actor_recorded=actor_recorded,actor_pending=actor_pending,
+        tail_action_awaiting_delivery=actor_value is not None,open_branch=key,
         raw_sha256=allhash.hexdigest(),decision=h4abs_local_decision(results) if lane_idx==5 else None)
 
 def h4abs_worker(root,auth,inputs):
@@ -12844,12 +12847,129 @@ def h4abs_cli(argv):
     if a.mode=='static':return h4abs_full_static(root)
     return h4abs_dispatch(root,child=a.mode=='child')
 
+def h4abs_reader_fixtures(manifest):
+    """Synthetic end-to-end ledger/reader tests only. No native reset/step/actor."""
+    import numpy as np
+    import tempfile
+    dtype=h4abs_row_dtype();cols=H4M3_COLUMNS
+    d=np.asarray(manifest['default_pose'],np.float32)
+    q=np.r_[np.array([0,0,.75,1,0,0,0],np.float32),d].astype(np.float32)
+    zero=np.zeros(29,np.float32);dom=h4abs_domain(manifest)
+    A,_=h4abs_generate(q[7:],dom,h4abs_frozen_basis(manifest['actuator_names']),h4abs_coefficients())
+    h4abs_pre_guard(zero,q,manifest)
+    def packed(terminal=False,vx=0.):
+        v=[0.]*46
+        for k,x in (('height',.75),('vx',vx),('h3_finite',1.),('h2a_state_finite',1.),
+                    ('done',float(terminal)),('cause_fall',float(terminal)),('cause_inverted_torso',float(terminal))):
+            v[cols.index(k)]=x
+        return v
+    def hx(x):return hashlib.sha256(str(x).encode()).hexdigest()
+    ev=[];raw=[];lanes=[];expected_results=[]
+    for kind in ('actor','critic'):
+        for event in ('attempted','recorded'):ev.append(['template',kind,event])
+    def row(lane,b,c,t,prev,after,action,terminal=False,vx=0.,load=(.9,0.)):
+        r=np.zeros((),dtype=dtype)
+        r['lane']=lane;r['branch']=b;r['candidate']=c;r['tick']=t;r['source']=int(b>=3 and t<=385)
+        r['state_before']=np.frombuffer(bytes.fromhex(prev),dtype=np.uint8)
+        r['state_after']=np.frombuffer(bytes.fromhex(after),dtype=np.uint8)
+        r['packed']=packed(terminal,vx);r['sent']=action
+        r['raw_ctrl']=h4abs_action_guard(action,dom)
+        r['qpos_pre']=r['qpos_post']=q;r['joint_length']=d
+        r['time']=[(t-1)*.02,t*.02];r['load']=load
+        h4abs_req(h4abs_row_safety(r,manifest,cols)[0]==(not terminal),'ABS mock row safety')
+        return r
+    def emit(r):
+        key=[int(r[k]) for k in ('lane','branch','candidate','tick')];t=key[-1];b=key[1]
+        if b>=3 and t>=386:
+            ev.append(['actor_attempt',*key]);ev.append(['actor_record',r['sent'].tobytes().hex()])
+        ev.append(['attempt',*key]);x=r.tobytes();raw.append(x);ev.append(['record',hashlib.sha256(x).hexdigest(),None])
+    def safe_motion(lane,b,c,parent,end):
+        prev=parent;loads=[(.9,0.)]
+        for t in range(336,end+1):
+            after=hx((lane,'candidate',c,t))
+            load=(.5,.5) if 336<=t<=338 or 342<=t<=344 else (0.,.9) if 339<=t<=341 else (.9,0.)
+            emit(row(lane,b,c,t,prev,after,A[c,t-336] if t<=385 else zero,
+                vx=.2 if t<=350 else 0.,load=load));prev=after;loads.append(load)
+        return loads
+    for lane in range(5):
+        prefix=[packed() for _ in range(335)]
+        lanes.append(dict(key=list(H4M3_LANES[lane][:3]),prefix=prefix,double=[packed(),packed(True)],
+            single=[packed() for _ in range(666)],rich={},kicks=[dict(tick=300),dict(tick=335)],
+            snapshot=(None,None,b'mock snapshot') if lane==0 else None))
+        ev.extend([['reset',lane,'attempted'],['reset',lane,'recorded']])
+        key=[lane,0,-1];prev=hx((lane,'reset'));ev.append(['begin',*key,prev])
+        for t in range(1,336):
+            if t in (300,335):ev.append(['kick',lane,t,h4m3_digest(lanes[-1]['kicks'][int(t==335)])])
+            after=hx((lane,'prefix',t));emit(row(lane,0,-1,t,prev,after,zero));prev=after
+        if lane==0:ev.append(['snapshot',lane,hashlib.sha256(b'mock snapshot').hexdigest()])
+        ev.append(['end',*key,'FULL']);parent=prev
+        for b in (1,2):
+            key=[lane,b,-1];ev.append(['begin',*key,parent])
+            emit(row(lane,b,-1,336,parent,hx((lane,'baseline',336)),zero,True))
+            ev.append(['end',*key,'TERMINAL'])
+        for c in range(64):
+            key=[lane,3,c];ev.append(['begin',*key,parent])
+            if c==0 and lane!=3:
+                safe_motion(lane,3,c,parent,584)
+                ev.append(['end',*key,'FULL'])
+            elif c==1:
+                safe_motion(lane,3,c,parent,385)
+                bad=zero.copy();bad[manifest['actuator_names'].index('left_ankle_roll_joint')]=.6
+                ev.extend([['actor_attempt',*key,386],['actor_record',bad.tobytes().hex()],
+                    ['guard',*key,386,bad.tobytes().hex(),q.tobytes().hex()],['end',*key,'PRE_GUARD']])
+            else:
+                emit(row(lane,3,c,336,parent,hx((lane,'candidate',c,336)),A[c,0],True))
+                ev.append(['end',*key,'POST_STOP'])
+        if lane==3:
+            result=dict(selected=None,witness=False,transfers_before_recovery=0,telemetry=None)
+        else:
+            key=[lane,4,0];ev.append(['begin',*key,parent])
+            loads=safe_motion(lane,4,0,parent,1000);ev.append(['end',*key,'FULL'])
+            result=dict(selected=0,witness=True,transfers_before_recovery=2,telemetry=h4abs_transfers(loads,range(335,1001)))
+        expected_results.append(result);ev.append(['lane_end',lane,result])
+    mock=dict(manifest=manifest,lanes=lanes);neg=0
+    with tempfile.TemporaryDirectory() as td:
+        p=Path(td);j=p/'events.jsonl';rr=p/'rows.bin'
+        j.write_bytes(b''.join(h4abs_json_bytes(x) for x in ev));rr.write_bytes(b''.join(raw))
+        checked=h4abs_read_records(p,mock,complete=True)
+        h4abs_req(checked['lanes']==expected_results and checked['attempted']==checked['recorded']==len(raw)
+            and checked['decision']['hypothesis']=='SUPPORTED_LOCAL_WITNESS','ABS complete mock fixture')
+        def reject():
+            nonlocal neg
+            try:h4abs_read_records(p,mock,complete=True)
+            except (ValueError,RuntimeError,KeyError,TypeError):neg+=1;return
+            raise ValueError('ABS mock negative accepted')
+        first=next(k for k,x in enumerate(ev) if x[0]=='record')
+        bad=ev.copy();bad[first]=['record','0'*64,None]
+        j.write_bytes(b''.join(h4abs_json_bytes(x) for x in bad));reject()
+        bad=ev.copy();bad[first-1]=['attempt',0,0,-1,2]
+        j.write_bytes(b''.join(h4abs_json_bytes(x) for x in bad));reject()
+        j.write_bytes(b''.join(h4abs_json_bytes(x) for x in ev[:first+1]))
+        rr.write_bytes(raw[0]+b'X');reject()
+        rr.write_bytes(raw[0]);part=h4abs_read_records(p,mock)
+        h4abs_req(part['recorded']==1 and part['open_branch']==[0,0,-1],'ABS partial committed fixture')
+    return dict(mock_transitions=len(raw),mock_lanes=5,negative=neg,physical_transitions=0,native_calls=0)
+
+def h4abs_step_tail_static(raw):
+    import ast
+    prev=h4abs_runtime_projection(raw)
+    def graph(x):
+        a=ast.parse(x)
+        run=next(n for n in a.body if isinstance(n,ast.FunctionDef) and n.name=='run')
+        return next(n for n in ast.walk(run) if isinstance(n,ast.FunctionDef) and n.name=='one_step')
+    def tail(n):
+        i=next(i for i,v in enumerate(n.body) if isinstance(v,ast.Assign) and
+            isinstance(v.value,ast.Call) and ast.unparse(v.value.func)=='env.step')
+        return [ast.dump(x,include_attributes=False) for x in n.body[i:]]
+    h4abs_req(tail(graph(raw))==tail(graph(prev)),'ABS shared native step tail')
+    return True
+
 def h4abs_full_static(root):
     import tempfile
     root=Path(root).resolve();h4m3_no_runtime_imports()
     h4abs_req(not (root/H4ABS_OUTPUT).parent.exists(),'ABS output used')
     raw=(root/'m463_gate3_cp_eval.py').read_bytes();compile(raw,'<ABS full evaluator>','exec')
-    h4abs_runtime_projection(raw);h4red_eval_project(root)
+    h4abs_runtime_projection(raw);h4red_eval_project(root);h4abs_step_tail_static(raw)
     inputs=h4abs_inputs(root)
     result=h4abs_host_fixtures(h4m3_pinned_json(root/H4M3_OUTPUT,H4ABS_M3_SHA))
     def reject(fn):
@@ -12857,6 +12977,10 @@ def h4abs_full_static(root):
         except (ValueError,RuntimeError,KeyError,TypeError):return
         raise ValueError('ABS static negative accepted')
     reject(lambda:h4abs_marker(''))
+    marker='H4ABS_ACTIVE_GO: ND-SSTR-ABS-V1 '+str(H4ABS_OUTPUT)+' '+'a'*64+' '+'b'*64+' m463_runs/m470_h4abs_full_static_fixture.log '+'c'*64
+    h4abs_marker(marker)
+    for bad in (marker+'\n'+marker,marker+'\nH4M7_SNAPSHOT_ACTIVE_GO: bad',marker[:-1],marker.replace(str(H4ABS_OUTPUT),'wrong.json')):
+        reject(lambda:h4abs_marker(bad))
     for mode in ('run','child'):
         proc=subprocess.run([sys.executable,'-B',str(root/'m463_gate3_cp_eval.py'),'--h4abs',mode],
             cwd=root,capture_output=True,text=True,timeout=30)
@@ -12873,12 +12997,13 @@ def h4abs_full_static(root):
         h4abs_req(h4abs_read_records(d,inputs)['pending']==[0,0,-1,1],'ABS partial pending')
         reject(lambda:h4abs_read_records(d,inputs,complete=True))
         reject(lambda:j.reserve([0,0,-1],2))
+    reader=h4abs_reader_fixtures(inputs['manifest'])
     h4m3_no_runtime_imports()
+    h4abs_req(not (root/H4ABS_OUTPUT).parent.exists(),'ABS static created output')
     print('H4ABS_SOURCE',h4m3_digest(inputs['provenance']['source']),flush=True)
     print('H4ABS_PROVENANCE',h4m3_digest(inputs['provenance']),flush=True)
     print('H4ABS_INTEGRATION_STATIC_FIXTURES',json.dumps(result,sort_keys=True),flush=True)
-    # This is a held integration candidate. Do not advertise full static acceptance
-    # until the end-to-end reader/dispatcher fixture coverage has been reviewed.
+    print('H4ABS_READER_FIXTURES',json.dumps(reader,sort_keys=True),flush=True)
     print('H4ABS_HELD_INTEGRATION_STATIC_PASS; FULL_STATIC_ACCEPTANCE_HOLD',flush=True)
 
 H4ABS_INTEGRATION_PATCHES=[["def run(args):\n    m7_snapshot=","def run(args):\n    abs_mode=bool(getattr(args,'h4abs_native',False))\n    m7_snapshot="],["    placement=bool(getattr(args,'h4m3_placement',False)) or feasibility or m7_snapshot\n    if m7_snapshot:","    placement=bool(getattr(args,'h4m3_placement',False)) or feasibility or m7_snapshot or abs_mode\n    if abs_mode:\n        h4abs_enter(args)\n    elif m7_snapshot:"],["        if m7_snapshot:\n            h4m7_require(args.h3_session['manifest']==args.h4m7_manifest,'MODEL_ARCHIVE')","        if abs_mode:\n            h4abs_req(args.h3_session['manifest']==args.h4abs_inputs['manifest'],'ABS MODEL_ARCHIVE')\n        elif m7_snapshot:\n            h4m7_require(args.h3_session['manifest']==args.h4m7_manifest,'MODEL_ARCHIVE')"],["    if m7_snapshot:\n        def template_event(kind,event):","    if abs_mode:\n        load_policy=h4_shared_frozen_loader(env.action_size,paper,networks,running_statistics,\n            serialization,jax,jnp,np,template_event=lambda k,v: args.h4abs_journal.event(['template',k,v]))\n    elif m7_snapshot:\n        def template_event(kind,event):"],["                         probe_residual=None,probe_selected=None):\n                cmd = (","                         probe_residual=None,probe_selected=None,absolute_action=None,actor_only=False):\n                cmd = ("],["                action,_=policy(state.obs,jax.random.PRNGKey(0))\n                if probe_residual is not None:","                if absolute_action is None:\n                    action,_=policy(state.obs,jax.random.PRNGKey(0))\n                else:\n                    h4abs_req(abs_mode and placement_capture and probe_residual is None and not actor_only,'ABS action source')\n                    action=absolute_action\n                if actor_only:\n                    h4abs_req(abs_mode and absolute_action is None and probe_residual is None,'ABS actor only')\n                    return action\n                if probe_residual is not None:"],["            step_fn=(jax.jit(one_step,static_argnames=('placement_capture',))\n                     if placement or m6 else jax.jit(one_step))\n            if m7_snapshot:","            step_fn=(jax.jit(one_step,static_argnames=('placement_capture','actor_only')) if abs_mode else\n                     jax.jit(one_step,static_argnames=('placement_capture',))\n                     if placement or m6 else jax.jit(one_step))\n            if abs_mode:\n                h4abs_native_lane(args,lane_index,env,step_fn,jax,jnp,np)\n                continue\n            if m7_snapshot:"],["def h4abs_legacy_projection(raw):\n    # Remove","def h4abs_legacy_projection(raw):\n    raw=h4abs_runtime_projection(raw)\n    # Remove"],["if __name__=='__main__':main()\n","if __name__=='__main__':\n    if len(sys.argv)>1 and sys.argv[1]=='--h4abs':h4abs_cli(sys.argv[2:])\n    else:main()\n"]]
