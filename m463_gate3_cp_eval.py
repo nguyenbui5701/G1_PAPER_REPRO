@@ -4536,20 +4536,21 @@ def h4cc_tech_read_report(path,expected_sha,source,generated):
     h4cc_tech_require(audit==r['audit'] and audit['passed'],'REPORT_REPLAY')
     return r
 
-def h4cc_tech_actual(args,r,monitor,persist,*,rss=False,diagnostic=False):
+def h4cc_tech_actual(args,r,monitor,persist,*,rss=False,diagnostic=False,prefix_context=None):
     # Independent one-use dispatch check BEFORE runtime imports.
     import m463_push_ppo_train as t
-    h4cc_tech_require(not diagnostic or rss,'DIAG_RSS_REQUIRED')
-    if rss and not diagnostic:
+    prefix=prefix_context is not None
+    h4cc_tech_require((not diagnostic or rss) and (not prefix or (rss and not diagnostic and prefix_context in ('C','P'))),'DIAG_RSS_REQUIRED')
+    if rss and not diagnostic and not prefix:
         h4m6_runtime_gate('tech')
-    auth=h4m6_diag_authorization() if diagnostic else (t.h4m6_authorization(phase='tech') if rss else h4cc_tech_authorization())
-    expected_out=H4M6_DIAG_OUTPUT if diagnostic else (H4M6_TECH_OUTPUT if rss else H4CC_TECH_OUTPUT)
-    expected_status='M470_H4M6_DIAG_IN_PROGRESS' if diagnostic else ('M470_H4M6_TECH_IN_PROGRESS' if rss else 'M470_H4CC_TECH_IN_PROGRESS')
+    auth=h4m6_prefix_authorization() if prefix else (h4m6_diag_authorization() if diagnostic else (t.h4m6_authorization(phase='tech') if rss else h4cc_tech_authorization()))
+    expected_out=h4m6_prefix_path(prefix_context) if prefix else (H4M6_DIAG_OUTPUT if diagnostic else (H4M6_TECH_OUTPUT if rss else H4CC_TECH_OUTPUT))
+    expected_status='M470_H4M6_PREFIX_IN_PROGRESS' if prefix else ('M470_H4M6_DIAG_IN_PROGRESS' if diagnostic else ('M470_H4M6_TECH_IN_PROGRESS' if rss else 'M470_H4CC_TECH_IN_PROGRESS'))
     h4cc_tech_require(args.output.resolve()==H4_EVAL_ROOT/expected_out
         and r['authorization']==auth and r['status']==expected_status
         and r['lanes']==[] and all(r[k]==0 for k in ('physical_transitions_attempted',
             'physical_transitions_recorded','reset_lanes_attempted','reset_lanes_recorded'))
-        and r['provenance']==(h4m6_tech_inputs(args,auth,diagnostic=diagnostic) if rss else h4cc_tech_inputs(args,auth)),'DISPATCH_CONTRACT')
+        and r['provenance']==(h4m6_tech_inputs(args,auth,diagnostic=diagnostic,prefix=prefix) if rss else h4cc_tech_inputs(args,auth)),'DISPATCH_CONTRACT')
     reservation=args.output.parent/'attempt.json'
     h4cc_tech_require(reservation.is_file() and not reservation.is_symlink()
         and json.loads(reservation.read_bytes())=={'authorization':auth,'reserved':True}
@@ -4610,11 +4611,12 @@ def h4cc_tech_actual(args,r,monitor,persist,*,rss=False,diagnostic=False):
     n,p,v=checkpoint_parts(serialization.msgpack_restore(args.checkpoint_c.read_bytes()))
     norm=serialization.from_state_dict(running_statistics.init_state(
         {k:jp.zeros(s,jp.float32) for k,s in shapes.items()}),n)
-    if diagnostic:r['template_initializations_attempted']+=1;persist()
+    if diagnostic or prefix:r['template_initializations_attempted']+=1;persist()
     actor=serialization.from_state_dict(nets.policy_network.init(jax.random.PRNGKey(11)),p)
     if diagnostic:
         jax.block_until_ready(actor);r['template_initializations_recorded']+=1
         r['template_initializations_attempted']+=1;persist()
+    if prefix:r['template_initializations_attempted']+=1;persist()
     critic=serialization.from_state_dict(nets.value_network.init(jax.random.PRNGKey(17)),v)
     if diagnostic:jax.block_until_ready(critic);r['template_initializations_recorded']+=1;persist()
     def host(x):return np.asarray(jax.device_get(x))
@@ -4630,6 +4632,7 @@ def h4cc_tech_actual(args,r,monitor,persist,*,rss=False,diagnostic=False):
     leaves=jax.tree_util.tree_leaves(params)
     h4cc_tech_require(len(leaves)==25 and all(np.isfinite(host(x)).all() for x in leaves),'POLICY')
     r['policy_sha256_before']=digest_tree(params)
+    if prefix:r['template_initializations_recorded']=2;persist()
     policy=networks.make_inference_fn(nets)((norm,actor),deterministic=True)
     randomizer=locomotion.get_domain_randomizer(ENV)
     h4cc_tech_require(randomizer is not None,'DR')
@@ -4689,7 +4692,7 @@ def h4cc_tech_actual(args,r,monitor,persist,*,rss=False,diagnostic=False):
     def vec(x):return host(x)[0].tolist()
     def scalar(x):return int(host(x)[0])
     def guard():
-        h4cc_tech_require((h4m6_diag_authorization() if diagnostic else (t.h4m6_authorization(phase='tech') if rss else h4cc_tech_authorization()))==r['authorization'],'AUTH_CHANGED')
+        h4cc_tech_require((h4m6_prefix_authorization() if prefix else (h4m6_diag_authorization() if diagnostic else (t.h4m6_authorization(phase='tech') if rss else h4cc_tech_authorization())))==r['authorization'],'AUTH_CHANGED')
         h4cc_tech_require('brax.training.agents.ppo.train' not in sys.modules,'TRAIN_IMPORT')
         h3_gpu_check(monitor)
     cache={}
@@ -4706,11 +4709,21 @@ def h4cc_tech_actual(args,r,monitor,persist,*,rss=False,diagnostic=False):
                 reward=np.zeros_like(host(st.reward)),metrics={k:v for k,v in st.metrics.items() if k!='reward/stand_still'})
             return h4m6_diag_capture(r,cache,lane,tick,{'full':st,'projected':projected,
                 'physics':(st.data,st.info['h4cc_tech_raw'])},jax.tree_util.tree_flatten_with_path,host,expected)
-    for fixture in ((tuple(H4M6_DIAG_SPEC['fixture']),) if diagnostic else H4CC_TECH_FIXTURES):
+    if prefix:
+        import jaxlib
+        h4m6_eval_require(jaxlib.__version__=='0.4.35' and jax.device_count()==1,'PREFIX_DEVICE')
+        history=h4m6_prefix_history(H4_EVAL_ROOT)
+        h4m6_eval_require(r['policy_sha256_before']==history['policy'],'PREFIX_POLICY')
+        r['compiler']={'jax':jax.__version__,'jaxlib':jaxlib.__version__,'device':str(jax.devices()[0]),
+            'platform_version':jax.devices()[0].client.platform_version,
+            'env':{k:v for k,v in os.environ.items() if k.startswith(('JAX_','XLA_','CUDA_','NVIDIA_'))}}
+        fixtures=(H4CC_TECH_FIXTURES[1],) if prefix_context=='C' else H4CC_TECH_FIXTURES[:2]
+    else:fixtures=(tuple(H4M6_DIAG_SPEC['fixture']),) if diagnostic else H4CC_TECH_FIXTURES
+    for fixture in fixtures:
         seed=fixture[0]; key=jax.random.PRNGKey(seed)
         dr_keys=jax.random.fold_in(key,H4CC_TECH_SPEC['dr_seed_fold_in'])[None,:]
         shared_step=None;shared_reset=None
-        for lane_id in (H4M6_DIAG_ORDER if diagnostic else (('ref','rss') if rss else ('ref','ccrc'))):
+        for lane_id in (('ref',) if prefix and fixture[0]==4102 else (H4M6_DIAG_ORDER if diagnostic else (('ref','rss') if rss else ('ref','ccrc')))):
             arm=lane_id[:3].lower() if diagnostic else lane_id
             guard()
             if (shared_step is None if diagnostic else (not rss or arm=='ref')):
@@ -4731,7 +4744,7 @@ def h4cc_tech_actual(args,r,monitor,persist,*,rss=False,diagnostic=False):
                         return wrapped.step(state,action),action
                     shared_step=jax.jit(shared_one)
                     shared_reset=jax.jit(wrapped.reset)
-            h4cc_tech_require(r['reset_lanes_attempted']<(4 if diagnostic else 8),'RESET_CAP')
+            h4cc_tech_require(r['reset_lanes_attempted']<((1 if prefix_context=='C' else 3) if prefix else (4 if diagnostic else 8)),'RESET_CAP')
             r['reset_lanes_attempted']+=1;persist()
             st=(shared_reset if rss else jax.jit(wrapped.reset))(key[None,:])
             h4cc_tech_require(bool(host(st.info['h4cc_tech_raw_finite'])[0]) and
@@ -4754,6 +4767,8 @@ def h4cc_tech_actual(args,r,monitor,persist,*,rss=False,diagnostic=False):
                 lane['historical_initial']={k:lane[k]==historical[arm][k] for k in ('initial_sha256','initial_rng','model_sha256')}
                 lane['historical_rows']=[]
             r['lanes'].append(lane);r['reset_lanes_recorded']+=1;persist()
+            if prefix:
+                h4m6_prefix_ledger(r,history,partial=True)
             if diagnostic and capture(st,lane,-1,{'projected':lane['initial_sha256']}):
                 lane['endpoint']='DIVERGENCE';persist();continue
             if diagnostic:persist()
@@ -4762,11 +4777,12 @@ def h4cc_tech_actual(args,r,monitor,persist,*,rss=False,diagnostic=False):
                 nxt=wrapped.step(state,action)
                 return nxt,action
             step=shared_step if rss else jax.jit(one)
-            for tick in range(8 if diagnostic else (52 if rss else 252)):
+            for tick in range(8 if diagnostic or (prefix and fixture[0]==4102) else (52 if rss else 252)):
                 guard()
-                h4cc_tech_require(r['physical_transitions_attempted']<(32 if diagnostic else (416 if rss else 2016)),'PHYSICAL_CAP')
-                if diagnostic:
-                    h4cc_tech_require(r['key_audits_attempted']<32,'DIAG_KEY_CAP')
+                cap=(8 if prefix_context=='C' else 112) if prefix else (32 if diagnostic else (416 if rss else 2016))
+                h4cc_tech_require(r['physical_transitions_attempted']<cap,'PHYSICAL_CAP')
+                if diagnostic or prefix:
+                    h4cc_tech_require(r['key_audits_attempted']<cap,'DIAG_KEY_CAP')
                     r['key_audits_attempted']+=1;persist()
                 pre=st.info;expected_rng,native_draw=key_audit(pre['rng'])
                 if diagnostic:
@@ -4776,7 +4792,8 @@ def h4cc_tech_actual(args,r,monitor,persist,*,rss=False,diagnostic=False):
                     'actor':vec(st.obs['state'][:,9:12]),'critic':vec(st.obs['privileged_state'][:,9:12]),
                     'expected_rng':vec(expected_rng),'native_draw':vec(native_draw)}
                 r['physical_transitions_attempted']+=1;lane['physical_attempted']+=1
-                if diagnostic:r['actor_calls_attempted']+=1
+                if prefix:r['key_audits_recorded']+=1
+                if diagnostic or prefix:r['actor_calls_attempted']+=1
                 persist()
                 actor_key=jax.random.fold_in(jax.random.fold_in(key,H4CC_TECH_SPEC['actor_seed_fold_in']),tick)
                 nxt,action=step(st,actor_key)
@@ -4811,11 +4828,24 @@ def h4cc_tech_actual(args,r,monitor,persist,*,rss=False,diagnostic=False):
                     h4m6_eval_require(scalar(nxt.info['h4m6_tech_treatment'])==int(arm=='rss'),'TECH_TREATMENT_BIT')
                 lane['rows'].append(row);lane['physical_recorded']+=1
                 r['physical_transitions_recorded']+=1
-                if diagnostic:r['actor_calls_recorded']+=1
+                if diagnostic or prefix:r['actor_calls_recorded']+=1
                 persist()
                 h4cc_tech_require(finite and not m['bad'] and not m['cc_bad'] and not m['truncation']
                     and row['rng_after']==row['expected_rng'],'LIVE_CONTRACT')
-                if diagnostic:
+                if prefix:
+                    h4m6_prefix_ledger(r,history,partial=True)
+                    if fixture[0]==4102:
+                        classification=h4m6_prefix_classify(row,history)
+                        if classification!='B' or tick==7:
+                            projected=nxt.replace(info={k:v for k,v in nxt.info.items() if not k.startswith('h4m6_')},
+                                reward=np.zeros_like(host(nxt.reward)),metrics={k:v for k,v in nxt.metrics.items() if k!='reward/stand_still'})
+                            endpoint=h4m6_prefix_snapshot({'full':nxt,'projected':projected,
+                                'physics':(nxt.data,nxt.info['h4cc_tech_raw'])},jax.tree_util.tree_flatten_with_path,host,
+                                {'projected':row['post_sha256'],'physics':row['physics_sha256']},tick,classification)
+                            h4m6_prefix_snapshot_replay(endpoint,row,history)
+                            h4m6_eval_require(len(json.dumps(dict(r,endpoint=endpoint),separators=(',',':'),allow_nan=False).encode())<6*1024**2,'PREFIX_REPORT_HEADROOM')
+                            r['endpoint']=endpoint;persist();break
+                elif diagnostic:
                     h4m6_technical_audit(r,partial=True,diagnostic=True)
                     h4m6_eval_require(r['snapshots'][lane_id+':'+str(tick-1)]['projected']['aggregate']==row['pre_sha256'],'DIAG_PRE_SNAPSHOT')
                     archived=historical[arm]['rows'][tick]
@@ -4833,7 +4863,7 @@ def h4cc_tech_actual(args,r,monitor,persist,*,rss=False,diagnostic=False):
     h4cc_tech_require(r['policy_sha256_after']==r['policy_sha256_before'],'POLICY_MUTATED')
     guard()
     check_source()
-    r['audit']=h4m6_diag_ledger(r) if diagnostic else (h4m6_technical_audit if rss else h4cc_tech_audit)(r)
+    r['audit']=h4m6_prefix_ledger(r,history) if prefix else (h4m6_diag_ledger(r) if diagnostic else (h4m6_technical_audit if rss else h4cc_tech_audit)(r))
 
 def h4cc_tech_run(args):
     import m463_push_ppo_train as t
@@ -7773,7 +7803,217 @@ def h4m6_diag_dispatch(args):
     req(decision=='DIAGNOSTIC_COMPLETE','DIAG_COLLECTOR_STOP')
 
 
-def h4m6_tech_inputs(args,auth,*,diagnostic=False):
+# H4-M6-2D4: held, two-process prefix-history diagnostic; no technical PASS.
+H4M6_PREFIX_OUTPUT=Path('m463_runs/m470_h4_m6_prefix_history_v1/report.json')
+H4M6_PREFIX_SPEC={'id':'H4-M6-2D4-V1','contexts':['C','P'],
+    'schedule':{'C':[[4102,'ref',8]],'P':[[4101,'ref',52],[4101,'rss',52],[4102,'ref',8]]},
+    'physical':120,'resets':4,'actor_calls':120,'key_audits':120,'template_initializations':4,
+    'historical_physical':203,'archive_count':31,'snapshot_cap':8*1024**2,
+    'host_cap':256*1024**2,'report_cap':16*1024**2,'log_cap':16*1024**2,
+    'child_report_cap':7*1024**2,'summary_cap':2*1024**2,'witness_cap':16}
+H4M6_PREFIX_DIAG_PINS={
+    'report.json':'df37c0e2308afd26801b7f0bb28c907b107e0d6e4beddfcfca63637bcbdd2a5d',
+    'attempt.json':'16d7be57238d4fc0115af76ee267f7485f8e9f9486578df0a6556b26d92a0b21',
+    'collector.started.json':'d5b4e4c22636ca24922025889b8213f85f891cebb6a84936c229d7778b001a2e',
+    'dispatch.started.json':'f034a5d902a1305110abd1262835218f1f437032f59123f81e976b39d0321f68',
+    'attempt_result.json':'72d95cde98edd98145341d6122c81e7974be992f78fa7904030a31d5baf962e3',
+    'collector.json':'cb6178d835a725afa4402a9540cbc9002aa9f5d1c14aa5beb7b26d43742bea9b',
+    'probe.log':'e6d9923f1557caaa586733e2a25929b5aa07217edfac05fd09bb84f4f23c8b35'}
+H4M6_PREFIX_JAX_BLOBS={'api':'d2ac5465edede3f48b76183150819fb3c01e0b91',
+    'pjit':'a69e8987b2d83633878c06bc27fd5834b434d7ec','compiler':'8a2d6047e9b85cce24803ee1e0d677aac3b38062'}
+
+
+def h4m6_prefix_path(context=None):
+    h4m6_eval_require(context in (None,'C','P'),'PREFIX_CONTEXT')
+    return H4M6_PREFIX_OUTPUT if context is None else H4M6_PREFIX_OUTPUT.parent/context/'report.json'
+
+
+def h4m6_prefix_archives(root,prior):
+    req=h4m6_eval_require
+    pins=dict(prior)
+    req(len(pins)==24,'PREFIX_PRIOR_PINS')
+    for name,h in H4M6_PREFIX_DIAG_PINS.items():
+        p=root/H4M6_DIAG_OUTPUT.parent/name
+        req(p.is_file() and not p.is_symlink() and p.absolute()==p.resolve()
+            and 0<p.stat().st_size<=16*1024**2 and sha256(p)==h,'PREFIX_ARCHIVE '+name)
+        pins[str(H4M6_DIAG_OUTPUT.parent/name)]=h
+    req(len(pins)==31,'PREFIX_ARCHIVE_COUNT')
+    d=json.loads((root/H4M6_DIAG_OUTPUT).read_bytes())
+    req(d['status']=='M470_H4M6_DIAG_COMPLETE' and d['audit']['classification']=='NOT_REPRODUCED'
+        and d['passed'] is False and d['physical_transitions_recorded']==32
+        and d['provenance']['diagnostic_archive_sha256']==prior
+        and len(d['lanes'])==4 and all(len(l['rows'])==8 for l in d['lanes'])
+        and d['post_immutability'] is True,'PREFIX_DIAG_ARCHIVE')
+    return pins
+
+
+def h4m6_prefix_history(root):
+    v=json.loads((root/'m463_runs/m470_h4_m6_tech_v3/report.json').read_bytes())
+    d=json.loads((root/H4M6_DIAG_OUTPUT).read_bytes())
+    req=h4m6_eval_require
+    req(v['status']=='M470_H4M6_TECH_STOP' and [len(l['rows']) for l in v['lanes']]==[52,52,52,8]
+        and d['audit']['classification']=='NOT_REPRODUCED','PREFIX_HISTORY')
+    return {'prefix':v['lanes'][:2],'A':v['lanes'][2]['rows'][7],
+        'B':d['lanes'][0],'B_snapshots':d['snapshots'],'B_schema':d['leaf_schema'],
+        'B_treedefs':d['treedef_table'],'policy':d['policy_sha256_before']}
+
+
+def h4m6_prefix_equal(a,b):
+    return json.dumps(a,sort_keys=True,separators=(',',':'),allow_nan=False)==json.dumps(b,sort_keys=True,separators=(',',':'),allow_nan=False)
+
+
+def h4m6_prefix_classify(row,history):
+    b=history['B']['rows'][row['tick']]
+    if h4m6_prefix_equal(row,b):return 'B'
+    a=history['A']
+    if row['tick']==7 and h4m6_prefix_equal(row,a):return 'A'
+    return 'OTHER'
+
+
+def h4m6_prefix_initial(lane,archived):
+    fields=('fixture','arm','metadata','prior_actual_pushes','native_reset_command',
+            'initial_command','initial_rng','initial_sha256','model_sha256')
+    h4m6_eval_require(all(h4m6_prefix_equal(lane[k],archived[k]) for k in fields),'PREFIX_INITIAL')
+
+
+def h4m6_prefix_ledger(r,history,*,partial=False):
+    req=h4m6_eval_require
+    context=r['context'];schedule=H4M6_PREFIX_SPEC['schedule'][context]
+    cap=sum(x[2] for x in schedule)
+    req(r['prefix_spec']==H4M6_PREFIX_SPEC and r['passed'] is False
+        and 0<=r['physical_transitions_recorded']<=r['physical_transitions_attempted']<=cap
+        and 0<=r['reset_lanes_recorded']<=r['reset_lanes_attempted']<=len(schedule),'PREFIX_BUDGET')
+    a=h4m6_technical_audit(r,partial=True,diagnostic=context=='C')
+    req(r['actor_calls_attempted']==r['physical_transitions_attempted']
+        and r['actor_calls_recorded']==r['physical_transitions_recorded']
+        and 0<=r['key_audits_recorded']<=r['key_audits_attempted']<=cap
+        and 0<=r['template_initializations_recorded']<=r['template_initializations_attempted']<=2
+        and r['further_training_authorized'] is False,'PREFIX_CALL_LEDGER')
+    for i,l in enumerate(r['lanes']):
+        seed,arm,n=schedule[i];req(l['fixture'][0]==seed and l['arm']==arm and
+            len(l['rows'])<=l['physical_attempted']<=n,'PREFIX_SCHEDULE')
+        if seed==4101:
+            archived=history['prefix'][i];h4m6_prefix_initial(l,archived)
+            req(all(h4m6_prefix_equal(x,y) for x,y in zip(l['rows'],archived['rows'])),'PREFIX_HISTORICAL_ROW')
+            if i+1<len(r['lanes']):req(len(l['rows'])==52,'PREFIX_INCOMPLETE_PREFIX')
+        else:
+            h4m6_prefix_initial(l,history['B'])
+            classes=[h4m6_prefix_classify(x,history) for x in l['rows']]
+            req(all(c=='B' for c in classes[:-1]),'PREFIX_AFTER_DEPARTURE')
+    if not partial:
+        req(len(r['lanes'])==len(schedule) and a['outstanding_reset']==a['outstanding_step']==0
+            and r['key_audits_attempted']==r['key_audits_recorded']==r['physical_transitions_recorded']
+            and r['template_initializations_attempted']==r['template_initializations_recorded']==2
+            and r['policy_sha256_before']==r['policy_sha256_after']==history['policy'],'PREFIX_FINAL_LEDGER')
+        l=r['lanes'][-1];req(1<=len(l['rows'])<=8,'PREFIX_TARGET_EMPTY')
+        c=h4m6_prefix_classify(l['rows'][-1],history)
+        req((c!='B' or len(l['rows'])==8) and r['endpoint']['tick']==len(l['rows'])-1
+            and r['endpoint']['classification']==c,'PREFIX_ENDPOINT')
+    return dict(a,context=context,diagnostic_complete=not partial)
+
+
+def h4m6_prefix_snapshot(trees,flatten,host,expected,tick,classification):
+    views={};size=0
+    for name,tree in trees.items():
+        pairs,td=flatten(tree)
+        meta,raw=h4m6_diag_snapshot(pairs,td,host,H4M6_PREFIX_SPEC['snapshot_cap']-size)
+        size+=meta['bytes'];views[name]={'meta':meta,'raw_hex':[x.hex() for x in raw]}
+    h4m6_eval_require(all(views[n]['meta']['aggregate']==h for n,h in expected.items()),'PREFIX_CAPTURE_HASH')
+    return {'tick':tick,'classification':classification,'bytes':size,'views':views}
+
+
+def h4m6_prefix_snapshot_replay(endpoint,row,history):
+    import numpy as np
+    req=h4m6_eval_require;total=0;out={}
+    req(set(endpoint['views'])=={'full','projected','physics'},'PREFIX_VIEWS')
+    for name,v in endpoint['views'].items():
+        meta=v['meta'];raw=[bytes.fromhex(x) for x in v['raw_hex']]
+        req(len(raw)==len(meta['leaves']),'PREFIX_RAW_COUNT')
+        h=hashlib.sha256(meta['treedef'].encode());size=len(meta['treedef'].encode())
+        req(h.hexdigest()==meta['treedef_sha256'],'PREFIX_TREEDEF')
+        for l,b in zip(meta['leaves'],raw):
+            dt=np.dtype(l['dtype']);shape=l['shape']
+            req(not dt.hasobject and dt.fields is None and all(type(n) is int and n>=0 for n in shape)
+                and len(b)==l['nbytes']==math.prod(shape)*dt.itemsize
+                and hashlib.sha256(b).hexdigest()==l['sha256'],'PREFIX_LEAF')
+            fields=(l['path'].encode(),l['dtype'].encode(),str(tuple(shape)).encode())
+            for f in fields:h.update(f)
+            h.update(b);size+=len(b)+sum(map(len,fields))
+        req(h.hexdigest()==meta['aggregate'] and size==meta['bytes'],'PREFIX_AGGREGATE')
+        total+=size;out[name]=(meta,raw)
+    req(total==endpoint['bytes']<=H4M6_PREFIX_SPEC['snapshot_cap']
+        and out['projected'][0]['aggregate']==row['post_sha256']
+        and out['physics'][0]['aggregate']==row['physics_sha256'],'PREFIX_SNAPSHOT_LINK')
+    # Historical B correspondence is hash evidence, not reconstructed B bytes.
+    b=history['B_snapshots']['REF0:'+str(endpoint['tick'])]
+    correspondence={}
+    for name,(meta,_) in out.items():
+        v=b[name];leaves=[dict(history['B_schema'][i],sha256=h) for i,h in v['leaves']]
+        correspondence[name]={'aggregate':meta['aggregate']==v['aggregate'],
+            'treedef':meta['treedef']==history['B_treedefs'][v['treedef_id']]['text'],
+            'leaves':meta['leaves']==leaves}
+    if endpoint['classification']=='B':
+        req(all(all(x.values()) for x in correspondence.values()),'PREFIX_B_LEAF_CORRESPONDENCE')
+    return out,correspondence
+
+
+def h4m6_prefix_compare(c,p,history):
+    x,xb=h4m6_prefix_snapshot_replay(c['endpoint'],c['lanes'][-1]['rows'][-1],history)
+    y,yb=h4m6_prefix_snapshot_replay(p['endpoint'],p['lanes'][-1]['rows'][-1],history)
+    same_tick=c['endpoint']['tick']==p['endpoint']['tick'];views={};left=16
+    if same_tick:
+        for name in ('full','projected','physics'):
+            v=h4m6_diag_compare(*x[name],*y[name],left);left-=len(v['witnesses']);views[name]=v
+    return {'C':c['endpoint']['classification'],'P':p['endpoint']['classification'],
+        'ticks':[c['endpoint']['tick'],p['endpoint']['tick']],'same_tick':same_tick,
+        'views':views,'historical_B_correspondence':{'C':xb,'P':yb},
+        'same_input':same_tick and all(c['lanes'][-1]['rows'][-1][k]==p['lanes'][-1]['rows'][-1][k]
+            for k in ('pre_sha256','action_sha256','rng_before','expected_rng'))}
+
+
+def h4m6_prefix_authorization(root=None):
+    import re
+    import m463_push_ppo_train as t
+    root=Path(__file__).resolve().parent if root is None else Path(root).resolve()
+    lines=(root/'G1_RESEARCH_RULES.md').read_text('utf8').splitlines()
+    active=[x for x in lines if x.startswith('H4M6_PREFIX_GO:')]
+    static=[x for x in lines if x.startswith('H4M6_PREFIX_STATIC_APPROVED:')]
+    h4m6_eval_require(len(active)==len(static)==1,'PREFIX_EXECUTION_HOLD')
+    h4m6_eval_require(not any(re.match(r'^(?:[A-Z0-9_]*ACTIVE_GO|H4M6_ARITH_GO|H4M6_DIAG_GO):',x)
+        for x in lines),'PREFIX_OTHER_GO')
+    fields=active[0].split()[1:]
+    h4m6_eval_require(len(fields)==6 and fields==static[0].split()[1:]
+        and fields[0]==H4M6_PREFIX_SPEC['id'] and fields[1]==str(H4M6_PREFIX_OUTPUT.parent)
+        and all(re.fullmatch('[0-9a-f]{64}',x) for x in fields[2:5])
+        and re.fullmatch(r'm463_runs/m470_h4_m6_2d4_full_static_[0-9_]+\.log',fields[5]),'PREFIX_AUTH')
+    _,out,source,manifest,static_sha,static_log=fields
+    h4m6_eval_require(source==t.h4m6_source_identity(root)['sha256']
+        and manifest==h4m3_digest(H4M6_PREFIX_SPEC)
+        and t.h4m6_spec_digest()=='65371befdc4cb7265b4ee4e6366fbf94ea1e5478cd6117ed190c492e340a9ae5','PREFIX_AUTH_BINDING')
+    p=root/static_log
+    h4m6_eval_require(p.is_file() and not p.is_symlink() and p.absolute()==p.resolve()
+        and 0<p.stat().st_size<=H4M6_PREFIX_SPEC['log_cap'] and sha256(p)==static_sha,'PREFIX_STATIC')
+    rows=p.read_text('utf8').splitlines()
+    for k,v in [('SOURCE',source),('MANIFEST',manifest),
+        ('SPEC','65371befdc4cb7265b4ee4e6366fbf94ea1e5478cd6117ed190c492e340a9ae5'),
+        ('EXTERNAL','97e1686ac016de832166f26c7287992f0b6536a27c504ee6451a5d472597e7da'),
+        ('GENERATED','7e2010e84e888e4bfa1622c8eceea86e69b1767d9a89a323efec971611f71b5a'),
+        ('V3_REPORT',H4M6_DIAG_V3_PINS['m463_runs/m470_h4_m6_tech_v3/report.json']),
+        ('DIAG_REPORT',H4M6_PREFIX_DIAG_PINS['report.json'])]:
+        marker='H4_M6_2D4_'+k+'_SHA256 '
+        h4m6_eval_require([x for x in rows if x.startswith(marker)]==[marker+v],'PREFIX_STATIC_MARKER '+k)
+    h4m6_eval_require(not any((t.H4_EXECUTION_AUTHORIZED,t.H4R_EXECUTION_AUTHORIZED,
+        t.H4C_EXECUTION_AUTHORIZED,t.H4CC_EXECUTION_AUTHORIZED,H4_EVAL_EXECUTION_AUTHORIZED,
+        H4CC_EVAL_EXECUTION_AUTHORIZED,H4CC_TECH_EXECUTION_AUTHORIZED)),'PREFIX_LEGACY_HOLD')
+    return {'id':t.H4M6_ID,'diagnostic_id':fields[0],'phase':'prefix','output':out,
+        'source_sha256':source,'manifest_sha256':manifest,'static_sha256':static_sha,
+        'static_log':static_log,'spec_sha256':'65371befdc4cb7265b4ee4e6366fbf94ea1e5478cd6117ed190c492e340a9ae5',
+        'external_sha256':'97e1686ac016de832166f26c7287992f0b6536a27c504ee6451a5d472597e7da',
+        'generated_sha256':'7e2010e84e888e4bfa1622c8eceea86e69b1767d9a89a323efec971611f71b5a'}
+
+
+
+def h4m6_tech_inputs(args,auth,*,diagnostic=False,prefix=False):
     import m463_push_ppo_train as t
     from types import SimpleNamespace
     root=Path(__file__).resolve().parent
@@ -7784,8 +8024,9 @@ def h4m6_tech_inputs(args,auth,*,diagnostic=False):
     for k,p in paths.items():
         t.h4x_file_pin(p,expected[k])
     arithmetic=h4m6_read_arithmetic(root)
-    h4m6_eval_require(auth['phase']==('diag' if diagnostic else 'tech') and args.output.resolve()==root/(H4M6_DIAG_OUTPUT if diagnostic else H4M6_TECH_OUTPUT),'TECH_PATH')
-    diag_pins=h4m6_diag_archives(root,arithmetic) if diagnostic else None
+    expected_out=h4m6_prefix_path(getattr(args,'h4m6_prefix_child',None)) if prefix else (H4M6_DIAG_OUTPUT if diagnostic else H4M6_TECH_OUTPUT)
+    h4m6_eval_require(auth['phase']==('prefix' if prefix else ('diag' if diagnostic else 'tech')) and args.output.resolve()==root/expected_out,'TECH_PATH')
+    diag_pins=h4m6_diag_archives(root,arithmetic) if diagnostic or prefix else None
     pins=t.h4x_bootstrap(SimpleNamespace(checkpoint=paths['C401M'],
         restore_report=paths['restore'],h4_exploratory_reward_report=paths['reward']),
         h4cc=True,h4m6=auth)
@@ -7798,13 +8039,20 @@ def h4m6_tech_inputs(args,auth,*,diagnostic=False):
             'bootstrap':pins,'source_sha256':auth['source_sha256'],'external':external,
             'v1_stop_sha256':dict(H4M6_V1_STOP_PINS),'reward_scale_contract':'native_bool_float32_v2',
             'arithmetic_evidence':arithmetic}
-    if diagnostic:
+    if diagnostic or prefix:
         extra={}
         for n,b in H4M6_DIAG_MJX_BLOBS.items():
             p=h4m5_find_source('mujoco.mjx._src.'+n)
             h4m6_eval_require(h4m3_git_blob(p)==b,'DIAG_MJX_BLOB '+n)
             extra[n]={'path':str(p),'blob':b,'sha256':sha256(p)}
         result.update(diagnostic_archive_sha256=diag_pins,diagnostic_mjx=extra)
+    if prefix:
+        result['prefix_archive_sha256']=h4m6_prefix_archives(root,diag_pins)
+        result['prefix_jax']={}
+        for n,b in H4M6_PREFIX_JAX_BLOBS.items():
+            p=h4m5_find_source('jax._src.'+n)
+            h4m6_eval_require(h4m3_git_blob(p)==b,'PREFIX_JAX_BLOB '+n)
+            result['prefix_jax'][n]={'path':str(p),'blob':b,'sha256':sha256(p)}
     return result
 
 def h4m6_runtime_gate(phase):
