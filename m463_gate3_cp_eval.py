@@ -12630,7 +12630,7 @@ def h4abs_native_lane(args,i,env,step_fn,jax,jnp,np):
     j.event(['end',*key,'FULL']);check_parent()
     if diagnostic:
         h4abs_req(parent_sha==H4ABSD_FORK,'ABSD historical fork')
-        j.capture('F',parent,jax,parent_sha)
+        j.capture('F',st,jax,parent_sha)
     A,rho=h4abs_generate(np.asarray(jax.device_get(parent.data.qpos),np.float32)[7:],
         h4abs_domain(m),h4abs_frozen_basis(m['actuator_names']),h4abs_coefficients())
     def branch(b,c,end):
@@ -13278,6 +13278,10 @@ def h4absd_validate(meta,raw):
     h4abs_req((a,b)==(meta['digest'],meta['m6_digest']),'ABSD digest replay')
     return True
 
+def h4absd_decision(a,b,different):
+    h4abs_req(bool(different)==(a!=b),'ABSD aggregate witness')
+    return 'NOT_REPRODUCED' if not different else 'HISTORICAL_ENDPOINTS_REPRODUCED' if {a,b}=={H4ABSD_A,H4ABSD_B} else 'NEW_MISMATCH_LOCALIZED'
+
 def h4absd_compare(a,u,b,v):
     """All paths and changed scalar elements; witness cap does not hide changed leaves."""
     import numpy as np
@@ -13287,8 +13291,11 @@ def h4absd_compare(a,u,b,v):
     def pieces(m,raw):return [raw[x['offset']:x['offset']+x['nbytes']] for x in m['leaves']]
     ap=pieces(a,u);bp=pieces(b,v)
     # Reuse old witness comparator only on its own digest convention.
-    aux=h4m6_diag_compare(legacy(a),ap,legacy(b),bp,16)
-    out=[];witnesses=0;nonfinite=[]
+    aux=h4m6_diag_compare(legacy(a),ap,legacy(b),bp,0)
+    out=[];witnesses=0;nonfinite=[];tree_witness=None
+    if a['tree']!=b['tree']:
+        x,y=a['tree'].encode(),b['tree'].encode();i=next((i for i,(c,d) in enumerate(zip(x,y)) if c!=d),min(len(x),len(y)))
+        tree_witness=dict(byte_offset=i,a=x[i:i+16].hex(),b=y[i:i+16].hex());witnesses=1
     for label,m,parts in (('A',a,ap),('B',b,bp)):
         for x,p in zip(m['leaves'],parts):
             if not np.isfinite(np.frombuffer(p,dtype=x['dtype'])).all():
@@ -13323,10 +13330,9 @@ def h4absd_compare(a,u,b,v):
         else:entry['kind']='METADATA_ONLY' if p==q else 'SCHEMA_AND_PAYLOAD'
         out.append(entry)
     different=a['tree']!=b['tree'] or bool(out)
-    h4abs_req(different==(a['digest']!=b['digest']),'ABSD aggregate witness')
-    decision='NOT_REPRODUCED' if not different else 'HISTORICAL_ENDPOINTS_REPRODUCED' if {a['digest'],b['digest']}=={H4ABSD_A,H4ABSD_B} else 'NEW_MISMATCH_LOCALIZED'
+    decision=h4absd_decision(a['digest'],b['digest'],different)
     return dict(decision=decision,passed=False,scientific_pass=False,different=different,
-        tree_changed=a['tree']!=b['tree'],changed_leaves=out,nonfinite=nonfinite,
+        tree_changed=a['tree']!=b['tree'],tree_witness=tree_witness,changed_leaves=out,nonfinite=nonfinite,
         a=a['digest'],b=b['digest'],m6_witness=aux)
 
 def h4absd_storage(path):
@@ -13460,6 +13466,8 @@ def h4absd_read(path,inputs,complete=False,deadline=None):
     uncommitted=sorted((present&snapshot_names)-retained)
     h4abs_req(not uncommitted or (not complete and capture_pending in ('F','A','B') and all(n.startswith(capture_pending+'.') for n in uncommitted)),'ABSD uncommitted snapshot')
     if complete:
+        allowed=snapshot_names|{'events.jsonl','rows.bin','attempt.json','parent.json','runtime.entered.json','runtime.log','report.json','attempt_result.json'}
+        h4abs_req(present<=allowed,'ABSD unexpected artifact')
         h4abs_req(pos==len(schedule) and n==attempted==1001 and pending is None
             and captures==list(H4ABSD_CAPTURE_ORDER) and capture_pending is None
             and reset_attempted==reset_recorded==1 and len(templates)==4,'ABSD incomplete')
@@ -13477,7 +13485,7 @@ def h4absd_marker(rules):
     active=[l for l in rules.splitlines() if re.match(r'^[A-Z0-9_]+_GO:',l)]
     h4abs_req(len(active)==1 and active[0].startswith('H4ABSD_ACTIVE_GO:'),'ABSD EXECUTION_HOLD')
     a=active[0].split()
-    h4abs_req(len(a)==7 and a[1]=='H4-M14-7D-V1' and a[2]==str(H4ABSD_OUTPUT)
+    h4abs_req(len(a)==7 and a[0]=='H4ABSD_ACTIVE_GO:' and a[1]=='H4-M14-7D-V1' and a[2]==str(H4ABSD_OUTPUT)
         and all(re.fullmatch('[0-9a-f]{64}',a[i]) for i in (3,4,6)),'ABSD marker schema')
     p=Path(a[5]);h4abs_req(p.parent==Path('m463_runs') and p.name.startswith('m470_h4absd_static_') and p.suffix=='.log','ABSD static path')
     return dict(id=a[1],output=a[2],source=a[3],provenance=a[4],static_path=a[5],static_sha=a[6])
@@ -13489,7 +13497,7 @@ def h4absd_receipt(lines,source,provenance,evaluator):
     for prefix in ('H4ABSD_SOURCE ','H4ABSD_PROVENANCE ','H4ABSD_EVALUATOR_SHA256 ','STATIC_EXIT_CODE='):
         h4abs_req(sum(x.startswith(prefix) for x in lines)==1,'ABSD ambiguous receipt')
     for prefix,expected in (
-        ('H4ABSD_COMPONENT_STATIC ',dict(framing=3,negative=9,mixed=1,metadata=1,equal=1,signed_zero=1,nan_payload=1,native_calls=0)),
+        ('H4ABSD_COMPONENT_STATIC ',dict(framing=3,negative=13,mixed=1,metadata=1,equal=1,signed_zero=1,nan_payload=1,decision_matrix=4,native_calls=0)),
         ('H4ABSD_READER_STATIC ',dict(mock_rows=1001,negative=7,native_calls=0))):
         found=[x[len(prefix):] for x in lines if x.startswith(prefix)]
         h4abs_req(len(found)==1 and json.loads(found[0])==expected,'ABSD fixture receipt')
@@ -13527,15 +13535,22 @@ def h4absd_fixtures():
     h4abs_req(h4absd_compare(nm,nr,om,orr)['changed_leaves'][0]['kind']=='NAN_PAYLOAD_ONLY','ABSD NaN fixture')
     def mutate(key,value):
         m=json.loads(json.dumps(a));m['leaves'][0][key]=value;return h4absd_validate(m,u)
+    h4abs_req(h4absd_decision(H4ABSD_A,H4ABSD_B,True)==h4absd_decision(H4ABSD_B,H4ABSD_A,True)=='HISTORICAL_ENDPOINTS_REPRODUCED'
+        and h4absd_decision(H4ABSD_A,H4ABSD_A,False)=='NOT_REPRODUCED'
+        and h4absd_decision(H4ABSD_A,'a'*64,True)=='NEW_MISMATCH_LOCALIZED','ABSD decision matrix')
+    marker='H4ABSD_ACTIVE_GO: H4-M14-7D-V1 '+str(H4ABSD_OUTPUT)+' '+'a'*64+' '+'b'*64+' m463_runs/m470_h4absd_static_fixture.log '+'c'*64
+    h4absd_marker(marker)
     negatives=0
     for fn in (lambda:h4absd_validate(a,u+b'x'),lambda:h4absd_validate(a,bytes([u[0]^1])+u[1:]),
                lambda:mutate('offset',1),lambda:mutate('shape',[3]),lambda:mutate('weak_type',True),
                lambda:mutate('dtype','<i4'),lambda:h4absd_marker(''),lambda:h4absd_marker('H4ABS_ACTIVE_GO: bad'),
-               lambda:h4absd_marker('H4ABSD_ACTIVE_GO: bad')):
+               lambda:h4absd_marker('H4ABSD_ACTIVE_GO: bad'),lambda:h4absd_marker(marker+'\n'+marker),
+               lambda:h4absd_marker(marker+'\nH4ABS_ACTIVE_GO: bad'),lambda:h4absd_marker(marker.replace('GO:','GO:bad')),
+               lambda:h4absd_decision(H4ABSD_A,H4ABSD_A,True)):
         try:fn()
         except (ValueError,TypeError,KeyError):negatives+=1
         else:raise ValueError('ABSD fixture negative accepted')
-    return dict(framing=3,negative=negatives,mixed=1,metadata=1,equal=1,signed_zero=1,nan_payload=1,native_calls=0)
+    return dict(framing=3,negative=negatives,mixed=1,metadata=1,equal=1,signed_zero=1,nan_payload=1,decision_matrix=4,native_calls=0)
 
 def h4absd_reader_fixtures(inputs):
     """Synthetic full snapshot endpoints on immutable historical direct records.
@@ -13640,7 +13655,7 @@ def h4absd_cli(argv):
     if a.mode=='static':return h4absd_static(H4_EVAL_ROOT)
     return h4abs_dispatch(H4_EVAL_ROOT,child=a.mode=='child',diagnostic=True)
 
-H4ABSD_PATCHES=[["def h4abs_runtime_projection(raw):\n    a=","def h4abs_runtime_projection(raw):\n    if b'# H4ABSD_'+b'BEGIN\\n' in raw:raw=h4absd_projection(raw)\n    a="],["    root=H4_EVAL_ROOT;auth,inputs=h4abs_authorize(root)\n    base=root/H4ABS_OUTPUT","    diag=bool(getattr(args,'h4abs_diagnostic',False))\n    root=H4_EVAL_ROOT;auth,inputs=(h4absd_authorize(root) if diag else h4abs_authorize(root))\n    base=root/(H4ABSD_OUTPUT if diag else H4ABS_OUTPUT)"],["    m=lane['manifest'];j=args.h4abs_journal;dg=lambda st:h4abs_state_digest(st,jax.tree_util.tree_flatten_with_path,jax.device_get)","    m=lane['manifest'];j=args.h4abs_journal;dg=lambda st:h4abs_state_digest(st,jax.tree_util.tree_flatten_with_path,jax.device_get)\n    diagnostic=bool(getattr(args,'h4abs_diagnostic',False))\n    if diagnostic:h4abs_req(i==0,'ABSD only lane0')"],["        if j.count%100==0:h3_gpu_check(args.h3_monitor)\n        return out,record","        if j.count%100==0:h3_gpu_check(args.h3_monitor)\n        if diagnostic:\n            h4absd_direct(record,args.h4abs_inputs['historical_rows'][j.count-1])\n            h4abs_req(not bool(record['packed'][H4M3_COLUMNS.index('done')]),'ABSD historical termination')\n            if key[1] in (1,2) and t==336:\n                j.capture('A' if key[1]==1 else 'B',out,jax,record['state_after'].tobytes().hex())\n        return out,record"],["    j.event(['end',*key,'FULL']);check_parent()\n    A,rho=h4abs_generate","    j.event(['end',*key,'FULL']);check_parent()\n    if diagnostic:\n        h4abs_req(parent_sha==H4ABSD_FORK,'ABSD historical fork')\n        j.capture('F',parent,jax,parent_sha)\n    A,rho=h4abs_generate"],["        rows=[];reason='FULL'\n        for t in range(336,end+1):","        rows=[];reason='FULL'\n        if diagnostic:\n            h4abs_req(b in (1,2) and c==-1,'ABSD branch')\n            j.capture('preA' if b==1 else 'preB',st,jax,parent_sha)\n        for t in range(336,end+1):"],["    base,_=branch(1,-1,last);sham,_=branch(2,-1,last)\n    h4abs_req","    if diagnostic:\n        h4abs_req(last==1000,'ABSD baseline horizon')\n        base,_=branch(1,-1,last);sham,_=branch(2,-1,336)\n        h4abs_req(len(base)==665 and len(sham)==1 and j.count==1001,'ABSD exact horizon')\n        h4absd_direct(base[0],sham[0],paired=True)\n        return\n    base,_=branch(1,-1,last);sham,_=branch(2,-1,last)\n    h4abs_req"],["def h4abs_worker(root,auth,inputs):","def h4abs_worker(root,auth,inputs,diagnostic=False):"],["    path=root/H4ABS_OUTPUT;h4m3_no_runtime_imports()\n    gpu=sample_gpu();","    path=root/(H4ABSD_OUTPUT if diagnostic else H4ABS_OUTPUT);h4m3_no_runtime_imports()\n    gpu=sample_gpu();"],["    p=inputs['provenance'];journal=H4AbsJournal(path.parent);monitor=GPUMonitor()\n    args=SimpleNamespace(h4abs_native=True,","    p=inputs['provenance'];journal=(H4ABSDJournal if diagnostic else H4AbsJournal)(path.parent);monitor=GPUMonitor()\n    args=SimpleNamespace(h4abs_native=True,h4abs_diagnostic=diagnostic,"],["output=path,checkpoint_c=root/H4M3_BASE_POLICY,seeds=[x[1] for x in H4M3_LANES],","output=path,checkpoint_c=root/H4M3_BASE_POLICY,seeds=[7357] if diagnostic else [x[1] for x in H4M3_LANES],"],["    result=h4abs_read_records(path.parent,inputs,complete=True)\n    h4abs_req(result['lanes']","    if diagnostic:\n        result=h4absd_read(path.parent,inputs,complete=True)\n        h4abs_req(result['attempted']==result['recorded']==journal.count==1001\n            and journal.actor_attempted==journal.actor_recorded==1001,'ABSD worker reconciliation')\n        h4m6_write_bounded(path,dict(status='DIAGNOSTIC_COMPLETE',authorization=auth,provenance=p,\n            plan=h4absd_plan(),gpu_initial=gpu,gpu=final_gpu,verification=result),exclusive=True,cap=16*1024**2)\n        return\n    result=h4abs_read_records(path.parent,inputs,complete=True)\n    h4abs_req(result['lanes']"],["def h4abs_dispatch(root,child=False):\n    import selectors,signal,shutil,time\n    root=Path(root).resolve();auth,inputs=h4abs_authorize(root);path=root/H4ABS_OUTPUT","def h4abs_dispatch(root,child=False,diagnostic=False):\n    import selectors,signal,shutil,time\n    authorize=h4absd_authorize if diagnostic else h4abs_authorize\n    reader=h4absd_read if diagnostic else h4abs_read_records\n    plan=h4absd_plan if diagnostic else h4abs_plan\n    root=Path(root).resolve();auth,inputs=authorize(root);path=root/(H4ABSD_OUTPUT if diagnostic else H4ABS_OUTPUT)"],["        return h4abs_worker(root,auth,inputs)\n    h4abs_req(shutil.disk_usage(path.parent.parent).free>=2*1024**3+2*(H4ABS_RAW_CAP+H4ABS_REPORT_CAP+H4ABS_LOG_CAP),'ABS storage reserve')","        return h4abs_worker(root,auth,inputs,diagnostic=diagnostic)\n    h4abs_req(shutil.disk_usage(path.parent.parent).free>=2*1024**3+2*(96*1024**2 if diagnostic else H4ABS_RAW_CAP+H4ABS_REPORT_CAP+H4ABS_LOG_CAP),'ABS storage reserve')"],["str(root/'m463_gate3_cp_eval.py'),'--h4abs','child'],","str(root/'m463_gate3_cp_eval.py'),'--h4absd' if diagnostic else '--h4abs','child'],"],["        h4abs_req(rc==0 and h4abs_authorize(root)[0]==auth,'ABS child completion')\n        verified=h4abs_read_records(path.parent,inputs,complete=True,deadline=deadline)","        h4abs_req(rc==0 and authorize(root)[0]==auth,'ABS child completion')\n        verified=reader(path.parent,inputs,complete=True,deadline=deadline)"],["0<path.stat().st_size<=H4ABS_REPORT_CAP,'ABS final report path/cap')","0<path.stat().st_size<=(16*1024**2 if diagnostic else H4ABS_REPORT_CAP),'ABS final report path/cap')"],["h4abs_req(report['status']=='COMPLETE'\n            and report['authorization']==auth and report['provenance']==inputs['provenance']\n            and report['plan']==h4abs_plan() and report['verification']==verified,'ABS final report')","h4abs_req(report['status']==('DIAGNOSTIC_COMPLETE' if diagnostic else 'COMPLETE')\n            and report['authorization']==auth and report['provenance']==inputs['provenance']\n            and report['plan']==plan() and report['verification']==verified,'ABS final report')\n        if diagnostic:h4absd_storage(path.parent)"],["try:verified=h4abs_read_records(path.parent,inputs,complete=False,deadline=deadline if 'deadline' in locals() else time.monotonic())","try:verified=reader(path.parent,inputs,complete=False,deadline=deadline if 'deadline' in locals() else time.monotonic())"],["log_bytes=min(total,H4ABS_LOG_CAP),error=error,verified=verified),exclusive=True,cap=H4ABS_REPORT_CAP)","log_bytes=min(total,H4ABS_LOG_CAP),error=error,verified=verified),exclusive=True,cap=16*1024**2 if diagnostic else H4ABS_REPORT_CAP)"],["    if len(sys.argv)>1 and sys.argv[1]=='--h4abs':h4abs_cli(sys.argv[2:])\n    else:main()","    if len(sys.argv)>1 and sys.argv[1]=='--h4absd':h4absd_cli(sys.argv[2:])\n    elif len(sys.argv)>1 and sys.argv[1]=='--h4abs':h4abs_cli(sys.argv[2:])\n    else:main()"]]
+H4ABSD_PATCHES=[["def h4abs_runtime_projection(raw):\n    a=","def h4abs_runtime_projection(raw):\n    if b'# H4ABSD_'+b'BEGIN\\n' in raw:raw=h4absd_projection(raw)\n    a="],["    root=H4_EVAL_ROOT;auth,inputs=h4abs_authorize(root)\n    base=root/H4ABS_OUTPUT","    diag=bool(getattr(args,'h4abs_diagnostic',False))\n    root=H4_EVAL_ROOT;auth,inputs=(h4absd_authorize(root) if diag else h4abs_authorize(root))\n    base=root/(H4ABSD_OUTPUT if diag else H4ABS_OUTPUT)"],["    m=lane['manifest'];j=args.h4abs_journal;dg=lambda st:h4abs_state_digest(st,jax.tree_util.tree_flatten_with_path,jax.device_get)","    m=lane['manifest'];j=args.h4abs_journal;dg=lambda st:h4abs_state_digest(st,jax.tree_util.tree_flatten_with_path,jax.device_get)\n    diagnostic=bool(getattr(args,'h4abs_diagnostic',False))\n    if diagnostic:h4abs_req(i==0,'ABSD only lane0')"],["        if j.count%100==0:h3_gpu_check(args.h3_monitor)\n        return out,record","        if j.count%100==0:h3_gpu_check(args.h3_monitor)\n        if diagnostic:\n            h4absd_direct(record,args.h4abs_inputs['historical_rows'][j.count-1])\n            h4abs_req(not bool(record['packed'][H4M3_COLUMNS.index('done')]),'ABSD historical termination')\n            if key[1] in (1,2) and t==336:\n                j.capture('A' if key[1]==1 else 'B',out,jax,record['state_after'].tobytes().hex())\n        return out,record"],["    j.event(['end',*key,'FULL']);check_parent()\n    A,rho=h4abs_generate","    j.event(['end',*key,'FULL']);check_parent()\n    if diagnostic:\n        h4abs_req(parent_sha==H4ABSD_FORK,'ABSD historical fork')\n        j.capture('F',st,jax,parent_sha)\n    A,rho=h4abs_generate"],["        rows=[];reason='FULL'\n        for t in range(336,end+1):","        rows=[];reason='FULL'\n        if diagnostic:\n            h4abs_req(b in (1,2) and c==-1,'ABSD branch')\n            j.capture('preA' if b==1 else 'preB',st,jax,parent_sha)\n        for t in range(336,end+1):"],["    base,_=branch(1,-1,last);sham,_=branch(2,-1,last)\n    h4abs_req","    if diagnostic:\n        h4abs_req(last==1000,'ABSD baseline horizon')\n        base,_=branch(1,-1,last);sham,_=branch(2,-1,336)\n        h4abs_req(len(base)==665 and len(sham)==1 and j.count==1001,'ABSD exact horizon')\n        h4absd_direct(base[0],sham[0],paired=True)\n        return\n    base,_=branch(1,-1,last);sham,_=branch(2,-1,last)\n    h4abs_req"],["def h4abs_worker(root,auth,inputs):","def h4abs_worker(root,auth,inputs,diagnostic=False):"],["    path=root/H4ABS_OUTPUT;h4m3_no_runtime_imports()\n    gpu=sample_gpu();","    path=root/(H4ABSD_OUTPUT if diagnostic else H4ABS_OUTPUT);h4m3_no_runtime_imports()\n    gpu=sample_gpu();"],["    p=inputs['provenance'];journal=H4AbsJournal(path.parent);monitor=GPUMonitor()\n    args=SimpleNamespace(h4abs_native=True,","    p=inputs['provenance'];journal=(H4ABSDJournal if diagnostic else H4AbsJournal)(path.parent);monitor=GPUMonitor()\n    args=SimpleNamespace(h4abs_native=True,h4abs_diagnostic=diagnostic,"],["output=path,checkpoint_c=root/H4M3_BASE_POLICY,seeds=[x[1] for x in H4M3_LANES],","output=path,checkpoint_c=root/H4M3_BASE_POLICY,seeds=[7357] if diagnostic else [x[1] for x in H4M3_LANES],"],["    result=h4abs_read_records(path.parent,inputs,complete=True)\n    h4abs_req(result['lanes']","    if diagnostic:\n        result=h4absd_read(path.parent,inputs,complete=True)\n        h4abs_req(result['attempted']==result['recorded']==journal.count==1001\n            and journal.actor_attempted==journal.actor_recorded==1001,'ABSD worker reconciliation')\n        h4m6_write_bounded(path,dict(status='DIAGNOSTIC_COMPLETE',authorization=auth,provenance=p,\n            plan=h4absd_plan(),gpu_initial=gpu,gpu=final_gpu,verification=result),exclusive=True,cap=16*1024**2)\n        return\n    result=h4abs_read_records(path.parent,inputs,complete=True)\n    h4abs_req(result['lanes']"],["def h4abs_dispatch(root,child=False):\n    import selectors,signal,shutil,time\n    root=Path(root).resolve();auth,inputs=h4abs_authorize(root);path=root/H4ABS_OUTPUT","def h4abs_dispatch(root,child=False,diagnostic=False):\n    import selectors,signal,shutil,time\n    authorize=h4absd_authorize if diagnostic else h4abs_authorize\n    reader=h4absd_read if diagnostic else h4abs_read_records\n    plan=h4absd_plan if diagnostic else h4abs_plan\n    root=Path(root).resolve();auth,inputs=authorize(root);path=root/(H4ABSD_OUTPUT if diagnostic else H4ABS_OUTPUT)"],["        return h4abs_worker(root,auth,inputs)\n    h4abs_req(shutil.disk_usage(path.parent.parent).free>=2*1024**3+2*(H4ABS_RAW_CAP+H4ABS_REPORT_CAP+H4ABS_LOG_CAP),'ABS storage reserve')","        return h4abs_worker(root,auth,inputs,diagnostic=diagnostic)\n    h4abs_req(shutil.disk_usage(path.parent.parent).free>=2*1024**3+2*(96*1024**2 if diagnostic else H4ABS_RAW_CAP+H4ABS_REPORT_CAP+H4ABS_LOG_CAP),'ABS storage reserve')"],["str(root/'m463_gate3_cp_eval.py'),'--h4abs','child'],","str(root/'m463_gate3_cp_eval.py'),'--h4absd' if diagnostic else '--h4abs','child'],"],["        h4abs_req(rc==0 and h4abs_authorize(root)[0]==auth,'ABS child completion')\n        verified=h4abs_read_records(path.parent,inputs,complete=True,deadline=deadline)","        h4abs_req(rc==0 and authorize(root)[0]==auth,'ABS child completion')\n        verified=reader(path.parent,inputs,complete=True,deadline=deadline)"],["0<path.stat().st_size<=H4ABS_REPORT_CAP,'ABS final report path/cap')","0<path.stat().st_size<=(16*1024**2 if diagnostic else H4ABS_REPORT_CAP),'ABS final report path/cap')"],["h4abs_req(report['status']=='COMPLETE'\n            and report['authorization']==auth and report['provenance']==inputs['provenance']\n            and report['plan']==h4abs_plan() and report['verification']==verified,'ABS final report')","h4abs_req(report['status']==('DIAGNOSTIC_COMPLETE' if diagnostic else 'COMPLETE')\n            and report['authorization']==auth and report['provenance']==inputs['provenance']\n            and report['plan']==plan() and report['verification']==verified,'ABS final report')\n        if diagnostic:h4absd_storage(path.parent)"],["try:verified=h4abs_read_records(path.parent,inputs,complete=False,deadline=deadline if 'deadline' in locals() else time.monotonic())","try:verified=reader(path.parent,inputs,complete=False,deadline=deadline if 'deadline' in locals() else time.monotonic())"],["log_bytes=min(total,H4ABS_LOG_CAP),error=error,verified=verified),exclusive=True,cap=H4ABS_REPORT_CAP)","log_bytes=min(total,H4ABS_LOG_CAP),error=error,verified=verified),exclusive=True,cap=16*1024**2 if diagnostic else H4ABS_REPORT_CAP)"],["    if len(sys.argv)>1 and sys.argv[1]=='--h4abs':h4abs_cli(sys.argv[2:])\n    else:main()","    if len(sys.argv)>1 and sys.argv[1]=='--h4absd':h4absd_cli(sys.argv[2:])\n    elif len(sys.argv)>1 and sys.argv[1]=='--h4abs':h4abs_cli(sys.argv[2:])\n    else:main()"]]
 # H4ABSD_END
 if __name__=='__main__':
     if len(sys.argv)>1 and sys.argv[1]=='--h4absd':h4absd_cli(sys.argv[2:])
