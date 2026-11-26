@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.165  
+**Version:** 1.2.166  
 **Ngày cập nhật:** 2026-11-26 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -1846,6 +1846,14 @@ Actual SA offline tests: extracted new helper code4181 ASCII chars FNV32 9f2f04c
 
 Old corrected v2 static approval archived, no active/current static marker. H4-M6-2R2 HELD IMPLEMENTATION STAGED / OWNER FOCUSED STATIC PENDING. Owner read-only full compile of changed source files, compare exact audit body outside single factor line, strict arithmetic reader actual18 archive pins, actual six-row partial audit/old factor rejection, exhaustive factors and focused negative gates, CLI plan/HOLD, stale v1/v2 namespace/static marker rejection, exact current common source/frozen spec/installed generated/external and C401M restore/reward bootstrap, post-immutability, zero runtime imports. Do not rerun unchanged host fixtures or7408 CUDA calls. Separate explicit static acceptance and future native v3 GO required; native full graph arithmetic compatibility unproven. Same frozen per-attempt cap416/8 resets, no new physical budget authorized. Technical v3/REF6/RSS/DEV/holdout/readiness/production/promotion/Branch B HOLD, official H4 CTRL unchanged. Rollback only reviewed inverse changes on experiment branch with history/evidence preserved, no active authorization.
 
+### H4-M6-2R2 — Owner full static acceptance PASS / native v3 HOLD (v1.2.166; 2026-11-26)
+
+SA reread exact Rules v1.2.165 and AGENTS, actual Owner full static log m463_runs/m470_h4_m6_2r2_full_static_20261126_073654_707259590.log, independently read bytes7136/68 lines and SHA256 7e65ed7cd72962e6ab7b27ae53a2848f705d40dc2974a1e0c4dfd4ae4c176b2f. All five reported source blob pins match current held branch (Rules before this update04d2a292a30682aee6065b8903716705c675ed42, evaluator e7491e8bfd18e634b6058a99618ea7511a812c15, trainer df0321b6f89a14b9b16d56c698c881a8c7a3771c, env234d1d598ec796c45283576afa662c3c4daf0a93, instrumenter348ae057456cbd326012ec76fa4600f38be74ff7). Independently fetched exact old/new evaluator and verified h4m6_technical_audit body byte-equal except reciprocal factor line. Owner reports all four full-file compile, two legacy AST scope,18 historical pins matching frozen evaluator constants, strict arithmetic reader, actual six-row full partial audit, old factor failure reproduction,7408 archived native factor bits, synthetic six paired rows, seven focused integrated expected rejections (four factor, action hash, other23 signed zero, incomplete final), four phase HOLD rejections, two stale namespace rejections, four corrected auth/static negative controls, installed generated reverse/compile, frozen C401M restore bootstrap, corrected static contract, post immutability and zero runtime imports/physical/optimizer/new CUDA arithmetic. Total16 EXPECTED_REJECTION lines plus two stale CLI namespace rejections. All five terminal acceptance markers exactly once; no unexpected STOP. Independently parsed plan/canonical spec SHA and checked four frozen fixtures, tech_v3 output,416 physical cap/8 resets, execution_authorized false, training_performed false. Arithmetic report marker matches accepted v2 artifact. Owner-local source digest3d42aa04af599e417fcfdbff20435ed489eef63f920ccca5dc456b367170678c, generated/external and installed restore provenance accepted as actual Owner static evidence; SA did not directly inspect installed dependencies/checkpoint or independently recompute entire nine-file common map (local m462_ppo_warmstart_run.py, m462_typed_orbax_stage.py and paper_config_preflight.json not retrievable via branch contents). Runtime must revalidate exact pins, no bypass. Historical STOP v1/v2 unchanged, cumulative7 physical transitions. Synthetic12 rows not physical. No new simulation, PPO, evaluation, optimizer, checkpoint saves or CUDA probe.
+
+H4M6_STATIC_APPROVED: 3d42aa04af599e417fcfdbff20435ed489eef63f920ccca5dc456b367170678c 65371befdc4cb7265b4ee4e6366fbf94ea1e5478cd6117ed190c492e340a9ae5 7e2010e84e888e4bfa1622c8eceea86e69b1767d9a89a323efec971611f71b5a 97e1686ac016de832166f26c7287992f0b6536a27c504ee6451a5d472597e7da 7e65ed7cd72962e6ab7b27ae53a2848f705d40dc2974a1e0c4dfd4ae4c176b2f m463_runs/m470_h4_m6_2r2_full_static_20261126_073654_707259590.log
+
+This is static approval only, no ACTIVE_GO or ARITH_GO. Next proposed separate explicit Owner GO H4-M6-2 corrected bounded native technical v3, one fresh namespace m463_runs/m470_h4_m6_tech_v3, verify exact current common source/spec/generated/external/static log, all18 archive pins, strict arithmetic evidence and C401M restore/reward bootstrap. Frozen four paired fixtures seeds4101–4104, shared REF/RSS graph, max8 resets/416 new physical transitions, actual native 24-term accounting and 50/51 restoration, original event/terminal, bit-exact paired state/action/RNG/DR/other23, negative controls, partial/final ledger and post-immutability; report/log16MiB and existing CUDA/GPU/storage/STOP gates, no retry, no evaluation/PPO/save. Standalone arithmetic and static PASS do not establish full MJX compatibility or RSS efficacy. No repeat static suite if source unchanged. All runtime including tech v3, REF6/RSS, controlled DEV, independent holdout, readiness, production, promotion and Branch B HOLD pending separate phase authorization; official H4 CTRL unchanged. Rules-only update.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -2107,6 +2115,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-26)
+
+**H4-M6-2R2 OWNER FULL STATIC PASS (v1.2.166):** actual log7e65ed7c, source3d42aa04,18 archive pins,7408 archived factor replay, six REF partial rows/synthetic six pairs,16 expected rejections plus2 stale namespaces, installed generated/restore provenance and post-immutability. Static approval only; native v3 separate GO; historical7 physical transitions, zero new; all runtime HOLD.
 
 **H4-M6-2R2 HELD INTEGRATION STAGED / OWNER STATIC PENDING (v1.2.165):** exact reciprocal reference,18 archive pins and four HLO hashes, distinct tech_v3 and corrected static contract. Extracted full partial audit6 REF rows/synthetic6 pairs PASS,20 evidence and11 audit negatives rejected, full-file owner acceptance pending. Historical7 physical transitions; all execution HOLD.
 
@@ -2790,6 +2800,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-26 | H4-M6-2R2 Owner full static acceptance | actual log7e65ed7c, source3d42aa04,18 pins,7408 archived bits,16 expected rejections, installed generated/restore PASS | STATIC PASS; native v3 separate GO; all runtime HOLD | 1.2.166 |
+
 | 2026-11-26 | H4-M6-2R2 held arithmetic integration | evaluator e7491e8/trainer df0321b,18 actual pins/7408 factor bits, six full partial rows, synthetic pairs,20 evidence and11 audit negatives | STAGED; owner static pending; all runtime HOLD | 1.2.165 |
 
 | 2026-11-26 | H4-M6-2P arithmetic v2 actual acceptance | report77af67e6/logcac36fa7,7408 independent rows,60288 weighted checks,4 HLO hashes,6 archived exact rows | CLOSED CONFORMANCE PASS; reference held integration only; all runtime HOLD | 1.2.164 |
@@ -3182,6 +3194,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.166 — 2026-11-26:** Accept actual Owner H4-M6-2R2 full static evidence, freeze new static approval; no active runtime authorization, no executable or scientific gate change.
 
 - **v1.2.165 — 2026-11-26:** Stage minimal reciprocal host verifier, strict arithmetic evidence reader and distinct tech_v3/static contract; record actual offline focused tests, archive obsolete static approval, all execution HOLD. No native reward or scientific gate change.
 
