@@ -7415,7 +7415,8 @@ def h4m6_diag_authorization(root=None):
         and re.fullmatch(r'm463_runs/m470_h4_m6_2d1_full_static_[0-9_]+\.log',fields[5]),'DIAG_AUTH')
     _,out,source,manifest,static_sha,static_log=fields
     h4m6_eval_require(source==t.h4m6_source_identity(root)['sha256']
-        and manifest==h4m3_digest(H4M6_DIAG_SPEC),'DIAG_AUTH_BINDING')
+        and manifest==h4m3_digest(H4M6_DIAG_SPEC)
+        and t.h4m6_spec_digest()=='65371befdc4cb7265b4ee4e6366fbf94ea1e5478cd6117ed190c492e340a9ae5','DIAG_AUTH_BINDING')
     p=root/static_log
     h4m6_eval_require(p.is_file() and not p.is_symlink() and p.absolute()==p.resolve()
         and 0<p.stat().st_size<=H4M6_DIAG_SPEC['log_cap'] and sha256(p)==static_sha,'DIAG_STATIC')
@@ -7522,10 +7523,7 @@ def h4m6_diag_capture(r,cache,lane,tick,trees,flatten,host,expected):
     total=r['snapshot_bytes']+size
     h4m6_eval_require(total<=H4M6_DIAG_SPEC['host_cap'],'DIAG_HOST_CAP')
     if not cache:
-        # Conservative initial estimate; actual caps are enforced at each capture.
-        estimate=len(json.dumps(views,separators=(',',':')))*36
-        h4m6_eval_require(size*36<=H4M6_DIAG_SPEC['host_cap']
-            and estimate<12*1024**2,'DIAG_SCHEMA_ESTIMATE')
+        h4m6_eval_require(size*36<=H4M6_DIAG_SPEC['host_cap'],'DIAG_SCHEMA_ESTIMATE')
     before=(len(r['leaf_schema']),len(r['treedef_table']),len(r['comparisons']))
     schemas={json.dumps(v,sort_keys=True):i for i,v in enumerate(r['leaf_schema'])}
     tdefs={v['text']:i for i,v in enumerate(r['treedef_table'])}
@@ -7541,6 +7539,9 @@ def h4m6_diag_capture(r,cache,lane,tick,trees,flatten,host,expected):
                 schemas[sk]=len(r['leaf_schema']);r['leaf_schema'].append(schema)
             leaves.append([schemas[sk],leaf['sha256']])
         packed[name]={'aggregate':v['aggregate'],'treedef_id':tdefs[td],'leaves':leaves,'bytes':v['bytes']}
+    if not cache:
+        estimate=len(json.dumps(packed,separators=(',',':')))*36+len(json.dumps(r['leaf_schema']))+len(json.dumps(r['treedef_table']))
+        h4m6_eval_require(estimate<12*1024**2,'DIAG_REPORT_ESTIMATE')
     stop=False
     for prev in r['lanes']:
         if prev is lane:break
@@ -7599,8 +7600,153 @@ def h4m6_diag_ledger(r,*,partial=False):
         'SAME_ARM_DIVERGENCE_OBSERVED' if same else 'CROSS_ARM_ONLY_DIVERGENCE' if cross else 'NOT_REPRODUCED'))
 
 
+def h4m6_diag_report_replay(r):
+    """Strict host replay of completed diagnostic evidence, never a technical PASS."""
+    import re
+    import numpy as np
+    req=h4m6_eval_require
+    issha=lambda x:isinstance(x,str) and re.fullmatch('[0-9a-f]{64}',x) is not None
+    audit=h4m6_diag_ledger(r)
+    req(r['audit']==audit and r['status']=='M470_H4M6_DIAG_COMPLETE'
+        and r['post_immutability'] is True and r['passed'] is False
+        and r['policy_sha256_before']==r['policy_sha256_after']
+        and issha(r['policy_sha256_before']) and len(r['provenance']['diagnostic_archive_sha256'])==24
+        and r['further_training_authorized'] is False,'DIAG_FINAL_REPORT')
+    schemas=r['leaf_schema']; tdefs=r['treedef_table']
+    req(len({json.dumps(x,sort_keys=True) for x in schemas})==len(schemas)
+        and len({x['text'] for x in tdefs})==len(tdefs),'DIAG_TABLE_UNIQUENESS')
+    for x in schemas:
+        dt=np.dtype(x['dtype']); shape=x['shape']
+        req(isinstance(x['path'],str) and all(type(n) is int and n>=0 for n in shape)
+            and not dt.hasobject and dt.fields is None
+            and math.prod(shape)*dt.itemsize==x['nbytes'],'DIAG_SCHEMA_REPLAY')
+    for x in tdefs:
+        req(hashlib.sha256(x['text'].encode()).hexdigest()==x['sha256'],'DIAG_TREEDEF_REPLAY')
+    lane_map={l['diag_id']:l for l in r['lanes']}
+    snapshots=r['snapshots'];expected_keys={l['diag_id']+':'+str(k) for l in r['lanes'] for k in range(-1,len(l['rows']))}
+    req(set(snapshots)==expected_keys,'DIAG_SNAPSHOT_KEYS')
+    total=0
+    for key,views in snapshots.items():
+        label,k=key.split(':');tick=int(k);lane=lane_map[label];size=0
+        req(set(views)=={'full','projected','physics'},'DIAG_VIEWS')
+        for v in views.values():
+            req(issha(v['aggregate']) and type(v['treedef_id']) is int and 0<=v['treedef_id']<len(tdefs),'DIAG_PACKED_TREE')
+            n=len(tdefs[v['treedef_id']]['text'].encode())
+            for index,h in v['leaves']:
+                req(type(index) is int and 0<=index<len(schemas) and issha(h),'DIAG_PACKED_LEAF')
+                x=schemas[index];n+=x['nbytes']+len(x['path'].encode())+len(x['dtype'])+len(str(tuple(x['shape'])))
+            req(n==v['bytes'],'DIAG_BYTES_REPLAY');size+=n
+        req(size<=H4M6_DIAG_SPEC['snapshot_cap'],'DIAG_SNAPSHOT_REPLAY');total+=size
+        if tick==-1:
+            req(views['projected']['aggregate']==lane['initial_sha256'],'DIAG_RESET_HASH')
+        else:
+            row=lane['rows'][tick]
+            req(views['projected']['aggregate']==row['post_sha256']
+                and views['physics']['aggregate']==row['physics_sha256']
+                and snapshots[label+':'+str(tick-1)]['projected']['aggregate']==row['pre_sha256'],'DIAG_ROW_HASH')
+    req(total==r['snapshot_bytes']<=H4M6_DIAG_SPEC['host_cap'],'DIAG_TOTAL_BYTES')
+    expected={(a['diag_id'],b['diag_id'],k) for j,b in enumerate(r['lanes'])
+        for a in r['lanes'][:j] for k in range(-1,min(len(a['rows']),len(b['rows'])))}
+    observed=set()
+    for e in r['comparisons']:
+        a,b,k=e['a'],e['b'],e['tick'];key=(a,b,k)
+        req(key in expected and key not in observed,'DIAG_PAIR_KEYS');observed.add(key)
+        la,lb=lane_map[a],lane_map[b];same=la['arm']==lb['arm']
+        req(e['same_arm']==same and set(e['views'])==set(('full','projected','physics') if same else ('projected','physics')),'DIAG_PAIR_VIEWS')
+        aa=snapshots[a+':'+str(k)];bb=snapshots[b+':'+str(k)]
+        used=0
+        for n,v in e['views'].items():
+            x,y=aa[n],bb[n]
+            count=int(x['treedef_id']!=y['treedef_id'])+int(len(x['leaves'])!=len(y['leaves']))
+            count+=sum(u!=w for u,w in zip(x['leaves'],y['leaves']))
+            req(v['mismatches']==count and v['different']==bool(count)==(x['aggregate']!=y['aggregate'])
+                and v['truncated']==(count>len(v['witnesses']))
+                and len(v['witnesses'])<=count,'DIAG_PAIR_REPLAY')
+            for w in v['witnesses']:
+                if w['kind'] in ('RAW_BYTES','SIGNED_ZERO'):
+                    dt=np.dtype(w['dtype']);u=bytes.fromhex(w['a_hex']);z=bytes.fromhex(w['b_hex'])
+                    req(len(u)==len(z)==dt.itemsize and u!=z and 0<w['differing_bytes']
+                        and (w['kind']!='SIGNED_ZERO' or (dt.kind=='f' and np.frombuffer(u,dtype=dt)[0]==0
+                        and np.frombuffer(z,dtype=dt)[0]==0)),'DIAG_WITNESS_REPLAY')
+                else:req(w['kind'] in ('TREEDEF','LEAF_COUNT','LEAF_SCHEMA'),'DIAG_WITNESS_KIND')
+            used+=len(v['witnesses'])
+        req(used<=H4M6_DIAG_SPEC['witness_cap'],'DIAG_WITNESS_CAP')
+        if k==-1:
+            fields=[n for n in ('initial_sha256','initial_rng','model_sha256','native_reset_command','initial_command') if la[n]!=lb[n]]
+        else:
+            x,y=la['rows'][k],lb['rows'][k]
+            fields=[n for n in x if json.dumps(x[n],sort_keys=True)!=json.dumps(y[n],sort_keys=True)]
+        req(set(e['row_fields'])==set(fields) and len(e['row_fields'])==len(fields)
+            and e['different']==(bool(fields) or any(v['different'] for v in e['views'].values())),'DIAG_PAIR_FIELDS')
+    req(observed==expected,'DIAG_PAIR_COVERAGE')
+    for l in r['lanes']:
+        label=l['diag_id']; end=len(l['rows'])-1
+        endpoints=[e['tick'] for e in r['comparisons'] if e['b']==label and e['different']
+            and (e['a']=='REF0' or e['same_arm'])]
+        req((not endpoints and l['endpoint']!='DIVERGENCE') or
+            (endpoints and min(endpoints)==end and l['endpoint']=='DIVERGENCE'),'DIAG_ENDPOINT_REPLAY')
+        req(l['endpoint']!='TERMINAL' or (bool(l['rows']) and l['rows'][-1]['metrics']['terminal']),'DIAG_TERMINAL_ENDPOINT')
+    return audit
+
+
 def h4m6_diag_dispatch(args):
-    return h4m6_technical_dispatch(args,diagnostic=True)
+    """Bounded parent collector; only the reserved child may enter native code."""
+    import signal
+    root=Path(__file__).resolve().parent
+    auth=h4m6_diag_authorization(root)
+    path=root/H4M6_DIAG_OUTPUT
+    req=h4m6_eval_require
+    req(args.mode=='run' and args.h4m6_phase=='diag'
+        and args.output.absolute()==args.output.resolve()==path
+        and all(isinstance(x,Path) for x in (args.checkpoint_c,args.h4_reward_report,args.h4cc_restore_report))
+        and os.environ.get('JAX_PLATFORMS')=='cuda'
+        and os.environ.get('JAX_DEFAULT_MATMUL_PRECISION')=='highest'
+        and os.environ.get('XLA_PYTHON_CLIENT_PREALLOCATE')=='false','DIAG_PREFLIGHT')
+    if getattr(args,'h4m6_diag_child',False):
+        return h4m6_technical_dispatch(args,diagnostic=True)
+    provenance=h4m6_tech_inputs(args,auth,diagnostic=True)
+    h4m3_no_runtime_imports()
+    h4m6_reserve_tech(path,auth)
+    h4m6_write_bounded(path.parent/'collector.started.json',{'authorization':auth,'pid':os.getpid()},exclusive=True)
+    log=path.parent/'probe.log';cap=H4M6_DIAG_SPEC['log_cap']
+    cmd=[sys.executable,'-B','-u',str(Path(__file__).resolve()),'--mode','run',
+        '--h4m6-phase','diag','--h4m6-diag-child','--output',str(path),
+        '--checkpoint-c',str(args.checkpoint_c),'--h4-reward-report',str(args.h4_reward_report),
+        '--h4cc-restore-report',str(args.h4cc_restore_report)]
+    total=stored=0;overflow=False;rc=None;error=None;proc=None;decision='STOP'
+    def kill():
+        if proc is not None:
+            try:os.killpg(proc.pid,signal.SIGKILL)
+            except ProcessLookupError:pass
+    try:
+        with log.open('xb') as f:
+            proc=subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,start_new_session=True)
+            while True:
+                data=proc.stdout.read1(65536)
+                if not data:break
+                total+=len(data);chunk=data[:max(0,cap-stored)];f.write(chunk);stored+=len(chunk)
+                if total>cap and not overflow:overflow=True;kill()
+            rc=proc.wait();f.flush();os.fsync(f.fileno())
+        req(rc==0 and not overflow,'DIAG_BOUNDED_PROCESS')
+        req(h4m6_diag_authorization(root)==auth and h4m6_tech_inputs(args,auth,diagnostic=True)==provenance,'DIAG_PARENT_POST')
+        req(path.is_file() and not path.is_symlink() and 0<path.stat().st_size<=H4M6_DIAG_SPEC['report_cap'],'DIAG_REPORT')
+        report=json.loads(path.read_bytes())
+        req(report['authorization']==auth and report['provenance']==provenance
+            and json.loads((path.parent/'attempt.json').read_bytes())=={'authorization':auth,'reserved':True}
+            and json.loads((path.parent/'dispatch.started.json').read_bytes())=={'authorization':auth}
+            and json.loads((path.parent/'attempt_result.json').read_bytes())=={'authorization':auth,'status':'COMPLETE'},'DIAG_REPORT_PROVENANCE')
+        audit=h4m6_diag_report_replay(report)
+        decision='DIAGNOSTIC_COMPLETE'
+    except BaseException as exc:
+        error=(type(exc).__name__+': '+str(exc))[:4096];kill()
+        if proc is not None:rc=proc.wait()
+    status={'decision':decision,'producer_rc':rc,'overflow':overflow,'total_bytes':total,
+        'stored_bytes':stored,'error':error,'authorization':auth}
+    h4m6_write_bounded(path.parent/'collector.json',status,exclusive=True)
+    print('BOUNDED_LOG_STATUS',json.dumps(status,sort_keys=True),flush=True)
+    for p in sorted(path.parent.iterdir()):
+        if p.is_file() and not p.is_symlink():print('ARTIFACT_SHA256',sha256(p),p,flush=True)
+    req(decision=='DIAGNOSTIC_COMPLETE','DIAG_COLLECTOR_STOP')
 
 
 def h4m6_tech_inputs(args,auth,*,diagnostic=False):
@@ -7687,7 +7833,13 @@ def h4m6_technical_dispatch(args,*,diagnostic=False):
         and os.environ.get('XLA_PYTHON_CLIENT_PREALLOCATE')=='false','TECH_PREFLIGHT')
     provenance=h4m6_tech_inputs(args,auth,diagnostic=diagnostic)
     h4m3_no_runtime_imports()
-    h4m6_reserve_tech(path,auth)
+    if diagnostic:
+        marker=path.parent/'collector.started.json'
+        h4m6_eval_require(getattr(args,'h4m6_diag_child',False) and marker.is_file() and not marker.is_symlink()
+            and json.loads(marker.read_bytes())=={'authorization':auth,'pid':os.getppid()}
+            and (path.parent/'probe.log').is_file() and not (path.parent/'probe.log').is_symlink()
+            and json.loads((path.parent/'attempt.json').read_bytes())=={'authorization':auth,'reserved':True},'DIAG_PARENT')
+    else:h4m6_reserve_tech(path,auth)
     r={'status':'M470_H4M6_TECH_IN_PROGRESS','spec':t.H4M6_SPEC,
         'authorization':auth,'provenance':provenance,'source_commit':PIN,'lanes':[],
         'physical_transitions_attempted':0,'physical_transitions_recorded':0,
@@ -8269,7 +8421,10 @@ def main():
     p.add_argument('--h4m4-historical-archive',type=Path)
     p.add_argument('--h4m5-obs-attribution',action='store_true')
     p.add_argument('--h4m6-phase',choices=('tech','dev','diag'),help='H4-M6 separately authorized phases')
+    p.add_argument('--h4m6-diag-child',action='store_true',help=argparse.SUPPRESS)
     args=p.parse_args()
+    if args.h4m6_diag_child and not (args.mode=='run' and args.h4m6_phase=='diag'):
+        p.error('M470_H4M6_DIAG_CHILD_CONFLICT')
     if args.h4m6_phase is not None:
         try:
             if args.mode=='run':
@@ -8278,6 +8433,7 @@ def main():
             allowed=('mode','output','h4m6_phase')
             if args.mode=='run' and args.h4m6_phase in ('tech','diag'):
                 allowed+=('checkpoint_c','h4_reward_report','h4cc_restore_report')
+            if args.mode=='run' and args.h4m6_phase=='diag':allowed+=('h4m6_diag_child',)
             h4m6_eval_require(all(getattr(args,k)==p.get_default(k) for k in vars(args)
                 if k not in allowed),'PLAN_CONFLICT')
             root=Path(__file__).resolve().parent
