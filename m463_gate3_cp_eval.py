@@ -8039,7 +8039,7 @@ def h4m6_prefix_child(args,auth,provenance,history):
             and parent_report['children'][0]['sha256']==sha256(cpath)
             and parent_report['children'][1]['context']=='P' and parent_report['children'][1]['status']=='STARTED','PREFIX_C_PARENT_BINDING')
     r={'status':'M470_H4M6_PREFIX_IN_PROGRESS','context':context,'prefix_spec':H4M6_PREFIX_SPEC,
-        'spec':t.H4M6_SPEC,'authorization':auth,'provenance':provenance,'source_commit':PIN,'lanes':[],
+        'pid':os.getpid(),'parent_pid':os.getppid(),'spec':t.H4M6_SPEC,'authorization':auth,'provenance':provenance,'source_commit':PIN,'lanes':[],
         'physical_transitions_attempted':0,'physical_transitions_recorded':0,
         'reset_lanes_attempted':0,'reset_lanes_recorded':0,'actor_calls_attempted':0,'actor_calls_recorded':0,
         'key_audits_attempted':0,'key_audits_recorded':0,'template_initializations_attempted':0,
@@ -8081,6 +8081,8 @@ def h4m6_prefix_report_replay(r,history,auth,provenance,context):
     req=h4m6_eval_require
     req(r['status']=='M470_H4M6_PREFIX_COMPLETE' and r['context']==context
         and r['authorization']==auth and r['provenance']==provenance
+        and h4m3_digest(r['spec'])==auth['spec_sha256'] and r['source_commit']==PIN
+        and type(r['pid']) is int and type(r['parent_pid']) is int and r['pid']>0 and r['parent_pid']>0 and r['pid']!=r['parent_pid']
         and r['compiler']['jax']==r['compiler']['jaxlib']=='0.4.35'
         and r['compiler']['device']=='cuda:0' and r['gpu']['total_mib']==12288
         and 0<r['gpu']['peak_used_mib']<.95*12288 and r['gpu']['samples']>0
@@ -8134,6 +8136,7 @@ def h4m6_prefix_dispatch(args):
                     '--checkpoint-c',str(args.checkpoint_c),'--h4-reward-report',str(args.h4_reward_report),
                     '--h4cc-restore-report',str(args.h4cc_restore_report)]
                 proc=subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,start_new_session=True)
+                entry['pid']=proc.pid;persist()
                 while True:
                     data=proc.stdout.read1(65536)
                     if not data:break
@@ -8148,13 +8151,14 @@ def h4m6_prefix_dispatch(args):
                     and json.loads((child.parent/'dispatch.started.json').read_bytes())=={'authorization':auth}
                     and json.loads((child.parent/'attempt_result.json').read_bytes())=={'authorization':auth,'status':'COMPLETE'},'PREFIX_CHILD_MARKERS')
                 h4m6_prefix_report_replay(report,history,auth,provenance,label)
+                req(report['pid']==entry['pid'] and report['parent_pid']==os.getpid(),'PREFIX_CHILD_PID')
                 entry.update(status='COMPLETE',sha256=sha256(child),bytes=child.stat().st_size,
                     markers={n:sha256(child.parent/n) for n in ('attempt.json','parent.dispatch.json','dispatch.started.json','attempt_result.json')},
                     physical=report['physical_transitions_recorded'],resets=report['reset_lanes_recorded'],
                     actor_calls=report['actor_calls_recorded'],key_audits=report['key_audits_recorded'],
                     templates=report['template_initializations_recorded'])
                 reports[label]=report;persist()
-        req(reports['C']['compiler']==reports['P']['compiler'],'PREFIX_COMPILER_CONTEXT')
+        req(reports['C']['pid']!=reports['P']['pid'] and reports['C']['compiler']==reports['P']['compiler'],'PREFIX_COMPILER_CONTEXT')
         for k,capkey in [('physical','physical'),('resets','resets'),('actor_calls','actor_calls'),
             ('key_audits','key_audits'),('templates','template_initializations')]:
             req(sum(e[k] for e in r['children'])<=H4M6_PREFIX_SPEC[capkey],'PREFIX_TOTAL_'+k)
