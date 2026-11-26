@@ -2622,6 +2622,8 @@ def h4_shared_frozen_loader(action_size,paper,networks,running_statistics,serial
 
 
 def run(args):
+    if getattr(args,'h4m7_snapshot',False):
+        h4m7_authorization()
     m6=bool(getattr(args,'h4m6_phase',None)=='dev')
     if getattr(args,'h4m6_phase',None) is not None:
         h4m6_runtime_gate(args.h4m6_phase)
@@ -8842,6 +8844,238 @@ def h4m6_mechanism_bound(records,metadata):
         'MECHANISM_BYTE_CAP')
     return {'records':len(records),'record_bytes':sum(sizes),'metadata_bytes':m,'max_record_bytes':max(sizes,default=0)}
 
+
+# H4-M7-4A: held host snapshot core. No native dispatcher authorization.
+H4M7_OUTPUT=Path('m463_runs/m470_h4_m7_snapshot_v1/report.json')
+H4M7_INDICES=(0,1,2,4)
+H4M7_ARCHIVES=('329ff0564d47e05e2360fdf95350928895cf515e8cec6ca9aa2182133319258b',
+                '83d87cdd5279ab13acb06815083b72f02ecadcabc652cff35b24a82814beb9a5')
+H4M7_DATA_FIELDS=tuple(('qM qLD qLDiagInv efc_J efc_D efc_aref efc_force '
+    'efc_frictionloss efc_type efc_pos efc_margin qacc qacc_smooth qacc_warmstart '
+    'qfrc_smooth qfrc_constraint qfrc_actuator qfrc_bias qfrc_passive qfrc_applied '
+    'xfrc_applied actuator_moment cdof qpos qvel time ctrl actuator_length '
+    'actuator_velocity actuator_force xpos xmat xipos ximat xanchor xaxis cvel subtree_com').split())
+H4M7_CONTACT_FIELDS=tuple(('dist pos frame includemargin friction solref solreffriction '
+    'solimp dim geom1 geom2 geom efc_address').split())
+H4M7_MODEL_FIELDS=tuple(('dof_parentid dof_armature dof_jntid jnt_qposadr jnt_dofadr '
+    'jnt_type actuator_trnid actuator_gear actuator_gainprm actuator_biasprm '
+    'actuator_ctrlrange actuator_ctrllimited jnt_actfrcrange jnt_actfrclimited').split())
+H4M7_EPOCH={'qpos_qvel_time':'postintegration','solver':'last_forward_solve',
+    'qacc_warmstart':'solver_output_not_input','iteration_history':'unavailable'}
+H4M7_NUMERIC={'arithmetic_normalized_max':128*2**-23,
+    'stationarity_normalized_max':1e-3,'boundary_relative_min':128*2**-23,
+    'status':'prospective_stationary_screen_only_not_scientific_acceptance'}
+
+
+def h4m7_require(ok,label):
+    if not ok:
+        raise RuntimeError('M470_H4M7_'+label)
+
+
+def h4m7_plan():
+    return {'id':'H4-M7-4-SNAPSHOT-V1','indices':list(H4M7_INDICES),
+        'lanes':[list(H4M3_LANES[i][:3]) for i in H4M7_INDICES],
+        'archives':list(H4M7_ARCHIVES),'policy_sha256':dict(H4M3_POLICIES),
+        'physical_cap':1360,'actor_cap':1360,'reset_cap':4,'rich_cap':184,
+        'snapshot_cap':24,'end_tick':340,'capture_ticks':list(range(335,341)),
+        'pushes':[[300,.5],[335,.35]],'raw_snapshot_cap':512*1024,
+        'raw_total_cap':12*1024**2,'artifact_cap':16*1024**2,
+        'report_cap':16*1024**2,'log_cap':16*1024**2,
+        'data_fields':list(H4M7_DATA_FIELDS),'contact_fields':list(H4M7_CONTACT_FIELDS),
+        'model_fields':list(H4M7_MODEL_FIELDS),'epoch':dict(H4M7_EPOCH),
+        'numeric':dict(H4M7_NUMERIC),'training_performed':False,
+        'efficacy_evaluated':False,'execution_authorized':False}
+
+
+def h4m7_authorization():
+    # Hard HOLD until separate integration/static review and Owner native GO.
+    raise RuntimeError('M470_H4M7_EXECUTION_HOLD')
+
+
+def h4m7_archive_inputs(root):
+    root=Path(root)
+    a=h4m3_pinned_json(root/H4M3_OUTPUT,H4M7_ARCHIVES[0])
+    b=h4m3_pinned_json(root/H4M4_OUTPUT,H4M7_ARCHIVES[1])
+    h4m7_require(a['status']=='M470_H4M3_TECHNICAL_REPLAY_COMPLETED'
+        and b['status']=='M470_H4M4_TECHNICAL_PROBE_COMPLETED'
+        and a['manifest']==b['manifest'] and a['frame_columns']==b['frame_columns']==list(H4M3_COLUMNS)
+        and a['authorization']['policy_sha256']==b['authorization']['policy_sha256']==H4M3_POLICIES,
+        'ARCHIVE_HEADER')
+    lanes=[]
+    for i in H4M7_INDICES:
+        x,y=a['lanes'][i],b['lanes'][i]
+        k=H4M3_LANES[i][:3]
+        h4m7_require(tuple(x[n] for n in ('policy','seed','direction'))==
+            tuple(y[n] for n in ('policy','seed','direction'))==k
+            and x['complete'] is True and y['complete'] is True,'ARCHIVE_LANE')
+        rows=x['segments']['nominal']+x['segments']['first']+x['segments']['double'][:6]
+        h4m7_require(len(rows)==340 and rows==y['prefix']+y['arms']['baseline']['rows'][:5]
+            ==y['prefix']+y['arms']['sham']['rows'][:5] and x['kick_audits']==y['kicks'],
+            'ARCHIVE_ROWS_KICKS')
+        h4m7_require(all(len(r)==len(H4M3_COLUMNS) and r[H4M3_COLUMNS.index('done')]==0
+            and r[H4M3_COLUMNS.index('h3_finite')]==1
+            and r[H4M3_COLUMNS.index('h2a_state_finite')]==1 for r in rows),'ARCHIVE_FINITE')
+        rich={q['tick']:q['data'] for q in x['rich'] if q['segment']!='single'}
+        m4={(q['arm'],q['tick']):q['data'] for q in y['rich']}
+        for t in range(295,341):
+            h4m7_require(rich[t]==m4['prefix' if t<=335 else 'baseline',t]
+                ==m4['prefix' if t<=335 else 'sham',t]
+                and rich[t]['com']['available'] is True
+                and rich[t]['contact']['available'] is True,'ARCHIVE_PACKED_'+str(t))
+        lanes.append({'index':i,'key':k,'rows':rows,'rich':{t:rich[t] for t in range(295,341)},
+            'first':x['first'],'second':x['second'],'kicks':x['kick_audits']})
+    return lanes,a['manifest']
+
+
+def h4m7_expected_shapes(meta):
+    nv,nu,nb,n,m=map(meta.__getitem__,('nv','nu','nbody','nefc','ncon'))
+    h4m7_require((nv,nu,nb)==(35,29,31) and type(n) is int and type(m) is int
+        and 0<n<=4096 and 0<m<=1024
+        and all(type(meta[k]) is int and meta[k]>=0 for k in ('ne','nf','nl'))
+        and meta['ne']+meta['nf']+meta['nl']<=n,'DIMENSIONS')
+    h4m7_require(meta['storage'] in ('dense','sparse') and meta['cone']=='pyramidal'
+        and meta['eulerdamp_disabled'] is True,'NATIVE_CONFIG')
+    qshape=(nv,nv) if meta['storage']=='dense' else (meta['nM'],)
+    h4m7_require(type(meta['nM']) is int and 35<=meta['nM']<=630,'M_STORAGE')
+    s={k:(nv,) for k in ('qacc','qacc_smooth','qacc_warmstart','qfrc_smooth',
+        'qfrc_constraint','qfrc_actuator','qfrc_bias','qfrc_passive','qfrc_applied','qvel')}
+    s.update({k:(n,) for k in ('efc_D','efc_aref','efc_force','efc_frictionloss','efc_type','efc_pos','efc_margin')})
+    s.update({k:(nu,) for k in ('ctrl','actuator_length','actuator_velocity','actuator_force')})
+    s.update(qM=qshape,qLD=qshape,qLDiagInv=(nv,) if meta['storage']=='sparse' else (0,),
+        efc_J=(n,nv),qpos=(36,),time=(),xfrc_applied=(nb,6),actuator_moment=(nu,nv),
+        cdof=(nv,6),xpos=(nb,3),xmat=(nb,3,3),xipos=(nb,3),ximat=(nb,3,3),
+        xanchor=(30,3),xaxis=(30,3),cvel=(nb,6),subtree_com=(nb,3))
+    cs={'dist':(m,),'pos':(m,3),'frame':(m,3,3),'includemargin':(m,),
+        'friction':(m,5),'solref':(m,2),'solreffriction':(m,2),'solimp':(m,5),
+        'dim':(m,),'geom1':(m,),'geom2':(m,),'geom':(m,2),'efc_address':(m,)}
+    s.update({'contact.'+k:v for k,v in cs.items()})
+    h4m7_require(set(s)==set(H4M7_DATA_FIELDS)|{'contact.'+k for k in H4M7_CONTACT_FIELDS},
+        'FIELD_SET')
+    return s
+
+
+def h4m7_encode(values,shapes,np,cap):
+    h4m7_require(set(values)==set(shapes),'RAW_FIELDS')
+    # Validate shape/dtype and bound before device copy by the caller as well.
+    blocks=[]; descriptors=[]; size=0
+    for name in sorted(shapes):
+        a=np.asarray(values[name])
+        integer=name in ('efc_type','contact.dim','contact.geom1','contact.geom2',
+                         'contact.geom','contact.efc_address')
+        h4m7_require(a.shape==shapes[name] and
+            (a.dtype.kind in 'iu' and a.dtype.itemsize in (4,8) if integer
+             else a.dtype.kind=='f' and a.dtype.itemsize==4)
+            and np.isfinite(a).all(),'RAW_SCHEMA_'+name)
+        h4m7_require(size+a.nbytes<=cap,'RAW_CAP')
+        raw=a.tobytes(order='C')
+        descriptors.append({'path':name,'dtype':a.dtype.str,'shape':list(a.shape),
+            'offset':size,'size':len(raw),'sha256':hashlib.sha256(raw).hexdigest()})
+        size+=len(raw);blocks.append(raw)
+    return descriptors,b''.join(blocks)
+
+
+def h4m7_decode(descriptors,raw,shapes,np,cap):
+    h4m7_require(type(raw) is bytes and len(raw)<=cap and type(descriptors) is list
+        and len(descriptors)==len(shapes),'DECODE_CAP_COUNT')
+    out={};offset=0
+    for name,d in zip(sorted(shapes),descriptors):
+        h4m7_require(type(d) is dict and set(d)=={'path','dtype','shape','offset','size','sha256'}
+            and d['path']==name and d['shape']==list(shapes[name])
+            and type(d['offset']) is int and d['offset']==offset and type(d['size']) is int
+            and d['dtype'] in ('<f4','>f4','<i4','>i4','<i8','>i8','<u4','>u4','<u8','>u8'),
+            'DECODE_SCHEMA')
+        dt=np.dtype(d['dtype']);n=math.prod(shapes[name])*dt.itemsize
+        h4m7_require(d['size']==n and offset+n<=len(raw),'DECODE_SIZE')
+        block=raw[offset:offset+n]
+        h4m7_require(hashlib.sha256(block).hexdigest()==d['sha256'],'DECODE_SHA')
+        out[name]=np.frombuffer(block,dtype=dt).reshape(shapes[name]);offset+=n
+    h4m7_require(offset==len(raw),'DECODE_TRAILING')
+    again,encoded=h4m7_encode(out,shapes,np,cap)
+    h4m7_require(again==descriptors and encoded==raw,'DECODE_ROUNDTRIP')
+    return out
+
+
+def h4m7_capture_returned(data,meta,device_get,np):
+    shapes=h4m7_expected_shapes(meta)
+    values={k:getattr(data,k) for k in H4M7_DATA_FIELDS}
+    values.update({'contact.'+k:getattr(data.contact,k) for k in H4M7_CONTACT_FIELDS})
+    cap=h4m7_plan()['raw_snapshot_cap'];size=0
+    for k,v in values.items():
+        h4m7_require(tuple(v.shape)==shapes[k] and hasattr(v,'dtype'),'PRECOPY_'+k)
+        size+=math.prod(v.shape)*np.dtype(v.dtype).itemsize
+        h4m7_require(size<=cap,'PRECOPY_CAP')
+    return h4m7_encode(device_get(values),shapes,np,cap)
+
+
+def h4m7_dense_mass(raw,meta,parent,np):
+    a=np.asarray(raw,dtype=np.float64)
+    if meta['storage']=='dense':
+        h4m7_require(a.shape==(35,35),'DENSE_SHAPE');return a
+    p=np.asarray(parent)
+    h4m7_require(p.shape==(35,) and p.dtype.kind in 'iu'
+        and all(-1<=int(j)<i for i,j in enumerate(p)),'DOF_PARENT')
+    out=np.zeros((35,35));k=0
+    for i in range(35):
+        j=i
+        while j>=0:
+            h4m7_require(k<len(a),'SPARSE_SHORT')
+            out[i,j]=out[j,i]=a[k];k+=1;j=int(p[j])
+    h4m7_require(k==len(a),'SPARSE_TRAILING')
+    return out
+
+
+def h4m7_numeric_screen(values,meta,parent,np):
+    # Offline stationary screen, never native response or scientific PASS.
+    M=h4m7_dense_mass(values['qM'],meta,parent,np)
+    v=lambda k:np.asarray(values[k],dtype=np.float64)
+    J,D,aref,f=v('efc_J'),v('efc_D'),v('efc_aref'),v('efc_force')
+    q,qs,fs,fc=v('qacc'),v('qacc_smooth'),v('qfrc_smooth'),v('qfrc_constraint')
+    h4m7_require(np.isfinite(M).all() and np.array_equal(M,M.T)
+        and np.linalg.eigvalsh(M)[0]>0 and np.all(D>=0),'M_OR_D')
+    def err(lhs,rhs,scale):
+        r=np.abs(lhs-rhs)
+        return {'absolute_max':float(np.max(r,initial=0)),
+                'normalized_max':float(np.max(r/np.maximum(1.,scale),initial=0))}
+    x=J@q-aref;loss=v('efc_frictionloss')
+    h4m7_require(np.all(loss>=0),'FRICTIONLOSS')
+    active=x<0;active[:meta['ne']+meta['nf']]=True
+    # Native minimum-value constant is 1e-15; only used on zero D.
+    R=1./(D+(D==0)*1e-15)
+    neg=(x<=-R*loss)&(loss>0);pos=(x>=R*loss)&(loss>0)
+    active=active&~neg&~pos
+    expected=-D*x*active+neg*loss-pos*loss
+    scale=np.abs(J)@np.abs(q)+np.abs(aref)
+    margins=np.abs(x)/np.maximum(1.,scale)
+    friction=loss>0
+    margins[friction]=np.minimum(np.abs(x[friction]-R[friction]*loss[friction]),
+        np.abs(x[friction]+R[friction]*loss[friction]))/np.maximum(1.,scale[friction]+R[friction]*loss[friction])
+    # Equality rows are unconditional; zero-J padding is reported, not a boundary.
+    conditional=(np.any(J!=0,axis=1))&(np.arange(len(D))>=meta['ne'])
+    conditional[:meta['ne']+meta['nf']] &= friction[:meta['ne']+meta['nf']]
+    metrics={'smooth':err(M@qs,fs,np.abs(M)@np.abs(qs)+np.abs(fs)),
+        'constraint':err(J.T@f,fc,np.abs(J).T@np.abs(f)+np.abs(fc)),
+        'row_force':err(expected,f,np.abs(D)*(scale+np.abs(x))+loss+np.abs(f)),
+        'stationary':err(M@q,fs+fc,np.abs(M)@np.abs(q)+np.abs(fs)+np.abs(fc))}
+    t=H4M7_NUMERIC
+    ok=all(metrics[k]['normalized_max']<=t['arithmetic_normalized_max']
+           for k in ('smooth','constraint','row_force'))
+    boundary=float(np.min(margins[conditional])) if np.any(conditional) else None
+    return {'metrics':metrics,'boundary_min':boundary,'active_count':int(active.sum()),
+        'arithmetic_screen':ok,'stationary_screen':bool(ok and
+         metrics['stationary']['normalized_max']<=t['stationarity_normalized_max']
+         and boundary is not None and boundary>=t['boundary_relative_min']),
+        'native_derivative_verified':False}
+
+
+def h4m7_static_archive(root):
+    h4m3_no_runtime_imports()
+    lanes,_=h4m7_archive_inputs(root)
+    h4m7_require(len(lanes)==4 and sum(len(x['rows']) for x in lanes)==1360
+        and sum(len(x['rich']) for x in lanes)==184,'STATIC_ARCHIVE_COUNTS')
+    h4m3_no_runtime_imports()
+    return {'rows':1360,'rich':184,'target_snapshots':24,'native_executed':False}
+
+
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--mode',choices=('plan','run'),required=True)
@@ -8884,7 +9118,26 @@ def main():
     p.add_argument('--h4m6-phase',choices=('tech','dev','diag','prefix'),help='H4-M6 separately authorized phases')
     p.add_argument('--h4m6-diag-child',action='store_true',help=argparse.SUPPRESS)
     p.add_argument('--h4m6-prefix-child',choices=('C','P'),help=argparse.SUPPRESS)
+    p.add_argument('--h4m7-snapshot',action='store_true')
+    p.add_argument('--h4m7-static-archives',action='store_true')
     args=p.parse_args()
+    if args.h4m7_snapshot:
+        try:
+            allowed=('mode','output','h4m7_snapshot','h4m7_static_archives')
+            h4m7_require(all(getattr(args,k)==p.get_default(k) for k in vars(args)
+                if k not in allowed),'FLAG_CONFLICT')
+            root=Path(__file__).resolve().parent
+            h4m7_require(args.output.absolute()==args.output.resolve()==root/H4M7_OUTPUT,'OUTPUT_PATH')
+            if args.mode=='run':
+                h4m7_authorization()
+            if args.h4m7_static_archives:
+                print('M470_H4M7_STATIC_ARCHIVE',json.dumps(h4m7_static_archive(root),sort_keys=True))
+            print('M470_H4M7_PLAN',json.dumps(h4m7_plan(),sort_keys=True))
+            return
+        except (RuntimeError,ValueError,KeyError,OSError) as exc:
+            p.error(str(exc))
+    if args.h4m7_static_archives:
+        p.error('M470_H4M7_FLAG_REQUIRED')
     if args.h4m6_prefix_child is not None and not (args.mode=='run' and args.h4m6_phase=='prefix'):
         p.error('M470_H4M6_PREFIX_CHILD_CONFLICT')
     if args.h4m6_diag_child and not (args.mode=='run' and args.h4m6_phase=='diag'):
