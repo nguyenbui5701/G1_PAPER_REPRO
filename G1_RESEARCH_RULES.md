@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.224  
+**Version:** 1.2.225  
 **Ngày cập nhật:** 2026-11-26 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -2495,6 +2495,149 @@ Read Rules1.2.223 blobd15d7c2333a602e7b9a187b3281904cabf3e946f, exact HEAD0abe59
 
 Next only H4-M12-3 controlled evaluation on separate explicit Owner GO, freeze bounded launcher/watchdog and log cap before active authorization. Existing output namespace unused at static, preserve source and provenance; only M12 12 groups/60 logical/44808 max new physical/12 group resets, archived CTRL 12 groups41052 historical, no rerun, same fixed seeds/commands/push/horizon/DR off, original +2/8 survival and recovery5 (both 8/8), unchanged nominal/moving/safety. 128MiB report, 2GiB reserve plus temp, GPU peak<95%12288MiB, one-use receipts, no retry, preserve partials. No active marker inserted, no native evaluation/physical/reset/optimizer by SA. No further PPO, independent holdout, production, promotion or Branch B authorization.
 
+### H4-M12-3 — explicit one-use controlled recovery DEV GO (v1.2.225; 2026-11-26)
+
+Owner explicitly confirmed STATIC_EXIT_CODE=0 and GO H4-M12-3. Reopened actual uploaded 756B full static log, independently rehashed SHA256377547acdb543cc85b54575ca11425cfa0ab9c51da6ab2d46fe62f1e58f27759, exact source394732f72b86f45f3f3ff1e83e9c74a453a46504465e212be4c707c8dd46a13f and provenancee805f45d4ef94aed4973692ef1da449725c683f4724bc9627ba920dd46c8de53; accepted content + Owner exit confirmation, no repeat static. Reviewed Rules1.2.224 blob3194e63c1a77775f5173fa8830942754c469371a, exact HEAD2044f61e55575d92f2287d37485e02f9fd788efd, evaluator blob1110260e3f9804dadcd4e2d2b98e62f9b164cbb2, auth/dispatch/reader and training final reader. Rules-only change; evaluator/source-map unchanged. Separate one-use marker binds exact local source, provenance and accepted static log; dispatcher rechecks all before runtime. Local binaries/installed sources not independently accessible to SA; actual static and dispatcher pins required.
+
+Exactly one Owner launch through existing g1_m463, with inherited pinned interpreter and overlay environment, clean tracked exact branch, safe ff-only pull and exact authorized HEAD, original CUDA env (JAX_PLATFORMS=cuda, JAX_DEFAULT_MATMUL_PRECISION=highest, XLA_PYTHON_CLIENT_PREALLOCATE=false). Use frozen inline launcher below (extract inclusive BEGIN/END markers and pipe to g1_m463 -B -u -); stdlib-only supervisor uses the same sys.executable and inherited environment for one evaluator child, then on producer0 only one clean host-only strict final-reader child; no new repo script or native diagnostic. Outer fixed exclusive log m463_runs/m470_h4m12_dev_runtime_v1.log is also one-use claim (never delete/rename/reuse), evaluator separately reserves exact fresh m463_runs/m470_h4_m12_3_dev_v1/report.json. Watchdog5400s shared across producer and reader; 16MiB combined child log hard cap, kill child process group on overflow/timeout/exception, preserve partial log/reports, fsync, report producer/reader status and SHA outside capped log. No automatic retry even if preflight fails before reservation, stop and return evidence. Watchdog is operational ceiling chosen by SA, not duration prediction. No guarantee of crash-durable per-step rows on abrupt kill. Initial disk >=2GiB+2*128MiB+16MiB; native report cap128MiB and original storage/GPU peak<95%12288MiB/zero sampler error guards unchanged. No source modification, no new fixtures or native executions by SA; inline launcher source-reviewed, Owner actual behavior pending. Strict final reader and producer0+reader0+no overflow/error required for completion; scientific GO/NO_GO is separate. Preserve all receipts/report/log, report bounded status and hashes. Relock after any attempt result, no retry or promotion.
+
+Only continuation M12 policy SHA50b7d2034692ec9fa49699d541b8bd98dd502322e5bf28cacfa3475c158e0f5a; exact 12 groups/60 logical/max44808 new physical/12 group resets, no CTRL rerun (archived report SHA32bf04d64bafd7e80b250b862493b54a7c8db6af1bcf1010bf0df984a904f40c, 41052 historical physical). Seeds7331/7357/7601/7613, stand/forward_fast/turn_left, nominal/single/double left/right, push300/.50 and335/.35, horizon1000 dt.02, deterministic actor, DR/source random push OFF, original reward/PD/termination, original h3_decide, both +2/8 survival and recovery5 (8/8), all nominal/moving/safety gates unchanged. Zero optimizer updates, no PPO, no extra diagnostics, no independent holdout, no readiness/production/promotion, Branch B HOLD. Evaluation tests push recovery while upright, not get-up.
+
+H4M12_EVAL_ACTIVE_GO: H4-M12-DEV-V1 m463_runs/m470_h4_m12_3_dev_v1/report.json 394732f72b86f45f3f3ff1e83e9c74a453a46504465e212be4c707c8dd46a13f e805f45d4ef94aed4973692ef1da449725c683f4724bc9627ba920dd46c8de53 m463_runs/m470_h4m12_dev_static_20261126_193845_911550919.log 377547acdb543cc85b54575ca11425cfa0ab9c51da6ab2d46fe62f1e58f27759
+
+```python
+# H4M12_DEV_OWNER_LAUNCHER_BEGIN
+import hashlib, json, os, selectors, shutil, signal, subprocess, sys, time, traceback
+from pathlib import Path
+
+root = Path.cwd().resolve()
+runs = root / "m463_runs"
+out = runs / "m470_h4_m12_3_dev_v1" / "report.json"
+log = runs / "m470_h4m12_dev_runtime_v1.log"
+cap = 16 * 1024**2
+deadline = time.monotonic() + 5400
+stored = 0
+producer_rc = None
+reader_rc = None
+overflow = False
+error = None
+def require(ok, msg):
+    if not ok:
+        raise RuntimeError(msg)
+def digest(p):
+    with p.open("rb") as f:
+        return hashlib.file_digest(f, "sha256").hexdigest() if hasattr(hashlib, "file_digest") else digest_stream(f)
+def digest_stream(f):
+    h = hashlib.sha256()
+    for chunk in iter(lambda: f.read(1024**2), b""):
+        h.update(chunk)
+    return h.hexdigest()
+def emit(f, data):
+    global stored, overflow
+    room = cap - stored
+    keep = data[:room]
+    if keep:
+        f.write(keep)
+        stored += len(keep)
+        f.flush()
+    if len(data) > room:
+        overflow = True
+        raise RuntimeError("LOG_CAP")
+def stop_group(p):
+    try:
+        os.killpg(p.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    p.wait(timeout=10)
+def child(f, argv):
+    require(time.monotonic() < deadline, "WATCHDOG")
+    p = subprocess.Popen(argv, cwd=root, stdin=subprocess.DEVNULL,
+                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                         start_new_session=True, bufsize=0)
+    try:
+        with selectors.DefaultSelector() as sel:
+            sel.register(p.stdout, selectors.EVENT_READ)
+            while True:
+                left = deadline - time.monotonic()
+                require(left > 0, "WATCHDOG")
+                events = sel.select(min(left, 1.0))
+                if not events:
+                    continue
+                data = os.read(p.stdout.fileno(), 65536)
+                if not data:
+                    break
+                emit(f, data)
+        left = deadline - time.monotonic()
+        require(left > 0, "WATCHDOG")
+        return p.wait(timeout=left)
+    except BaseException:
+        stop_group(p)
+        raise
+    finally:
+        p.stdout.close()
+
+require(runs.is_dir() and not runs.is_symlink(), "RUNS_PATH")
+# Exclusive fixed log is the outer one-use claim, even if native reservation never occurs.
+# Never remove or rename either the log or the native attempt directory to retry.
+with log.open("xb") as f:
+    print("H4M12_DEV_LAUNCH_LOG", log, flush=True)
+    try:
+        require(not out.parent.exists() and not out.parent.is_symlink(), "OUTPUT_USED")
+        require(shutil.disk_usage(runs).free >= 2*1024**3 + 2*128*1024**2 + cap, "STORAGE")
+        require(digest(root/"m463_gate3_cp_eval.py") ==
+                "7d7be7a13cd26840bd94f1a3d387fcb4c317193f3d1522ed074221a0ecd763ed", "EVALUATOR_SHA")
+        static = runs/"m470_h4m12_dev_static_20261126_193845_911550919.log"
+        require(static.is_file() and not static.is_symlink() and digest(static) ==
+                "377547acdb543cc85b54575ca11425cfa0ab9c51da6ab2d46fe62f1e58f27759", "STATIC_SHA")
+        for k,v in {"JAX_PLATFORMS":"cuda", "JAX_DEFAULT_MATMUL_PRECISION":"highest",
+                    "XLA_PYTHON_CLIENT_PREALLOCATE":"false"}.items():
+            require(os.environ.get(k)==v, "ENV_"+k)
+        require(not any(k.split(".")[0] in ("jax","jaxlib","brax","mujoco","mujoco_playground")
+                        for k in sys.modules), "LAUNCHER_NATIVE_PREIMPORT")
+        emit(f, ("H4M12_DEV_LAUNCH "+json.dumps({"interpreter":sys.executable,
+                 "head":subprocess.check_output(["git","rev-parse","HEAD"],text=True,cwd=root).strip(),
+                 "watchdog_s":5400,"log_cap":cap,"output":str(out)})+"\n").encode())
+        producer_rc = child(f, [sys.executable,"-B","-u",str(root/"m463_gate3_cp_eval.py"),
+                                 "--mode","run","--h4m12-eval","--output",str(out)])
+        require(producer_rc == 0, "PRODUCER_RC")
+        # Clean host-only final reader, no additional evaluation/inference.
+        reader = (
+            "import json;from pathlib import Path;import m463_gate3_cp_eval as e;"
+            "r=Path.cwd();e.h4m3_no_runtime_imports();p=r/e.H4M12_EVAL_OUTPUT;"
+            "a=e.h4m12_eval_auth(r);s=e.h4m12_read_eval_final(r,e.sha256(p),a);"
+            "e.h4m3_no_runtime_imports();"
+            "print('H4M12_DEV_FINAL_READER_PASS',e.sha256(p),"
+            "json.dumps({'decision':s['decision']['decision'],'ledger':s['ledger']},sort_keys=True),flush=True)"
+        )
+        reader_rc = child(f, [sys.executable,"-B","-u","-c",reader])
+        require(reader_rc == 0, "FINAL_READER_RC")
+    except BaseException as exc:
+        error = repr(exc)[:1024]
+        if not overflow:
+            try:
+                emit(f, traceback.format_exc().encode())
+            except BaseException:
+                pass
+    finally:
+        try:
+            f.flush()
+            os.fsync(f.fileno())
+        except OSError as exc:
+            error = repr(exc)[:1024]
+ok = error is None and producer_rc == reader_rc == 0 and not overflow
+print("H4M12_DEV_BOUNDED_STATUS", json.dumps({
+    "decision":"COMPLETE" if ok else "STOP","producer_rc":producer_rc,
+    "reader_rc":reader_rc,"overflow":overflow,"stored_bytes":stored,
+    "error":error,"log":str(log),"log_sha256":digest(log)
+}), flush=True)
+for name in ("report.json","attempt.json","dispatch.started.json","attempt_result.json"):
+    p = out.parent/name
+    if p.is_file() and not p.is_symlink():
+        print("H4M12_DEV_ARTIFACT",str(p),p.stat().st_size,digest(p),flush=True)
+raise SystemExit(0 if ok else 1)
+# H4M12_DEV_OWNER_LAUNCHER_END
+```
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -2756,6 +2899,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-26)
+
+**H4-M12-3 CONTROLLED DEV ONE-USE GO (v1.2.225):** Owner confirmed static exit0 and explicit scope; source/provenance/static log frozen, single active evaluator marker, bounded inline launcher5400s/16MiB and exclusive log, 12 groups/60 logical/44808 new physical max/12 resets. Owner actual evaluation pending; no CTRL rerun/PPO/holdout/promotion/Branch B.
 
 **H4-M12-3A ACTUAL FULL STATIC PASS CONTENT / DEV GO PENDING (v1.2.224):** log SHA377547ac, source394732f7, provenancee805f45d, all printed fixtures PASS including identity NO_GO, zero runtime. Owner exit line not included; confirm existing producer exit and explicit DEV GO, then freeze bounded launcher/authorization. No active marker, all runtime/PPO/holdout/promotion/Branch B HOLD.
 
@@ -3557,6 +3702,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-26 | H4-M12-3 controlled DEV one-use authorization | Owner exit0 + explicit GO, static SHA377547ac, frozen source/provenance | GO ONE OWNER EVAL; actual result pending, no PPO/holdout/promotion | 1.2.225 |
+
 | 2026-11-26 | H4-M12-3A actual full static review | Owner log SHA377547ac, exact reviewed source, zero runtime | FULL STATIC PASS CONTENT; shell exit confirmation and separate DEV GO pending | 1.2.224 |
 
 | 2026-11-26 | H4-M12-3A CLI correction | Owner log SHA1c151a9f, exact main parser | CLI STOP / corrected plan command only; static pending | 1.2.223 |
@@ -4067,6 +4214,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.225 — 2026-11-26:** Accept Owner static exit0 and explicit controlled DEV GO, freeze single evaluator marker and bounded inline launcher with watchdog/exclusive log/strict final reader; no executable source or scientific gate change, all other runtime/PPO/holdout/promotion/Branch B HOLD.
 
 - **v1.2.224 — 2026-11-26:** Accept actual H4-M12-3A full static PASS content, source/provenance/log pins, distinguish shell exit evidence missing and runtime untested; preserve explicit Owner DEV GO and launcher guard prerequisite, no live authorization.
 
