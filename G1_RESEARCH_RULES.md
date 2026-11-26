@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.220  
+**Version:** 1.2.221  
 **Ngày cập nhật:** 2026-11-26 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -2471,6 +2471,14 @@ Next H4-M12-3 held evaluation integration design reuses existing evaluator b63f3
 
 H4M12_TRAINING_APPROVED: a28ebc6f5dd3fda5fc78c9bac60d6441b67e09081683a485a3c296e44ce2872e 50b7d2034692ec9fa49699d541b8bd98dd502322e5bf28cacfa3475c158e0f5a 3211d6bc0840c1fe836c94b6b8fde09622c448e61b5ca8c5293abb21821d940c 7e0ca3814cdae549fe2d8bc9cc61a0fa9726bf97eaaa01b1e88e9a5c3d9ab05d
 
+### H4-M12-3 — held controlled recovery evaluator integration SOURCE IMPLEMENTED / exact static PENDING (v1.2.221; 2026-11-26)
+
+Owner explicit held integration GO only. Read Rules1.2.220 blob8ff9b9eb528c9c6e9f217d07f6d40c8a73602c37, AGENTS, exact HEAD905905108f4aad12111f960129801740485b09d0, evaluator b63f34699578baff68363d5a371900280018cb30 and operative M12 design/training acceptance. Reopened actual uploaded report134302B SHAa28ebc6f5dd3fda5fc78c9bac60d6441b67e09081683a485a3c296e44ce2872e, verified TECHNICAL_PASS, budget, artifact and dependency pins, no runtime rerun. Binary policy/fullstate, installed source and raw archive not available to SA for independent byte checks now; require exact local preflight. Freeze training and archived CTRL evidence from v1.2.220.
+
+EDIT-FIRST modify only existing m463_gate3_cp_eval.py: h3_group adds opt-in explicit reset ledger and bounded persistence around reset, run adds isolated M12 route before runtime import, preimport auth/provenance, existing NVCC and Brax/model dependency pin checks, selects exactly one new M12 frozen deterministic actor, existing one_step and h3_group with44808 cap, existing h3_decide via combined archive view; main adds isolated --h4m12-eval and --h4m12-static CLI with fixed output and conflict checks. Appended dedicated provenance/authorization/ledger/raw frame and kick checks/decision/dispatch/strict final reader/static entry. Reuse h4_shared_frozen_loader, h4cc_read_archive, h4m3_runtime_dependencies/model source, original h3_decode and safety/recovery logic, bounded h4m6_write_bounded/reserve. No new files, no original PPO/reward/PD/physics/one_step/gates changes, no rich capture or CTRL rerun. Exact 12 groups/60 new logical/44808 future physical cap/12 resets; archived CTRL12 groups41052 historical rows; compare using H4 labels CTRL/CAND, +2/8 survival AND recovery5 vs archived6/8, no CCRC incremental criterion. Nominal/moving/safety unchanged. Output namespace m463_runs/m470_h4_m12_3_dev_v1/report.json; distinct future marker H4M12_EVAL_ACTIVE_GO binds source-map and provenance digests and accepted static log; no live marker now. 128MiB report cap (SA chosen to accommodate raw frames and derived decisions), disk reserve2GiB plus atomic report temp, sampled GPU<95%12288MiB and zero errors, exclusive attempt/dispatch/result receipts, no retry. Partial ledger checks attempted/recorded and at most one in-flight native call; report checkpoint at reset/group boundaries and exception, abrupt process death can lose in-memory partial rows; no claim of crash-durable per-step journal. Strict final reader revalidates all raw groups and kicks, exact original decision, report SHA and immutable evidence; no promotion/further-training permission. Actual runtime not authorized, no watchdog process added beyond owner future bounded launcher; freeze launcher guard before separate runtime GO.
+
+Focused full static entry compiles exact local source, compares legacy top-level AST excluding explicitly edited main/run/h3_group and exact nested one_step AST, actual training final reader + archive provenance + installed dependency byte pins, archive CTRL clone mapped to M12 solely host reader fixture (not simulated data nor efficacy), original h3_decide identity comparison expected NO_GO zero gain, five marker negatives, six reader/ledger negatives, CLI HOLD. No native imports, simulation, inference, resets, PPO or optimizer. SA source anchor checks only, exact local compile/static/fixture not executed by SA; runtime wiring not verified end-to-end. Need one Owner static log and review before separate explicit DEV authorization. Rollback reviewed evaluator diff only; preserve all historical files. H4-M12-3 HELD SOURCE IMPLEMENTED / OWNER EXACT STATIC PENDING. All runtime/holdout/readiness/production/promotion/Branch B HOLD.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -2732,6 +2740,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-26)
+
+**H4-M12-3 HELD EVAL SOURCE IMPLEMENTED / OWNER EXACT STATIC PENDING (v1.2.221):** isolated continuation-only evaluation, existing shared prefix and original decision, frozen archive CTRL, 60 new logical/44808 physical max/12 resets, no active runtime marker. Actual efficacy pending; all runtime/PPO/holdout/production/promotion/Branch B HOLD.
 
 **H4-M12-2 ACTUAL TECHNICAL PASS / ONE-USE CONSUMED (v1.2.220):** reporta28ebc6f, true CTRL reset-edge restore and exact5242880/800/2000 ledger, final policy50b7d203 frozen; efficacy pending, no further PPO. Next M12-3 held evaluation integration only on explicit scope, 60 fresh logical/44808 physical max and archived CTRL, no runtime GO. All DEV/holdout/production/promotion/Branch B HOLD.
 
@@ -3525,6 +3535,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-26 | H4-M12-3 held controlled DEV integration | accepted training reporta28ebc6f, original evaluator, archive CTRL | SOURCE IMPLEMENTED / OWNER FULL STATIC PENDING; no runtime | 1.2.221 |
+
 | 2026-11-26 | H4-M12-2 actual continuation review | eight rehashed artifacts, actual full-state restore, exact budget/coverage and final policy | TECHNICAL PASS; one-use consumed, efficacy pending, M12-3 held | 1.2.220 |
 
 | 2026-11-26 | H4-M12-2 one-use PPO authorization | corrected static844be296, immutable CTRL parent, explicit Owner GO | CONDITIONAL GO one bounded continuation; actual execution pending | 1.2.219 |
@@ -4027,6 +4039,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.221 — 2026-11-26:** Add isolated held continuation-only controlled evaluation, preserve original efficacy/safety gates and archived CTRL; owner exact static required before any DEV GO.
 
 - **v1.2.220 — 2026-11-26:** Accept actual bounded CTRL continuation technical evidence, freeze new checkpoint, close one-use authorization, retain frozen controlled evaluation design and all other runtime holds.
 
