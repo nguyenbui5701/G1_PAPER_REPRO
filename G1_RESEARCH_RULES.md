@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.207  
+**Version:** 1.2.208  
 **Ngày cập nhật:** 2026-11-26 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -2361,6 +2361,14 @@ Native GAE arithmetic implemented with exact pinned compute_gae AST on NumPy syn
 
 Actual SA static subset: exact reverse source projection against previous full evaluator content PASS (remove only optional typed branch/new functions/CLI dispatch); host excerpt h4lite_schema through h4lite_decision 12827 bytes, rolling32 2146816793, local SHA25604845bf30974ed81ff83fad2ce6b32e87b2a0490546c32e87aa50abd5fed5ba5. Excerpt compiled and NumPy host tests PASS (10 groups including exact80 extras/91 arrays layout, bit continuity and signed zero/age negatives, guard bad flag, raw roundtrip/metadata and size corruption/raw bytes corruption, invalid schema-valid block retained and rejected semantically, S/F/C/E, positive/insufficient/inconclusive decision), storage helper mocked. Entire pinned Brax losses.py independently Git blob hash match93d0b1e39a610d55a5a8ed5d5027fc8684945417; seeded mixed terminal/truncation host32/64 comparison PASS. No JAX/Brax/MJX imports for host tests. Final source projection rechecked after small staging/secondary-median/zero-status additions. Full evaluator compile, exact Owner installed provenance, full integrated CLI/HOLD/source preservation static suite and all actual collection paths remain pending; no FULL_STATIC_PASS claim, no runtime GO. Owner must run only dedicated --mode plan --h4lite --h4lite-static under pinned launcher, exact HEAD and sources, send immutable log for review. No attempt namespace may exist after static. Implementation authored as coherent whole, not partial executable staging; acceptance contingent on full static review. If full static fails, STOP, not runtime or automatic retry. H-R6 and exploration UNTESTED; OBS-V1 STOP preserved, no selected PPO treatment or training budget; C401M/official CTRL and historical scientific/technical gates unchanged; preserve H4-M6 historical323, M7 five nonstationary, CAM/ATF holds and all prior verdicts. Zero actual physical transitions/resets/native inference/optimizer updates/evaluation/checkpoint saves. All runtime/PPO/holdout/readiness/production/promotion/Branch B HOLD.
 
+### H4-M10-LITE-1 — Owner full static accepted / bounded native observation runtime HELD (v1.2.208; 2026-11-26)
+
+Read Rules1.2.207 blob c5c8c9c3d0a7230b11a019e346ed12301c7bad36 and AGENTS, reviewed operative M10-LITE design, CURRENT STATE/ledger/changelog, exact HEAD abfa03d726c2b368ccb628c9e121611b0245221b and held implementation commit4fb24e366c6df4a1c4f5ce67ad4a25397ca8d6e0 evaluator blob b63f34699578baff68363d5a371900280018cb30. Owner supplied immutable five-marker log m470_h4lite_static_20261126_154100_353664768.log (353 bytes); actual uploaded file SHA256 b782738e7386dbb00e81fd2bbb02370f7f1750513aed04fc5fcb693075fd005f independently recomputed. Exact final h4lite_static output sequence and zero counters match; Owner FULL_STATIC_PASS accepted. Independently reconstructed exact h4lite_plan canonical JSON with 80 ordered extras from pinned source and computed spec digest c259e9604f54e2896225f74dd2a1cab83f3955cd40d7dfc1d286ea5dccbe763b, exact match. Source-map and installed external/input provenance digests accepted as Owner-reported guard results, not independently recomputed from local files; full runtime validation remains unperformed. No repeat static suite, no executable change, no native imports/inference/simulation/evaluation/PPO by SA.
+
+H4LITE_STATIC_APPROVED: 741daf2266e4de787be87bbac66d8d13377a38b2b6597bc2f081e26eb22e5ddf c259e9604f54e2896225f74dd2a1cab83f3955cd40d7dfc1d286ea5dccbe763b 7f7a86ce245e9585f86d0c3d6ec5307b03a1c50d6275bb90dc89a0679489317b b782738e7386dbb00e81fd2bbb02370f7f1750513aed04fc5fcb693075fd005f m463_runs/m470_h4lite_static_20261126_154100_353664768.log
+
+Static approval only, not active execution permission. Owner asks what bounded native observation does and to continue according to Rules; explain frozen design and prepare next gate, do not infer separate explicit CUDA/MJX execution GO. No active marker. Next eligible step ONLY one explicit Owner-authorized H4-M10-OBS-LITE-V1 observation-only run, exact already accepted evaluator, no extra diagnostic or repeat static. First actual block within frozen cap validates native schema/action/extras/continuity/GPU/storage before subsequent blocks; fail closed STOP with partial evidence, no retry. Frozen 8101/8102 x1024 worlds x13 native32 blocks, max851968 transitions/2048 initial reset lanes/851968 actor and878592 critic sample-equivalents, zero optimizer/normalizer/checkpoint update. Native S/F/C/E survival endpoints, paired raw A32/A64 and frozen credit decision screens unchanged. Positive screen merits separate credit-specific PPO design review only; nonpositive/inconclusive closes scoped study without auto diagnostic or treatment. H-R6 broad UNTESTED, OBS-V1/M10-3 STOP preserved, official CTRL/C401M and all prior evidence unchanged, all runtime/PPO/holdout/readiness/production/promotion/Branch B HOLD.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -2622,6 +2630,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-26)
+
+**H4-M10-LITE-1 OWNER FULL STATIC ACCEPTED (v1.2.208):** actual immutable log and independent frozen plan digest match; static approval recorded only, no active marker. One bounded OBS-LITE-V1 runtime eligible solely after separate explicit Owner GO; native runtime correctness/credit screen UNTESTED, all runtime/PPO/holdout/Branch B HOLD.
 
 **H4-M10-LITE-1 FULL HELD CANDIDATE AUTHORED (v1.2.207):** evaluator b63f3469, exact legacy projection PASS, focused host subset PASS only; full Owner static acceptance pending, no active authorization, no native execution. OBS-V1 STOP, H-R6 UNTESTED, frozen LITE gates and all runtime/PPO/holdout holds preserved.
 
@@ -3389,6 +3399,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-26 | H4-M10-LITE-1 Owner full static review | actual five-marker log SHA b782738e, spec digest independently matched | OWNER FULL STATIC ACCEPTED; static approval only; runtime HOLD | 1.2.208 |
+
 | 2026-11-26 | H4-M10-LITE-1 native Transition held implementation | evaluator b63f3469, legacy exact projection and host subset pass | AUTHORED HELD; Owner full static pending; zero runtime | 1.2.207 |
 
 | 2026-11-26 | H4-M10-LITE-0 native Transition credit observation redesign | exact loader/native extras review, prospective narrower S/F/C endpoint, 3120B indicative row | OFFLINE COMPLETE; OBS-LITE-V1 HELD, no runtime or PPO treatment | 1.2.206 |
@@ -3865,6 +3877,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.208 — 2026-11-26:** Accept actual Owner full static log and exact independently recomputed frozen plan digest; pin static approval only, no runtime authorization or executable change; preserve all frozen budgets, historical evidence and holds.
 
 - **v1.2.207 — 2026-11-26:** Record full held LITE implementation and scoped host verification, require actual Owner full static acceptance before any separate authorization; preserve all historical and runtime holds.
 
