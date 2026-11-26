@@ -369,7 +369,7 @@ class CoverageJoystick(joystick.Joystick):
     boundary for re-sampling push targets and counters.  Tracking `age` also
     supports a direct/unwrapped one-env diagnostic.
     """
-    def __init__(self, *, stage: str, config, task='flat_terrain', h1_m1=False, h1_m2=False, h3_m1=False, h4_arm=None, h4cc_arm=None, h4m6_arm=None, h4m6_tech_capture=False, h4m8_common=False):
+    def __init__(self, *, stage: str, config, task='flat_terrain', h1_m1=False, h1_m2=False, h3_m1=False, h4_arm=None, h4cc_arm=None, h4m6_arm=None, h4m6_tech_capture=False, h4m8_common=False, h4red=False):
         if stage not in STAGES:
             raise ValueError('M463_BAD_STAGE')
         if bool(config.push_config.enable):
@@ -412,6 +412,12 @@ class CoverageJoystick(joystick.Joystick):
                 float(config.reward_config.scales.termination)!=-100.0 or
                 len(config.reward_config.scales)!=24 or int(config.episode_length)!=1000)):
             raise ValueError('M470_H4M8_ENV_CONTRACT')
+        if type(h4red) is not bool or (h4red and (
+                stage != 'easy_repeat_support' or h4_arm != 'control' or
+                h4cc_arm is not None or h4m6_arm is not None or
+                h4m6_tech_capture or h4m8_common)):
+            raise ValueError('M470_H4RED_ENV_CONTRACT')
+        self._h4red = h4red
         self._h4m8_common = h4m8_common
         self._h4m6_tech_capture = bool(h4m6_tech_capture)
         self._h4m6_arm = h4m6_arm
@@ -604,7 +610,7 @@ class CoverageJoystick(joystick.Joystick):
                 early
             )
         else:
-            target_first = jax.random.randint(k_time, (), 12, 25)
+            target_first = jax.random.randint(k_time, (), 12, 344 if self._h4red else 25)
         next_step = jp.where(boundary, target_first, info['m463_next'])
         disabled = jp.where(boundary, jax.random.bernoulli(k_start, p=0.20),
                             info['m463_no_push'] > 0)
