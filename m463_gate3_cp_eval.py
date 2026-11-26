@@ -4610,8 +4610,13 @@ def h4cc_tech_actual(args,r,monitor,persist,*,rss=False,diagnostic=False):
     n,p,v=checkpoint_parts(serialization.msgpack_restore(args.checkpoint_c.read_bytes()))
     norm=serialization.from_state_dict(running_statistics.init_state(
         {k:jp.zeros(s,jp.float32) for k,s in shapes.items()}),n)
+    if diagnostic:r['template_initializations_attempted']+=1;persist()
     actor=serialization.from_state_dict(nets.policy_network.init(jax.random.PRNGKey(11)),p)
+    if diagnostic:
+        jax.block_until_ready(actor);r['template_initializations_recorded']+=1
+        r['template_initializations_attempted']+=1;persist()
     critic=serialization.from_state_dict(nets.value_network.init(jax.random.PRNGKey(17)),v)
+    if diagnostic:jax.block_until_ready(critic);r['template_initializations_recorded']+=1;persist()
     def host(x):return np.asarray(jax.device_get(x))
     def digest_tree(tree):
         h=hashlib.sha256()
@@ -4689,8 +4694,11 @@ def h4cc_tech_actual(args,r,monitor,persist,*,rss=False,diagnostic=False):
         h3_gpu_check(monitor)
     cache={}
     if diagnostic:
-        r['template_initializations']=2
-        r['compiler']={'jax':jax.__version__,'device':str(jax.devices()[0]),
+        import jaxlib
+        h4m6_eval_require(jaxlib.__version__=='0.4.35' and jax.device_count()==1,'DIAG_DEVICE')
+        historical=json.loads((H4_EVAL_ROOT/'m463_runs/m470_h4_m6_tech_v3/report.json').read_bytes())
+        historical={l['arm']:l for l in historical['lanes'] if l['fixture'][0]==4102}
+        r['compiler']={'jax':jax.__version__,'jaxlib':jaxlib.__version__,'device':str(jax.devices()[0]),
             'platform_version':jax.devices()[0].client.platform_version,
             'env':{k:v for k,v in os.environ.items() if k.startswith(('JAX_','XLA_','CUDA_','NVIDIA_'))}}
         def capture(st,lane,tick,expected):
@@ -4741,7 +4749,10 @@ def h4cc_tech_actual(args,r,monitor,persist,*,rss=False,diagnostic=False):
                 'native_reset_command':original_command,'initial_command':vec(info['command']),
                 'initial_rng':vec(info['rng']),'initial_sha256':state_digest(st),
                 'model_sha256':model_sha,'rows':[],'physical_attempted':0,'physical_recorded':0}
-            if diagnostic:lane['diag_id']=lane_id
+            if diagnostic:
+                lane['diag_id']=lane_id
+                lane['historical_initial']={k:lane[k]==historical[arm][k] for k in ('initial_sha256','initial_rng','model_sha256')}
+                lane['historical_rows']=[]
             r['lanes'].append(lane);r['reset_lanes_recorded']+=1;persist()
             if diagnostic and capture(st,lane,-1,{'projected':lane['initial_sha256']}):
                 lane['endpoint']='DIVERGENCE';persist();continue
@@ -4806,6 +4817,9 @@ def h4cc_tech_actual(args,r,monitor,persist,*,rss=False,diagnostic=False):
                     and row['rng_after']==row['expected_rng'],'LIVE_CONTRACT')
                 if diagnostic:
                     h4m6_technical_audit(r,partial=True,diagnostic=True)
+                    h4m6_eval_require(r['snapshots'][lane_id+':'+str(tick-1)]['projected']['aggregate']==row['pre_sha256'],'DIAG_PRE_SNAPSHOT')
+                    archived=historical[arm]['rows'][tick]
+                    lane['historical_rows'].append({k:row[k]==archived[k] for k in ('pre_sha256','post_sha256','physics_sha256','action_sha256')})
                     mismatch=capture(nxt,lane,tick,{'projected':row['post_sha256'],'physics':row['physics_sha256']})
                     if mismatch:lane['endpoint']='DIVERGENCE'
                     elif m['terminal']:lane['endpoint']='TERMINAL'
@@ -7366,7 +7380,8 @@ H4M6_DIAG_ORDER=('REF0','RSS0','RSS1','REF1')
 H4M6_DIAG_SPEC={'id':'H4-M6-2D1-V1','fixture':[4102,3,3,295,327,335,335],
     'order':list(H4M6_DIAG_ORDER),'resets':4,'physical':32,'ticks':8,
     'snapshot_cap':8*1024**2,'host_cap':256*1024**2,'report_cap':16*1024**2,
-    'log_cap':16*1024**2,'witness_cap':16,'historical_physical':171}
+    'log_cap':16*1024**2,'witness_cap':16,'historical_physical':171,
+    'actor_calls':32,'key_audits':32,'template_initializations':2,'archive_count':24}
 H4M6_DIAG_V3_PINS={
     'm463_runs/m470_h4_m6_tech_v3/report.json':'98f5fdaffb8a8a85bc4c78f024235f9f59d7acb8818c34a2adf869d68de09d3a',
     'm463_runs/m470_h4_m6_tech_v3/attempt.json':'ee4b9930bcf769dbdc9ef5f46bc04271d4ef75739ba0d20eea6595fa6bc1832a',
@@ -7511,17 +7526,32 @@ def h4m6_diag_capture(r,cache,lane,tick,trees,flatten,host,expected):
         estimate=len(json.dumps(views,separators=(',',':')))*36
         h4m6_eval_require(size*36<=H4M6_DIAG_SPEC['host_cap']
             and estimate<12*1024**2,'DIAG_SCHEMA_ESTIMATE')
-    cache[key]=raw;r['snapshots'][key]=views;r['snapshot_bytes']=total
+    before=(len(r['leaf_schema']),len(r['treedef_table']),len(r['comparisons']))
+    schemas={json.dumps(v,sort_keys=True):i for i,v in enumerate(r['leaf_schema'])}
+    tdefs={v['text']:i for i,v in enumerate(r['treedef_table'])}
+    packed={}
+    for name,v in views.items():
+        td=v['treedef']
+        if td not in tdefs:
+            tdefs[td]=len(r['treedef_table']);r['treedef_table'].append({'text':td,'sha256':v['treedef_sha256']})
+        leaves=[]
+        for leaf in v['leaves']:
+            schema={k:x for k,x in leaf.items() if k!='sha256'}; sk=json.dumps(schema,sort_keys=True)
+            if sk not in schemas:
+                schemas[sk]=len(r['leaf_schema']);r['leaf_schema'].append(schema)
+            leaves.append([schemas[sk],leaf['sha256']])
+        packed[name]={'aggregate':v['aggregate'],'treedef_id':tdefs[td],'leaves':leaves,'bytes':v['bytes']}
     stop=False
     for prev in r['lanes']:
         if prev is lane:break
         other=prev['diag_id']+':'+str(tick)
         if other not in cache:continue
+        old_views,old_raw=cache[other]
         same=prev['arm']==lane['arm']; names=('full','projected','physics') if same else ('projected','physics')
         entry={'a':prev['diag_id'],'b':lane['diag_id'],'tick':tick,'same_arm':same,'views':{}}
         remaining=H4M6_DIAG_SPEC['witness_cap']
         for name in names:
-            out=h4m6_diag_compare(r['snapshots'][other][name],cache[other][name],views[name],raw[name],remaining)
+            out=h4m6_diag_compare(old_views[name],old_raw[name],views[name],raw[name],remaining)
             remaining-=len(out['witnesses']);entry['views'][name]=out
         if tick==-1:
             fields=('initial_sha256','initial_rng','model_sha256','native_reset_command','initial_command')
@@ -7531,7 +7561,13 @@ def h4m6_diag_capture(r,cache,lane,tick,trees,flatten,host,expected):
             entry['row_fields']=[n for n in x if json.dumps(x[n],sort_keys=True)!=json.dumps(y[n],sort_keys=True)]
         entry['different']=any(v['different'] for v in entry['views'].values()) or bool(entry['row_fields'])
         r['comparisons'].append(entry)
-        stop=stop or entry['different']
+        stop=stop or (entry['different'] and (prev['diag_id']=='REF0' or same))
+    r['snapshots'][key]=packed;r['snapshot_bytes']=total
+    if len(json.dumps(r,sort_keys=True,separators=(',',':'),allow_nan=False).encode())>14*1024**2:
+        del r['snapshots'][key];r['snapshot_bytes']-=size
+        del r['leaf_schema'][before[0]:];del r['treedef_table'][before[1]:];del r['comparisons'][before[2]:]
+        h4m6_eval_require(False,'DIAG_REPORT_HEADROOM')
+    cache[key]=(views,raw)
     return stop
 
 
@@ -7542,12 +7578,15 @@ def h4m6_diag_ledger(r,*,partial=False):
         and r['physical_transitions_attempted']<=32 and r['reset_lanes_attempted']<=4
         and r['snapshot_bytes']<=H4M6_DIAG_SPEC['host_cap'],'DIAG_LEDGER')
     req(all(l['diag_id']==H4M6_DIAG_ORDER[i] and len(l['rows'])<=8 for i,l in enumerate(r['lanes'])),'DIAG_ORDER')
-    req(r['key_audits_attempted']<=32 and r['key_audits_recorded']<=r['key_audits_attempted']
-        and r['actor_calls_attempted']==r['physical_transitions_attempted'],'DIAG_CALLS')
+    req(0<=r['key_audits_recorded']<=r['key_audits_attempted']<=32
+        and r['actor_calls_attempted']==r['physical_transitions_attempted']
+        and r['actor_calls_recorded']==r['physical_transitions_recorded']
+        and 0<=r['template_initializations_recorded']<=r['template_initializations_attempted']<=2,'DIAG_CALLS')
     if not partial:
         req(len(r['lanes'])==4 and audit['outstanding_reset']==audit['outstanding_step']==0
             and r['key_audits_attempted']==r['key_audits_recorded']==r['physical_transitions_recorded']
-            and r['actor_calls_recorded']==r['physical_transitions_recorded'],'DIAG_COMPLETE')
+            and r['actor_calls_recorded']==r['physical_transitions_recorded']
+            and r['template_initializations_attempted']==r['template_initializations_recorded']==2,'DIAG_COMPLETE')
         req(all(l.get('endpoint') in ('DIVERGENCE','HORIZON','TERMINAL') and
             (l['endpoint']!='HORIZON' or len(l['rows'])==8)
             and all(l['diag_id']+':'+str(k) in r['snapshots'] for k in range(-1,len(l['rows'])))
@@ -7657,8 +7696,9 @@ def h4m6_technical_dispatch(args,*,diagnostic=False):
         'training_performed':False,'efficacy_evaluated':False,'promotion_authorized':False,
         'further_training_authorized':False,'passed':False}
     if diagnostic:r.update(status='M470_H4M6_DIAG_IN_PROGRESS',diag_spec=H4M6_DIAG_SPEC,
-        snapshot_bytes=0,snapshots={},comparisons=[],key_audits_attempted=0,key_audits_recorded=0,
-        actor_calls_attempted=0,actor_calls_recorded=0)
+        snapshot_bytes=0,snapshots={},comparisons=[],leaf_schema=[],treedef_table=[],
+        key_audits_attempted=0,key_audits_recorded=0,actor_calls_attempted=0,actor_calls_recorded=0,
+        template_initializations_attempted=0,template_initializations_recorded=0)
     def persist():
         h4m6_write_bounded(path,r)
     h4m6_write_bounded(path,r,exclusive=True)
@@ -7780,7 +7820,8 @@ def h4m6_technical_audit(report,*,partial=False,diagnostic=False):
     import numpy as np
     req=h4m6_eval_require
     lanes=report['lanes']
-    req(not diagnostic or partial,'DIAG_NOT_TECH_ACCEPTANCE')
+    req(not diagnostic or (partial and len(lanes)<=4 and report['physical_transitions_attempted']<=32
+        and report['reset_lanes_attempted']<=4),'DIAG_NOT_TECH_ACCEPTANCE')
     req(len(lanes)<=8 and report['reset_lanes_recorded']==len(lanes)
         and len(lanes)<=report['reset_lanes_attempted']<=8,'TECH_RESET_LEDGER')
     req(sum(len(l['rows']) for l in lanes)==report['physical_transitions_recorded']
