@@ -523,7 +523,10 @@ def make_patched_source(raw, *, require_pin=True, enable_resume=False, enable_h3
     return s, actual_sha
 
 
-def build_instrumented_ppo(pinned_ppo_module, output:Path, *, enable_resume=False, enable_h3=False, enable_h4=False, enable_h4x=False, enable_h4cc=False, enable_h4m6=False):
+def build_instrumented_ppo(pinned_ppo_module, output:Path, *, enable_resume=False, enable_h3=False, enable_h4=False, enable_h4x=False, enable_h4cc=False, enable_h4m6=False, enable_h4m8=False):
+    if enable_h4m8:
+        # Module-loading builder cannot open a held CAM source.
+        raise RuntimeError('M470_H4M8_BUILDER_EXECUTION_HOLD')
     import inspect
     p=Path(inspect.getfile(pinned_ppo_module.train))
     if enable_h4cc and not enable_h4x:
@@ -1208,3 +1211,193 @@ def make_h4m8_source(raw):
         raise RuntimeError('M470_H4M8_GENERATED_REVERSE')
     compile(s,'<H4M8 held generated>','exec')
     return s,original
+
+
+# H4-M8-2B: integrated held generation, distinct from accepted core generator.
+# This module never imports or executes generated CAM training while HOLD.
+def h4m8_batch_contract(xp, extras, before, after):
+    """Check per-world latch continuity, native qualification and exact ledgers."""
+    x=lambda k:extras['h4m8_'+k]
+    e=x('eligible')==1
+    start=x('start')==1
+    complete=x('completed')==1
+    age=x('tick_age')
+    side=x('tick_side')
+    q=x('qualified')==1
+    close=sum(x('close_'+k) for k in ('terminal','truncation','boundary','command','event'))
+    n=e.shape[0]
+    for z in (before,after):
+        for k in ('active','age','side','positive','consumed'):
+            if z['h4m8_'+k].shape!=(n,) or z['h4m8_'+k].dtype!=xp.int32:
+                raise RuntimeError('M470_H4M8_CARRY_SCHEMA '+k)
+    pending=start | (e & (~complete))
+    next_age=xp.where(e & (~complete),age,0)
+    next_side=xp.where(pending,xp.where(start,x('event_side'),side),0)
+    prev=xp.concatenate((before['h4m8_active'][:,None]>0,pending[:,:-1]),axis=1)
+    prev_age=xp.concatenate((before['h4m8_age'][:,None],next_age[:,:-1]),axis=1)
+    prev_side=xp.concatenate((before['h4m8_side'][:,None],next_side[:,:-1]),axis=1)
+    bad=(extras['h4_bad']!=0)|(extras['h4cc_bad']!=0)
+    bad=bad | (q!=(extras['h4_event_qual']>0)) | (x('event_side')!=extras['h4_event_qual'])
+    bad=bad | (x('event_terminal')!=(q & (extras['h4_source_terminal']>0)).astype(xp.int32))
+    bad=bad | (close<0)|(close>1)|(e.astype(xp.int32)+close!=prev.astype(xp.int32))
+    bad=bad | (start & prev) | (side!=xp.where(prev,prev_side,0))
+    bad=bad | (e & (age!=prev_age+1)) | (complete!=(e & (age==50)))
+    bad=bad | ((x('positive_start')>0)&((~e)|(x('shadow')<=0)))
+    bad=bad | (x('close_terminal')>0)&(extras['h4_source_terminal']==0)
+    for k,last in (('active',pending),('age',next_age),('side',next_side)):
+        bad=bad | (after['h4m8_'+k][:,None]!=last[:,-1:])
+    prev_positive=before['h4m8_positive']>0
+    consumed=before['h4m8_consumed']>0
+    for k in range(e.shape[1]):
+        positive=e[:,k] & (x('shadow')[:,k]>0)
+        expected=positive & (~prev_positive)
+        # A scalar mismatch is enough to reject the entire batch.
+        bad=bad | xp.any((x('positive_start')[:,k]>0)!=expected)
+        consumed=consumed & (extras['h4_boundary'][:,k]==0)
+        bad=bad | xp.any(q[:,k]&consumed)
+        consumed=consumed|q[:,k]
+        prev_positive=pending[:,k]&(~start[:,k])&(prev_positive|positive)
+    bad=bad | xp.any(after['h4m8_positive']!=(prev_positive.astype(xp.int32)))
+    bad=bad | xp.any(after['h4m8_consumed']!=(consumed.astype(xp.int32)))
+    return bad
+
+
+H4M8_UPDATE_BLOCK = '''    # Update normalization params and normalize observations.
+    normalizer_params = running_statistics.update(
+        training_state.normalizer_params,
+        _remove_pixels(data.observation),
+        pmap_axis_name=_PMAP_AXIS_NAME,
+    )
+
+    (optimizer_state, params, _), metrics = jax.lax.scan(
+        functools.partial(
+            sgd_step, data=learning_data, normalizer_params=normalizer_params
+        ),
+        (training_state.optimizer_state, training_state.params, key_sgd),
+        (),
+        length=num_updates_per_batch,
+    )
+'''
+
+H4M8_GATED_UPDATE_BLOCK = '''    # Validity is an input to the conditional, not a post-SGD metric.
+    from m463_instrument_brax import h4m8_batch_contract
+    h8_bad = h8_bad | h4m8_batch_contract(
+        jnp,data.extras['state_extras'],h8_before,state.info)
+    h8_valid = ~jnp.any(h8_bad)
+    for h8_leaf in jax.tree_util.tree_leaves((data,training_state,state,learning_data)):
+      h8_valid = h8_valid & jnp.all(jnp.isfinite(h8_leaf))
+    # Single device is frozen in H4X_CONFIG_SOURCE; all replicas agree anyway.
+    h8_valid = jax.lax.pmin(h8_valid.astype(jnp.int32), _PMAP_AXIS_NAME) == 1
+    def h8_update(_):
+      norm = running_statistics.update(
+          training_state.normalizer_params,
+          _remove_pixels(data.observation),
+          pmap_axis_name=_PMAP_AXIS_NAME,
+      )
+      (opt, par, _), met = jax.lax.scan(
+          functools.partial(sgd_step, data=learning_data, normalizer_params=norm),
+          (training_state.optimizer_state, training_state.params, key_sgd),
+          (), length=num_updates_per_batch,
+      )
+      return opt,par,norm,met
+    def h8_reject(_):
+      # eval_shape traces shape metadata only; this branch performs no update.
+      meta = jax.eval_shape(h8_update,None)[3]
+      met = jax.tree_util.tree_map(lambda x:jnp.zeros(x.shape,x.dtype),meta)
+      return training_state.optimizer_state,training_state.params,training_state.normalizer_params,met
+    optimizer_state,params,normalizer_params,metrics = jax.lax.cond(
+        h8_valid,h8_update,h8_reject,None)
+    # Keep actual consumed cost separate from desired on a rejected batch.
+    h8_actual = jnp.where(h8_valid,h8_actual,jnp.zeros_like(h8_actual))
+'''
+
+H4M8_CHUNK_OLD = '''  def h4_chunk(training_state, state, key):
+    carry, metrics = jax.lax.scan(
+        training_step, (training_state, state, key), (), length=5)
+    return carry, jax.tree_util.tree_map(jnp.mean, metrics)
+'''
+
+H4M8_CHUNK_HELD = '''  def h4_chunk(training_state, state, key):
+    # A failed batch latches STOP for all remaining scan slots. Do not
+    # collect more transitions or invoke optimizer/normalizer in those slots.
+    def h8_scan(carry, unused):
+      original, failed = carry
+      def collect(c):
+        out, met = training_step(c,None)
+        stop = (met['h4m8_batch_rejected']>0) | (met['h4x_finite']!=1)
+        return (out,stop),met
+      def skip(c):
+        meta = jax.eval_shape(training_step,c,None)[1]
+        met = jax.tree_util.tree_map(lambda x:jnp.zeros(x.shape,x.dtype),meta)
+        return (c,jnp.asarray(True)),met
+      return jax.lax.cond(failed,skip,collect,original)
+    (carry,failed), metrics = jax.lax.scan(
+        h8_scan, ((training_state,state,key),jnp.asarray(False)),(),length=5)
+    reduced = jax.tree_util.tree_map(jnp.mean,metrics)
+    for k,v in metrics.items():
+      if k.startswith('h4m8_'):
+        reduced[k] = jnp.sum(v,axis=0)
+    metrics = reduced
+    metrics['h4m8_chunk_failed'] = failed.astype(jnp.float32)
+    return carry, metrics
+'''
+
+def make_h4m8_integrated_source(raw):
+    """Generate, reverse-check and compile only; unconditional train HOLD remains."""
+    base,original=make_h4m8_source(raw)
+    old_step='        env_steps=training_state.env_steps + env_step_per_training_step,\n'
+    new_step='        env_steps=jax.lax.cond(h8_valid,lambda _:training_state.env_steps+env_step_per_training_step,lambda _:training_state.env_steps,None),\n'
+    host_anchor="      h4x_audit_fn('chunk_after', index=idx+1, carry=carry, metrics=metrics)\n"
+    patches=(
+        (H4M8_UPDATE_BLOCK,H4M8_GATED_UPDATE_BLOCK),
+        (old_step,new_step),
+        ('    training_state, state, key = carry\n',
+         "    training_state, state, key = carry\n"
+         "    h8_before = {k:state.info[k] for k in ('h4m8_active','h4m8_age','h4m8_side','h4m8_positive','h4m8_consumed')}\n"),
+        (H4M8_METRICS_SOURCE,H4M8_METRICS_SOURCE+
+         "    coverage['h4m8_batch_collected'] = jnp.asarray(1.,jnp.float32)\n"
+         "    coverage['h4m8_batch_rejected'] = (~h8_valid).astype(jnp.float32)\n"
+         "    coverage['h4m8_batch_committed'] = h8_valid.astype(jnp.float32)\n"
+         "    coverage['h4m8_consumed_learning_sum'] = jnp.where(h8_valid,jnp.sum(learning_data.reward),0.)\n"
+         "    for h8side in (1,2):\n"
+         "      h8prefix='h4m8_side_'+str(h8side)+'_'\n"
+         "      coverage[h8prefix+'pending_before']=jnp.sum(((h8_before['h4m8_active']>0)&(h8_before['h4m8_side']==h8side)).astype(jnp.float32))\n"
+         "      h8positive=(h8['h4m8_tick_side']==h8side)&(h8_desired>0)\n"
+         "      coverage[h8prefix+'positive_rows']=jnp.sum(h8positive.astype(jnp.float32))\n"
+         "      coverage[h8prefix+'delivered_rows']=jnp.sum((h8positive&(h8_actual>0)&h8_valid).astype(jnp.float32))\n"
+         "      coverage[h8prefix+'consumed_desired']=jnp.where(h8_valid & h4m8_treatment,jnp.sum(jnp.where(h8positive,h8_desired,0.)),0.)\n"
+         "      coverage[h8prefix+'pending_after']=jnp.sum(((state.info['h4m8_active']>0)&(state.info['h4m8_side']==h8side)).astype(jnp.float32))\n"
+         "      for h8k in range(1,51):\n"
+         "        coverage[h8prefix+'age_'+str(h8k)]=jnp.sum(((h8['h4m8_tick_side']==h8side)&(h8['h4m8_tick_age']==h8k)).astype(jnp.float32))\n"
+         "      for h8k in range(unroll_length):\n"
+         "        coverage[h8prefix+'offset_'+str(h8k)]=jnp.sum(((h8['h4m8_tick_side'][:,h8k]==h8side)&(h8['h4m8_shadow'][:,h8k]>0)).astype(jnp.float32))\n"),
+        (H4M8_CHUNK_OLD,H4M8_CHUNK_HELD),
+        ('((h8_desired>0)&(h8_actual==0)&h4m8_treatment).astype(jnp.float32)',
+         '((h8_desired>0)&(h8_actual==0)&h4m8_treatment&h8_valid).astype(jnp.float32)'),
+        ('    h4m8_treatment=None,\n','    h4m8_treatment=None,\n    h4m8_abort_fn=None,\n'),
+        (host_anchor,
+         "      if float(metrics['h4m8_chunk_failed']) != 0.:\n"
+         "        if h4m8_abort_fn is None:\n"
+         "          raise RuntimeError('M470_H4M8_ABORT_CALLBACK_MISSING')\n"
+         "        h4m8_abort_fn(idx+1,carry,metrics)\n"
+         "        raise RuntimeError('M470_H4M8_PRE_SGD_OR_FINITE_STOP')\n"+host_anchor),
+    )
+    s=base
+    for old,new in patches:
+        s=h4c_once(s,old,new)
+    back=s
+    for old,new in reversed(patches):
+        back=h4c_once(back,new,old)
+    if back!=base or s.count("raise RuntimeError('M470_H4M8_GENERATED_EXECUTION_HOLD')")!=1:
+        raise RuntimeError('M470_H4M8_INTEGRATION_REVERSE_OR_HOLD')
+    compile(s,'<CAM integrated held>','exec')
+    return s,original
+
+
+def h4m8_build_held(raw):
+    """Common generated source for either arm; no module import/write/dispatch."""
+    s,original=make_h4m8_integrated_source(raw)
+    return s,{'original_brax_sha256':original,
+              'instrumented_sha256':sha256(s.encode('utf8')),
+              'extra_fields':list(EXT_FIELDS+H4_EXT_FIELDS+H4CC_EXT_FIELDS+H4M8_EXT_FIELDS),
+              'runtime_authorized':False,'generated_execution_hold':True}
