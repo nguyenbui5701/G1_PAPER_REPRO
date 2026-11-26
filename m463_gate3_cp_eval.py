@@ -2622,7 +2622,7 @@ def h4_shared_frozen_loader(action_size,paper,networks,running_statistics,serial
 
 
 def run(args):
-    snapshot=bool(getattr(args,'h4m7_snapshot',False))
+    m7_snapshot=bool(getattr(args,'h4m7_snapshot',False))
     m6=bool(getattr(args,'h4m6_phase',None)=='dev')
     if getattr(args,'h4m6_phase',None) is not None:
         h4m6_runtime_gate(args.h4m6_phase)
@@ -2630,8 +2630,8 @@ def run(args):
     if getattr(args,'h4m5_obs_attribution',False):
         raise RuntimeError('M470_H4M5_DEDICATED_DISPATCH_REQUIRED')
     feasibility=bool(getattr(args,'h4m4_feasibility',False))
-    placement=bool(getattr(args,'h4m3_placement',False)) or feasibility or snapshot
-    if snapshot:
+    placement=bool(getattr(args,'h4m3_placement',False)) or feasibility or m7_snapshot
+    if m7_snapshot:
         h4m7_enter_runtime(args)
     elif feasibility:
         h4m4_enter_runtime(args)
@@ -2716,7 +2716,7 @@ def run(args):
             h4m3_require(args.h3_session['brax_source_verification']['path']
                 ==args.h3_session['brax_train_path'],'RUNTIME_BRAX_PATH')
             h4m3_runtime_dependencies(args.h3_session)
-            if snapshot:
+            if m7_snapshot:
                 h4m7_require(args.h3_session['brax_source_verification']
                     ==args.h3_session['provenance']['brax_source_verification'],'BRAX_ARCHIVE_IDENTITY')
             if feasibility:
@@ -2799,7 +2799,7 @@ def run(args):
             h4m4_require(args.h3_session['manifest']==args.h4m4_approved_manifest,
                 'H4M3_MODEL_IDENTITY')
             args.h3_session['kinematics']=h4m4_model_geometry(env,args.h3_session['manifest'],np)
-        if snapshot:
+        if m7_snapshot:
             h4m7_require(args.h3_session['manifest']==args.h4m7_manifest,'MODEL_ARCHIVE')
             h4m7_write_report(args)
         else:
@@ -2810,7 +2810,7 @@ def run(args):
         h4m3_runtime_model_source(env,session)
         args.h4m6_rich['manifest']=h4m3_manifest(env,np)
         h4m6_rich_write(args.h4m6_rich)
-    if snapshot:
+    if m7_snapshot:
         def template_event(kind,event):
             key=kind+'_'+event
             counts=args.h3_session['template_counts']
@@ -2878,7 +2878,7 @@ def run(args):
     for lane_index,seed in enumerate(run_seeds):
       for profile in args.profiles:
         command=jnp.asarray(PROFILES[profile],dtype=jnp.float32)
-        selected=H4M3_LANES[H4M7_INDICES[lane_index] if snapshot else lane_index][0] if placement else None
+        selected=H4M3_LANES[H4M7_INDICES[lane_index] if m7_snapshot else lane_index][0] if placement else None
         for name,policy in ([(selected,policies[selected])] if placement else policies.items()):
             # JIT step/diagnostics; a single MJX state (no vectorized envs) is active at a time.
             def one_step(state, effective_command=None, *, placement_capture=False,
@@ -3166,7 +3166,7 @@ def run(args):
                 return next_state,diag
             step_fn=(jax.jit(one_step,static_argnames=('placement_capture',))
                      if placement or m6 else jax.jit(one_step))
-            if snapshot:
+            if m7_snapshot:
                 h4m7_native_lane(args,args.h4m7_lanes[lane_index],env,step_fn,jax,jnp,np)
                 continue
             if feasibility:
@@ -8874,7 +8874,7 @@ H4M7_DATA_FIELDS=tuple(('qM qLD qLDiagInv efc_J efc_D efc_aref efc_force '
     'efc_frictionloss efc_type efc_pos efc_margin qacc qacc_smooth qacc_warmstart '
     'qfrc_smooth qfrc_constraint qfrc_actuator qfrc_bias qfrc_passive qfrc_applied '
     'xfrc_applied actuator_moment cdof qpos qvel time ctrl actuator_length '
-    'actuator_velocity actuator_force xpos xmat xipos ximat xanchor xaxis cvel subtree_com').split())
+    'actuator_velocity actuator_force xpos xmat xipos ximat xanchor xaxis cvel subtree_com geom_xpos geom_xmat').split())
 H4M7_CONTACT_FIELDS=tuple(('dist pos frame includemargin friction solref solreffriction '
     'solimp dim geom1 geom2 geom efc_address').split())
 H4M7_MODEL_FIELDS=tuple(('dof_parentid dof_armature dof_jntid jnt_qposadr jnt_dofadr '
@@ -9002,7 +9002,7 @@ def h4m7_archive_inputs(root):
 def h4m7_expected_shapes(meta):
     nv,nu,nb,n,m=map(meta.__getitem__,('nv','nu','nbody','nefc','ncon'))
     h4m7_require((nv,nu,nb)==(35,29,31) and type(n) is int and type(m) is int
-        and 0<n<=4096 and 0<m<=1024
+        and 0<n<=4096 and 0<m<=1024 and type(meta['ngeom']) is int and 0<meta['ngeom']<=4096
         and all(type(meta[k]) is int and meta[k]>=0 for k in ('ne','nf','nl'))
         and meta['ne']+meta['nf']+meta['nl']<=n,'DIMENSIONS')
     h4m7_require(meta['storage'] in ('dense','sparse') and meta['cone']=='pyramidal'
@@ -9016,7 +9016,8 @@ def h4m7_expected_shapes(meta):
     s.update(qM=qshape,qLD=qshape,qLDiagInv=(nv,) if meta['storage']=='sparse' else (0,),
         efc_J=(n,nv),qpos=(36,),time=(),xfrc_applied=(nb,6),actuator_moment=(nu,nv),
         cdof=(nv,6),xpos=(nb,3),xmat=(nb,3,3),xipos=(nb,3),ximat=(nb,3,3),
-        xanchor=(30,3),xaxis=(30,3),cvel=(nb,6),subtree_com=(nb,3))
+        xanchor=(30,3),xaxis=(30,3),cvel=(nb,6),subtree_com=(nb,3),
+        geom_xpos=(meta['ngeom'],3),geom_xmat=(meta['ngeom'],3,3))
     cs={'dist':(m,),'pos':(m,3),'frame':(m,3,3),'includemargin':(m,),
         'friction':(m,5),'solref':(m,2),'solreffriction':(m,2),'solimp':(m,5),
         'dim':(m,),'geom1':(m,),'geom2':(m,),'geom':(m,2),'efc_address':(m,)}
@@ -9151,7 +9152,7 @@ def h4m7_model_meta(model,data,np):
         'iterations':int(model.opt.iterations),'ls_iterations':int(model.opt.ls_iterations),
         'tolerance':float(model.opt.tolerance),'timestep':float(model.opt.timestep),
         'epoch':dict(H4M7_EPOCH)}
-    h4m7_require(meta['iterations']>0 and meta['ls_iterations']>0
+    h4m7_require(meta['iterations']==3 and meta['ls_iterations']==5
         and math.isfinite(meta['tolerance']) and meta['tolerance']>=0
         and abs(meta['timestep']-.002)<1e-9 and not(meta['disableflags']&4),
         'MODEL_OPTIONS')
@@ -9219,13 +9220,17 @@ def h4m7_validate_rows(values,meta,np):
         and np.all(values['contact.friction']>=0)
         and np.all((values['contact.geom']>=-1)&(values['contact.geom']<meta['ngeom'])),
         'CONSTRAINT_SCHEMA')
+    ty=values['efc_type'];ne,nf=meta['ne'],meta['nf']
+    h4m7_require(np.all(ty[:ne]==0) and np.isin(ty[ne:ne+nf],[1,2]).all()
+        and np.isin(ty[ne+nf:start],[3,4]).all(),'ROW_TYPES')
     used=set()
     for dim,adr in zip(values['contact.dim'],values['contact.efc_address']):
         dim,adr=int(dim),int(adr)
         if adr==-1:continue
         width=1 if dim==1 else 2*(dim-1)
         ix=set(range(adr,adr+width))
-        h4m7_require(start<=adr and adr+width<=n and not(used&ix),'CONTACT_ROW_MAP')
+        h4m7_require(start<=adr and adr+width<=n and not(used&ix)
+            and np.all(ty[adr:adr+width]==(5 if dim==1 else 6)),'CONTACT_ROW_MAP')
         used.update(ix)
     h4m7_require(used==set(range(start,n)),'CONTACT_ROW_COVERAGE')
     h4m7_require(J.shape==(n,35) and np.array_equal(values['qacc'],values['qacc_warmstart']),
@@ -9260,10 +9265,16 @@ def h4m7_ledger_check(report,complete=False):
     return dict(d)
 
 
-def h4m7_read_report(report,raw,lanes,expected_provenance,np):
+def h4m7_read_report(report,raw,lanes,expected_provenance,manifest,np):
     h4m7_require(type(report) is dict and report['status']=='M470_H4M7_SNAPSHOT_COMPLETE'
         and report['passed'] is False and report['plan']==h4m7_plan()
         and report['provenance']==expected_provenance
+        and report['authorization']==expected_provenance['authorization']
+        and report['manifest']==manifest
+        and report['brax_source_verification']==expected_provenance['brax_source_verification']
+        and report['template_counts']=={'actor_attempted':1,'actor_recorded':1,
+                                        'critic_attempted':1,'critic_recorded':1}
+        and report['jax_version']=='0.4.35'
         and report['training_performed'] is False and report['efficacy_evaluated'] is False
         and report['optimizer_updates']==report['checkpoint_saves']==0
         and type(raw) is bytes and len(raw)==report['counts']['raw_bytes']
@@ -9271,7 +9282,10 @@ def h4m7_read_report(report,raw,lanes,expected_provenance,np):
         and hashlib.sha256(raw).hexdigest()==report['raw_sha256'],'REPORT_HEADER')
     h4m7_ledger_check(report,complete=True)
     h4m7_require(len(lanes)==4,'REPORT_LANES')
-    offset=0;numeric=[]
+    g=report['gpu'];gi=report['gpu_initial']
+    h4m7_require(g['total_mib']==gi['total_mib']==12288 and 0<g['peak_used_mib']<.95*12288
+        and 0<=gi['used_mib']<.95*12288 and g['samples']>0 and not g['sampler_errors'],'REPORT_GPU')
+    offset=0;numeric=[];reference_model=None
     for lane,archive in zip(report['lanes'],lanes):
         h4m7_require(lane['index']==archive['index'] and lane['key']==list(archive['key'])
             and lane['rows']==archive['rows'] and lane['kicks']==archive['kicks']
@@ -9280,7 +9294,16 @@ def h4m7_read_report(report,raw,lanes,expected_provenance,np):
             'REPORT_ARCHIVE')
         meta=lane['meta'];shapes=h4m7_expected_shapes(meta)
         model=h4m7_read_model(lane['model'],meta,np)
-        h4m7_require(meta['epoch']==H4M7_EPOCH,'REPORT_EPOCH')
+        h4m7_require(meta['epoch']==H4M7_EPOCH and meta['disableflags']==manifest['disableflags']
+            and manifest['pyramidal'] is True and meta['iterations']==3 and meta['ls_iterations']==5
+            and abs(meta['timestep']-.002)<1e-9,'REPORT_EPOCH_MODEL')
+        same={'meta':meta,'model':lane['model']}
+        h4m7_require(reference_model is None or same==reference_model,'LANE_MODEL_IDENTITY')
+        reference_model=same
+        for k,a in model.items():
+            if k in manifest['fields']:
+                h4m7_require(np.array_equal(a,np.asarray(manifest['fields'][k],dtype=a.dtype)),
+                    'MODEL_LEGACY_'+k)
         for s in lane['snapshots']:
             h4m7_require(set(s)=={'tick','offset','size','sha256','fields'}
                 and type(s['offset']) is int and s['offset']==offset
@@ -9297,6 +9320,23 @@ def h4m7_read_report(report,raw,lanes,expected_provenance,np):
                 ('qfrc_actuator','qfrc_actuator')):
                 h4m7_require(np.array_equal(values[k],np.asarray(packed[pk],dtype=values[k].dtype)),
                     'SNAPSHOT_LEGACY_'+k)
+            rootmask=np.asarray(manifest['fields']['body_rootid'])==manifest['root_body_id']
+            for k,pk in (('xipos','body_xipos'),('ximat','body_ximat'),('cvel','body_cvel')):
+                h4m7_require(np.array_equal(values[k][rootmask],np.asarray(packed['com'][pk],dtype=values[k].dtype)),
+                    'SNAPSHOT_BODY_'+k)
+            for side,gi in zip(('lf','rf'),manifest['foot_geom_ids']):
+                for k,pk in (('geom_xpos','_geom_pos'),('geom_xmat','_geom_mat')):
+                    h4m7_require(np.array_equal(values[k][gi],np.asarray(packed[side+pk],dtype=values[k].dtype)),
+                        'SNAPSHOT_FOOT_'+side+k)
+            for slot in packed['contact']['slots']:
+                i=slot['slot']
+                for k,pk in (('geom','geom'),('pos','pos'),('frame','frame'),('dist','dist'),
+                             ('includemargin','margin'),('dim','dim'),('efc_address','address'),('friction','friction')):
+                    a=values['contact.'+k]
+                    h4m7_require(np.array_equal(a[i],np.asarray(slot[pk],dtype=a.dtype)),'SNAPSHOT_CONTACT_'+k)
+                wrench=h4m3_contact_force(values['efc_force'],slot['address'],slot['dim'],
+                    values['contact.friction'][i],True,np)
+                h4m7_require(np.array_equal(wrench,np.asarray(slot['wrench_contact_frame'])),'SNAPSHOT_WRENCH')
             numeric.append({'lane':lane['index'],'tick':s['tick'],
                 'screen':h4m7_numeric_screen(values,meta,model['dof_parentid'],np)})
             offset+=s['size']
@@ -9401,6 +9441,8 @@ def h4m7_raw_append(path,block,offset):
     path=Path(path)
     h4m7_require(path.absolute()==path.resolve() and not path.is_symlink()
         and type(block) is bytes and 0<len(block)<=512*1024,'RAW_PATH_BLOCK')
+    h4m7_require(not path.exists() or (path.is_file() and path.stat().st_size==offset
+        and offset<=12*1024**2),'RAW_PRIOR_SIZE')
     before=path.read_bytes() if path.is_file() else b''
     h4m7_require(len(before)==offset and len(before)+len(block)<=12*1024**2,'RAW_OFFSET_CAP')
     tmp=path.with_suffix('.bin.tmp')
@@ -9507,7 +9549,7 @@ def h4m7_child(args,auth,provenance):
         report['raw_sha256']=hashlib.sha256(raw).hexdigest()
         report['status']='M470_H4M7_SNAPSHOT_COMPLETE'
         import numpy as np
-        report['verification']=h4m7_read_report(report,raw,args.h4m7_lanes,provenance,np)
+        report['verification']=h4m7_read_report(report,raw,args.h4m7_lanes,provenance,args.h4m7_manifest,np)
         h4m7_write_report(args)
         h4m6_write_bounded(path.parent/'attempt_result.json',{'authorization':auth,'status':'COMPLETE'},exclusive=True)
     except BaseException as exc:
@@ -9551,7 +9593,7 @@ def h4m7_dispatch(args):
     auth=h4m7_authorization(root)
     h4m7_require(args.mode=='run' and args.output.absolute()==args.output.resolve()==path
         and os.environ.get('JAX_PLATFORMS')=='cuda','DISPATCH_FLAGS')
-    provenance,lanes,_=h4m7_preflight(root,auth)
+    provenance,lanes,manifest=h4m7_preflight(root,auth)
     if args.h4m7_child:return h4m7_child(args,auth,provenance)
     h4m6_reserve_tech(path,auth)
     h4m6_write_bounded(path.parent/'collector.started.json',{'authorization':auth,'pid':os.getpid()},exclusive=True)
@@ -9588,19 +9630,94 @@ def h4m7_dispatch(args):
             and rawpath.is_file() and not rawpath.is_symlink() and 0<rawpath.stat().st_size<=12*1024**2,'ARTIFACT_CAP')
         import numpy as np
         report=json.loads(path.read_bytes())
-        h4m7_require(h4m7_read_report(report,rawpath.read_bytes(),lanes,provenance,np)==report['verification'],
+        h4m7_require(h4m7_read_report(report,rawpath.read_bytes(),lanes,provenance,manifest,np)==report['verification'],
             'PARENT_REPLAY')
         decision='SNAPSHOT_COMPLETE'
     except BaseException as exc:
         error=(type(exc).__name__+': '+str(exc))[:4096];kill()
         if proc is not None:rc=proc.wait()
+    partial=None;partial_error=None
+    try:
+        if path.is_file() and not path.is_symlink() and 0<path.stat().st_size<=16*1024**2:
+            p=json.loads(path.read_bytes())
+            h4m7_require(p['authorization']==auth and p['provenance']==provenance,'PARTIAL_PROVENANCE')
+            partial=h4m7_ledger_check(p)
+    except BaseException as exc:
+        partial_error=(type(exc).__name__+': '+str(exc))[:1024]
     status={'authorization':auth,'decision':decision,'producer_rc':rc,'overflow':overflow,
-        'total_bytes':total,'stored_bytes':stored,'error':error,'post_immutability':post}
+        'total_bytes':total,'stored_bytes':stored,'error':error,'post_immutability':post,
+        'verified_partial_counts':partial,'partial_error':partial_error}
     h4m6_write_bounded(path.parent/'collector.json',status,exclusive=True)
     print('BOUNDED_LOG_STATUS',json.dumps(status,sort_keys=True),flush=True)
     for p in sorted(path.parent.iterdir()):
         if p.is_file() and not p.is_symlink():print('ARTIFACT_SHA256',sha256(p),p,flush=True)
     h4m7_require(decision=='SNAPSHOT_COMPLETE','COLLECTOR_STOP')
+
+
+
+def h4m7_static_selftest():
+    import copy
+    import numpy as np
+    h4m3_no_runtime_imports()
+    p=h4m7_plan();checks=[]
+    def good(name,fn):
+        fn();checks.append(name)
+    def bad(name,fn):
+        try:fn()
+        except (RuntimeError,ValueError,KeyError,TypeError):
+            checks.append(name);return
+        raise RuntimeError('M470_H4M7_STATIC_MISSING_REJECTION_'+name)
+    meta={'nv':35,'nu':29,'nbody':31,'nefc':6,'ncon':1,'ngeom':2,'ne':0,'nf':1,'nl':1,
+          'storage':'dense','cone':'pyramidal','eulerdamp_disabled':True,'nM':35}
+    shapes=h4m7_expected_shapes(meta)
+    integers={'efc_type','contact.dim','contact.geom1','contact.geom2','contact.geom','contact.efc_address'}
+    a={k:np.zeros(v,np.int32 if k in integers else np.float32) for k,v in shapes.items()}
+    a['qM']=np.eye(35,dtype=np.float32);a['qLD']=a['qM'].copy()
+    a['efc_type'][:]=[1,3,6,6,6,6];a['efc_D'][:]=1
+    a['efc_J'][0,1]=1;a['efc_J'][1,2]=1;a['efc_J'][2:,0]=1
+    a['efc_aref'][1]=-1;a['efc_aref'][2:]=2;a['efc_frictionloss'][0]=.125
+    a['qacc'][0]=1;a['qacc_warmstart']=a['qacc'].copy()
+    a['qacc_smooth'][0]=-3;a['qfrc_smooth'][0]=-3
+    a['efc_force'][2:]=1;a['qfrc_constraint'][0]=4
+    a['contact.dim'][0]=3;a['contact.efc_address'][0]=2
+    a['contact.geom'][0]=[0,1];a['contact.geom2'][0]=1
+    a['qpos'][0]=-0.0
+    desc,raw=h4m7_encode(a,shapes,np,p['raw_snapshot_cap'])
+    decoded=h4m7_decode(desc,raw,shapes,np,p['raw_snapshot_cap'])
+    good('exact_raw_signed_zero',lambda:h4m7_require(np.signbit(decoded['qpos'][0]),'SIGNED_ZERO'))
+    good('row_map',lambda:h4m7_validate_rows(decoded,meta,np))
+    good('numeric_stationary',lambda:h4m7_require(h4m7_numeric_screen(decoded,meta,np.full(35,-1),np)['stationary_screen'],'NUMERIC'))
+    bad('raw_corruption',lambda:h4m7_decode(desc,raw[:-1]+bytes([raw[-1]^1]),shapes,np,p['raw_snapshot_cap']))
+    bad('descriptor_order',lambda:h4m7_decode(list(reversed(desc)),raw,shapes,np,p['raw_snapshot_cap']))
+    bad('trailing_bytes',lambda:h4m7_decode(desc,raw+b'0',shapes,np,p['raw_snapshot_cap']))
+    bad('cap',lambda:h4m7_encode(a,shapes,np,1))
+    bad('float64',lambda:h4m7_encode({**a,'qpos':a['qpos'].astype(np.float64)},shapes,np,p['raw_snapshot_cap']))
+    bad('shape',lambda:h4m7_encode({**a,'qpos':a['qpos'][:-1]},shapes,np,p['raw_snapshot_cap']))
+    bad('missing',lambda:h4m7_encode({k:v for k,v in a.items() if k!='qM'},shapes,np,p['raw_snapshot_cap']))
+    bad('nonfinite',lambda:h4m7_encode({**a,'time':np.asarray(np.nan,dtype=np.float32)},shapes,np,p['raw_snapshot_cap']))
+    bad('row_address',lambda:h4m7_validate_rows({**decoded,'contact.efc_address':np.array([1])},meta,np))
+    bad('row_type',lambda:h4m7_validate_rows({**decoded,'efc_type':np.zeros(6,dtype=np.int32)},meta,np))
+    bad('warmstart',lambda:h4m7_validate_rows({**decoded,'qacc_warmstart':np.zeros(35)},meta,np))
+    good('sparse_diagonal',lambda:h4m7_require(np.array_equal(
+        h4m7_dense_mass(np.ones(35),{**meta,'storage':'sparse'},np.full(35,-1),np),np.eye(35)),'SPARSE'))
+    bad('sparse_parent',lambda:h4m7_dense_mass(np.ones(35),{**meta,'storage':'sparse'},np.arange(35),np))
+    source,spec,external,static=('a'*64,'b'*64,'c'*64,'d'*64)
+    line1=' '.join(['H4M7_SNAPSHOT_STATIC_APPROVED:',source,static,external,'m463_runs/m470_h4_m7_4a_mock.log'])
+    line2=' '.join(['H4M7_SNAPSHOT_ACTIVE_GO:','H4-M7-4-SNAPSHOT-V1',source,static,spec,external,
+        *H4M7_ARCHIVES,*[H4M3_POLICIES[k] for k in ('C','REF','CCRC')],str(H4M7_OUTPUT)])
+    rules=line1+'\n'+line2
+    good('auth_mock',lambda:h4m7_require(h4m7_parse_authorization(rules,source,spec,external)['static_sha256']==static,'AUTH'))
+    bad('hold',lambda:h4m7_parse_authorization(line1,source,spec,external))
+    bad('wrong_spec',lambda:h4m7_parse_authorization(rules,source,'e'*64,external))
+    bad('duplicate_go',lambda:h4m7_parse_authorization(rules+'\n'+line2,source,spec,external))
+    bad('concurrent_go',lambda:h4m7_parse_authorization(rules+'\nH4M4_ACTIVE_GO: fake',source,spec,external))
+    report={'counts':h4m7_initial_ledger(),'lanes':[]}
+    good('initial_ledger',lambda:h4m7_ledger_check(report))
+    bad('incomplete_ledger',lambda:h4m7_ledger_check(report,complete=True))
+    corrupt=copy.deepcopy(report);corrupt['counts']['attempted']=1361
+    bad('ledger_overflow',lambda:h4m7_ledger_check(corrupt))
+    h4m3_no_runtime_imports()
+    return {'checks':checks,'count':len(checks),'native_executed':False}
 
 
 def h4m7_static_archive(root):
@@ -9609,7 +9726,8 @@ def h4m7_static_archive(root):
     h4m7_require(len(lanes)==4 and sum(len(x['rows']) for x in lanes)==1360
         and sum(len(x['rich']) for x in lanes)==184,'STATIC_ARCHIVE_COUNTS')
     h4m3_no_runtime_imports()
-    return {'rows':1360,'rich':184,'target_snapshots':24,'native_executed':False}
+    return {'rows':1360,'rich':184,'target_snapshots':24,'native_executed':False,
+        'mock':h4m7_static_selftest()}
 
 
 def main():
