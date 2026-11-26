@@ -2622,8 +2622,7 @@ def h4_shared_frozen_loader(action_size,paper,networks,running_statistics,serial
 
 
 def run(args):
-    if getattr(args,'h4m7_snapshot',False):
-        h4m7_authorization()
+    snapshot=bool(getattr(args,'h4m7_snapshot',False))
     m6=bool(getattr(args,'h4m6_phase',None)=='dev')
     if getattr(args,'h4m6_phase',None) is not None:
         h4m6_runtime_gate(args.h4m6_phase)
@@ -2631,8 +2630,10 @@ def run(args):
     if getattr(args,'h4m5_obs_attribution',False):
         raise RuntimeError('M470_H4M5_DEDICATED_DISPATCH_REQUIRED')
     feasibility=bool(getattr(args,'h4m4_feasibility',False))
-    placement=bool(getattr(args,'h4m3_placement',False)) or feasibility
-    if feasibility:
+    placement=bool(getattr(args,'h4m3_placement',False)) or feasibility or snapshot
+    if snapshot:
+        h4m7_enter_runtime(args)
+    elif feasibility:
         h4m4_enter_runtime(args)
     elif placement:
         h4m3_enter_runtime(args)
@@ -2715,6 +2716,9 @@ def run(args):
             h4m3_require(args.h3_session['brax_source_verification']['path']
                 ==args.h3_session['brax_train_path'],'RUNTIME_BRAX_PATH')
             h4m3_runtime_dependencies(args.h3_session)
+            if snapshot:
+                h4m7_require(args.h3_session['brax_source_verification']
+                    ==args.h3_session['provenance']['brax_source_verification'],'BRAX_ARCHIVE_IDENTITY')
             if feasibility:
                 h4m4_require(args.h3_session['brax_source_verification']
                     ==args.h4m4_approved_brax,'BRAX_ARCHIVE_IDENTITY')
@@ -2795,15 +2799,28 @@ def run(args):
             h4m4_require(args.h3_session['manifest']==args.h4m4_approved_manifest,
                 'H4M3_MODEL_IDENTITY')
             args.h3_session['kinematics']=h4m4_model_geometry(env,args.h3_session['manifest'],np)
-        h4m3_write(args.output,args.h3_session)
+        if snapshot:
+            h4m7_require(args.h3_session['manifest']==args.h4m7_manifest,'MODEL_ARCHIVE')
+            h4m7_write_report(args)
+        else:
+            h4m3_write(args.output,args.h3_session)
     if m6:
         session=args.h3_session
         session['mjx_sources']=args.h4m6_external['common']['historical']['mjx']
         h4m3_runtime_model_source(env,session)
         args.h4m6_rich['manifest']=h4m3_manifest(env,np)
         h4m6_rich_write(args.h4m6_rich)
-    load_policy=h4_shared_frozen_loader(env.action_size,paper,networks,running_statistics,
-        serialization,jax,jnp,np)
+    if snapshot:
+        def template_event(kind,event):
+            key=kind+'_'+event
+            counts=args.h3_session['template_counts']
+            h4m7_require(key in counts and counts[key]==0,'TEMPLATE_CAP')
+            counts[key]+=1;h4m7_write_report(args)
+        load_policy=h4_shared_frozen_loader(env.action_size,paper,networks,running_statistics,
+            serialization,jax,jnp,np,template_event=template_event)
+    else:
+        load_policy=h4_shared_frozen_loader(env.action_size,paper,networks,running_statistics,
+            serialization,jax,jnp,np)
     if m6:
         from m463_push_ppo_train import H4M6_PATHS
         policies={label:load_policy(H4_EVAL_ROOT/H4M6_PATHS[arm]/H4_EVAL_POLICY_FILE)
@@ -2861,7 +2878,7 @@ def run(args):
     for lane_index,seed in enumerate(run_seeds):
       for profile in args.profiles:
         command=jnp.asarray(PROFILES[profile],dtype=jnp.float32)
-        selected=H4M3_LANES[lane_index][0] if placement else None
+        selected=H4M3_LANES[H4M7_INDICES[lane_index] if snapshot else lane_index][0] if placement else None
         for name,policy in ([(selected,policies[selected])] if placement else policies.items()):
             # JIT step/diagnostics; a single MJX state (no vectorized envs) is active at a time.
             def one_step(state, effective_command=None, *, placement_capture=False,
@@ -3149,6 +3166,9 @@ def run(args):
                 return next_state,diag
             step_fn=(jax.jit(one_step,static_argnames=('placement_capture',))
                      if placement or m6 else jax.jit(one_step))
+            if snapshot:
+                h4m7_native_lane(args,args.h4m7_lanes[lane_index],env,step_fn,jax,jnp,np)
+                continue
             if feasibility:
                 session=args.h3_session
                 h4m4_native_lane(args.h4m4_lanes[lane_index],session,env,step_fn,jax,jnp,np,
@@ -8887,9 +8907,61 @@ def h4m7_plan():
         'efficacy_evaluated':False,'execution_authorized':False}
 
 
-def h4m7_authorization():
-    # Hard HOLD until separate integration/static review and Owner native GO.
-    raise RuntimeError('M470_H4M7_EXECUTION_HOLD')
+def h4m7_parse_authorization(rules,source,spec,external):
+    approved=[l.split() for l in rules.splitlines() if l.startswith('H4M7_SNAPSHOT_STATIC_APPROVED:')]
+    active=[l.split() for l in rules.splitlines() if l.startswith('H4M7_SNAPSHOT_ACTIVE_GO:')]
+    h4m7_require(len(approved)==len(active)==1,'EXECUTION_HOLD')
+    import re
+    h4m7_require(not any(re.match(r'^[A-Z0-9_]+_GO:',l)
+        and not l.startswith('H4M7_SNAPSHOT_ACTIVE_GO:') for l in rules.splitlines()),
+        'CONCURRENT_GO')
+    a,b=approved[0],active[0]
+    h4m7_require(len(a)==5 and a[1]==source and a[3]==external
+        and len(a[2])==64 and all(x in '0123456789abcdef' for x in a[2]),'STATIC_PIN')
+    p=Path(a[4])
+    h4m7_require(p.parent==Path('m463_runs') and p.name.startswith('m470_h4_m7_4a_')
+        and p.suffix=='.log','STATIC_PATH')
+    expected=['H4M7_SNAPSHOT_ACTIVE_GO:','H4-M7-4-SNAPSHOT-V1',source,a[2],spec,external,
+        *H4M7_ARCHIVES,*[H4M3_POLICIES[k] for k in ('C','REF','CCRC')],str(H4M7_OUTPUT)]
+    h4m7_require(b==expected,'AUTH_PIN')
+    return {'id':b[1],'source_sha256':source,'static_sha256':a[2],'static_path':a[4],
+        'spec_sha256':spec,'external_sha256':external,'archives':list(H4M7_ARCHIVES),
+        'policy_sha256':dict(H4M3_POLICIES),'output':str(H4M7_OUTPUT)}
+
+
+def h4m7_external_sources(root):
+    from importlib.metadata import distribution
+    out=h4m4_external_sources(root)
+    dist=distribution('mujoco-mjx')
+    extra={'constraint':'e778bcd8e5076aa3a9e49ae9b8f97819d74ea884',
+        'solver':'6d3d4f212223afeca8a0020f9e9c9c29855cd19b',
+        'io':'7a000a159eba0e8a2809da0b88b10a85773b376a'}
+    for name,blob in extra.items():
+        p=Path(dist.locate_file('mujoco/mjx/_src/'+name+'.py')).resolve(strict=True)
+        h4m7_require(p.is_file() and h4m3_git_blob(p)==blob,'MJX_EXTRA_'+name)
+        out['mjx']['mujoco.mjx._src.'+name]={'path':str(p),'blob':blob,'sha256':sha256(p)}
+    h4m7_require(distribution('jax').version==distribution('jaxlib').version=='0.4.35','JAX_VERSION')
+    return out
+
+
+def h4m7_authorization(root=None):
+    root=Path(__file__).resolve().parent if root is None else Path(root)
+    rules=(root/'G1_RESEARCH_RULES.md').read_text('utf8')
+    # No source/dependency access or runtime import on the default HOLD path.
+    h4m7_require(any(l.startswith('H4M7_SNAPSHOT_ACTIVE_GO:') for l in rules.splitlines())
+        and any(l.startswith('H4M7_SNAPSHOT_STATIC_APPROVED:') for l in rules.splitlines()),'EXECUTION_HOLD')
+    auth=h4m7_parse_authorization(rules,h4m3_digest(h4m3_source_map(root)),
+        h4m3_digest(h4m7_plan()),h4m3_digest(h4m7_external_sources(root)))
+    p=root/auth['static_path']
+    h4m7_require(p.is_file() and not p.is_symlink() and p.resolve()==p.absolute()
+        and 0<p.stat().st_size<=16*1024**2 and sha256(p)==auth['static_sha256'],'STATIC_LOG')
+    lines=p.read_text('utf8').splitlines()
+    h4m7_require('H4_M7_4A_FULL_STATIC_PASS '+auth['source_sha256'] in lines
+        and 'H4_M7_4A_SPEC_SHA256 '+auth['spec_sha256'] in lines
+        and 'H4_M7_4A_EXTERNAL_SHA256 '+auth['external_sha256'] in lines,'STATIC_ACCEPTANCE')
+    return auth
+
+
 
 
 def h4m7_archive_inputs(root):
@@ -9273,6 +9345,264 @@ def h4m7_replay_lane(archive,report,reset,step,kick,model_snapshot,save_snapshot
     return lane
 
 
+
+def h4m7_preflight(root,auth):
+    # Historical pins remain historical; current project source map is separate.
+    root=Path(root);h4m3_no_runtime_imports()
+    lanes,manifest=h4m7_archive_inputs(root)
+    old=h4m3_pinned_json(root/H4M4_OUTPUT,H4M7_ARCHIVES[1])
+    source=h4m3_source_map(root)
+    external=h4m7_external_sources(root)
+    h4m7_require(h4m3_digest(source)==auth['source_sha256']
+        and h4m3_digest(external)==auth['external_sha256'],'CURRENT_SOURCE_EXTERNAL')
+    base=h4m4_external_sources(root)
+    h4m7_require(base==old['external_sources'],'ARCHIVE_EXTERNAL')
+    pins={}
+    for key,p in h4m3_policy_paths(root).items():
+        h4m7_require(p.is_file() and not p.is_symlink() and p.resolve()==p.absolute()
+            and sha256(p)==H4M3_POLICIES[key],'POLICY_'+key)
+        pins[key]=H4M3_POLICIES[key]
+    reward=root/'m463_runs/m470_h4_m2_ccrc_v1/report.json'
+    h4m7_require(reward.is_file() and not reward.is_symlink() and reward.resolve()==reward.absolute()
+        and sha256(reward)==old['input_sha256']['ccrc/report.json'],'REWARD_REPORT')
+    # Native bootstrap inputs must match historical bytes; changed unrelated
+    # training/environment helpers are retained under current source-map pins.
+    for name in ('train.py','paper_config.py','m462_ppo_warmstart_run.py',
+                 'm462_typed_orbax_stage.py','paper_config_preflight.json'):
+        h4m7_require(source[name]==old['input_sha256']['source/'+name],'BOOTSTRAP_'+name)
+    train=Path(old['brax_source_verification']['path'])
+    h4m7_require(train.is_file() and sha256(train)==TRAIN_SHA,'BRAX_PIN')
+    dep={}
+    for k,v in old['input_sha256'].items():
+        if not k.startswith('dependency/'):continue
+        name=k.split('/',1)[1]
+        module='brax.envs.wrappers.training' if name=='episode_wrapper' else name
+        p=train.resolve().parents[3].joinpath(*module.split('.')[1:]).with_suffix('.py')
+        h4m7_require(p.is_file() and not p.is_symlink() and sha256(p)==v,'DEPENDENCY_'+name)
+        dep[k]=v
+    for blob,key in (('71711dec69336bc67f89530396a8199480cacbed','approved_h4m3_evaluator'),
+                     ('4f8b176a402eced1125c9986b3bec3546bd515a9','diagnostic_evaluator')):
+        raw=subprocess.check_output(['git','-C',str(root),'cat-file','blob',blob])
+        h4m7_require(hashlib.sha256(raw).hexdigest()==old['input_sha256'][key],'HISTORICAL_SOURCE_'+key)
+    h4m3_no_runtime_imports()
+    provenance={'authorization':auth,'current_source':source,'external':external,
+        'historical_input_sha256':old['input_sha256'],'policy_sha256':pins,
+        'reward_sha256':sha256(reward),'archives':list(H4M7_ARCHIVES),
+        'brax_source_verification':old['brax_source_verification']}
+    return provenance,lanes,manifest
+
+
+def h4m7_write_report(args):
+    h4m7_ledger_check(args.h3_session)
+    h4m6_write_bounded(args.output,args.h3_session,cap=h4m7_plan()['report_cap'])
+
+
+def h4m7_raw_append(path,block,offset):
+    path=Path(path)
+    h4m7_require(path.absolute()==path.resolve() and not path.is_symlink()
+        and type(block) is bytes and 0<len(block)<=512*1024,'RAW_PATH_BLOCK')
+    before=path.read_bytes() if path.is_file() else b''
+    h4m7_require(len(before)==offset and len(before)+len(block)<=12*1024**2,'RAW_OFFSET_CAP')
+    tmp=path.with_suffix('.bin.tmp')
+    with tmp.open('xb') as f:
+        f.write(before);f.write(block);f.flush();os.fsync(f.fileno())
+    os.replace(tmp,path)
+
+
+def h4m7_native_lane(args,archive,env,step_fn,jax,jnp,np):
+    report=args.h3_session
+    def persist():
+        report['gpu']=h3_gpu_check(args.h3_monitor)
+        h4m7_write_report(args)
+    def reset(seed):
+        st=env.reset(jax.random.PRNGKey(seed))
+        h4m7_require(st.obs['state'].shape==(103,) and
+            st.obs['privileged_state'].shape==(216,) and not bool(jax.device_get(st.done)),'RESET')
+        return st
+    def model_snapshot(st):
+        meta=h4m7_model_meta(env.mjx_model,st.data,np)
+        shapes=h4m7_expected_shapes(meta)
+        fields={k:getattr(st.data,k) for k in H4M7_DATA_FIELDS}
+        fields.update({'contact.'+k:getattr(st.data.contact,k) for k in H4M7_CONTACT_FIELDS})
+        h4m7_require(all(tuple(v.shape)==shapes[k] for k,v in fields.items())
+            and sum(math.prod(v.shape)*np.dtype(v.dtype).itemsize for v in fields.values())<=512*1024,
+            'RESET_CAPTURE_SCHEMA')
+        return meta,h4m7_model_bytes(env.mjx_model,meta,np)
+    def step(st,capture):
+        res=step_fn(st,placement_capture=capture)
+        row=h4m4_row(jax.device_get(res[1]),np)
+        packed=None
+        if capture:
+            p=h4m3_pack_capture(jax.device_get(res[2]),row,report['manifest'],np)
+            packed=json.loads(json.dumps(p,allow_nan=False,default=lambda a:np.asarray(a).tolist()))
+        return res[0],row,packed
+    def kick(st,d,m,t):
+        return h4m3_native_kick(st,d,m,t,jax,jnp,np)
+    def save(st,meta,t,offset):
+        h4m7_require(h4m7_model_meta(env.mjx_model,st.data,np)==meta,'SNAPSHOT_META_CHANGED')
+        desc,raw=h4m7_capture_returned(st.data,meta,jax.device_get,np)
+        vals=h4m7_decode(desc,raw,h4m7_expected_shapes(meta),np,512*1024)
+        h4m7_validate_rows(vals,meta,np)
+        h4m7_raw_append(args.output.parent/'snapshots.bin',raw,offset)
+        return {'tick':t,'offset':offset,'size':len(raw),'sha256':hashlib.sha256(raw).hexdigest(),'fields':desc}
+    return h4m7_replay_lane(archive,report,reset,step,kick,model_snapshot,save,persist,np)
+
+
+def h4m7_enter_runtime(args):
+    root=Path(__file__).resolve().parent
+    auth=h4m7_authorization(root);h4m3_no_runtime_imports()
+    h4m7_require(getattr(args,'h4m7_child',False) and args.output.absolute()==args.output.resolve()==root/H4M7_OUTPUT
+        and args.checkpoint_c==root/H4M3_BASE_POLICY and args.profiles==['stand']
+        and args.seeds==[H4M3_LANES[i][1] for i in H4M7_INDICES],'RUNTIME_FLAGS')
+    report=args.h3_session
+    marker=args.output.parent/'dispatch.started.json'
+    expected={'authorization':auth,'parent_pid':os.getppid(),'child_pid':os.getpid()}
+    h4m7_require(marker.is_file() and not marker.is_symlink()
+        and json.loads(marker.read_bytes())==expected
+        and report['status']=='M470_H4M7_SNAPSHOT_IN_PROGRESS'
+        and report['counts']==h4m7_initial_ledger() and report['lanes']==[]
+        and json.loads(args.output.read_bytes())==report,'RUNTIME_RESERVATION')
+    provenance,lanes,manifest=h4m7_preflight(root,auth)
+    h4m7_require(report['provenance']==provenance,'RUNTIME_PROVENANCE')
+    args.h4m7_lanes=lanes;args.h4m7_manifest=manifest
+    h4m6_write_bounded(args.output.parent/'runtime.entered.json',expected,exclusive=True)
+
+
+def h4m7_child(args,auth,provenance):
+    root=Path(__file__).resolve().parent;path=root/H4M7_OUTPUT
+    parent=path.parent/'collector.started.json'
+    h4m7_require(parent.is_file() and not parent.is_symlink()
+        and json.loads(parent.read_bytes())=={'authorization':auth,'pid':os.getppid()}
+        and json.loads((path.parent/'attempt.json').read_bytes())=={'authorization':auth,'reserved':True},
+        'CHILD_PARENT')
+    mark={'authorization':auth,'parent_pid':os.getppid(),'child_pid':os.getpid()}
+    h4m6_write_bounded(path.parent/'dispatch.started.json',mark,exclusive=True)
+    report={'status':'M470_H4M7_SNAPSHOT_IN_PROGRESS','passed':False,'plan':h4m7_plan(),
+        'provenance':provenance,'authorization':auth,'counts':h4m7_initial_ledger(),
+        'lanes':[],'input_sha256':provenance['historical_input_sha256'],
+        'external_sources':provenance['external'],'mjx_sources':provenance['external']['mjx'],
+        'brax_train_path':provenance['brax_source_verification']['path'],
+        'training_performed':False,'efficacy_evaluated':False,'optimizer_updates':0,
+        'checkpoint_saves':0,'template_counts':{'actor_attempted':0,'actor_recorded':0,
+                                               'critic_attempted':0,'critic_recorded':0}}
+    h4m6_write_bounded(path,report,exclusive=True)
+    args.h3_session=report;args.checkpoint_c=root/H4M3_BASE_POLICY
+    args.seeds=[H4M3_LANES[i][1] for i in H4M7_INDICES];args.profiles=['stand']
+    from m462_ppo_warmstart_run import GPUMonitor,sample_gpu
+    h4m3_no_runtime_imports()
+    monitor=GPUMonitor();args.h3_monitor=monitor
+    try:
+        gpu=sample_gpu()
+        h4m7_require(gpu['total_mib']==12288 and 0<=gpu['used_mib']<.95*12288,'GPU_PREFLIGHT')
+        with monitor:
+            run(args)
+        report['gpu_initial']=gpu;report['gpu']=h3_gpu_check(monitor)
+        h4m7_require(h4m7_authorization(root)==auth and h4m7_preflight_post(root,auth)==provenance,
+            'CHILD_POST_IMMUTABILITY')
+        h4m7_ledger_check(report,complete=True)
+        rawpath=path.parent/'snapshots.bin'
+        h4m7_require(rawpath.is_file() and not rawpath.is_symlink()
+            and rawpath.stat().st_size<=12*1024**2,'RAW_FINAL')
+        raw=rawpath.read_bytes()
+        report['raw_sha256']=hashlib.sha256(raw).hexdigest()
+        report['status']='M470_H4M7_SNAPSHOT_COMPLETE'
+        import numpy as np
+        report['verification']=h4m7_read_report(report,raw,args.h4m7_lanes,provenance,np)
+        h4m7_write_report(args)
+        h4m6_write_bounded(path.parent/'attempt_result.json',{'authorization':auth,'status':'COMPLETE'},exclusive=True)
+    except BaseException as exc:
+        report['status']='M470_H4M7_SNAPSHOT_STOP';report['error']=(type(exc).__name__+': '+str(exc))[:4096]
+        report.pop('verification',None)
+        try:h4m7_write_report(args)
+        except BaseException as write_error:print('H4M7_PARTIAL_WRITE_FAILED',repr(write_error),flush=True)
+        raise
+
+
+def h4m7_preflight_post(root,auth):
+    # Post-run checks must not invoke pre-import guards after JAX was loaded.
+    source=h4m3_source_map(root);external=h4m7_external_sources(root)
+    h4m7_require(h4m3_digest(source)==auth['source_sha256']
+        and h4m3_digest(external)==auth['external_sha256'],'POST_SOURCE')
+    h4m7_archive_inputs(root)
+    old=h4m3_pinned_json(Path(root)/H4M4_OUTPUT,H4M7_ARCHIVES[1])
+    policies={}
+    for k,p in h4m3_policy_paths(root).items():
+        h4m7_require(p.is_file() and not p.is_symlink() and sha256(p)==H4M3_POLICIES[k],'POST_POLICY')
+        policies[k]=H4M3_POLICIES[k]
+    reward=Path(root)/'m463_runs/m470_h4_m2_ccrc_v1/report.json'
+    h4m7_require(sha256(reward)==old['input_sha256']['ccrc/report.json'],'POST_REWARD')
+    train=Path(old['brax_source_verification']['path'])
+    h4m7_require(sha256(train)==TRAIN_SHA,'POST_BRAX')
+    for k,v in old['input_sha256'].items():
+        if k.startswith('dependency/'):
+            name=k.split('/',1)[1]
+            module='brax.envs.wrappers.training' if name=='episode_wrapper' else name
+            p=train.resolve().parents[3].joinpath(*module.split('.')[1:]).with_suffix('.py')
+            h4m7_require(p.is_file() and not p.is_symlink() and sha256(p)==v,'POST_DEP_'+name)
+    return {'authorization':auth,'current_source':source,'external':external,
+        'historical_input_sha256':old['input_sha256'],'policy_sha256':policies,
+        'reward_sha256':sha256(reward),'archives':list(H4M7_ARCHIVES),
+        'brax_source_verification':old['brax_source_verification']}
+
+
+def h4m7_dispatch(args):
+    import signal
+    root=Path(__file__).resolve().parent;path=root/H4M7_OUTPUT
+    auth=h4m7_authorization(root)
+    h4m7_require(args.mode=='run' and args.output.absolute()==args.output.resolve()==path
+        and os.environ.get('JAX_PLATFORMS')=='cuda','DISPATCH_FLAGS')
+    provenance,lanes,_=h4m7_preflight(root,auth)
+    if args.h4m7_child:return h4m7_child(args,auth,provenance)
+    h4m6_reserve_tech(path,auth)
+    h4m6_write_bounded(path.parent/'collector.started.json',{'authorization':auth,'pid':os.getpid()},exclusive=True)
+    cmd=[sys.executable,'-B','-u',str(Path(__file__).resolve()),'--mode','run',
+        '--h4m7-snapshot','--h4m7-child','--output',str(path)]
+    proc=None;rc=None;total=stored=0;overflow=False;error=None;decision='STOP';post=False
+    cap=h4m7_plan()['log_cap']
+    def kill():
+        if proc is not None:
+            try:os.killpg(proc.pid,signal.SIGKILL)
+            except ProcessLookupError:pass
+    try:
+        with (path.parent/'probe.log').open('xb') as f:
+            proc=subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,start_new_session=True)
+            while True:
+                chunk=proc.stdout.read1(65536)
+                if not chunk:break
+                total+=len(chunk);part=chunk[:max(0,cap-stored)]
+                f.write(part);stored+=len(part)
+                if total>cap and not overflow:overflow=True;kill()
+            rc=proc.wait();f.flush();os.fsync(f.fileno())
+        h4m7_require(h4m7_authorization(root)==auth and h4m7_preflight_post(root,auth)==provenance,'PARENT_POST')
+        post=True
+        h4m7_require(rc==0 and not overflow,'BOUNDED_PROCESS')
+        marker={'authorization':auth,'parent_pid':os.getpid(),'child_pid':proc.pid}
+        for name,value in (('dispatch.started.json',marker),('runtime.entered.json',marker),
+            ('attempt.json',{'authorization':auth,'reserved':True}),
+            ('attempt_result.json',{'authorization':auth,'status':'COMPLETE'})):
+            p=path.parent/name
+            h4m7_require(p.is_file() and not p.is_symlink() and p.stat().st_size<=16*1024**2
+                and json.loads(p.read_bytes())==value,'PARENT_MARKER')
+        rawpath=path.parent/'snapshots.bin'
+        h4m7_require(path.is_file() and not path.is_symlink() and 0<path.stat().st_size<=16*1024**2
+            and rawpath.is_file() and not rawpath.is_symlink() and 0<rawpath.stat().st_size<=12*1024**2,'ARTIFACT_CAP')
+        import numpy as np
+        report=json.loads(path.read_bytes())
+        h4m7_require(h4m7_read_report(report,rawpath.read_bytes(),lanes,provenance,np)==report['verification'],
+            'PARENT_REPLAY')
+        decision='SNAPSHOT_COMPLETE'
+    except BaseException as exc:
+        error=(type(exc).__name__+': '+str(exc))[:4096];kill()
+        if proc is not None:rc=proc.wait()
+    status={'authorization':auth,'decision':decision,'producer_rc':rc,'overflow':overflow,
+        'total_bytes':total,'stored_bytes':stored,'error':error,'post_immutability':post}
+    h4m6_write_bounded(path.parent/'collector.json',status,exclusive=True)
+    print('BOUNDED_LOG_STATUS',json.dumps(status,sort_keys=True),flush=True)
+    for p in sorted(path.parent.iterdir()):
+        if p.is_file() and not p.is_symlink():print('ARTIFACT_SHA256',sha256(p),p,flush=True)
+    h4m7_require(decision=='SNAPSHOT_COMPLETE','COLLECTOR_STOP')
+
+
 def h4m7_static_archive(root):
     h4m3_no_runtime_imports()
     lanes,_=h4m7_archive_inputs(root)
@@ -9326,23 +9656,25 @@ def main():
     p.add_argument('--h4m6-prefix-child',choices=('C','P'),help=argparse.SUPPRESS)
     p.add_argument('--h4m7-snapshot',action='store_true')
     p.add_argument('--h4m7-static-archives',action='store_true')
+    p.add_argument('--h4m7-child',action='store_true',help=argparse.SUPPRESS)
     args=p.parse_args()
     if args.h4m7_snapshot:
         try:
-            allowed=('mode','output','h4m7_snapshot','h4m7_static_archives')
+            allowed=('mode','output','h4m7_snapshot')
+            allowed+=('h4m7_child',) if args.mode=='run' else ('h4m7_static_archives',)
             h4m7_require(all(getattr(args,k)==p.get_default(k) for k in vars(args)
                 if k not in allowed),'FLAG_CONFLICT')
             root=Path(__file__).resolve().parent
             h4m7_require(args.output.absolute()==args.output.resolve()==root/H4M7_OUTPUT,'OUTPUT_PATH')
             if args.mode=='run':
-                h4m7_authorization()
+                return h4m7_dispatch(args)
             if args.h4m7_static_archives:
                 print('M470_H4M7_STATIC_ARCHIVE',json.dumps(h4m7_static_archive(root),sort_keys=True))
             print('M470_H4M7_PLAN',json.dumps(h4m7_plan(),sort_keys=True))
             return
         except (RuntimeError,ValueError,KeyError,OSError) as exc:
             p.error(str(exc))
-    if args.h4m7_static_archives:
+    if args.h4m7_static_archives or args.h4m7_child:
         p.error('M470_H4M7_FLAG_REQUIRED')
     if args.h4m6_prefix_child is not None and not (args.mode=='run' and args.h4m6_phase=='prefix'):
         p.error('M470_H4M6_PREFIX_CHILD_CONFLICT')
