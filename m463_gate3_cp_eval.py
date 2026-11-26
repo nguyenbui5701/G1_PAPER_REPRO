@@ -9469,6 +9469,11 @@ def h4m7_native_lane(args,archive,env,step_fn,jax,jnp,np):
         h4m7_require(all(tuple(v.shape)==shapes[k] for k,v in fields.items())
             and sum(math.prod(v.shape)*np.dtype(v.dtype).itemsize for v in fields.values())<=512*1024,
             'RESET_CAPTURE_SCHEMA')
+        integers={'efc_type','contact.dim','contact.geom1','contact.geom2','contact.geom','contact.efc_address'}
+        for k,v in fields.items():
+            dt=np.dtype(v.dtype)
+            h4m7_require((dt.kind in 'iu' and dt.itemsize in (4,8)) if k in integers
+                else (dt.kind=='f' and dt.itemsize==4),'RESET_DTYPE_'+k)
         return meta,h4m7_model_bytes(env.mjx_model,meta,np)
     def step(st,capture):
         res=step_fn(st,placement_capture=capture)
@@ -9589,12 +9594,15 @@ def h4m7_preflight_post(root,auth):
 
 def h4m7_dispatch(args):
     import signal
+    import shutil
     root=Path(__file__).resolve().parent;path=root/H4M7_OUTPUT
     auth=h4m7_authorization(root)
     h4m7_require(args.mode=='run' and args.output.absolute()==args.output.resolve()==path
         and os.environ.get('JAX_PLATFORMS')=='cuda','DISPATCH_FLAGS')
     provenance,lanes,manifest=h4m7_preflight(root,auth)
     if args.h4m7_child:return h4m7_child(args,auth,provenance)
+    h4m7_require(shutil.disk_usage(path.parent.parent).free>=2*1024**3+48*1024**2,
+        'TOTAL_STORAGE_PREFLIGHT')
     h4m6_reserve_tech(path,auth)
     h4m6_write_bounded(path.parent/'collector.started.json',{'authorization':auth,'pid':os.getpid()},exclusive=True)
     cmd=[sys.executable,'-B','-u',str(Path(__file__).resolve()),'--mode','run',
