@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.233  
+**Version:** 1.2.234  
 **Ngày cập nhật:** 2026-11-26 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -2726,6 +2726,169 @@ SA independently rederived per-chunk RED integer partitions/support/age/gap chec
 
 Decision H4-M13-3 TECHNICAL PASS + EXPOSURE_PASS accepted, close consumed active marker; preserve all checkpoints and historical artifacts. RED policy eligible for next HELD controlled recovery evaluation integration only upon separate Owner GO: reuse existing H4-M12 evaluator/frozen shared loader/h3_group/h3_decide, do not alter native source graph or criteria. Bind exact RED training report58dfa2c3, receipts/manifest/fullstate/policy and exposure PASS; original CTRL official comparator32bf04d6 and M12 archiveeb44c364 secondary paired descriptive comparator, no reruns. Exact same 12 groups/60 logical/max44808 new physical/12 group resets, seed7331/7357/7601/7613 stand/forward_fast/turn_left, deterministic DR OFF, nominal/single/double left/right, push300/.50 and335/.35, horizon1000, unchanged +2/8 survival and recovery5 (both8/8 vs CTRL6/8) and nominal/moving/standing/safety gates; M12 comparison descriptive not replacement or new success threshold. Distinct held evaluation namespace/authorization, strict provenance/ledger/reader/bounded launcher and focused static only before separate DEV runtime GO. No extra diagnostics, further PPO, budget increase, independent holdout, promotion or auto retry. No executable edits at this review, SA zero new runtime. Branch A ACTIVE; Branch B HOLD.
 
+### H4-M13-4 — RED-V1 controlled recovery evaluation HELD implementation / exact Owner static PENDING (v1.2.234; 2026-11-26)
+
+Owner explicit GO for held integration only. Read exact Rules1.2.233 blob840d64698ed499e539616cdd08aa82997a6f41d6 at baseb2e7396d03ed1ad83010d376363dadd75f9ab3e3, AGENTS, operative shared evaluator/run/h3_group/h3_decide/frozen loader/M12 reader and trainer historical final readers. Independently reopened and rehashed seven actual RED uploads, all match v1.2.233 (report142665B SHA58dfa2c3722187b57456d5c058b7beaa9983c098bfafc218bba41e58d3230735, manifest1050B ea08b6fa7e7f640d7b47ec7291658accfae231973344a38bee8f08afe562011c); status TECHNICAL_PASS, exposure EXPOSURE_PASS, all five exposure checks true, exact training5242880/optimizer800/eval2000. Reopened M12 DEV report30359528B SHAeb44c364983078fc35b89152d7a42eae310ed31caba6d4a9b4abf335027826b1 and its three receipts, exact recorded ledger42246/60/12 and NO_GO, no prior M12 outer footer available; use accepted immutable internal evaluation evidence only. Original CTRL archive and local generated/checkpoint binaries/installed dependencies remain local Owner inputs, not independently accessible for SA byte verification; exact static must pass. This training approval is evidence admission only, NOT a runtime marker or promotion.
+
+H4RED_TRAINING_APPROVED: 58dfa2c3722187b57456d5c058b7beaa9983c098bfafc218bba41e58d3230735 b7c217d2196ff405b3aa6302fc770f98346668274ee7efc2aa94c94ed717c3bd 333f86fb8b45bff4887691a62f48239268ef2ca8248332daec8fb6866e1aef3b ea08b6fa7e7f640d7b47ec7291658accfae231973344a38bee8f08afe562011c
+
+EDIT-FIRST only existing m463_gate3_cp_eval.py and Rules. Base evaluator blob1110260e3f9804dadcd4e2d2b98e62f9b164cbb2 / SHA7d7be7a13cd26840bd94f1a3d387fcb4c317193f3d1522ed074221a0ecd763ed. Commits54dee62621bc6795ea5733c5828f71de311bfbc4 (isolated RED reuse), f97afbe8bad76424ea67b349d7bd74f194848c14 (bounded entry/partial reader), 0e0abc940142820ac9cfc54369498b336036f980 (bind launcher source and partial raw integrity); final evaluator bloba42124818be879dd434ec4d3363249e8b7ba563b. Exact reverse projection of 33 scoped replacements plus isolated block equals base source bytes, checked by SA through GitHub content; Owner static repeats compile/byte projection and AST checks for run.one_step, h3_group, h3_decode, h3_summary, h3_decide, h4_shared_frozen_loader. No changes to native numerical graph, physics, source reward/PD/termination, RNG/kick, action/observation, thresholds, trainer, instrumenter, environment or upstream. No new repository file. Rollback only reviewed revert of held scoped changes, never destructive reset or history rewrite.
+
+Distinct CLI --h4red-eval / --h4red-eval-static with exact mode/output and conflict rejection, H4-M13-RED-DEV-V1, fresh m463_runs/m470_h4_m13_4_dev_v1/report.json, no active GO now. Shared M12 dispatcher/enter/ledger/write/final reader defaults unchanged, red=True selects only RED frozen policy file b7c217d2196ff405b3aa6302fc770f98346668274ee7efc2aa94c94ed717c3bd via existing h4_shared_frozen_loader and original h3_group. Strict training pins: all ten files in H4RED_EVAL_TRAIN_PINS, historical RED authorization/static and t.h4m12_read_final(...,red=True), strict technical/exposure replay, manifest/fullstate/parent and accepted M12 pins. Historical training source digest reconstructed from exact historical evaluator Git bytes plus unchanged current other eight files; new evaluation source digest separately binds nine files including config. No weakening old source pin or pretending training source digest equals new evaluation digest. Existing original CTRL archive reader/pin32bf04d6 and local dependencies/Brax/MJX/NVCC/origin checks retained. M12 archive pins include report and all three receipts; validate exact policy/source-protocol identity, ledger, and replay official h4m12_decide against archived CTRL before comparing. No need to invoke historical active M12 auth or historical final-reader source checks against changed current source. No CTRL or M12 rerun.
+
+Frozen DEV protocol: only RED, 12 groups/60 logical/max44808 future physical/12 group resets, seeds7331/7357/7601/7613, stand/forward_fast/turn_left, nominal/single/double left/right, push300/.50 and335/.35, horizon1000 dt.02, deterministic DR OFF/source random push OFF, native action/PD/reward/termination unchanged. Primary decision uses exact h3_decide with archived CTRL41052 physical and fresh RED relabeled CAND, both +2/8 standing double survival and recovery5 (8/8 vs CTRL6/8) and all nominal/moving/standing/safety gates unchanged. Secondary comparison reuses archived M12 raw groups42246 physical against same RED raw groups, h3_decide paired safety/support/standing/tracking, survival/recovery2/5 discordance and primary counts, explicitly descriptive only, no secondary scientific verdict/pass thresholds substituted. Each pair view uses120 logical and <=89616 combined historical+new rows; physical counted once in new ledger. M12 archive and primary CTRL not included in new runtime count. No new measurement/diagnostics. All outputs promotion_authorized/further_training_authorized false.
+
+Bounded launcher below reuses prior M12 supervisor pattern, distinct fixed exclusive log m463_runs/m470_h4red_dev_runtime_v1.log, 5400s shared child watchdog, 16MiB combined log, 128MiB report, disk >=2GiB+2*128MiB+16MiB before launch, GPU sampled peak<95%12288MiB/no errors, exclusive attempt/dispatch/result receipts, strict final reader clean subprocess. Actual producer checks launcher parent PID/header receipt and current source/provenance/static/launcher hash before reservation; operational accidental direct-launch guard, not adversarial sandbox. On nonzero producer, if time/log permit, host-only persisted partial reader; on timeout/overflow kill child process group and preserve available artifacts, no retry. Partial checks ledger, auth/spec/pins, complete group raw validation, incomplete persisted row schema/finite/flags, receipt and bounds; does not imply abrupt-kill unpersisted rows are known. Completion requires producer0+reader0/no overflow/error; scientific DEV_PASS/NO_GO separate. Watchdog operational ceiling, not duration estimate; final hashing/cleanup outside child deadline may add time. No runtime marker yet, launcher compiled and SHA printed by static; later separate GO must bind exact static log containing source/provenance/launcher digest. Do not run this launcher now.
+
+SA actual focused host evidence: independently re-read final source and checked reverse byte projection (33 anchors); exact manually extracted ledger FNV1a32 07593340 and marker ec2023d2, actual Python tests with historical M12 report (RED relabel synthetic only), ledger3 positive/7 negative, marker1 positive/5 negative PASS. No full checkout compile or full official CTRL replay by SA. Owner exact full static will compile source and launcher, verify old and new source/provenance/accepted binary pins, replay archived M12 against original CTRL and synthetic M12-as-RED clone (official result same NO_GO, secondary identity gains0), run marker5/reader8/partial1+3/launcher1 negative and two CLI HOLD checks, zero runtime guards. Static not a new evaluation or efficacy result. Preserve original artifacts, no output namespace/log reservation. Full static PENDING until actual Owner log and exit reviewed; no repeat PPO, no native inference/simulation/reset/physical/optimizer calls by SA, no active runtime authorization. Branch A ACTIVE; Branch B HOLD.
+
+```python
+# H4RED_DEV_OWNER_LAUNCHER_BEGIN
+import hashlib, json, os, selectors, shutil, signal, subprocess, sys, time, traceback
+from pathlib import Path
+
+root = Path.cwd().resolve()
+runs = root / "m463_runs"
+out = runs / "m470_h4_m13_4_dev_v1" / "report.json"
+log = runs / "m470_h4red_dev_runtime_v1.log"
+cap = 16 * 1024**2
+deadline = time.monotonic() + 5400
+stored = 0
+producer_rc = None
+reader_rc = None
+partial_rc = None
+overflow = False
+error = None
+def require(ok, msg):
+    if not ok:
+        raise RuntimeError(msg)
+def digest(p):
+    with p.open("rb") as f:
+        return hashlib.file_digest(f, "sha256").hexdigest() if hasattr(hashlib, "file_digest") else digest_stream(f)
+def digest_stream(f):
+    h = hashlib.sha256()
+    for chunk in iter(lambda: f.read(1024**2), b""):
+        h.update(chunk)
+    return h.hexdigest()
+def emit(f, data):
+    global stored, overflow
+    room = cap - stored
+    keep = data[:room]
+    if keep:
+        f.write(keep)
+        stored += len(keep)
+        f.flush()
+    if len(data) > room:
+        overflow = True
+        raise RuntimeError("LOG_CAP")
+def stop_group(p):
+    try:
+        os.killpg(p.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    p.wait(timeout=10)
+def child(f, argv):
+    require(time.monotonic() < deadline, "WATCHDOG")
+    p = subprocess.Popen(argv, cwd=root, stdin=subprocess.DEVNULL,
+                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                         start_new_session=True, bufsize=0)
+    try:
+        with selectors.DefaultSelector() as sel:
+            sel.register(p.stdout, selectors.EVENT_READ)
+            while True:
+                left = deadline - time.monotonic()
+                require(left > 0, "WATCHDOG")
+                events = sel.select(min(left, 1.0))
+                if not events:
+                    continue
+                data = os.read(p.stdout.fileno(), 65536)
+                if not data:
+                    break
+                emit(f, data)
+        left = deadline - time.monotonic()
+        require(left > 0, "WATCHDOG")
+        return p.wait(timeout=left)
+    except BaseException:
+        stop_group(p)
+        raise
+    finally:
+        p.stdout.close()
+
+require(runs.is_dir() and not runs.is_symlink(), "RUNS_PATH")
+# Auth before exclusive claim; held static only compiles this block.
+import m463_gate3_cp_eval as e
+e.h4m3_no_runtime_imports()
+auth = e.h4m12_eval_auth(root,red=True)
+e.h4m3_no_runtime_imports()
+# Exclusive fixed log is the outer one-use claim, even if native reservation never occurs.
+# Never remove or rename either the log or the native attempt directory to retry.
+with log.open("xb") as f:
+    print("H4RED_DEV_LAUNCH_LOG", log, flush=True)
+    try:
+        require(not out.parent.exists() and not out.parent.is_symlink(), "OUTPUT_USED")
+        require(shutil.disk_usage(runs).free >= 2*1024**3 + 2*128*1024**2 + cap, "STORAGE")
+        require(e.h4red_eval_source(root)==auth['source_sha256'], "SOURCE_SHA")
+        static = root/auth['static_path']
+        require(static.is_file() and not static.is_symlink() and digest(static)==auth['static_sha256'], "STATIC_SHA")
+        emit(f, ("H4RED_DEV_AUTH "+json.dumps(auth,sort_keys=True)+"\n").encode())
+        os.environ['H4RED_DEV_SUPERVISOR_PID']=str(os.getpid())
+        for k,v in {"JAX_PLATFORMS":"cuda", "JAX_DEFAULT_MATMUL_PRECISION":"highest",
+                    "XLA_PYTHON_CLIENT_PREALLOCATE":"false"}.items():
+            require(os.environ.get(k)==v, "ENV_"+k)
+        require(not any(k.split(".")[0] in ("jax","jaxlib","brax","mujoco","mujoco_playground")
+                        for k in sys.modules), "LAUNCHER_NATIVE_PREIMPORT")
+        emit(f, ("H4RED_DEV_LAUNCH "+json.dumps({"interpreter":sys.executable,
+                 "head":subprocess.check_output(["git","rev-parse","HEAD"],text=True,cwd=root).strip(),
+                 "watchdog_s":5400,"log_cap":cap,"output":str(out)})+"\n").encode())
+        producer_rc = child(f, [sys.executable,"-B","-u",str(root/"m463_gate3_cp_eval.py"),
+                                 "--mode","run","--h4red-eval","--output",str(out)])
+        if producer_rc != 0 and out.is_file() and not overflow and time.monotonic()<deadline:
+            # Host-only partial reader; never treat its output as completion.
+            partial = (
+                "import json;from pathlib import Path;import m463_gate3_cp_eval as e;"
+                "r=Path.cwd();a=e.h4m12_eval_auth(r,red=True);"
+                "print('H4RED_DEV_PARTIAL_READER',json.dumps(e.h4red_eval_read_partial(r,a),sort_keys=True),flush=True)"
+            )
+            partial_rc = child(f,[sys.executable,"-B","-u","-c",partial])
+        require(producer_rc == 0, "PRODUCER_RC")
+        # Clean host-only final reader, no additional evaluation/inference.
+        reader = (
+            "import json;from pathlib import Path;import m463_gate3_cp_eval as e;"
+            "r=Path.cwd();e.h4m3_no_runtime_imports();p=r/e.H4RED_EVAL_OUTPUT;"
+            "a=e.h4m12_eval_auth(r,red=True);s=e.h4m12_read_eval_final(r,e.sha256(p),a,red=True);"
+            "e.h4m3_no_runtime_imports();"
+            "print('H4RED_DEV_FINAL_READER_PASS',e.sha256(p),"
+            "json.dumps({'decision':s['decision']['decision'],'ledger':s['ledger']},sort_keys=True),flush=True)"
+        )
+        reader_rc = child(f, [sys.executable,"-B","-u","-c",reader])
+        require(reader_rc == 0, "FINAL_READER_RC")
+    except BaseException as exc:
+        error = repr(exc)[:1024]
+        if not overflow:
+            try:
+                emit(f, traceback.format_exc().encode())
+            except BaseException:
+                pass
+    finally:
+        try:
+            f.flush()
+            os.fsync(f.fileno())
+        except OSError as exc:
+            error = repr(exc)[:1024]
+ok = error is None and producer_rc == reader_rc == 0 and not overflow
+print("H4RED_DEV_BOUNDED_STATUS", json.dumps({
+    "decision":"COMPLETE" if ok else "STOP","producer_rc":producer_rc,
+    "reader_rc":reader_rc,"partial_reader_rc":partial_rc,"overflow":overflow,"stored_bytes":stored,
+    "error":error,"log":str(log),"log_sha256":digest(log)
+}), flush=True)
+for name in ("report.json","attempt.json","dispatch.started.json","attempt_result.json"):
+    p = out.parent/name
+    if p.is_file() and not p.is_symlink():
+        print("H4RED_DEV_ARTIFACT",str(p),p.stat().st_size,digest(p),flush=True)
+raise SystemExit(0 if ok else 1)
+# H4RED_DEV_OWNER_LAUNCHER_END
+```
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -2987,6 +3150,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-26)
+
+**H4-M13-4 RED-V1 CONTROLLED DEV HELD SOURCE IMPLEMENTED / OWNER FULL STATIC PENDING (v1.2.234):** evaluator0e0abc94, exact 33-edit reverse projection, SA ledger3+7/marker1+5 host PASS; RED training approval pins exact, immutable CTRL primary/M12 descriptive secondary, frozen12 groups/60 logical/max44808 physical/12 resets. Distinct launcher/static/provenance guards, no active marker. Owner full static only; no runtime/PPO/CTRL or M12 rerun/holdout/promotion/Branch B.
 
 **H4-M13-3 RED-V1 ACTUAL TECHNICAL PASS / EXPOSURE_PASS / ONE-USE CONSUMED (v1.2.233):** Owner exit0, report58dfa2c3, seven uploaded hashes match, 5242880/800/2000 exact; late first2235/7158 and repeat701/1760, joint gap left1/right6, nominal1115120, invalid0. Scientific efficacy pending; next held DEV integration only on separate Owner GO, no active marker/extra PPO/CTRL or M12 rerun/DEV runtime/holdout/promotion/Branch B.
 
@@ -3806,6 +3971,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-26 | H4-M13-4 RED-V1 controlled DEV held integration | exact accepted train58dfa2c3, archived M12eb44c364, evaluator0e0abc94, reverse projection and host fixtures | HELD SOURCE IMPLEMENTED / OWNER FULL STATIC PENDING | 1.2.234 |
+
 | 2026-11-26 | H4-M13-3 actual RED-V1 training review | seven rehashed uploads, report58dfa2c3, exact ledger and 5 exposure gates | TECHNICAL PASS / EXPOSURE_PASS / CONSUMED; efficacy pending, DEV held | 1.2.233 |
 
 | 2026-11-26 | H4-M13-3 RED-V1 matched PPO one-use authorization | Owner exit0 + explicit GO, static53a2036d, frozen source/generated and control pins | GO ONE OWNER TRAINING; actual result pending, all other runtime HOLD | 1.2.232 |
@@ -4334,6 +4501,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.234 — 2026-11-26:** Implement held RED-V1 controlled DEV via shared M12 evaluator, strict training and archive pins, separate descriptive M12 comparison, bounded launcher/partial-final readers and focused static. Frozen official scientific gates unchanged; no runtime authorization, Branch B HOLD.
 
 - **v1.2.233 — 2026-11-26:** Accept actual RED-V1 technical and exposure PASS with exact artifact hashes and independent report counter replay, close one-use training marker, preserve final policy and sparse joint-exposure limitation; next held DEV integration only on separate GO. All runtime/holdout/promotion/Branch B HOLD.
 
