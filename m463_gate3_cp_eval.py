@@ -11663,7 +11663,7 @@ def h4red_eval_decide(root,archive,fresh):
 
 def h4red_eval_project(root):
     import ast
-    raw=(root/'m463_gate3_cp_eval.py').read_bytes()
+    raw=h4abs_legacy_projection((root/'m463_gate3_cp_eval.py').read_bytes())
     compile(raw,'<RED evaluator>','exec')
     old=subprocess.check_output(['git','show',H4RED_EVAL_BASE+':m463_gate3_cp_eval.py'],cwd=root)
     h4m12_req(hashlib.sha256(old).hexdigest()=='7d7be7a13cd26840bd94f1a3d387fcb4c317193f3d1522ed074221a0ecd763ed',
@@ -11848,4 +11848,446 @@ def h4red_eval_static(root):
 
 H4RED_EVAL_PATCHES=[["    if m12:\n        h4m12_enter(args)\n","    if m12:\n        h4m12_enter(args,red=getattr(args,'h4red_eval',False))\n"],["        policies={'M12':load_policy(H4_EVAL_ROOT/H4M12_TRAIN_DIR/H4M12_POLICY)}","        red=getattr(args,'h4red_eval',False)\n        policies={('RED' if red else 'M12'):load_policy(H4_EVAL_ROOT/\n            (H4RED_EVAL_TRAIN_DIR if red else H4M12_TRAIN_DIR)/H4M12_POLICY)}"],["                    h4m12_req(h4m12_eval_auth(H4_EVAL_ROOT)==session['authorization'],'AUTH_CHANGED')","                    h4m12_req(h4m12_eval_auth(H4_EVAL_ROOT,red=getattr(args,'h4red_eval',False))==session['authorization'],'AUTH_CHANGED')"],["                    h4m12_ledger(session,partial=True)\n","                    h4m12_ledger(session,partial=True,red=getattr(args,'h4red_eval',False))\n"],["            args.h3_session['decision']=h4m12_decide(args.h4m12_archive,args.h3_session)","            args.h3_session['decision']=(h4red_eval_decide(H4_EVAL_ROOT,args.h4m12_archive,args.h3_session)\n                if getattr(args,'h4red_eval',False) else h4m12_decide(args.h4m12_archive,args.h3_session))"],["    p.add_argument('--h4m12-static',action='store_true')\n    args=p.parse_args()\n","    p.add_argument('--h4m12-static',action='store_true')\n    p.add_argument('--h4red-eval',action='store_true')\n    p.add_argument('--h4red-eval-static',action='store_true')\n    args=p.parse_args()\n    if args.h4red_eval:\n        allowed={'mode','output','h4red_eval','h4red_eval_static'}\n        h4m12_req(all(getattr(args,k)==p.get_default(k) for k in vars(args) if k not in allowed),'RED_FLAG_CONFLICT')\n        h4m12_req(args.output.absolute()==args.output.resolve()==H4_EVAL_ROOT/H4RED_EVAL_OUTPUT,'RED_OUTPUT')\n        if args.mode=='run':\n            h4m12_req(not args.h4red_eval_static,'RED_MODE_CONFLICT')\n            return h4m12_dispatch(args,red=True)\n        if args.h4red_eval_static:return h4red_eval_static(H4_EVAL_ROOT)\n        print('H4RED_EVAL_PLAN',json.dumps(H4RED_EVAL_SPEC,sort_keys=True));return\n    if args.h4red_eval_static:p.error('H4RED_EVAL_FLAG_REQUIRED')\n"],["def h4m12_eval_auth(root):","def h4m12_eval_auth(root,*,red=False):"],["    auth=h4m12_parse_eval_marker((root/'G1_RESEARCH_RULES.md').read_text('utf8'))\n    h4m12_req(h4m12_source(root)==auth['source_sha256'],'SOURCE')","    auth=(h4red_eval_marker if red else h4m12_parse_eval_marker)((root/'G1_RESEARCH_RULES.md').read_text('utf8'))\n    h4m12_req((h4red_eval_source if red else h4m12_source)(root)==auth['source_sha256'],'SOURCE')"],["    for line in ('H4M12_DEV_FULL_STATIC_PASS','H4M12_DEV_SOURCE '+auth['source_sha256'],\n                 'H4M12_DEV_PROVENANCE '+auth['provenance_sha256']):","    prefix='H4RED_DEV' if red else 'H4M12_DEV'\n    for line in (prefix+'_FULL_STATIC_PASS',prefix+'_SOURCE '+auth['source_sha256'],\n                 prefix+'_PROVENANCE '+auth['provenance_sha256']):"],["def h4m12_inputs(root):","def h4m12_inputs(root,*,red=False):"],["    out=root/H4M12_TRAIN_DIR\n    pins={}\n    for name,expected in H4M12_TRAIN_PINS.items():","    out=root/(H4RED_EVAL_TRAIN_DIR if red else H4M12_TRAIN_DIR)\n    training_pins=H4RED_EVAL_TRAIN_PINS if red else H4M12_TRAIN_PINS\n    pins={}\n    for name,expected in training_pins.items():"],["    h4m12_req(t.h4m12_read_final(root,H4M12_TRAIN_PINS['report.json'],auth)==r,'TRAIN_READER')\n    approved='H4M12_TRAINING_APPROVED: '+' '.join(H4M12_TRAIN_PINS[n] for n in","    h4m12_req(t.h4m12_read_final(root,training_pins['report.json'],auth,red=red)==r,'TRAIN_READER')\n    if red:\n        h4red_eval_training_contract(root,r)\n        pins.update(h4red_eval_archive_pins(root))\n    approved=('H4RED_TRAINING_APPROVED: ' if red else 'H4M12_TRAINING_APPROVED: ')+' '.join(training_pins[n] for n in"],["    ext=h4m3_external_sources(root)\n    return pins,archive,ext\n\n\ndef h4m12_ledger(session,partial=False):","    ext=h4m3_external_sources(root)\n    if red:\n        pins['source/paper_config_preflight.json']=t.H4R_CONFIG_SHA\n        pins['training/static.log']=H4RED_EVAL_TRAIN_AUTH['static_sha256']\n    return pins,archive,ext\n\n\ndef h4m12_ledger(session,partial=False,*,red=False):"],["    expected=[('M12',s,p) for s in H3_EVAL_SEEDS for p in H3_EVAL_PROFILES]","    expected=[(('RED' if red else 'M12'),s,p) for s in H3_EVAL_SEEDS for p in H3_EVAL_PROFILES]"],["def h4m12_decide(archive,fresh):\n    ledger=h4m12_ledger(fresh)","def h4m12_decide(archive,fresh,*,red=False):\n    ledger=h4m12_ledger(fresh,red=red)"],["'comparison_roles':{'CTRL':'ARCHIVED_CTRL','CAND':'M12'},","'comparison_roles':{'CTRL':'ARCHIVED_CTRL','CAND':('RED' if red else 'M12')},"],["def h4m12_enter(args):\n    root=H4_EVAL_ROOT\n    auth=h4m12_eval_auth(root)\n    pins,archive,ext=h4m12_inputs(root)","def h4m12_enter(args,*,red=False):\n    root=H4_EVAL_ROOT\n    auth=h4m12_eval_auth(root,red=red)\n    pins,archive,ext=h4m12_inputs(root,red=red)"],["        and session['status']=='M470_H4M12_DEV_IN_PROGRESS'","        and session['status']==('M470_H4RED_DEV_IN_PROGRESS' if red else 'M470_H4M12_DEV_IN_PROGRESS')"],["        and args.output==root/H4M12_EVAL_OUTPUT\n","        and args.output==root/(H4RED_EVAL_OUTPUT if red else H4M12_EVAL_OUTPUT)\n"],["def h4m12_final_check(root,session,auth,pins,archive):\n    h4m12_req(session['status']=='M470_H4M12_DEV_COMPLETE' and session['authorization']==auth\n        and session['input_sha256']==pins and session['spec']==H4M12_EVAL_SPEC","def h4m12_final_check(root,session,auth,pins,archive,*,red=False):\n    h4m12_req(session['status']==('M470_H4RED_DEV_COMPLETE' if red else 'M470_H4M12_DEV_COMPLETE') and session['authorization']==auth\n        and session['input_sha256']==pins and session['spec']==(H4RED_EVAL_SPEC if red else H4M12_EVAL_SPEC)"],["        and session['ledger']==h4m12_ledger(session)\n        and session['decision']==h4m12_decide(archive,session),'FINAL_REPLAY')","        and session['ledger']==h4m12_ledger(session,red=red)\n        and session['decision']==(h4red_eval_decide(root,archive,session) if red else h4m12_decide(archive,session)),\n        'FINAL_REPLAY')\n    if red:\n        h4m12_req(session['evaluator_sha256']==pins['source/m463_gate3_cp_eval.py'],'RED_FINAL_EVALUATOR')"],["def h4m12_read_eval_final(root,expected_sha,auth):\n    import m463_push_ppo_train as t\n    path=root/H4M12_EVAL_OUTPUT","def h4m12_read_eval_final(root,expected_sha,auth,*,red=False):\n    import m463_push_ppo_train as t\n    path=root/(H4RED_EVAL_OUTPUT if red else H4M12_EVAL_OUTPUT)"],["    pins,archive,ext=h4m12_inputs(root)\n    h4m12_req(h4m3_digest([pins,ext])==auth['provenance_sha256'],'FINAL_PROVENANCE')","    pins,archive,ext=h4m12_inputs(root,red=red)\n    h4m12_req(h4m3_digest([pins,ext])==auth['provenance_sha256'],'FINAL_PROVENANCE')"],["    h4m12_final_check(root,session,auth,pins,archive)\n    return session\n","    h4m12_final_check(root,session,auth,pins,archive,red=red)\n    return session\n"],["def h4m12_dispatch(args):\n    import shutil\n    root=H4_EVAL_ROOT;path=root/H4M12_EVAL_OUTPUT\n    auth=h4m12_eval_auth(root)\n    pins,archive,ext=h4m12_inputs(root)","def h4m12_dispatch(args,*,red=False):\n    import shutil\n    root=H4_EVAL_ROOT;path=root/(H4RED_EVAL_OUTPUT if red else H4M12_EVAL_OUTPUT)\n    auth=h4m12_eval_auth(root,red=red)\n    pins,archive,ext=h4m12_inputs(root,red=red)"],["    args.output=path\n    args.seeds=list(H3_EVAL_SEEDS);args.profiles=list(H3_EVAL_PROFILES);args.directions=['left','right']\n    args.push_step=300;args.push_magnitude=.50;args.second_push_step=335;args.second_push_magnitude=.35\n    args.max_steps=1000;args.max_cases=60\n    h4m6_reserve_tech(path,auth)\n    session={'status':'M470_H4M12_DEV_IN_PROGRESS','authorization':auth,'spec':H4M12_EVAL_SPEC,","    args.output=path\n    if red:args.h4m12_eval=True  # shared single-policy graph; only reached after RED auth\n    args.seeds=list(H3_EVAL_SEEDS);args.profiles=list(H3_EVAL_PROFILES);args.directions=['left','right']\n    args.push_step=300;args.push_magnitude=.50;args.second_push_step=335;args.second_push_magnitude=.35\n    args.max_steps=1000;args.max_cases=60\n    h4m6_reserve_tech(path,auth)\n    session={'status':('M470_H4RED_DEV_IN_PROGRESS' if red else 'M470_H4M12_DEV_IN_PROGRESS'),\n        'authorization':auth,'spec':(H4RED_EVAL_SPEC if red else H4M12_EVAL_SPEC),"],["             'r=Path.cwd();p,_,x=e.h4m12_inputs(r);print(json.dumps([e.h4m12_eval_auth(r),p,x]))']","             'r=Path.cwd();red='+repr(red)+';p,_,x=e.h4m12_inputs(r,red=red);'\n             'print(json.dumps([e.h4m12_eval_auth(r,red=red),p,x]))']"],["        session['ledger']=h4m12_ledger(session)\n        session['status']='M470_H4M12_DEV_COMPLETE'\n        h4m12_final_check(root,session,auth,pins,archive)","        session['ledger']=h4m12_ledger(session,red=red)\n        session['status']='M470_H4RED_DEV_COMPLETE' if red else 'M470_H4M12_DEV_COMPLETE'\n        h4m12_final_check(root,session,auth,pins,archive,red=red)"],["        print('M470_H4M12_DEV_COMPLETE',session['decision']['decision'],digest,flush=True)","        print(session['status'],session['decision']['decision'],digest,flush=True)"],["        session['status']='M470_H4M12_DEV_STOP';session['error']=repr(exc)[:4096]","        session['status']='M470_H4RED_DEV_STOP' if red else 'M470_H4M12_DEV_STOP';session['error']=repr(exc)[:4096]"],["        try:session['partial_ledger']=h4m12_ledger(session,partial=True)","        try:session['partial_ledger']=h4m12_ledger(session,partial=True,red=red)"],["    h4m3_no_runtime_imports()\n    args.output=path\n    if red:args.h4m12_eval=True  # shared single-policy graph; only reached after RED auth\n","    h4m3_no_runtime_imports()\n    if red:h4red_eval_launcher_guard(root,auth)\n    args.output=path\n    if red:args.h4m12_eval=True  # shared single-policy graph; only reached after RED auth\n"],["                 prefix+'_PROVENANCE '+auth['provenance_sha256']):\n        h4m12_req(lines.count(line)==1,'STATIC_EVIDENCE')\n    return auth\n","                 prefix+'_PROVENANCE '+auth['provenance_sha256']):\n        h4m12_req(lines.count(line)==1,'STATIC_EVIDENCE')\n    if red:\n        h4m12_req(lines.count('H4RED_DEV_LAUNCHER '+h4red_eval_launcher_source(root))==1,'RED_LAUNCHER_PIN')\n    return auth\n"]]
 # H4RED_DEV_END
+# H4ABS_HOST_BEGIN
+h4abs_B_SHA='8f8aad46640de0781ec77bd034745d9d6f380ef76b1fa866f5e01fb291e28f3a'
+h4abs_C_SHA='2c46839feb95875614c8e5b1d9ce01ab7d8b5af46b38bca85b1c63e5c04dcf44'
+
+def h4abs_req(ok,label):
+    if not ok: raise ValueError(label)
+
+def h4abs_digest(a):
+    import numpy as np
+    return hashlib.sha256(np.asarray(a).tobytes(order='C')).hexdigest()
+
+def h4abs_frozen_basis(names):
+    import numpy as np
+    h4abs_req(len(names)==len(set(names))==29,'names')
+    B=np.zeros((29,8),dtype='<f8')
+    def put(c, entries):
+        for k,v in entries.items(): B[names.index(k+'_joint'),c]=v
+    for i,s in enumerate(('left','right')):
+        put(3*i,{s+'_hip_pitch':-.5,s+'_knee':1,s+'_ankle_pitch':-.5})
+        put(3*i+1,{s+'_hip_pitch':1,s+'_ankle_pitch':-1})
+        put(3*i+2,{s+'_hip_roll':1,s+'_ankle_roll':-1})
+    put(6,{'waist_roll':1,'left_shoulder_roll':-.5,'right_shoulder_roll':-.5})
+    put(7,{'waist_pitch':1,'left_shoulder_pitch':-.5,'right_shoulder_pitch':-.5})
+    B/=np.maximum(1,np.abs(B).sum(axis=1))[:,None]
+    h4abs_req(h4abs_digest(B)==h4abs_B_SHA,'basis pin')
+    return B
+
+def h4abs_coefficients():
+    import numpy as np
+    C=np.zeros((64,16),dtype='<f8')
+    for j in range(16): C[2+j*2,j]=-.75; C[3+j*2,j]=.75
+    from scipy.stats import qmc
+    s=qmc.Sobol(d=16,scramble=False).random_base2(5)
+    h4abs_req(np.all(s[0]==0) and np.all(s[1]==.5),'sobol prefix')
+    C[34:]=(s[2:]*2-1)*.75
+    h4abs_req(h4abs_digest(C)==h4abs_C_SHA,'coefficient pin')
+    return C
+
+def h4abs_domain(m):
+    import numpy as np
+    d=np.asarray(m['default_pose'],dtype=np.float32); b=np.asarray(m['fields']['actuator_ctrlrange'],dtype=np.float32)
+    mask=np.asarray(m['fields']['actuator_ctrllimited']);h4abs_req(np.isin(mask,[0,1]).all(),'ABS ctrl limited mask')
+    l=mask.astype(bool)
+    h4abs_req(d.shape==(29,) and b.shape==(29,2) and l.shape==(29,) and np.isfinite(d).all() and np.isfinite(b).all(),'h4abs_domain shape')
+    lo=np.where(l,np.maximum(-1,(b[:,0]-d)/np.float32(.5)),-1).astype(np.float32)
+    hi=np.where(l,np.minimum(1,(b[:,1]-d)/np.float32(.5)),1).astype(np.float32)
+    h4abs_req(np.all(lo<0) and np.all(hi>0),'h4abs_domain neutral')
+    return d,b,l,lo,hi
+
+def h4abs_action_guard(a,dom):
+    import numpy as np
+    d,b,l,lo,hi=dom
+    h4abs_req(type(a) is np.ndarray and a.dtype==np.float32 and a.shape==(29,) and np.isfinite(a).all(),'action schema')
+    h4abs_req(np.all((a>=lo)&(a<=hi)),'action envelope')
+    t=d+np.float32(.5)*a
+    h4abs_req(np.isfinite(t).all() and np.all(~l|((t>=b[:,0])&(t<=b[:,1]))),'raw target envelope')
+    return t
+
+def h4abs_generate(q,dom,B,C):
+    import numpy as np
+    d,b,l,lo,hi=dom
+    h4abs_req(q.dtype==np.float32 and q.shape==(29,) and np.isfinite(q).all(),'pose schema')
+    h4abs_req(h4abs_digest(B)==h4abs_B_SHA and h4abs_digest(C)==h4abs_C_SHA,'generator pins')
+    p=2*(q-d).astype(np.float64)
+    ratio=np.full(29,np.inf); pos=p>0; neg=p<0;ratio[pos]=hi[pos]/p[pos];ratio[neg]=lo[neg]/p[neg]
+    rho=min(1.,.8*float(ratio.min()));anchor=rho*p
+    A=np.empty((64,50,29),np.float32)
+    for i,c in enumerate(C):
+        for k,t in enumerate(range(336,386)):
+            if t<=340: z=c[:8]*(t-335)/5
+            elif t<=360: z=c[:8]*(360-t)/20+c[8:]*(t-340)/20
+            else: z=c[8:]*(385-t)/25
+            h=np.zeros(29) if i==0 else anchor*(385-t)/50
+            u=B@z; a=(h+np.maximum(u,0)*(hi-h)+np.minimum(u,0)*(h-lo)).astype(np.float32)
+            h4abs_action_guard(a,dom); A[i,k]=a
+    h4abs_req(len({x.tobytes() for x in A})==64 and np.all(A[:,-1]==0),'distinct/end')
+    return A,rho
+
+def h4abs_raw_equal(a,b):
+    return a.dtype==b.dtype and a.shape==b.shape and a.tobytes()==b.tobytes()
+
+# Host-only integration components. No native dispatch or execution authorization.
+H4ABS_BASE_SHA = '3dc7d0bd9b56fd01dbda61ff92d079cfb12b8ea146b45d177300190ee3c0060e'
+H4ABS_M3_SHA = '329ff0564d47e05e2360fdf95350928895cf515e8cec6ca9aa2182133319258b'
+H4ABS_CAP = 91330
+H4ABS_BANDS = {'vx':.1,'vy':.1,'yaw_rate':.1,'height':.05,'tilt_deg':5.}
+
+
+def h4abs_legacy_projection(raw):
+    # Remove this exact isolated block and restore the one historical call site.
+    begin=b'# H4ABS_'+b'HOST_BEGIN\n';end=b'# H4ABS_'+b'HOST_END\n'
+    h4abs_req(raw.count(begin)==raw.count(end)==1,'ABS projection markers')
+    i=raw.index(begin);j=raw.index(end,i)+len(end)
+    old=b"    raw=(root/'m463_gate3_cp_eval.py').read_bytes()\n"
+    new=b"    raw=h4abs_legacy_projection((root/'m463_gate3_cp_eval.py').read_bytes())\n"
+    rest=raw[:i]+raw[j:]
+    h4abs_req(rest.count(new)==1,'ABS projection callsite')
+    rest=rest.replace(new,old,1)
+    h4abs_req(hashlib.sha256(rest).hexdigest()==H4ABS_BASE_SHA,'ABS projection base SHA')
+    return rest
+
+
+def h4abs_state_digest(state,flatten_with_path,device_get):
+    """Full leaf bytes with paths, dtype, shape and static treedef; no native imports."""
+    import numpy as np
+    paths,tree=flatten_with_path(state)
+    h4abs_req(isinstance(paths,(list,tuple)),'ABS flatten schema')
+    h=hashlib.sha256()
+    def field(b):
+        h.update(len(b).to_bytes(8,'little'));h.update(b)
+    field(str(tree).encode('utf8'));field(str(len(paths)).encode('ascii'))
+    for path,leaf in paths:
+        a=np.asarray(device_get(leaf))
+        h4abs_req(a.dtype.kind in 'biufc' and not a.dtype.hasobject,'ABS leaf dtype')
+        # Path key types distinguish e.g. integer sequence and dictionary keys.
+        key=[(type(k).__module__,type(k).__qualname__,repr(k)) for k in path]
+        field(json.dumps([key,a.dtype.str,list(a.shape),bool(getattr(leaf,'weak_type',False))],separators=(',',':')).encode('utf8'))
+        field(a.tobytes(order='C'))
+    return h.hexdigest()
+
+
+def h4abs_container_ids(obj):
+    """Check mutable container aliasing of obs/info/metrics, not device buffers."""
+    from collections.abc import Mapping
+    found=set();seen=set()
+    def walk(x):
+        if isinstance(x,(Mapping,list,tuple)):
+            if id(x) in seen:return
+            seen.add(id(x))
+            if isinstance(x,(Mapping,list)):found.add(id(x))
+            for v in (x.values() if isinstance(x,Mapping) else x):walk(v)
+    walk(obj)
+    return found
+
+
+def h4abs_clone_state(parent,clone,flatten_with_path,device_get):
+    before=h4abs_state_digest(parent,flatten_with_path,device_get)
+    child=clone(parent)
+    a=(parent.obs,parent.info,parent.metrics);b=(child.obs,child.info,child.metrics)
+    h4abs_req(not (h4abs_container_ids(a)&h4abs_container_ids(b)),'ABS mutable alias')
+    h4abs_req(flatten_with_path(parent)[1]==flatten_with_path(child)[1],'ABS treedef identity')
+    h4abs_req(before==h4abs_state_digest(child,flatten_with_path,device_get)
+              ==h4abs_state_digest(parent,flatten_with_path,device_get),'ABS fork identity')
+    return child,before
+
+
+def h4abs_limits(manifest):
+    import numpy as np
+    f=manifest['fields'];ids=np.asarray(f['actuator_trnid'])[:,0]
+    h4abs_req(np.array_equal(ids,np.arange(1,30)) and
+              manifest['qpos_addresses']==list(range(7,36)) and
+              manifest['qvel_addresses']==list(range(6,35)),'ABS joint mapping')
+    return ((np.asarray(f['jnt_range'])[ids],np.asarray(f['jnt_limited'])[ids]),
+            (np.asarray(f['actuator_forcerange']),np.asarray(f['actuator_forcelimited'])),
+            (np.asarray(f['jnt_actfrcrange'])[ids],np.asarray(f['jnt_actfrclimited'])[ids]))
+
+
+def h4abs_excess(values,limit):
+    import numpy as np
+    q=np.asarray(values);r,mask=limit;mask=np.asarray(mask)
+    h4abs_req(q.shape==(29,) and r.shape==(29,2) and mask.shape==(29,) and
+              np.isfinite(q).all() and np.isfinite(r).all() and np.isin(mask,[0,1]).all(),'ABS limits schema')
+    return float(np.maximum(0,np.where(mask,np.maximum(r[:,0]-q,q-r[:,1]),0)).max())
+
+
+def h4abs_pre_guard(action,qpos,manifest):
+    import numpy as np
+    q=np.asarray(qpos)
+    h4abs_req(q.dtype==np.float32 and q.shape==(36,) and np.isfinite(q).all(),'ABS pre qpos')
+    target=h4abs_action_guard(action,h4abs_domain(manifest))
+    h4abs_req(h4abs_excess(q[7:],h4abs_limits(manifest)[0])==0,'ABS pre joint excess')
+    return target
+
+
+def h4abs_row_dtype():
+    import numpy as np
+    d=np.dtype([('tick','<u2'),('lane','u1'),('branch','u1'),('candidate','<i2'),('source','u1'),
+        ('state_before','u1',32),('state_after','u1',32),('packed','<f8',46),
+        ('sent','<f4',29),('raw_ctrl','<f4',29),('qpos_pre','<f4',36),('qvel_pre','<f4',35),
+        ('qpos_post','<f4',36),('qvel_post','<f4',35),('joint_length','<f4',29),
+        ('actuator_force','<f4',29),('joint_force','<f4',29),('com','<f8',9),('load','<f8',2),
+        ('foot_center','<f4',(2,3)),('foot_rotation','<f4',(2,3,3)),
+        ('actor_input','<f4',103),('rng','<u4',2),('time','<f4',2)],align=False)
+    h4abs_req(d.itemsize<=4096 and H4ABS_CAP*d.itemsize<=384*1024**2,'ABS row cap')
+    return d
+
+
+def h4abs_row(raw,packed,manifest,*,lane,branch,candidate,tick,source,before,after):
+    """Encode one compact measured record; branch 0 prefix,1 baseline,2 sham,3 search,4 confirmation."""
+    import numpy as np
+    h4abs_req(type(lane) is int and 0<=lane<5 and type(branch) is int and 0<=branch<5 and
+              type(candidate) is int and (0<=candidate<64 if branch>=3 else candidate==-1) and
+              type(tick) is int and (1<=tick<=335 if branch==0 else 336<=tick<=(584 if branch==3 else 1000)) and
+              source==int(branch>=3 and tick<=385),'ABS row identity')
+    h4abs_req(len(packed)==46 and raw['com']['available'] is True and raw['contact']['available'] is True,
+              'ABS required telemetry')
+    r=np.zeros((),dtype=h4abs_row_dtype());r['lane']=lane;r['branch']=branch;r['candidate']=candidate;r['tick']=tick;r['source']=source
+    for k,v in (('state_before',before),('state_after',after)):
+        h4abs_req(type(v) is str and len(v)==64,'ABS digest syntax');r[k]=np.frombuffer(bytes.fromhex(v),dtype=np.uint8)
+    fields={'packed':packed,'sent':raw['action'],'raw_ctrl':raw['raw_ctrl'],
+        'qpos_pre':raw['qpos_pre'],'qvel_pre':raw['qvel_pre'],'qpos_post':raw['qpos_post'],'qvel_post':raw['qvel_post'],
+        'joint_length':raw['actuator_length'],'actuator_force':raw['actuator_force'],
+        'joint_force':np.asarray(raw['qfrc_actuator'])[manifest['qvel_addresses']],
+        'com':sum((list(raw['com'][k]) for k in ('position','velocity','angular_momentum')),[]),
+        'load':[raw['contact']['normal_load_bodyweight'][s] for s in ('left','right')],
+        'foot_center':[raw['lf_geom_pos'],raw['rf_geom_pos']],
+        'foot_rotation':[raw['lf_geom_mat'],raw['rf_geom_mat']],
+        'actor_input':raw['actor_input'],'rng':raw['rng'],'time':[raw['time_pre'],raw['time_post']]}
+    for k,v in fields.items():
+        a=np.asarray(v);h4abs_req(a.shape==r[k].shape and np.isfinite(a).all(),'ABS row '+k)
+        if k=='rng':h4abs_req(a.dtype.kind in 'iu' and np.all((a>=0)&(a<=2**32-1)),'ABS RNG')
+        r[k]=a
+        h4abs_req(np.isfinite(r[k]).all(),'ABS serialized finite '+k)
+    return r
+
+
+def h4abs_row_safety(r,manifest,columns):
+    """Independent post-record reconciliation, strict candidate envelope (postfork only)."""
+    import numpy as np
+    h4abs_req(r.dtype==h4abs_row_dtype() and r.shape==() and len(columns)==46 and len(set(columns))==46,'ABS record schema')
+    h4abs_req(all(np.isfinite(r[k]).all() for k in r.dtype.names),'ABS record finite')
+    h4abs_req(abs(float(r['time'][1])-float(r['time'][0])-.02)<2e-5,'ABS time')
+    d,b,l,lo,hi=h4abs_domain(manifest);target=d+np.float32(.5)*r['sent']
+    h4abs_req(np.array_equal(target.view(np.uint32),r['raw_ctrl'].view(np.uint32)), 'ABS raw target identity')
+    row=dict(zip(columns,map(float,r['packed'])))
+    flags=[row[k] for k in columns if k.startswith('cause_')]
+    h4abs_req(all(x in (0,1) for x in flags) and row['done'] in (0,1) and bool(row['done'])==any(flags),'ABS flags')
+    h4abs_req(row['h2a_state_finite']==row['h3_finite']==1,'ABS finite flags')
+    j,f,g=h4abs_limits(manifest)
+    excess={'joint':max(h4abs_excess(r['qpos_pre'][7:],j),h4abs_excess(r['qpos_post'][7:],j),h4abs_excess(r['joint_length'],j)),
+            'ctrl':h4abs_excess(r['raw_ctrl'],(b,l)),
+            'force':max(h4abs_excess(r['actuator_force'],f),h4abs_excess(r['joint_force'],g))}
+    valid=bool(np.all((r['sent']>=lo)&(r['sent']<=hi)) and not row['done'] and not any(excess.values())
+               and not any(row[k] for k in ('h2a_joint_limit_excess','h2a_ctrl_limit_excess','h2a_force_limit_excess')))
+    return valid,excess
+
+
+def h4abs_recovery(reference,frames,columns):
+    """Host replay of frozen recovery5 and additional stable-tail gate, exact full window only."""
+    import numpy as np
+    h4abs_req(len(reference)==len(frames)==250,'ABS complete recovery window')
+    ref=[dict(zip(columns,map(float,x))) for x in reference];cur=[dict(zip(columns,map(float,x))) for x in frames]
+    result=matched_off_recovery(ref,cur,window_steps=250,consecutive=10,dt_s=.02)
+    error=np.array([[abs(x[k]-y[k])/v for k,v in H4ABS_BANDS.items()] for x,y in zip(ref,cur)])
+    h4abs_req(np.isfinite(error).all(),'ABS recovery finite')
+    return {'recovery':result,'stable_tail':bool(np.all(error[-10:]<=1)), 'mean_normalized_error':float(error.mean())}
+
+
+def h4abs_choose(results):
+    """Only fully safe, recovered and stable candidates rank; caller must reconcile ledger first."""
+    h4abs_req(len(results)==64 and [r['id'] for r in results]==list(range(64)),'ABS candidates order')
+    eligible=[]
+    for r in results:
+        if r['complete'] and r['safe']:
+            m=r['metrics'];t=m['recovery']['recovery_s'];e=m['mean_normalized_error']
+            h4abs_req(math.isfinite(e) and e>=0,'ABS score')
+            if m['recovery']['recovered'] and m['stable_tail']:
+                h4abs_req(t is not None and math.isfinite(t) and .2<=t<=5.,'ABS recovery time')
+                eligible.append((t,e,r['id']))
+    return min(eligible)[2] if eligible else None
+
+
+def h4abs_transfers(loads,ticks):
+    """Causal 3-sample load establishment and role transfer; no forced alternation."""
+    import numpy as np
+    a=np.asarray(loads,dtype=np.float64);t=list(ticks)
+    h4abs_req(a.shape==(len(t),2) and len(t)>0 and np.isfinite(a).all() and
+              t==list(range(t[0],t[0]+len(t))),'ABS load series')
+    loaded=a>=.05;role=None;on=None;established=False;run=0;sole=0;events=[]
+    # An initially sole loaded foot defines the initial support role at the fork.
+    if loaded[0].sum()==1:role=int(np.argmax(loaded[0]))
+    for i in range(1,len(t)):
+        x=loaded[i]
+        if role is None:
+            if i>=2 and x.sum()==1 and np.all(loaded[i-2:i+1]==x):role=int(np.argmax(x))
+            continue
+        other=1-role
+        if not established:
+            if x[role] and x[other]:
+                run+=1
+                if run==3:established=True;on=t[i-2];sole=0
+            else:
+                run=0
+                if not x[role]:role=None
+            continue
+        if not x[other]:
+            established=False;run=0;sole=0;on=None
+            if not x[role]:role=None
+            continue
+        sole=sole+1 if not x[role] else 0
+        if sole==3:
+            events.append({'from':role,'to':other,'new_load_onset':on,'transfer_onset':t[i-2],
+                           'confirmed_tick':t[i],'phase':'absolute' if t[i]<=385 else 'actor_tail'})
+            role=other;on=None;established=False;run=0;sole=0
+    return {'events':events,'double_load_samples':int((loaded.sum(1)==2).sum()),
+            'no_load_samples':int((loaded.sum(1)==0).sum())}
+
+
+def h4abs_reserve_ledger(ledger,key,tick):
+    """One outstanding attempted step maximum. Persistence belongs to the future dispatcher."""
+    h4abs_req(ledger['attempted']==ledger['recorded']<H4ABS_CAP and ledger['pending'] is None,'ABS outstanding/cap')
+    h4abs_req(len(key)==3 and all(type(k) is int for k in key) and type(tick) is int,'ABS attempt identity')
+    lane,branch,candidate=key
+    h4abs_req(0<=lane<5 and 0<=branch<5 and (0<=candidate<64 if branch>=3 else candidate==-1)
+        and (1<=tick<=335 if branch==0 else 336<=tick<=(584 if branch==3 else 1000)),'ABS attempt range')
+    ledger['pending']=[*key,tick];ledger['attempted']+=1
+
+
+def h4abs_record_ledger(ledger,row):
+    key=[int(row[k]) for k in ('lane','branch','candidate','tick')]
+    h4abs_req(ledger['pending']==key and ledger['attempted']==ledger['recorded']+1,'ABS record identity')
+    ledger['recorded']+=1;ledger['pending']=None
+
+
+def h4abs_ledger_check(ledger,raw_bytes,*,complete=False):
+    n=ledger['recorded'];a=ledger['attempted'];pending=ledger['pending']
+    h4abs_req(type(n) is int and type(a) is int and 0<=n<=a<=H4ABS_CAP and a-n in (0,1)
+              and (pending is None)==(a==n) and raw_bytes==n*h4abs_row_dtype().itemsize,'ABS ledger reconciliation')
+    h4abs_req(not complete or a==n,'ABS complete pending')
+    return {'attempted':a,'recorded':n,'outstanding':a-n,'raw_bytes':raw_bytes}
+
+
+def h4abs_branch_records(raw,manifest,columns,*,lane,branch,candidate,first_digest,sequence=None):
+    """Reconcile a raw branch without inferring a result from a truncated window.
+
+    This is a reader component, not an attempt receipt/provenance validator.
+    """
+    import numpy as np
+    d=h4abs_row_dtype();h4abs_req(type(raw) is bytes and len(raw)%d.itemsize==0,'ABS branch bytes')
+    a=np.frombuffer(raw,dtype=d);start=1 if branch==0 else 336;end=335 if branch==0 else 584 if branch==3 else 1000
+    h4abs_req(0<=lane<5 and 0<=branch<5 and (0<=candidate<64 if branch>=3 else candidate==-1)
+        and len(a)<=end-start+1,'ABS branch range')
+    h4abs_req(np.all(a['lane']==lane) and np.all(a['branch']==branch) and np.all(a['candidate']==candidate)
+        and np.array_equal(a['tick'],np.arange(start,start+len(a))),'ABS branch chronology')
+    if len(a):h4abs_req(a[0]['state_before'].tobytes().hex()==first_digest,'ABS branch parent')
+    valid=[];terminated=[]
+    for i,r in enumerate(a):
+        t=int(r['tick']);h4abs_req(int(r['source'])==int(branch>=3 and t<=385),'ABS action source')
+        if i and not (branch==0 and t in (300,335)):
+            h4abs_req(np.array_equal(a[i-1]['state_after'],r['state_before']) and
+                h4abs_raw_equal(a[i-1]['qpos_post'],r['qpos_pre']) and
+                h4abs_raw_equal(a[i-1]['qvel_post'],r['qvel_pre']),'ABS branch state chain')
+        if branch>=3 and t<=385:
+            h4abs_req(type(sequence) is np.ndarray and sequence.dtype==np.float32 and sequence.shape==(50,29)
+                and h4abs_raw_equal(sequence[t-336],r['sent']),'ABS frozen candidate action')
+        good,_=h4abs_row_safety(r,manifest,columns);valid.append(good)
+        terminated.append(bool(r['packed'][columns.index('done')]))
+    h4abs_req(not any(terminated[:-1]),'ABS steps after termination')
+    if branch>=3:h4abs_req(all(valid[:-1]),'ABS steps after unsafe sample')
+    return {'rows':len(a),'last_tick':int(a[-1]['tick']) if len(a) else start-1,
+        'full_window':len(a)==end-start+1,'safe':bool(len(a) and all(valid)),
+        'terminated':bool(terminated and terminated[-1]),'sha256':hashlib.sha256(raw).hexdigest()}
+
+
+def h4abs_compare_replay(a,b,branch_a,branch_b):
+    """Ignore only branch identifier; all action/state/telemetry bytes must match."""
+    import numpy as np
+    d=h4abs_row_dtype();h4abs_req(type(a) is bytes and type(b) is bytes and len(a)==len(b)
+        and len(a)%d.itemsize==0,'ABS replay size')
+    x=np.frombuffer(a,dtype=d).copy();y=np.frombuffer(b,dtype=d).copy()
+    h4abs_req(np.all(x['branch']==branch_a) and np.all(y['branch']==branch_b),'ABS replay labels')
+    x['branch']=0;y['branch']=0
+    h4abs_req(x.tobytes()==y.tobytes(),'ABS replay mismatch')
+
+
+def h4abs_host_fixtures(report):
+    """Run actual archived-data and synthetic host fixtures; no native imports."""
+    import copy
+    import numpy as np
+    from types import SimpleNamespace
+    m=report['manifest'];cols=report['frame_columns'];B=h4abs_frozen_basis(m['actuator_names']);C=h4abs_coefficients();dom=h4abs_domain(m)
+    expected=('d50dbe5c9a5412bb4272ae76e425ff072bf6e059f82d7f0216e355a0b6a0cebe',
+        '6c69efc773e1ac8a73e3ab881765229d131e19d0e013f8938c7891e433b29cca',
+        'd8c7abb52673e91bfea2229f71cd251ef78d014cab77e4bd4b695f7c3143a989',
+        '9f8d4b4c9df6f26e73fe426f136a8eb934391b0e1f4d93b54a059ee849196bc9',
+        'f7f3a1f1a66b5dc7e403865c76cc8ece0f0b9b76a55dcaf2ae5c844f00e86466')
+    rows=neg=0
+    def reject(fn):
+        nonlocal neg
+        try:fn()
+        except (ValueError,TypeError,KeyError):neg+=1;return
+        raise AssertionError('ABS negative accepted')
+    for lane_idx,l in enumerate(report['lanes']):
+        raw=next(x['data'] for x in l['rich'] if x['segment']=='double' and x['tick']==335)
+        A,rho=h4abs_generate(np.array(raw['qpos_post'],np.float32)[7:],dom,B,C)
+        h4abs_req(h4abs_digest(A)==expected[lane_idx],'ABS sequence digest')
+        h4abs_pre_guard(A[0,0],np.array(raw['qpos_post'],np.float32),m)
+        base=[]
+        for i,x in enumerate([x for x in l['rich'] if x['segment']=='double']):
+            t=x['tick'];row=h4abs_row(x['data'],l['segments']['double'][i],m,lane=lane_idx,branch=0 if t==335 else 1,candidate=-1,tick=t,source=0,before='a'*64,after='a'*64)
+            h4abs_row_safety(row,m,cols);rows+=1
+            if i:base.append(row)
+            if i==1:
+                reject(lambda:h4abs_row(x['data'],l['segments']['double'][i],m,lane=lane_idx,branch=1,candidate=-1,tick=t,source=1,before='a'*64,after='a'*64))
+                invalid=row.copy();invalid['raw_ctrl'][0]+=.01;reject(lambda:h4abs_row_safety(invalid,m,cols))
+        a=np.asarray(base,dtype=h4abs_row_dtype());b=a.copy();b['branch']=2
+        h4abs_compare_replay(a.tobytes(),b.tobytes(),1,2)
+        b[0]['sent'][0]=np.float32(b[0]['sent'][0]+.01);reject(lambda:h4abs_compare_replay(a.tobytes(),b.tobytes(),1,2))
+        check=h4abs_branch_records(a.tobytes(),m,cols,lane=lane_idx,branch=1,candidate=-1,first_digest='a'*64)
+        h4abs_req(check['rows']==len(a) and not check['full_window'],'ABS historical short suffix')
+        bad=a.copy();bad[0]['tick']+=1;reject(lambda:h4abs_branch_records(bad.tobytes(),m,cols,lane=lane_idx,branch=1,candidate=-1,first_digest='a'*64))
+    h4abs_req(rows==211,'ABS historical row count')
+    st=SimpleNamespace(obs={'x':np.array([0.],np.float32)},info={'r':[np.array([1],np.uint32)]},metrics={'reward':np.array(.0,np.float32)})
+    def flat(s):return [(('obs','x'),s.obs['x']),(('info','r',0),s.info['r'][0]),(('metrics','reward'),s.metrics['reward'])],('static',3)
+    clone,d=h4abs_clone_state(st,copy.deepcopy,flat,lambda x:x)
+    clone.obs['x'][0]=-0.;h4abs_req(d!=h4abs_state_digest(clone,flat,lambda x:x) and d==h4abs_state_digest(st,flat,lambda x:x),'ABS signed zero isolation')
+    reject(lambda:h4abs_clone_state(st,copy.copy,flat,lambda x:x))
+    ref=np.zeros((250,46));good=ref.copy();bad=ref.copy();bad[-1,cols.index('vx')]=.2
+    mg=h4abs_recovery(ref,good,cols);mb=h4abs_recovery(ref,bad,cols)
+    h4abs_req(mg['stable_tail'] and mg['recovery']['recovered'] and not mb['stable_tail'] and mb['recovery']['recovered'],'ABS recovery fixture')
+    reject(lambda:h4abs_recovery(ref[:-1],good[:-1],cols));res=[dict(id=i,complete=False,safe=False) for i in range(64)]
+    h4abs_req(h4abs_choose(res) is None,'ABS no candidate')
+    for i in (2,3):res[i]=dict(id=i,complete=True,safe=True,metrics=mg)
+    h4abs_req(h4abs_choose(res)==2,'ABS tie break');res[2]['metrics']=mb;h4abs_req(h4abs_choose(res)==3,'ABS stable gate')
+    reject(lambda:h4abs_choose(res[:-1]));reject(lambda:h4abs_choose(res[::-1]))
+    L=[.9,0];R=[0,.9];D=[.5,.5];N=[0,0];loads=[L]+[D]*3+[R]*3+[D]*3+[L]*3
+    s=h4abs_transfers(loads,range(335,335+len(loads)))
+    h4abs_req([x['confirmed_tick'] for x in s['events']]==[341,347] and
+        not h4abs_transfers([L]+[N]+[R]*5,range(335,342))['events'] and
+        not h4abs_transfers([L]+[D]*2+[R]*4,range(335,342))['events'],'ABS load transfer fixture')
+    reject(lambda:h4abs_transfers([L,R],[335,337]))
+    ledger=dict(attempted=0,recorded=0,pending=None);row=np.zeros((),dtype=h4abs_row_dtype());row['lane']=0;row['branch']=0;row['candidate']=-1;row['tick']=1
+    h4abs_reserve_ledger(ledger,[0,0,-1],1);h4abs_req(h4abs_ledger_check(ledger,0)['outstanding']==1,'ABS pending fixture')
+    reject(lambda:h4abs_reserve_ledger(ledger,[0,0,-1],2));reject(lambda:h4abs_ledger_check(ledger,0,complete=True));wrong=row.copy();wrong['tick']=2;reject(lambda:h4abs_record_ledger(ledger,wrong))
+    h4abs_record_ledger(ledger,row);h4abs_req(h4abs_ledger_check(ledger,row.dtype.itemsize,complete=True)['recorded']==1,'ABS recorded fixture')
+    reject(lambda:h4abs_ledger_check(ledger,0));reject(lambda:h4abs_record_ledger(ledger,row))
+    h4abs_req(5*335+10*665+320*249+5*665==H4ABS_CAP,'ABS budget')
+    return dict(archived_rows=rows,action_vectors=16000,negative_tests=neg,row_bytes=row.dtype.itemsize,
+        raw_max=H4ABS_CAP*row.dtype.itemsize,fixture_transfers=2,physical_transitions=0,resets=0,inference=0,optimizer_updates=0,full_static=False)
+
+
+def h4abs_host_static(root):
+    """Held COMPONENT verification only; deliberately no CLI/native dispatcher."""
+    root=Path(root).resolve();h4m3_no_runtime_imports()
+    raw=(root/'m463_gate3_cp_eval.py').read_bytes();compile(raw,'<ABS evaluator>','exec')
+    h4abs_legacy_projection(raw);h4red_eval_project(root)
+    r=h4m3_pinned_json(root/H4M3_OUTPUT,H4ABS_M3_SHA)
+    result=h4abs_host_fixtures(r);h4m3_no_runtime_imports()
+    print('H4ABS_HOST_COMPONENT_PASS',json.dumps(result,sort_keys=True),flush=True)
+    print('H4ABS_FULL_STATIC_NOT_RUN; NATIVE_DISPATCH_HOLD',flush=True)
+    return result
+# H4ABS_HOST_END
 if __name__=='__main__':main()
