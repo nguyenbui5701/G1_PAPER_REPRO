@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.251  
+**Version:** 1.2.252  
 **Ngày cập nhật:** 2026-11-27 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -3111,7 +3111,13 @@ One active machine-readable authorization below, syntax and token order as exist
 
 Owner run only once after exact pull, verify branch/HEAD/evaluator and static log SHA, untouched output namespace, export JAX_PLATFORMS=cuda, invoke existing g1_m463 -B -u m463_gate3_cp_eval.py --h4abs run. Preserve runtime.log, attempt.json, parent.json, runtime.entered.json, attempt_result.json, report.json if emitted, events.jsonl and rows.bin; return exit code, file sizes/hashes and actual log/report/attempt receipts for review. On any error/STOP preserve all evidence and do not retry. SA authorizes maximum future budget91330; actual performed by SA0, Owner runtime outcome pending.
 
-H4ABS_ACTIVE_GO: ND-SSTR-ABS-V1 m463_runs/m470_h4abs_v1/report.json 17d6bb206b6b9e66792dddcdb01c226b616bd9733f7a26f660f663a3a2b3dbff 61c75f596a852584c6fef75f8cf6c00496a6aed15d4e06371513773ee7ef7e5f m463_runs/m470_h4abs_full_static_20261127_001332_298377787.log 35b99beb48b94a41ffcf13d4032bfdd26a452409204d0543d1edfbda992c64ca
+Consumed historical authorization (NOT ACTIVE): `H4ABS_ACTIVE_GO: ND-SSTR-ABS-V1 m463_runs/m470_h4abs_v1/report.json 17d6bb206b6b9e66792dddcdb01c226b616bd9733f7a26f660f663a3a2b3dbff 61c75f596a852584c6fef75f8cf6c00496a6aed15d4e06371513773ee7ef7e5f m463_runs/m470_h4abs_full_static_20261127_001332_298377787.log 35b99beb48b94a41ffcf13d4032bfdd26a452409204d0543d1edfbda992c64ca`
+
+### H4-M14-7 — ND-SSTR-ABS-V1 native attempt TECHNICAL STOP / authorization consumed / existing raw evidence required (v1.2.252; 2026-11-27)
+
+SA read exact current Rules1.2.251 blob74a7e9cca4ae7e01a81249e25f622c2eed69f316 at HEADde31069e349dc5fa3e914072b7cf456e9f8b7c7a and exact evaluator2e26a9173750289a43f117ed53bca3a711a575e6 h4abs_native_lane, h4abs_compare_replay, h4abs_state_digest, h4abs_clone_state and fixed-width row schema. Actual Owner uploaded four artifacts read and SHA256 checked: attempt_result556B 4e24bb61d1d1f40f56debb383528d26b44417821978e0c4fff9e64bab7df55dd; runtime.log2921B 1e326639e2c92333b72b4a189f7f2bea0d274939fbb07d53552d4a46f2f93206; runtime.entered439B aa3539e3c7576ec968e8d8fd06ee243d4197ad90c17feaf196803ccf8a56122e; attempt420B 841e31f6cf59e9009b0aac5ea568c632e02d4de8a0935e43e92f1f21e42dd58f. All three JSON authorization objects match exact activated static/source/provenance receipt; reserved=true, child3843964,parent3843872, attempt_result statusSTOP,rc1,log_bytes2921 matches actual log, error ABS child completion; partial reader ABS replay mismatch, verified:null. Actual log Brax source and paper config verified, native traceback at h4abs_native_lane line12650 baseline/sham h4abs_compare_replay line12235, raw comparison after masking branch identifier only. Warnings/lexer message observed, not demonstrated cause. Parent/sham full-length, per-transition historical packed rows and available rich equality, fork checks and parent digest guards reached/passed by source control-flow inference; no raw reconciliation yet. First lane CCRC7357L expected from frozen order, expected 335+665+665=1665 physical transition records, one reset, zero candidate branches/confirmations; these counts remain inferred until events.jsonl and rows.bin independently checked. No claim verified exact consumed count or actual native full-state leaf equality across suffix. Zero candidate executed by source control flow, scientific H-R5c UNTESTED, no PPO. Previous H4-M6 historical exact replay mismatch/INCONCLUSIVE is relevant precedent not a diagnosis of present failure.
+
+Decision TECHNICAL STOP, consume and deactivate sole H4ABS marker, retain historical marker text as nonactive evidence. No executable modifications, no fresh simulation/inference/reset/PPO, no retry or new output namespace. Next immediate evidence request only: Owner supply immutable existing m463_runs/m470_h4abs_v1/events.jsonl, rows.bin, parent.json, file sizes/SHA256 and full terminal exit if available. Preserve original directory. Offline first-difference analysis of exact recorded branch1/2 bytes (mask only branch field), per-field/tick comparison including signed zeros, state-before/after digest, packed/action/qpos/qvel/COM/load/force/RNG/time; reconcile attempted/recorded and row hashes without waiving existing failing strict reader. If only state digest differs, stored digests cannot identify missing native leaf; do not claim cause or authorize another diagnostic automatically. Do not repeat historical H4-M6 investigation or loosen comparison, canonicalize bytes, ignore fields or substitute numerical tolerance. Any future repair or new native work requires separate evidence-based Owner GO. Original static PASS remains historical, not proof of runtime conformance. Branch A research ACTIVE; all runtime/PPO/holdout/promotion/Branch B HOLD.
 
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
@@ -3374,6 +3380,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-26)
+
+**H4-M14-7 TECHNICAL STOP / consumed one-use authorization / raw evidence pending (v1.2.252):** actual four artifact hashes recorded; runtime entered, baseline/sham raw-byte mismatch, child rc1, partial reader also rejects, verified:null. Expected first lane and1665 recorded transitions inferred only, no candidate reached. H-R5c UNTESTED. Sole marker deactivated, no executable change, no retry. Existing events.jsonl/rows.bin/parent.json needed for offline first mismatch and exact ledger. All native/PPO/holdout/promotion/Branch B HOLD.
 
 **H4-M14-7 ND-SSTR-ABS-V1 ONE-USE CONDITIONAL NATIVE GO (v1.2.251):** distinct Owner approval received; exact M14-6 static receipt35b99beb, source17d6bb20/provenance61c75f59, evaluator2e26a917 unchanged; Git compare rules-only. Sole active H4ABS authorization for m463_runs/m470_h4abs_v1/report.json, existing --h4abs run supervisor, fresh local preflight and unused namespace mandatory. 5 lanes/64 candidates/16 variables/91330 physical cap/5 resets/320 branches/5 confirmations/75080 actor cap. No retry, no PPO/holdout/promotion. Owner execution pending; SA actual transitions0. Branch B HOLD.
 
@@ -4229,6 +4237,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-27 | H4-M14-7 native attempt review | actual log1e326639, attempt_result4e24bb61, entryaa3539e3, attempt841e31f6; raw replay mismatch | TECHNICAL STOP / authorization consumed / exact raw counts pending; hypothesis UNTESTED | 1.2.252 |
+
 | 2026-11-27 | H4-M14-7 ND-SSTR-ABS-V1 native authorization | exact final static35b99beb, unchanged evaluator2e26a917 and rules-only diff, distinct Owner GO | ONE-USE CONDITIONAL GO / Owner run pending / no PPO | 1.2.251 |
 
 | 2026-11-27 | H4-M14-6 FINAL Owner receipt acceptance | actual log35b99beb, exact source hashes and receipt, 5902 mock rows, exit0/0, zero native | FULL STATIC PASS ACCEPTED / held implementation closed / distinct runtime GO pending | 1.2.250 |
@@ -4793,6 +4803,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.252 — 2026-11-27:** Record actual ND-SSTR-ABS-V1 technical STOP at baseline/sham byte equality, deactivate consumed authorization and request existing raw ledger for offline first mismatch. Preserve static history, frozen criteria and all executable bytes. No retry, no PPO, Branch B HOLD.
 
 - **v1.2.251 — 2026-11-27:** Activate distinct one-use ND-SSTR-ABS-V1 bounded native search per Owner GO and exact accepted final static receipt. No executable edits; unchanged frozen budgets, guards and scientific criteria; fresh local preflight, no retry, no PPO or promotion, Branch B HOLD.
 
