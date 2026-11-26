@@ -12420,6 +12420,27 @@ def h4abs_marker(rules):
     h4abs_req(p.parent==Path('m463_runs') and p.name.startswith('m470_h4abs_full_static_') and p.suffix=='.log','ABS static path')
     return dict(id=a[1],output=a[2],source=a[3],provenance=a[4],static_path=a[5],static_sha=a[6])
 
+def h4abs_receipt_lines(lines,source,provenance,evaluator_sha):
+    """Full static output + successful outer pipeline receipt, never native permission."""
+    h4abs_req(type(lines) is list and all(type(x) is str for x in lines),'ABS receipt schema')
+    required=('H4ABS_FULL_STATIC_PASS','H4ABS_SOURCE '+source,
+        'H4ABS_PROVENANCE '+provenance,'H4ABS_EVALUATOR_SHA256 '+evaluator_sha,
+        'STATIC_EXIT_CODE=0 TEE_EXIT_CODE=0')
+    for line in required:h4abs_req(lines.count(line)==1,'ABS static receipt '+line.split()[0])
+    for prefix in ('H4ABS_SOURCE ','H4ABS_PROVENANCE ','H4ABS_EVALUATOR_SHA256 ','STATIC_EXIT_CODE='):
+        h4abs_req(sum(x.startswith(prefix) for x in lines)==1,'ABS ambiguous static receipt')
+    h4abs_req(not any('FULL_STATIC_ACCEPTANCE_HOLD' in x for x in lines)
+        and lines[-2:]==list(required[0:1])+list(required[-1:]),'ABS static final sequence')
+    for name,expected in (
+        ('H4ABS_INTEGRATION_STATIC_FIXTURES ',dict(action_vectors=16000,archived_rows=211,
+            fixture_transfers=2,full_static=False,inference=0,negative_tests=30,optimizer_updates=0,
+            physical_transitions=0,raw_max=200834670,resets=0,row_bytes=2199)),
+        ('H4ABS_READER_FIXTURES ',dict(mock_lanes=5,mock_transitions=5902,native_calls=0,negative=3,physical_transitions=0))):
+        matches=[x[len(name):] for x in lines if x.startswith(name)]
+        h4abs_req(len(matches)==1 and json.loads(matches[0])==expected,'ABS static fixture receipt '+name)
+    h4abs_req(lines.count('H4ABS_FINAL_CONTRACT_FIXTURES_PASS')==1,'ABS final contract fixture receipt')
+    return True
+
 def h4abs_authorize(root,inputs=None):
     root=Path(root).resolve()
     auth=h4abs_marker((root/'G1_RESEARCH_RULES.md').read_text('utf8'))
@@ -12428,8 +12449,8 @@ def h4abs_authorize(root,inputs=None):
         and auth['provenance']==h4m3_digest(inputs['provenance']),'ABS auth provenance')
     p=h4abs_pin(root/auth['static_path'],auth['static_sha'],H4ABS_LOG_CAP)
     lines=p.read_text('utf8').splitlines()
-    for line in ('H4ABS_FULL_STATIC_PASS','H4ABS_SOURCE '+auth['source'],'H4ABS_PROVENANCE '+auth['provenance']):
-        h4abs_req(lines.count(line)==1,'ABS static receipt')
+    h4abs_receipt_lines(lines,auth['source'],auth['provenance'],
+        inputs['provenance']['source']['m463_gate3_cp_eval.py'])
     return auth,inputs
 
 def h4abs_enter(args):
@@ -12500,6 +12521,44 @@ def h4abs_eval_branch(forkrow,rows,lane):
     if not safe:return dict(complete=complete,safe=False)
     frames=[forkrow['packed'].tolist()]+a['packed'].tolist()
     return dict(complete=True,safe=True,metrics=h4abs_recovery(lane['single'][:250],frames,H4M3_COLUMNS))
+
+def h4abs_safety_summary(rows,baseline,prefix):
+    """Derived H3 comparative gates and full observed maxima; no new threshold."""
+    import numpy as np
+    cols=H4M3_COLUMNS
+    def values(a,k):
+        return np.asarray(a['packed'][:,cols.index(k)],dtype=np.float64)
+    def maxima(a):
+        out={}
+        for k in H3_EVAL_LIMITS:
+            v=values(a,k)
+            h4abs_req(np.isfinite(v).all() and np.all(v>=0),'ABS packed safety metric')
+            out[k]=float(v.max()) if len(v) else 0.
+        return out
+    own=maxima(rows)
+    full={k:max(prefix[k],own[k]) for k in H3_EVAL_LIMITS}
+    out=dict(suffix_samples=len(rows),full_observed_safety_max=full,suffix_safety_max=own,
+        critical_flags=sorted(k for k in H3_EVAL_FLAGS if values(rows,k).any()))
+    if baseline is not None:
+        n=min(len(rows),len(baseline))
+        old=maxima(baseline[:n]);new=maxima(rows[:n])
+        gates={k:dict(baseline=max(prefix[k],old[k]),candidate=max(prefix[k],new[k]),tolerance=tol,
+            passed=max(prefix[k],new[k])<=max(prefix[k],old[k])+tol) for k,tol in H3_EVAL_LIMITS.items()}
+        flags=sorted(set(out['critical_flags'])-{k for k in H3_EVAL_FLAGS if values(baseline,k).any()})
+        out.update(common_prefix_samples=335+n,comparative_safety=gates,new_critical_flags=flags,
+            comparative_pass=all(x['passed'] for x in gates.values()) and not flags)
+    return out
+
+def h4abs_transfer_context(fork,rows,telemetry):
+    """Measured neighboring samples around each qualified transfer, not new simulation."""
+    cols=H4M3_COLUMNS
+    def point(t):
+        r=fork if t==335 else rows[t-336]
+        return dict(tick=t,load=r['load'].tolist(),com_position=r['com'][:3].tolist(),
+            com_velocity=r['com'][3:6].tolist(),angular_momentum=r['com'][6:9].tolist(),
+            tracking={k:float(r['packed'][cols.index(k)]) for k in H4ABS_BANDS})
+    return [dict(event=e,before=point(max(335,e['transfer_onset']-1)),
+        after=point(e['confirmed_tick'])) for e in telemetry['events']]
 
 def h4abs_local_decision(results):
     h4abs_req(len(results)==5,'ABS five results')
@@ -12620,6 +12679,7 @@ def h4abs_read_records(path,inputs,complete=False,deadline=None):
         h4abs_req(p.is_file() and not p.is_symlink() and p.stat().st_size<=cap,'ABS reader file')
     h4abs_req(jpath.stat().st_size+rpath.stat().st_size<=H4ABS_RAW_CAP,'ABS reader total')
     m=inputs['manifest'];dtype=h4abs_row_dtype();results=[];rows=[];key=None;pending=None;guard=None;start=None
+    branch_summaries=[];prefix_safety=None
     attempted=recorded=0;actor_attempted=actor_recorded=0;actor_pending=None;actor_value=None
     lane_idx=0;reset_state=0;templates=[];stage=0;candidates=[];best=None;bestkey=None
     fork=None;parent=None;A=None;base=None;kicks=[];snapshot=False;allhash=hashlib.sha256()
@@ -12723,6 +12783,7 @@ def h4abs_read_records(path,inputs,complete=False,deadline=None):
                 h4abs_branch_records(a.tobytes(),m,H4M3_COLUMNS,lane=lane_idx,branch=b,candidate=key[2],first_digest=start,
                     sequence=A[key[2]] if b>=3 else None)
                 if b==0:
+                    prefix_safety=h4abs_safety_summary(a,None,{k:0. for k in H3_EVAL_LIMITS})['full_observed_safety_max']
                     h4abs_req(reason=='FULL' and len(a)==335 and kicks==[300,335] and snapshot==(lane['snapshot'] is not None),'ABS prefix end')
                     fork=a[-1];parent=fork['state_after'].tobytes().hex()
                     A,_=h4abs_generate(fork['qpos_post'][7:],h4abs_domain(m),h4abs_frozen_basis(m['actuator_names']),h4abs_coefficients());stage=1
@@ -12731,23 +12792,31 @@ def h4abs_read_records(path,inputs,complete=False,deadline=None):
                     if b==1:base=a.copy()
                     else:h4abs_compare_replay(base.tobytes(),a.tobytes(),1,2)
                     stage=b+1
+                    branch_summaries.append(dict(key=list(key),stop=reason,safety=h4abs_safety_summary(a,None,prefix_safety)))
                 else:
                     n=249 if b==3 else 665
                     unsafe=bool(len(a) and not h4abs_row_safety(a[-1],m,H4M3_COLUMNS)[0])
                     h4abs_req((reason=='FULL' and len(a)==n and not unsafe and guard is None)
                         or (reason=='POST_STOP' and unsafe and guard is None)
                         or (reason=='PRE_GUARD' and guard is not None and len(a)<n and not unsafe),'ABS candidate stop')
+                    safety=h4abs_safety_summary(a,base,prefix_safety)
+                    summary=dict(key=list(key),stop=reason,safety=safety)
+                    branch_summaries.append(summary)
                     if b==3:
                         v=h4abs_eval_branch(fork,a,lane);v['id']=key[2];candidates.append(v)
+                        summary['selection_metrics']=v
+                        if v['safe']:h4abs_req(safety['comparative_pass'],'ABS complete candidate comparative safety')
                         if v['safe'] and v['metrics']['recovery']['recovered'] and v['metrics']['stable_tail']:
                             rank=(v['metrics']['recovery']['recovery_s'],v['metrics']['mean_normalized_error'],key[2])
                             if bestkey is None or rank<bestkey:bestkey=rank;best=a.copy()
                     else:
                         n=min(len(a),249);h4abs_compare_replay(best[:n].tobytes(),a[:n].tobytes(),3,4)
                         witness=reason=='FULL' and len(a)==665
+                        if witness:h4abs_req(safety['comparative_pass'],'ABS witness comparative safety')
                         tel=h4abs_transfers([fork['load'].tolist()]+a['load'].tolist(),range(335,1001)) if witness else None
                         endpoint=334+int(round(candidates[key[2]]['metrics']['recovery']['recovery_s']/.02))
                         result=dict(selected=key[2],witness=witness,transfers_before_recovery=sum(v['confirmed_tick']<endpoint for v in tel['events']) if witness else 0,telemetry=tel)
+                        summary['transfer_context']=h4abs_transfer_context(fork,a,tel) if witness else []
                         stage=4
                 key=None;rows=[];guard=None
             elif tag=='lane_end':
@@ -12768,6 +12837,7 @@ def h4abs_read_records(path,inputs,complete=False,deadline=None):
         reset_attempted=lane_idx+int(reset_state>=1),reset_recorded=lane_idx+int(reset_state==2),templates=templates,
         actor_attempted=actor_attempted,actor_recorded=actor_recorded,actor_pending=actor_pending,
         tail_action_awaiting_delivery=actor_value is not None,open_branch=key,
+        branch_summaries=branch_summaries,
         raw_sha256=allhash.hexdigest(),decision=h4abs_local_decision(results) if lane_idx==5 else None)
 
 def h4abs_worker(root,auth,inputs):
@@ -12825,8 +12895,9 @@ def h4abs_dispatch(root,child=False):
             rc=proc.wait(timeout=max(.01,deadline-time.monotonic()));f.flush();os.fsync(f.fileno())
         h4abs_req(rc==0 and h4abs_authorize(root)[0]==auth,'ABS child completion')
         verified=h4abs_read_records(path.parent,inputs,complete=True,deadline=deadline)
+        h4abs_req(path.is_file() and not path.is_symlink() and 0<path.stat().st_size<=H4ABS_REPORT_CAP,'ABS final report path/cap')
         report=json.loads(path.read_bytes())
-        h4abs_req(path.stat().st_size<=H4ABS_REPORT_CAP and report['status']=='COMPLETE'
+        h4abs_req(report['status']=='COMPLETE'
             and report['authorization']==auth and report['provenance']==inputs['provenance']
             and report['plan']==h4abs_plan() and report['verification']==verified,'ABS final report')
         g=report['gpu'];gi=report['gpu_initial']
@@ -12839,7 +12910,7 @@ def h4abs_dispatch(root,child=False):
     except BaseException as exc:
         error=repr(exc)[:4096];kill()
         if proc is not None:rc=proc.wait()
-        try:verified=h4abs_read_records(path.parent,inputs,complete=False)
+        try:verified=h4abs_read_records(path.parent,inputs,complete=False,deadline=deadline if 'deadline' in locals() else time.monotonic())
         except Exception as read_error:error+='; partial reader: '+repr(read_error)[:1000]
     h4m6_write_bounded(path.parent/'attempt_result.json',dict(authorization=auth,status=status,rc=rc,
         log_bytes=min(total,H4ABS_LOG_CAP),error=error,verified=verified),exclusive=True,cap=H4ABS_REPORT_CAP)
@@ -12969,6 +13040,36 @@ def h4abs_step_tail_static(raw):
     h4abs_req(tail(graph(raw))==tail(graph(prev)),'ABS shared native step tail')
     return True
 
+def h4abs_final_contract_fixtures(manifest):
+    import numpy as np
+    source='a'*64;provenance='b'*64;evaluator='c'*64
+    lines=['H4ABS_SOURCE '+source,'H4ABS_PROVENANCE '+provenance,'H4ABS_EVALUATOR_SHA256 '+evaluator,
+        'H4ABS_INTEGRATION_STATIC_FIXTURES '+json.dumps(dict(action_vectors=16000,archived_rows=211,
+            fixture_transfers=2,full_static=False,inference=0,negative_tests=30,optimizer_updates=0,
+            physical_transitions=0,raw_max=200834670,resets=0,row_bytes=2199)),
+        'H4ABS_READER_FIXTURES '+json.dumps(dict(mock_lanes=5,mock_transitions=5902,native_calls=0,negative=3,physical_transitions=0)),
+        'H4ABS_FINAL_CONTRACT_FIXTURES_PASS','H4ABS_FULL_STATIC_PASS','STATIC_EXIT_CODE=0 TEE_EXIT_CODE=0']
+    h4abs_receipt_lines(lines,source,provenance,evaluator)
+    for bad in (lines[:-1],lines[:-1]+['STATIC_EXIT_CODE=1 TEE_EXIT_CODE=0'],
+        lines[:-2]+['H4ABS_HELD_INTEGRATION_STATIC_PASS; FULL_STATIC_ACCEPTANCE_HOLD',lines[-1]],
+        ['H4ABS_SOURCE '+'d'*64]+lines,lines[:2]+['H4ABS_EVALUATOR_SHA256 '+'d'*64]+lines[3:],
+        lines[:4]+lines[5:],lines[:5]+lines[6:]):
+        try:h4abs_receipt_lines(bad,source,provenance,evaluator)
+        except (ValueError,TypeError,KeyError):pass
+        else:raise ValueError('ABS receipt negative accepted')
+    # Comparative maxima include the common immutable prefix; use frozen H3 limits.
+    d=h4abs_row_dtype();a=np.zeros(3,dtype=d);b=a.copy()
+    p={k:0. for k in H3_EVAL_LIMITS};k=next(iter(H3_EVAL_LIMITS));ix=H4M3_COLUMNS.index(k)
+    a['packed'][0,ix]=2*H3_EVAL_LIMITS[k]
+    h4abs_req(not h4abs_safety_summary(a,b,p)['comparative_pass'],'ABS comparative negative')
+    p[k]=a['packed'][0,ix]
+    h4abs_req(h4abs_safety_summary(a,b,p)['comparative_pass'],'ABS shared prefix maximum')
+    f=np.zeros((),dtype=d);a['com'][0,3]=.4;a['com'][1,3]=.1
+    e=dict(transfer_onset=337,confirmed_tick=337)
+    ctx=h4abs_transfer_context(f,a,dict(events=[e]))
+    h4abs_req(ctx[0]['before']['com_velocity'][0]==.4 and ctx[0]['after']['com_velocity'][0]==.1,'ABS transfer context')
+    return True
+
 def h4abs_full_static(root):
     import tempfile
     root=Path(root).resolve();h4m3_no_runtime_imports()
@@ -13003,13 +13104,16 @@ def h4abs_full_static(root):
         reject(lambda:h4abs_read_records(d,inputs,complete=True))
         reject(lambda:j.reserve([0,0,-1],2))
     reader=h4abs_reader_fixtures(inputs['manifest'])
+    h4abs_final_contract_fixtures(inputs['manifest'])
     h4m3_no_runtime_imports()
     h4abs_req(not (root/H4ABS_OUTPUT).parent.exists(),'ABS static created output')
     print('H4ABS_SOURCE',h4m3_digest(inputs['provenance']['source']),flush=True)
     print('H4ABS_PROVENANCE',h4m3_digest(inputs['provenance']),flush=True)
     print('H4ABS_INTEGRATION_STATIC_FIXTURES',json.dumps(result,sort_keys=True),flush=True)
     print('H4ABS_READER_FIXTURES',json.dumps(reader,sort_keys=True),flush=True)
-    print('H4ABS_HELD_INTEGRATION_STATIC_PASS; FULL_STATIC_ACCEPTANCE_HOLD',flush=True)
+    print('H4ABS_EVALUATOR_SHA256',inputs['provenance']['source']['m463_gate3_cp_eval.py'],flush=True)
+    print('H4ABS_FINAL_CONTRACT_FIXTURES_PASS',flush=True)
+    print('H4ABS_FULL_STATIC_PASS',flush=True)
 
 H4ABS_INTEGRATION_PATCHES=[["def run(args):\n    m7_snapshot=","def run(args):\n    abs_mode=bool(getattr(args,'h4abs_native',False))\n    m7_snapshot="],["    placement=bool(getattr(args,'h4m3_placement',False)) or feasibility or m7_snapshot\n    if m7_snapshot:","    placement=bool(getattr(args,'h4m3_placement',False)) or feasibility or m7_snapshot or abs_mode\n    if abs_mode:\n        h4abs_enter(args)\n    elif m7_snapshot:"],["        if m7_snapshot:\n            h4m7_require(args.h3_session['manifest']==args.h4m7_manifest,'MODEL_ARCHIVE')","        if abs_mode:\n            h4abs_req(args.h3_session['manifest']==args.h4abs_inputs['manifest'],'ABS MODEL_ARCHIVE')\n        elif m7_snapshot:\n            h4m7_require(args.h3_session['manifest']==args.h4m7_manifest,'MODEL_ARCHIVE')"],["    if m7_snapshot:\n        def template_event(kind,event):","    if abs_mode:\n        load_policy=h4_shared_frozen_loader(env.action_size,paper,networks,running_statistics,\n            serialization,jax,jnp,np,template_event=lambda k,v: args.h4abs_journal.event(['template',k,v]))\n    elif m7_snapshot:\n        def template_event(kind,event):"],["                         probe_residual=None,probe_selected=None):\n                cmd = (","                         probe_residual=None,probe_selected=None,absolute_action=None,actor_only=False):\n                cmd = ("],["                action,_=policy(state.obs,jax.random.PRNGKey(0))\n                if probe_residual is not None:","                if absolute_action is None:\n                    action,_=policy(state.obs,jax.random.PRNGKey(0))\n                else:\n                    h4abs_req(abs_mode and placement_capture and probe_residual is None and not actor_only,'ABS action source')\n                    action=absolute_action\n                if actor_only:\n                    h4abs_req(abs_mode and absolute_action is None and probe_residual is None,'ABS actor only')\n                    return action\n                if probe_residual is not None:"],["            step_fn=(jax.jit(one_step,static_argnames=('placement_capture',))\n                     if placement or m6 else jax.jit(one_step))\n            if m7_snapshot:","            step_fn=(jax.jit(one_step,static_argnames=('placement_capture','actor_only')) if abs_mode else\n                     jax.jit(one_step,static_argnames=('placement_capture',))\n                     if placement or m6 else jax.jit(one_step))\n            if abs_mode:\n                h4abs_native_lane(args,lane_index,env,step_fn,jax,jnp,np)\n                continue\n            if m7_snapshot:"],["def h4abs_legacy_projection(raw):\n    # Remove","def h4abs_legacy_projection(raw):\n    raw=h4abs_runtime_projection(raw)\n    # Remove"],["if __name__=='__main__':main()\n","if __name__=='__main__':\n    if len(sys.argv)>1 and sys.argv[1]=='--h4abs':h4abs_cli(sys.argv[2:])\n    else:main()\n"],["        args.h3_session['brax_source_verification']=h3_verify_brax_train_source(networks)\n        if placement:","        args.h3_session['brax_source_verification']=h3_verify_brax_train_source(networks)\n        if abs_mode:\n            h4abs_req(args.h3_session['brax_source_verification']==args.h4abs_inputs['provenance']['brax'],'ABS native Brax identity')\n        if placement:"]]
 # H4ABS_RUNTIME_END
