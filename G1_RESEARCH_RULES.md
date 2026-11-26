@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.171  
+**Version:** 1.2.172  
 **Ngày cập nhật:** 2026-11-26 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -1904,6 +1904,14 @@ H4M6_DIAG_STATIC_APPROVED: H4-M6-2D1-V1 m463_runs/m470_h4_m6_state_diag_v1 d1bcb
 
 Static approval only. No H4M6_DIAG_GO or other active runtime marker. Next proposed separate explicit Owner GO H4-M6-2D2 bounded native paired-state diagnostic, single fresh namespace m463_runs/m470_h4_m6_state_diag_v1, existing parent/child collector and strict report reader, exact source/manifest/static and24 archive pins plus installed six MJX pins and frozen C401M/restore/reward/external/generated provenance. Seed4102 only, REF0/RSS0/RSS1/REF1 order, max4 resets/32 physical/32 actor/32 key audits/2 template initializations; original shared graph, reset/step, RawAudit and digest unchanged; exact full same-arm and projected/physics cross-arm, reset and post snapshots/pre linkage, raw-byte witnesses and historical hash comparison. Existing diagnostic resource caps, GPU/storage/STOP gates; no retry including preflight failure. Preserve all three STOPs and positive4101. DIAGNOSTIC_COMPLETE is not Technical PASS; report passed=false, no training/evaluation/optimizer/save, no new tolerance or exclusion. Nonreproduction inconclusive and common-prefix comparisons do not prove causality. No repeated static or arithmetic suite if source unchanged. All runtime/technical v4/REF6/RSS/DEV/holdout/readiness/production/promotion/Branch B HOLD until separate authorization, official H4 CTRL unchanged. Rules-only update.
 
+### H4-M6-2D2 — bounded native paired-state diagnostic one-use GO (v1.2.172; 2026-11-26)
+
+Explicit Owner GO for exactly one fresh diagnostic attempt, not technical acceptance or training. SA reread Rules v1.2.171 blob03e5230e15bfbc883544c9874a1f796c2f43d265 and AGENTS, verified current four executable blobs match approved b757c26e28a9cd11b2c414ccda005d0d426ebc0f / df0321b6f89a14b9b16d56c698c881a8c7a3771c / 234d1d598ec796c45283576afa662c3c4daf0a93 / 348ae057456cbd326012ec76fa4600f38be74ff7. Reviewed exact diagnostic authorization, parent collector, child dispatcher, input/bootstrap checks, exclusive reservation, shared graph and host capture/ledger integration. Independently rehashed actual uploaded full static log7162 bytes/76 lines SHA4c546aa9e2cf30778349564fbddc06128be43dd35de1df94a16072779ea2581e and all24 actual uploaded historical artifact bytes matching static log pins; recomputed manifest726ce1bd54f42c252c84f9fc6b260bea232bf5d6f7d17d1452b02aa8651a4937 and v3 canonical scientific spec65371befdc4cb7265b4ee4e6366fbf94ea1e5478cd6117ed190c492e340a9ae5/external97e1686ac016de832166f26c7287992f0b6536a27c504ee6451a5d472597e7da. Six final static markers and six installed MJX blob/SHA records match approval and evaluator; current source d1bcb4285401be52668d150270963f6a9a9d24916b28994af7bd102f6a02a411, generated7e2010e84e888e4bfa1622c8eceea86e69b1767d9a89a323efec971611f71b5a. Actual archived v3 input paths and pins C401M1ccf579ea35d4518713b00ea20d77db8463bc469b7de903b8f10f457b3dc90b8, restore9c46427c16aa482730e45bc9f79c53f6cb18ec3a267d1fc3253faab695916e81, reward84c285315e109ca8716476b0f527873046b441d35e3fe963570e5f2019fe3530 retained. Actual installed bytes, common source map and checkpoint remain Owner-local; existing dispatcher revalidates all before reservation, no bypass. Historical1+6+164=171 physical transitions and positive4101 preserved. No new physical/actor/optimizer/eval/save and no executable modifications by SA; no repeated static suite or arithmetic probe.
+
+H4M6_DIAG_GO: H4-M6-2D1-V1 m463_runs/m470_h4_m6_state_diag_v1 d1bcb4285401be52668d150270963f6a9a9d24916b28994af7bd102f6a02a411 726ce1bd54f42c252c84f9fc6b260bea232bf5d6f7d17d1452b02aa8651a4937 4c546aa9e2cf30778349564fbddc06128be43dd35de1df94a16072779ea2581e m463_runs/m470_h4_m6_2d1_full_static_20261126_085310_394191139.log
+
+Authorize only existing parent CLI --mode run --h4m6-phase diag --checkpoint-c <frozen C401M> --h4-reward-report <original H3 report> --h4cc-restore-report <typed restore> --output <absolute m463_runs/m470_h4_m6_state_diag_v1/report.json> through g1_m463. Never manually invoke hidden child flag. One fresh namespace and exclusive reservation, parent bounded collector and child PID/auth binding, no retry even if preflight fails before reservation; Owner report any STOP and SA relocks. Seed4102 only fixture [4102,3,3,295,327,335,335], REF0/RSS0/RSS1/REF1, 4 resets max,32 physical/actor/key audit calls max,2 separately ledgered template initializations. Shared native reset/step/RawAudit and original aggregate hashes unchanged. Capture exact full same-arm and projected/physics cross-arm state from existing outputs only; treedef/static metadata, leaf path/dtype/shape/raw-byte SHA, first mismatch witness bits and historical hash correspondence. No state exclusions beyond original projection, signed-zero canonicalization, tolerance, reward/network/PD/physics/PPO changes. Existing8MiB snapshot/256MiB logical host/16MiB report and log/16 witnesses per pair tick, GPU CUDA JAX/JAXLIB0.4.35 single RTX3060 12288MiB peak below95%, no sampler errors, disk2GiB+32MiB, partial/final ledgers, parent/child provenance and post-immutability, strict completed report replay. Diagnostic divergence endpoint is not technical failure bypass; only predeclared independent controls continue under existing gates. DIAGNOSTIC_COMPLETE with report passed=false is not Technical PASS; nonreproduction inconclusive, same-arm/cross-arm classification cannot alone prove causality. Preserve all artifacts, no deletion or reuse. No PPO, optimizer updates, evaluation or checkpoint saves. Native technical v4, REF6/RSS training, controlled DEV, independent holdout, readiness, production, promotion and Branch B HOLD; official H4 CTRL unchanged. Rules-only update. Owner execution pending.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -2165,6 +2173,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-26)
+
+**H4-M6-2D2 BOUNDED NATIVE DIAGNOSTIC ONE-USE GO (v1.2.172):** exact static log4c546aa9/source d1bcb428/manifest726ce1bd,24 actual historical artifacts rehashed, six installed MJX pins recorded, unchanged executable blobs; only diagnostic v1 max32 physical/4 resets/32 actor/32 key audits/2 templates; Owner execution pending. Historical171, zero new; all other runtime HOLD.
 
 **H4-M6-2D1 OWNER FULL STATIC PASS (v1.2.171):** actual log4c546aa9/source d1bcb428/manifest726ce1bd, four compile,24 archive pins, six installed MJX pins,32 archived row replay,10 expected rejections and CLI/immutability PASS. Native diagnostic static approval only, separate GO required; historical171, zero new physical, all runtime HOLD.
 
@@ -2860,6 +2870,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-26 | H4-M6-2D2 bounded native diagnostic GO | exact static/source/manifest,24 actual archive SHA,6 installed MJX pins, frozen C401M provenance | ONE DIAGNOSTIC GO; Owner execution pending; all other runtime HOLD | 1.2.172 |
+
 | 2026-11-26 | H4-M6-2D1 Owner full static acceptance | log4c546aa9/source d1bcb428/manifest726ce1bd,24 archive pins,6 installed MJX,32 archived rows,10 negative checks, CLI/immutability | STATIC PASS; bounded native diagnostic separate GO; all runtime HOLD | 1.2.171 |
 
 | 2026-11-26 | H4-M6-2D1 held diagnostic implementation | evaluator b757c26/manifest726ce1bd,24 archive pins,16 positive/33 negative host cases | STAGED; owner full static pending; all runtime HOLD | 1.2.170 |
@@ -3264,6 +3276,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.172 — 2026-11-26:** Authorize one bounded native paired-state diagnostic attempt following explicit Owner GO; Rules-only, no technical v4 or training authorization.
 
 - **v1.2.171 — 2026-11-26:** Accept actual Owner H4-M6-2D1 full static evidence and freeze independent diagnostic static approval; no active runtime authorization, no executable or scientific gate change.
 
