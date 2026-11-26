@@ -2733,6 +2733,8 @@ def run(args):
     if h3_mode:
         from brax.training.agents.ppo import networks
         args.h3_session['brax_source_verification']=h3_verify_brax_train_source(networks)
+        if abs_mode:
+            h4abs_req(args.h3_session['brax_source_verification']==args.h4abs_inputs['provenance']['brax'],'ABS native Brax identity')
         if placement:
             h4m3_require(args.h3_session['brax_source_verification']['path']
                 ==args.h3_session['brax_train_path'],'RUNTIME_BRAX_PATH')
@@ -12432,6 +12434,7 @@ def h4abs_authorize(root,inputs=None):
 
 def h4abs_enter(args):
     # Called before imports in shared run; parent reservation and child token exact.
+    h4abs_req(not any(getattr(args,k,False) for k in ('h4m7_snapshot','h4m6_phase','h4m5_obs_attribution','h4m4_feasibility','h4m3_placement','h4cc_technical','h4cc_eval','h4m12_eval','h4red_eval','h4_m1_eval','h3_m1_eval','h2a','h2b')),'ABS isolated flags')
     h4m3_no_runtime_imports()
     root=H4_EVAL_ROOT;auth,inputs=h4abs_authorize(root)
     base=root/H4ABS_OUTPUT
@@ -12605,7 +12608,7 @@ def h4abs_native_lane(args,i,env,step_fn,jax,jnp,np):
             confirmation=h4abs_transfers(loads,range(335,1001))
             transfers=sum(e['confirmed_tick']<endpoint for e in confirmation['events'])
     result=dict(selected=selected,witness=bool(witness),transfers_before_recovery=transfers,telemetry=confirmation)
-    j.event(['lane_end',i,result]);args.h4abs_results.append(result)
+    j.event(['lane_end',i,h4m3_digest(result)]);args.h4abs_results.append(result)
     print('H4ABS_LANE',i,json.dumps(result,sort_keys=True),flush=True)
 
 def h4abs_read_records(path,inputs,complete=False,deadline=None):
@@ -12693,6 +12696,7 @@ def h4abs_read_records(path,inputs,complete=False,deadline=None):
                         h4abs_req(expected.tobytes()==raw,'ABS reader archive rich bytes')
                     actor_recorded+=1
                 else:
+                    h4abs_pre_guard(rr['sent'],rr['qpos_pre'],m)
                     h4abs_req(e[2] is None,'ABS candidate rich label')
                     if t<=385:h4abs_req(h4abs_raw_equal(rr['sent'],A[key[2],t-336]),'ABS reader candidate action')
                     else:h4abs_req(actor_value is not None and h4abs_raw_equal(rr['sent'],actor_value),'ABS reader tail action')
@@ -12753,7 +12757,7 @@ def h4abs_read_records(path,inputs,complete=False,deadline=None):
                     h4abs_req(stage==3,'ABS no candidate stage')
                     result=dict(selected=None,witness=False,transfers_before_recovery=0,telemetry=None)
                 else:h4abs_req(stage==4,'ABS confirmation missing')
-                h4abs_req(e[2]==result,'ABS lane result replay')
+                h4abs_req(e[2]==h4m3_digest(result),'ABS lane result replay')
                 results.append(result);lane_idx+=1;reset_state=stage=0;candidates=[];best=bestkey=fork=parent=A=base=None;kicks=[];snapshot=False
             else:raise ValueError('ABS unknown event')
         h4abs_req(not rf.read(1),'ABS raw trailing/uncommitted row')
@@ -12854,6 +12858,7 @@ def h4abs_reader_fixtures(manifest):
     dtype=h4abs_row_dtype();cols=H4M3_COLUMNS
     d=np.asarray(manifest['default_pose'],np.float32)
     q=np.r_[np.array([0,0,.75,1,0,0,0],np.float32),d].astype(np.float32)
+    q[7]+=np.float32(.01) # nonzero synthetic anchor; distinct neutral and anchor sequences
     zero=np.zeros(29,np.float32);dom=h4abs_domain(manifest)
     A,_=h4abs_generate(q[7:],dom,h4abs_frozen_basis(manifest['actuator_names']),h4abs_coefficients())
     h4abs_pre_guard(zero,q,manifest)
@@ -12926,7 +12931,7 @@ def h4abs_reader_fixtures(manifest):
             key=[lane,4,0];ev.append(['begin',*key,parent])
             loads=safe_motion(lane,4,0,parent,1000);ev.append(['end',*key,'FULL'])
             result=dict(selected=0,witness=True,transfers_before_recovery=2,telemetry=h4abs_transfers(loads,range(335,1001)))
-        expected_results.append(result);ev.append(['lane_end',lane,result])
+        expected_results.append(result);ev.append(['lane_end',lane,h4m3_digest(result)])
     mock=dict(manifest=manifest,lanes=lanes);neg=0
     with tempfile.TemporaryDirectory() as td:
         p=Path(td);j=p/'events.jsonl';rr=p/'rows.bin'
@@ -13006,7 +13011,7 @@ def h4abs_full_static(root):
     print('H4ABS_READER_FIXTURES',json.dumps(reader,sort_keys=True),flush=True)
     print('H4ABS_HELD_INTEGRATION_STATIC_PASS; FULL_STATIC_ACCEPTANCE_HOLD',flush=True)
 
-H4ABS_INTEGRATION_PATCHES=[["def run(args):\n    m7_snapshot=","def run(args):\n    abs_mode=bool(getattr(args,'h4abs_native',False))\n    m7_snapshot="],["    placement=bool(getattr(args,'h4m3_placement',False)) or feasibility or m7_snapshot\n    if m7_snapshot:","    placement=bool(getattr(args,'h4m3_placement',False)) or feasibility or m7_snapshot or abs_mode\n    if abs_mode:\n        h4abs_enter(args)\n    elif m7_snapshot:"],["        if m7_snapshot:\n            h4m7_require(args.h3_session['manifest']==args.h4m7_manifest,'MODEL_ARCHIVE')","        if abs_mode:\n            h4abs_req(args.h3_session['manifest']==args.h4abs_inputs['manifest'],'ABS MODEL_ARCHIVE')\n        elif m7_snapshot:\n            h4m7_require(args.h3_session['manifest']==args.h4m7_manifest,'MODEL_ARCHIVE')"],["    if m7_snapshot:\n        def template_event(kind,event):","    if abs_mode:\n        load_policy=h4_shared_frozen_loader(env.action_size,paper,networks,running_statistics,\n            serialization,jax,jnp,np,template_event=lambda k,v: args.h4abs_journal.event(['template',k,v]))\n    elif m7_snapshot:\n        def template_event(kind,event):"],["                         probe_residual=None,probe_selected=None):\n                cmd = (","                         probe_residual=None,probe_selected=None,absolute_action=None,actor_only=False):\n                cmd = ("],["                action,_=policy(state.obs,jax.random.PRNGKey(0))\n                if probe_residual is not None:","                if absolute_action is None:\n                    action,_=policy(state.obs,jax.random.PRNGKey(0))\n                else:\n                    h4abs_req(abs_mode and placement_capture and probe_residual is None and not actor_only,'ABS action source')\n                    action=absolute_action\n                if actor_only:\n                    h4abs_req(abs_mode and absolute_action is None and probe_residual is None,'ABS actor only')\n                    return action\n                if probe_residual is not None:"],["            step_fn=(jax.jit(one_step,static_argnames=('placement_capture',))\n                     if placement or m6 else jax.jit(one_step))\n            if m7_snapshot:","            step_fn=(jax.jit(one_step,static_argnames=('placement_capture','actor_only')) if abs_mode else\n                     jax.jit(one_step,static_argnames=('placement_capture',))\n                     if placement or m6 else jax.jit(one_step))\n            if abs_mode:\n                h4abs_native_lane(args,lane_index,env,step_fn,jax,jnp,np)\n                continue\n            if m7_snapshot:"],["def h4abs_legacy_projection(raw):\n    # Remove","def h4abs_legacy_projection(raw):\n    raw=h4abs_runtime_projection(raw)\n    # Remove"],["if __name__=='__main__':main()\n","if __name__=='__main__':\n    if len(sys.argv)>1 and sys.argv[1]=='--h4abs':h4abs_cli(sys.argv[2:])\n    else:main()\n"]]
+H4ABS_INTEGRATION_PATCHES=[["def run(args):\n    m7_snapshot=","def run(args):\n    abs_mode=bool(getattr(args,'h4abs_native',False))\n    m7_snapshot="],["    placement=bool(getattr(args,'h4m3_placement',False)) or feasibility or m7_snapshot\n    if m7_snapshot:","    placement=bool(getattr(args,'h4m3_placement',False)) or feasibility or m7_snapshot or abs_mode\n    if abs_mode:\n        h4abs_enter(args)\n    elif m7_snapshot:"],["        if m7_snapshot:\n            h4m7_require(args.h3_session['manifest']==args.h4m7_manifest,'MODEL_ARCHIVE')","        if abs_mode:\n            h4abs_req(args.h3_session['manifest']==args.h4abs_inputs['manifest'],'ABS MODEL_ARCHIVE')\n        elif m7_snapshot:\n            h4m7_require(args.h3_session['manifest']==args.h4m7_manifest,'MODEL_ARCHIVE')"],["    if m7_snapshot:\n        def template_event(kind,event):","    if abs_mode:\n        load_policy=h4_shared_frozen_loader(env.action_size,paper,networks,running_statistics,\n            serialization,jax,jnp,np,template_event=lambda k,v: args.h4abs_journal.event(['template',k,v]))\n    elif m7_snapshot:\n        def template_event(kind,event):"],["                         probe_residual=None,probe_selected=None):\n                cmd = (","                         probe_residual=None,probe_selected=None,absolute_action=None,actor_only=False):\n                cmd = ("],["                action,_=policy(state.obs,jax.random.PRNGKey(0))\n                if probe_residual is not None:","                if absolute_action is None:\n                    action,_=policy(state.obs,jax.random.PRNGKey(0))\n                else:\n                    h4abs_req(abs_mode and placement_capture and probe_residual is None and not actor_only,'ABS action source')\n                    action=absolute_action\n                if actor_only:\n                    h4abs_req(abs_mode and absolute_action is None and probe_residual is None,'ABS actor only')\n                    return action\n                if probe_residual is not None:"],["            step_fn=(jax.jit(one_step,static_argnames=('placement_capture',))\n                     if placement or m6 else jax.jit(one_step))\n            if m7_snapshot:","            step_fn=(jax.jit(one_step,static_argnames=('placement_capture','actor_only')) if abs_mode else\n                     jax.jit(one_step,static_argnames=('placement_capture',))\n                     if placement or m6 else jax.jit(one_step))\n            if abs_mode:\n                h4abs_native_lane(args,lane_index,env,step_fn,jax,jnp,np)\n                continue\n            if m7_snapshot:"],["def h4abs_legacy_projection(raw):\n    # Remove","def h4abs_legacy_projection(raw):\n    raw=h4abs_runtime_projection(raw)\n    # Remove"],["if __name__=='__main__':main()\n","if __name__=='__main__':\n    if len(sys.argv)>1 and sys.argv[1]=='--h4abs':h4abs_cli(sys.argv[2:])\n    else:main()\n"],["        args.h3_session['brax_source_verification']=h3_verify_brax_train_source(networks)\n        if placement:","        args.h3_session['brax_source_verification']=h3_verify_brax_train_source(networks)\n        if abs_mode:\n            h4abs_req(args.h3_session['brax_source_verification']==args.h4abs_inputs['provenance']['brax'],'ABS native Brax identity')\n        if placement:"]]
 # H4ABS_RUNTIME_END
 if __name__=='__main__':
     if len(sys.argv)>1 and sys.argv[1]=='--h4abs':h4abs_cli(sys.argv[2:])
