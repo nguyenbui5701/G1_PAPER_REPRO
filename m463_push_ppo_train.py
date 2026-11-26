@@ -6059,4 +6059,230 @@ def main():
     run(a)
 
 
+
+# H4-M12-1 held continuation core. Never dispatched from run/_run_impl.
+H4M12_SPEC = {
+    'id':'H4-M12-CTRL-RESET-EDGE-V1', 'start_steps':10485760,
+    'end_steps':15728640, 'start_adam':1600, 'end_adam':2400,
+    'training':5242880, 'optimizer':800, 'evaluation':2000,
+    'total_physical':5244880, 'train_reset_lanes':24576, 'eval_reset_lanes':2,
+    'chunks':4, 'chunk_training':1310720, 'chunk_optimizer':200,
+    'output_cap':512*1024**2, 'disk_reserve':2*1024**3,
+    'external_log_reserve':16*1024**2,
+}
+H4M12_PARENT = Path('m463_runs/m470_h4_m1_2r_control_v1')
+H4M12_OUTPUT = Path('m463_runs/m470_h4_m12_ctrl_continue_v1')
+H4M12_PARENT_PINS = {
+    'report.json':'2ab06f3cc92d546f49eb5b40551a1a8238398106afc547822d0ac2b73529a059',
+    'm463_brax_ppo_instrumented.py':'8f30e5c695211b21815375c37b1bda67fcda98b2ee259a703e87b182c3402062',
+    'm463_easy_repeat_support_longtrain_step_010485760.msgpack':'addc8e7217008555c4b4391f93dd3e7a3083e7b23052ec6ddf9b928fbc9fff33',
+    'm470_fullstate_step_010485760.msgpack':'9b19312da08d71513ad8fa6638c632401bec20e09399fdf4a9f6f6e2b2619c80',
+    'm470_fullstate_step_010485760.json':'723ba76257cd0ec660ef6dd78d69d6546f80eec21467584d8fdd62295d69a119',
+    'attempt_result.json':'ceaa02e61c04dda2f35a8b4a1f020fac74d1bb9f60673ac3d2d1d2ecfae8e334',
+}
+H4M12_HISTORICAL_HEAD = '74e1843b64fa47f3272766c5de3fdfee5b159a0b'
+H4M12_HISTORICAL_ENV = '5d59e657352d0c42bd520ea8f3e34b37b64e6d81'
+H4M12_CURRENT_ENV = '8483c262524874ab88756f8a1e5eeac6fd924eed'
+
+
+def h4m12_require(ok, label):
+    if not bool(ok):
+        raise RuntimeError('M470_H4M12_'+label)
+
+
+def h4m12_schedule():
+    rows = ['template_reset_before','template_reset_after','restore_payload',
+            'restore_reset_before','restore_reset_after','initial','epoch']
+    for _ in range(4):
+        rows.extend(('chunk_before','chunk_after','chunk_ledger'))
+    return rows+['reset_before','reset_after','eval_before','eval_after','checkpoint','finish']
+
+
+class H4M12Budget:
+    """Host-only conservation ledger; no native functions or automatic retry."""
+    def __init__(self):
+        self.attempted = dict(H4X_COUNTERS)
+        self.recorded = dict(H4X_COUNTERS)
+        self.events = []
+        self.complete = False
+
+    def advance(self, event):
+        schedule = h4m12_schedule()
+        i = len(self.events)
+        h4m12_require(i < len(schedule) and event == schedule[i] and not self.complete,
+                      'EVENT_SEQUENCE')
+        charge = {}
+        target = None
+        if event in ('template_reset_before','restore_reset_before','reset_before'):
+            target, charge = 'attempted', {'train_reset_lanes':8192}
+        elif event in ('template_reset_after','restore_reset_after','reset_after'):
+            target, charge = 'recorded', {'train_reset_lanes':8192}
+        elif event == 'chunk_before':
+            target, charge = 'attempted', {'training':1310720,'optimizer':200}
+        elif event == 'chunk_ledger':
+            target, charge = 'recorded', {'training':1310720,'optimizer':200}
+        elif event == 'eval_before':
+            target, charge = 'attempted', {'evaluation':2000,'eval_reset_lanes':2}
+        elif event == 'eval_after':
+            target, charge = 'recorded', {'evaluation':2000,'eval_reset_lanes':2}
+        if target is not None:
+            new = dict(getattr(self,target))
+            for k,v in charge.items():
+                new[k] += v
+                h4m12_require(new[k] <= H4M12_SPEC[k],'CAP_'+k)
+                if target == 'recorded':
+                    h4m12_require(new[k] <= self.attempted[k],'UNATTEMPTED_'+k)
+            setattr(self,target,new)
+        if event == 'finish':
+            exact = {k:H4M12_SPEC[k] for k in H4X_COUNTERS}
+            h4m12_require(self.attempted == self.recorded == exact,'FINAL_BUDGET')
+            self.complete = True
+        self.events.append(event)
+
+    def snapshot(self):
+        return dict(attempted=dict(self.attempted), recorded=dict(self.recorded),
+                    events=list(self.events), complete=self.complete)
+
+
+def h4m12_parent_preflight(root):
+    """Read-only original CTRL evidence/byte pins; never deserialize weights."""
+    root = Path(root).resolve()
+    parent = root/H4M12_PARENT
+    h4m12_require(parent.is_dir() and not parent.is_symlink() and
+                  not parent.parent.is_symlink(),'PARENT_PATH')
+    for name, sha in H4M12_PARENT_PINS.items():
+        h4x_file_pin(parent/name, sha)
+    report = json.loads((parent/'report.json').read_bytes())
+    auth = report['h4x_authorization']
+    expected = {'id':H4X_ID,'arm':'control','output':str(H4M12_PARENT),
+        'source_sha256':'ac0ee95f9272cc58049e439db65f3bc68194e21b4784a114097334519d3df26b',
+        'generated_sha256':H4M12_PARENT_PINS['m463_brax_ppo_instrumented.py'],
+        'evidence_sha256':H4X_CAUSAL_SHA}
+    h4m12_require(auth == expected,'HISTORICAL_AUTH')
+    for name, value in (('attempt.json',{'authorization':auth,'reserved':True}),
+                        ('dispatch.started.json',{'authorization':auth}),
+                        ('attempt_result.json',{'status':'COMPLETE','authorization':auth})):
+        q = parent/name
+        h4m12_require(q.is_file() and not q.is_symlink() and
+                      json.loads(q.read_bytes()) == value,'HISTORICAL_RECEIPT_'+name)
+    h4_read_control(parent/'report.json',H4M12_PARENT_PINS['report.json'],
+                    report['h4_common_contract'])
+    h4m12_require(h4x_verify_operational(report) ==
+        '60a4e6999c4fbad089439fabe9de951ba063bc68db1380b46ad47cb2c2f96ebf',
+        'HISTORICAL_DR')
+    h4m12_require(report['config_fingerprint'] == H3_FP,'HISTORICAL_CONFIG')
+    end = report['h4x_operational']['events'][-1]
+    h4m12_require(end['steps']==10485760 and end['adam']==1600 and
+        end['normalizer']==411566080.0 and end['normalizer_dtype']=='float32' and
+        end['training_schema']=='60b9f70f7526c364f777f349bc753929bf003c655c473381d191f575e0072c01' and
+        end['environment_schema']=='64510c532b4a985b78dbb4cd6148f95df75b49f7fc2f0ea3ca55c6c90dc5157d',
+        'HISTORICAL_EDGE')
+    out = root/H4M12_OUTPUT
+    h4m12_require(not out.exists() and not out.is_symlink(),'OUTPUT_USED')
+    return dict(parent_pins=dict(H4M12_PARENT_PINS), edge=end,
+                original_contract=report['h4_common_contract'])
+
+
+def h4m12_env_projection(old, current):
+    """Static CTRL-only projection, with both full source bytes pinned.
+
+    Only explicitly disabled CCRC/M6/M8 additions may be erased for comparison.
+    No projected source is executed or used as an environment.
+    """
+    import ast
+    def blob(raw):
+        return hashlib.sha1(('blob %d\0'%len(raw)).encode()+raw).hexdigest()
+    h4m12_require(blob(old)==H4M12_HISTORICAL_ENV and
+                  blob(current)==H4M12_CURRENT_ENV,'ENV_SOURCE_PIN')
+    left, right = ast.parse(old), ast.parse(current)
+    def dump(x):
+        return ast.dump(x,include_attributes=False)
+    def cls(tree):
+        values = [n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=='CoverageJoystick']
+        h4m12_require(len(values)==1,'ENV_CLASS')
+        return values[0]
+    lc, rc = cls(left), cls(right)
+    extra = {'h4cc_arm','h4m6_arm','h4m6_tech_capture','h4m8_common'}
+    attrs = {'_'+x for x in extra}
+    tests = {dump(ast.parse(x,mode='eval').body) for x in
+             ("getattr(self, '_h4cc_arm', None) is not None",
+              "getattr(self, '_h4m6_arm', None) is not None",
+              "getattr(self, '_h4m8_common', False)")}
+    class Project(ast.NodeTransformer):
+        def visit_If(self,n):
+            if dump(n.test) in tests:
+                h4m12_require(not n.orelse,'ENV_NEW_ELSE')
+                return None
+            return self.generic_visit(n)
+    old_init = next(n for n in lc.body if isinstance(n,ast.FunctionDef) and n.name=='__init__')
+    new_init = next(n for n in rc.body if isinstance(n,ast.FunctionDef) and n.name=='__init__')
+    old_names = [x.arg for x in old_init.args.kwonlyargs]
+    new_names = [x.arg for x in new_init.args.kwonlyargs]
+    h4m12_require(new_names[:len(old_names)]==old_names and
+                  set(new_names[len(old_names):])==extra,'ENV_INIT_ARGS')
+    h4m12_require([x.value for x in new_init.args.kw_defaults[-4:]]==[None,None,False,False],
+                  'ENV_DISABLED_DEFAULTS')
+    new_init.args.kwonlyargs = new_init.args.kwonlyargs[:len(old_names)]
+    new_init.args.kw_defaults = new_init.args.kw_defaults[:len(old_names)]
+    kept = []
+    for n in new_init.body:
+        if isinstance(n,ast.If) and {x.id for x in ast.walk(n.test)
+                                    if isinstance(x,ast.Name)} & extra:
+            h4m12_require(not n.orelse,'ENV_INIT_ELSE')
+            continue
+        if (isinstance(n,ast.Assign) and len(n.targets)==1 and
+            isinstance(n.targets[0],ast.Attribute) and
+            isinstance(n.targets[0].value,ast.Name) and n.targets[0].value.id=='self'
+            and n.targets[0].attr in attrs):
+            continue
+        kept.append(n)
+    new_init.body = kept
+    Project().visit(rc)
+    h4m12_require(dump(lc)==dump(rc),'ENV_CTRL_PROJECTION')
+    # Every original module-level statement must remain in order.
+    old_top = [dump(n) for n in left.body if n is not lc]
+    new_top = [dump(n) for n in right.body if n is not rc]
+    i=0
+    for node in new_top:
+        if i<len(old_top) and node==old_top[i]:
+            i+=1
+    h4m12_require(i==len(old_top),'ENV_TOP_LEVEL_PROJECTION')
+    return True
+
+
+def h4m12_held_static(root, brax_train_path):
+    """Focused host-only core checks. Not full continuation integration."""
+    import subprocess
+    from m463_instrument_brax import make_h4m12_held_source
+    root = Path(root).resolve()
+    for name in ('m463_push_ppo_train.py','m463_instrument_brax.py','m463_coverage_env.py'):
+        compile((root/name).read_bytes(),str(root/name),'exec')
+    old = subprocess.check_output(['git','show',H4M12_HISTORICAL_HEAD+':m463_coverage_env.py'],cwd=root)
+    h4m12_env_projection(old,(root/'m463_coverage_env.py').read_bytes())
+    source, original = make_h4m12_held_source(Path(brax_train_path).read_bytes())
+    parent = h4m12_parent_preflight(root)
+    b=H4M12Budget()
+    for event in h4m12_schedule():
+        b.advance(event)
+    h4m12_require(b.complete,'FIXTURE_COMPLETE')
+    for prefix,bad in (([], 'epoch'), (['template_reset_before'],'chunk_before'),
+                       (h4m12_schedule()[:-1],'checkpoint'),(h4m12_schedule(),'finish')):
+        probe=H4M12Budget()
+        for event in prefix:
+            probe.advance(event)
+        before=probe.snapshot()
+        try:
+            probe.advance(bad)
+        except RuntimeError:
+            h4m12_require(probe.snapshot()==before,'FIXTURE_MUTATION')
+        else:
+            raise RuntimeError('M470_H4M12_NEGATIVE_ACCEPTED')
+    return {'status':'HELD_CORE_STATIC_PASS','spec':dict(H4M12_SPEC),
+            'original_brax_sha256':original,
+            'held_generated_sha256':hashlib.sha256(source.encode('utf8')).hexdigest(),
+            'parent_pins':parent['parent_pins'],'budget_fixture':b.snapshot(),
+            'physical_transitions':0,'optimizer_updates':0,'resets':0,
+            'native_inference':0,'runtime_authorized':False,
+            'full_integration_complete':False}
+
 if __name__=='__main__': main()

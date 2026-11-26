@@ -1401,3 +1401,86 @@ def h4m8_build_held(raw):
               'instrumented_sha256':sha256(s.encode('utf8')),
               'extra_fields':list(EXT_FIELDS+H4_EXT_FIELDS+H4CC_EXT_FIELDS+H4M8_EXT_FIELDS),
               'runtime_authorized':False,'generated_execution_hold':True}
+
+
+# H4-M12-1: held reset-edge continuation core. No executable builder entry.
+H4M12_HISTORICAL_GENERATED_SHA = '8f30e5c695211b21815375c37b1bda67fcda98b2ee259a703e87b182c3402062'
+
+
+def make_h4m12_held_source(raw):
+    """One original CTRL epoch; reversible host-boundary changes only.
+
+    The generated train function is unconditionally held. A future reviewed
+    integration must supply actual callbacks, authorization and budget guards.
+    No module import, native call, checkpoint read or write here.
+    """
+    base, original = make_h4_exploratory_source(raw)
+    if original != PINNED_SHA or sha256(base.encode('utf8')) != H4M12_HISTORICAL_GENERATED_SHA:
+        raise RuntimeError('M470_H4M12_HISTORICAL_GENERATOR_PIN')
+    config = H4X_CONFIG_SOURCE.replace('num_timesteps != 10485760 or num_evals != 3',
+                                       'num_timesteps != 5242880 or num_evals != 2')
+    config = config.replace('seed != 1 or m470_resume_state_path is not None',
+                            'seed != 1 or m470_resume_state_path is None\n'
+                            '      or m470_resume_expected_steps != 10485760')
+    config = config.replace('restore_checkpoint_path is None or randomization_fn is None',
+                            'restore_checkpoint_path is not None or randomization_fn is None')
+    config = config.replace('M470_H4X_CONFIG', 'M470_H4M12_CONFIG')
+    old_chunk = '''  if (num_training_steps_per_epoch != 20 or num_evals != 3
+      or num_resets_per_eval != 1 or num_timesteps != 10485760
+      or num_envs != 8192 or unroll_length != 32 or action_repeat != 1
+      or h4_chunk_fn is None or m470_resume_state_path is not None):
+    raise RuntimeError('M470_H4_CHUNK_CONTRACT')
+'''
+    new_chunk = old_chunk.replace('num_evals != 3','num_evals != 2').replace(
+        'num_timesteps != 10485760','num_timesteps != 5242880').replace(
+        'm470_resume_state_path is not None','m470_resume_state_path is None').replace(
+        'M470_H4_CHUNK_CONTRACT','M470_H4M12_CHUNK_CONTRACT')
+    patches = (
+        ("  from m463_push_ppo_train import h4x_generated_guard\n"
+         "  h4x_generated_guard(h4x_audit_fn, __file__)\n",
+         "  raise RuntimeError('M470_H4M12_GENERATED_EXECUTION_HOLD')\n"),
+        (H4X_CONFIG_SOURCE, config),
+        (old_chunk, new_chunk),
+        ("  h4x_audit_fn('reset_before', keys=key_envs, local_key=local_key,\n"
+         "                eval_key=eval_key, model=dr._mjx_model_v, axes=dr._in_axes)\n",
+         "  h4x_audit_fn('template_reset_before', keys=key_envs, local_key=local_key,\n"
+         "                eval_key=eval_key, model=dr._mjx_model_v, axes=dr._in_axes)\n"),
+        ("  h4x_audit_fn('reset_after', env_state=env_state, finite=h4x_dynamic_finite(env_state))\n"
+         "  # Discard",
+         "  h4x_audit_fn('template_reset_after', env_state=env_state, finite=h4x_dynamic_finite(env_state))\n"
+         "  # Discard"),
+        ("    restored = m470_payload['training_state']\n",
+         """    if (jax.tree_util.tree_structure(m470_payload) !=
+        jax.tree_util.tree_structure(m470_template)):
+      raise RuntimeError('M470_H4M12_RESTORE_TREE')
+    for ref_leaf, restored_leaf in zip(jax.tree_util.tree_leaves(m470_template),
+                                       jax.tree_util.tree_leaves(m470_payload)):
+      ra, rb = np.asarray(jax.device_get(ref_leaf)), np.asarray(jax.device_get(restored_leaf))
+      if ra.shape != rb.shape or ra.dtype != rb.dtype or not np.isfinite(rb).all():
+        raise RuntimeError('M470_H4M12_RESTORE_LEAF')
+    h4x_audit_fn('restore_payload', template=m470_template, payload=m470_payload)
+    restored = m470_payload['training_state']
+"""),
+        ("    env_state = reset_fn(key_envs)\n\n  if num_timesteps == 0:\n",
+         """    h4x_audit_fn('restore_reset_before', keys=key_envs, local_key=local_key,
+                  eval_key=m470_eval_rng, model=dr._mjx_model_v, axes=dr._in_axes)
+    env_state = reset_fn(key_envs)
+    h4x_audit_fn('restore_reset_after', env_state=env_state,
+                  finite=h4x_dynamic_finite(env_state))
+
+  if num_timesteps == 0:
+"""),
+        ("  assert total_steps >= num_timesteps\n",
+         "  if total_steps != 15728640:\n"
+         "    raise RuntimeError('M470_H4M12_FINAL_STEPS')\n"),
+    )
+    s = base
+    for old, new in patches:
+        s = h4c_once(s, old, new)
+    back = s
+    for old, new in reversed(patches):
+        back = h4c_once(back, new, old)
+    if back != base or s.count("raise RuntimeError('M470_H4M12_GENERATED_EXECUTION_HOLD')") != 1:
+        raise RuntimeError('M470_H4M12_REVERSE_OR_HOLD')
+    compile(s, '<H4-M12 held generated>', 'exec')
+    return s, original
