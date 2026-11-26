@@ -12391,7 +12391,7 @@ def h4abs_inputs(root):
         for rows in (prefix,single,double):
             a=np.asarray(rows);di=H4M3_COLUMNS.index('done')
             h4abs_req(a.shape==(len(rows),46) and np.isfinite(a).all() and not a[:-1,di].any(),'ABS archive finite chronology')
-        h4abs_req(not single[-1][di] and bool(double[-1][di])==(len(double)<666 or bool(double[-1][di])),'ABS reference termination')
+        h4abs_req(not single[-1][di] and (len(double)==666 or bool(double[-1][di])),'ABS reference termination')
         rich={q['tick']:q['data'] for q in x['rich'] if q['segment']!='single'}
         h4abs_req(all(t in rich for t in range(295,336)),'ABS prefix rich')
         snap=None
@@ -12450,6 +12450,7 @@ class H4AbsJournal:
     def __init__(self,path):
         self.path=Path(path);self.j=self.path/'events.jsonl';self.raw=self.path/'rows.bin'
         self.count=0;self.pending=None;self.raw_bytes=0;self.event_bytes=0
+        self.actor_attempted=0;self.actor_recorded=0
         self.hash=hashlib.sha256()
         for p in (self.j,self.raw):
             with p.open('xb'):pass
@@ -12465,6 +12466,9 @@ class H4AbsJournal:
     def reserve(self,key,t):
         h4abs_req(self.pending is None and self.count<H4ABS_CAP,'ABS attempt cap')
         self.event(['attempt',*key,t]);self.pending=[*key,t]
+        if key[1]<3:
+            h4abs_req(self.actor_attempted<75080,'ABS actor cap')
+            self.actor_attempted+=1
     def record(self,row,rich_sha=None):
         key=[int(row[k]) for k in ('lane','branch','candidate','tick')]
         h4abs_req(self.pending==key,'ABS record pending')
@@ -12473,6 +12477,15 @@ class H4AbsJournal:
             f.write(b);f.flush();os.fsync(f.fileno())
         self.event(['record',hashlib.sha256(b).hexdigest(),rich_sha])
         self.hash.update(b);self.raw_bytes+=len(b);self.count+=1;self.pending=None
+        if key[1]<3:self.actor_recorded+=1
+    def actor(self,key,t,call):
+        import numpy as np
+        h4abs_req(key[1]>=3 and t>=386 and self.actor_attempted==self.actor_recorded<75080,'ABS tail actor cap')
+        self.event(['actor_attempt',*key,t]);self.actor_attempted+=1
+        action=np.asarray(call())
+        h4abs_req(action.shape==(29,) and action.dtype==np.float32,'ABS actor schema')
+        self.event(['actor_record',action.tobytes().hex()]);self.actor_recorded+=1
+        return action
 
 def h4abs_eval_branch(forkrow,rows,lane):
     import numpy as np
@@ -12550,7 +12563,7 @@ def h4abs_native_lane(args,i,env,step_fn,jax,jnp,np):
         for t in range(336,end+1):
             action=None
             if b>=3:
-                action=A[c,t-336] if t<=385 else np.asarray(jax.device_get(step_fn(st,actor_only=True)))
+                action=A[c,t-336] if t<=385 else j.actor(key,t,lambda:jax.device_get(step_fn(st,actor_only=True)))
                 q=np.asarray(jax.device_get(st.data.qpos))
                 try:h4abs_pre_guard(action,q,m)
                 except ValueError:
@@ -12581,30 +12594,33 @@ def h4abs_native_lane(args,i,env,step_fn,jax,jnp,np):
     selected=h4abs_choose(results);witness=False;transfers=0;confirmation=None
     if selected is not None:
         rows,reason=branch(4,selected,1000)
-        if len(rows)>=249:h4abs_compare_replay(best.tobytes(),rows[:249].tobytes(),3,4)
+        n=min(len(rows),249);h4abs_compare_replay(best[:n].tobytes(),rows[:n].tobytes(),3,4)
         witness=len(rows)==665 and reason=='FULL' and all(h4abs_row_safety(v,m,H4M3_COLUMNS)[0] for v in rows)
         if witness:
             rec=results[selected]['metrics']['recovery']['recovery_s']
             endpoint=334+int(round(rec/.02))
             loads=[forkrow['load'].tolist()]+rows['load'].tolist()
             confirmation=h4abs_transfers(loads,range(335,1001))
-            transfers=sum(e['confirmed_tick']<=endpoint for e in confirmation['events'])
+            transfers=sum(e['confirmed_tick']<endpoint for e in confirmation['events'])
     result=dict(selected=selected,witness=bool(witness),transfers_before_recovery=transfers,telemetry=confirmation)
     j.event(['lane_end',i,result]);args.h4abs_results.append(result)
     print('H4ABS_LANE',i,json.dumps(result,sort_keys=True),flush=True)
 
-def h4abs_read_records(path,inputs,complete=False):
+def h4abs_read_records(path,inputs,complete=False,deadline=None):
     """Host independent journal/record reader, never run a policy or physics."""
     import numpy as np
+    import time
     path=Path(path);jpath=path/'events.jsonl';rpath=path/'rows.bin'
     for p,cap in ((jpath,H4ABS_REPORT_CAP),(rpath,H4ABS_RAW_CAP)):
         h4abs_req(p.is_file() and not p.is_symlink() and p.stat().st_size<=cap,'ABS reader file')
     h4abs_req(jpath.stat().st_size+rpath.stat().st_size<=H4ABS_RAW_CAP,'ABS reader total')
     m=inputs['manifest'];dtype=h4abs_row_dtype();results=[];rows=[];key=None;pending=None;guard=None;start=None
-    attempted=recorded=0;lane_idx=0;reset_state=0;templates=[];stage=0;candidates=[];best=None;bestkey=None
+    attempted=recorded=0;actor_attempted=actor_recorded=0;actor_pending=None;actor_value=None
+    lane_idx=0;reset_state=0;templates=[];stage=0;candidates=[];best=None;bestkey=None
     fork=None;parent=None;A=None;base=None;kicks=[];snapshot=False;allhash=hashlib.sha256()
     with jpath.open('rb') as jf,rpath.open('rb') as rf:
         for line in jf:
+            h4abs_req(deadline is None or time.monotonic()<deadline,'ABS reader watchdog')
             h4abs_req(len(line)<=4096 and line.endswith(b'\n'),'ABS journal row')
             e=json.loads(line);h4abs_req(h4abs_json_bytes(e)==line and type(e) is list and len(e)>0,'ABS journal canonical')
             tag=e[0]
@@ -12629,6 +12645,16 @@ def h4abs_read_records(path,inputs,complete=False):
                 h4abs_req(key==[lane_idx,0,-1] and t in (300,335) and pending is None
                     and e==['kick',lane_idx,t,h4m3_digest(lane['kicks'][int(t==335)])] and t not in kicks,'ABS kick receipt')
                 kicks.append(t)
+            elif tag=='actor_attempt':
+                h4abs_req(key is not None and key[1]>=3 and pending is None and guard is None
+                    and actor_pending is None and actor_value is None and len(e)==5 and e[1:4]==key
+                    and e[4]==336+len(rows) and 386<=e[4]<=(584 if key[1]==3 else 1000)
+                    and actor_attempted<75080,'ABS reader actor attempt')
+                if rows:h4abs_req(h4abs_row_safety(rows[-1],m,H4M3_COLUMNS)[0],'ABS actor after unsafe')
+                actor_pending=e[1:];actor_attempted+=1
+            elif tag=='actor_record':
+                h4abs_req(actor_pending is not None and len(e)==2 and type(e[1]) is str and len(e[1])==29*8,'ABS actor receipt')
+                actor_value=np.frombuffer(bytes.fromhex(e[1]),dtype=np.float32).copy();actor_pending=None;actor_recorded+=1
             elif tag=='attempt':
                 h4abs_req(key is not None and pending is None and guard is None and len(e)==5 and e[1:4]==key
                     and e[4]==(1 if key[1]==0 else 336)+len(rows) and attempted<H4ABS_CAP,'ABS attempt chronology')
@@ -12637,6 +12663,9 @@ def h4abs_read_records(path,inputs,complete=False):
                 if rows:
                     h4abs_req(not bool(rows[-1]['packed'][H4M3_COLUMNS.index('done')]),'ABS after terminal')
                     if key[1]>=3:h4abs_req(h4abs_row_safety(rows[-1],m,H4M3_COLUMNS)[0],'ABS after unsafe')
+                h4abs_req(actor_pending is None and ((actor_value is not None)==(key[1]>=3 and t>=386)),'ABS actor delivery')
+                if key[1]<3:
+                    h4abs_req(actor_attempted<75080,'ABS implicit actor cap');actor_attempted+=1
                 pending=e[1:];attempted+=1
             elif tag=='record':
                 h4abs_req(pending is not None and len(e)==3,'ABS record receipt')
@@ -12646,21 +12675,35 @@ def h4abs_read_records(path,inputs,complete=False):
                 t=pending[-1];b=key[1]
                 h4abs_req(int(rr['source'])==int(b>=3 and t<=385),'ABS record source')
                 h4abs_row_safety(rr,m,H4M3_COLUMNS)
+                if not rows:
+                    h4abs_req(rr['state_before'].tobytes().hex()==start,'ABS partial parent identity')
+                    if b!=0:h4abs_req(h4abs_raw_equal(rr['qpos_pre'],fork['qpos_post']) and h4abs_raw_equal(rr['qvel_pre'],fork['qvel_post']),'ABS fork coordinates')
+                elif not (b==0 and t in (300,335)):
+                    h4abs_req(np.array_equal(rows[-1]['state_after'],rr['state_before']) and h4abs_raw_equal(rows[-1]['qpos_post'],rr['qpos_pre']) and h4abs_raw_equal(rows[-1]['qvel_post'],rr['qvel_pre']),'ABS partial state chain')
                 if b<3:
                     exp=lane['prefix'][t-1] if b==0 else lane['double'][t-335]
                     h4abs_req(rr['packed'].tolist()==exp,'ABS reader archive row')
                     rich=lane['rich'].get(t)
                     h4abs_req(e[2]==(h4m3_digest(rich) if rich is not None else None),'ABS reader rich receipt')
+                    if rich is not None:
+                        expected=h4abs_row(rich,exp,m,lane=lane_idx,branch=b,candidate=-1,tick=t,source=0,
+                            before=rr['state_before'].tobytes().hex(),after=rr['state_after'].tobytes().hex())
+                        h4abs_req(expected.tobytes()==raw,'ABS reader archive rich bytes')
+                    actor_recorded+=1
                 else:
                     h4abs_req(e[2] is None,'ABS candidate rich label')
                     if t<=385:h4abs_req(h4abs_raw_equal(rr['sent'],A[key[2],t-336]),'ABS reader candidate action')
-                rows.append(rr);pending=None;recorded+=1
+                    else:h4abs_req(actor_value is not None and h4abs_raw_equal(rr['sent'],actor_value),'ABS reader tail action')
+                rows.append(rr);pending=None;actor_value=None;recorded+=1
             elif tag=='guard':
                 h4abs_req(key is not None and key[1]>=3 and pending is None and guard is None
                     and len(e)==7 and e[1:4]==key and e[4]==336+len(rows),'ABS guard receipt')
                 action=np.frombuffer(bytes.fromhex(e[5]),dtype=np.float32);q=np.frombuffer(bytes.fromhex(e[6]),dtype=np.float32)
                 h4abs_req(action.shape==(29,) and q.shape==(36,) and h4abs_raw_equal(q,(rows[-1] if rows else fork)['qpos_post']),'ABS guard qpos')
-                if e[4]<=385:h4abs_req(h4abs_raw_equal(action,A[key[2],e[4]-336]),'ABS guard action')
+                h4abs_req(actor_pending is None and e[4]<=(584 if key[1]==3 else 1000),'ABS guard horizon')
+                if e[4]<=385:h4abs_req(actor_value is None and h4abs_raw_equal(action,A[key[2],e[4]-336]),'ABS guard action')
+                else:h4abs_req(actor_value is not None and h4abs_raw_equal(action,actor_value),'ABS guard actor action')
+                actor_value=None
                 try:h4abs_pre_guard(action,q,m)
                 except ValueError:guard=e
                 else:raise ValueError('ABS guard accepted')
@@ -12669,7 +12712,7 @@ def h4abs_read_records(path,inputs,complete=False):
                     and e==['snapshot',lane_idx,hashlib.sha256(lane['snapshot'][2]).hexdigest()],'ABS snapshot receipt')
                 snapshot=True
             elif tag=='end':
-                h4abs_req(key is not None and pending is None and len(e)==5 and e[1:4]==key,'ABS end receipt')
+                h4abs_req(key is not None and pending is None and actor_pending is None and actor_value is None and len(e)==5 and e[1:4]==key,'ABS end receipt')
                 b=key[1];a=np.asarray(rows,dtype=dtype);reason=e[4]
                 h4abs_branch_records(a.tobytes(),m,H4M3_COLUMNS,lane=lane_idx,branch=b,candidate=key[2],first_digest=start,
                     sequence=A[key[2]] if b>=3 else None)
@@ -12694,11 +12737,11 @@ def h4abs_read_records(path,inputs,complete=False):
                             rank=(v['metrics']['recovery']['recovery_s'],v['metrics']['mean_normalized_error'],key[2])
                             if bestkey is None or rank<bestkey:bestkey=rank;best=a.copy()
                     else:
-                        if len(a)>=249:h4abs_compare_replay(best.tobytes(),a[:249].tobytes(),3,4)
+                        n=min(len(a),249);h4abs_compare_replay(best[:n].tobytes(),a[:n].tobytes(),3,4)
                         witness=reason=='FULL' and len(a)==665
                         tel=h4abs_transfers([fork['load'].tolist()]+a['load'].tolist(),range(335,1001)) if witness else None
                         endpoint=334+int(round(candidates[key[2]]['metrics']['recovery']['recovery_s']/.02))
-                        result=dict(selected=key[2],witness=witness,transfers_before_recovery=sum(v['confirmed_tick']<=endpoint for v in tel['events']) if witness else 0,telemetry=tel)
+                        result=dict(selected=key[2],witness=witness,transfers_before_recovery=sum(v['confirmed_tick']<endpoint for v in tel['events']) if witness else 0,telemetry=tel)
                         stage=4
                 key=None;rows=[];guard=None
             elif tag=='lane_end':
@@ -12713,8 +12756,11 @@ def h4abs_read_records(path,inputs,complete=False):
             else:raise ValueError('ABS unknown event')
         h4abs_req(not rf.read(1),'ABS raw trailing/uncommitted row')
     h4abs_req(0<=recorded<=attempted<=H4ABS_CAP and attempted-recorded==int(pending is not None),'ABS ledger counts')
-    if complete:h4abs_req(lane_idx==5 and pending is None and key is None and reset_state==0,'ABS final completeness')
+    h4abs_req(0<=actor_recorded<=actor_attempted<=75080 and actor_attempted-actor_recorded<=1,'ABS actor ledger')
+    if complete:h4abs_req(lane_idx==5 and pending is None and key is None and reset_state==0 and actor_pending is None and actor_value is None and actor_recorded==actor_attempted,'ABS final completeness')
     return dict(attempted=attempted,recorded=recorded,pending=pending,lanes=results,
+        reset_attempted=lane_idx+int(reset_state>=1),reset_recorded=lane_idx+int(reset_state==2),templates=templates,
+        actor_attempted=actor_attempted,actor_recorded=actor_recorded,actor_pending=actor_pending,open_branch=key,
         raw_sha256=allhash.hexdigest(),decision=h4abs_local_decision(results) if lane_idx==5 else None)
 
 def h4abs_worker(root,auth,inputs):
@@ -12733,7 +12779,9 @@ def h4abs_worker(root,auth,inputs):
     final_gpu=h3_gpu_check(monitor)
     h4abs_req(args.h3_session['brax_source_verification']==p['brax'],'ABS native Brax identity')
     result=h4abs_read_records(path.parent,inputs,complete=True)
-    h4abs_req(result['lanes']==args.h4abs_results,'ABS worker reader replay')
+    h4abs_req(result['lanes']==args.h4abs_results and result['attempted']==result['recorded']==journal.count
+        and result['actor_attempted']==result['actor_recorded']==journal.actor_attempted==journal.actor_recorded
+        and result['reset_attempted']==result['reset_recorded']==5,'ABS worker reader replay')
     h4m6_write_bounded(path,dict(status='COMPLETE',authorization=auth,provenance=p,
         plan=h4abs_plan(),gpu_initial=gpu,gpu=final_gpu,verification=result),exclusive=True,cap=H4ABS_REPORT_CAP)
 
@@ -12741,7 +12789,11 @@ def h4abs_dispatch(root,child=False):
     import selectors,signal,shutil,time
     root=Path(root).resolve();auth,inputs=h4abs_authorize(root);path=root/H4ABS_OUTPUT
     h4abs_req(os.environ.get('JAX_PLATFORMS')=='cuda','ABS CUDA only')
-    if child:return h4abs_worker(root,auth,inputs)
+    if child:
+        h4abs_req(json.loads((path.parent/'attempt.json').read_bytes())=={'authorization':auth,'reserved':True}
+            and json.loads((path.parent/'parent.json').read_bytes())=={'authorization':auth,'pid':os.getppid()}
+            and not (path.parent/'runtime.entered.json').exists(),'ABS child reservation')
+        return h4abs_worker(root,auth,inputs)
     h4abs_req(shutil.disk_usage(path.parent.parent).free>=2*1024**3+2*(H4ABS_RAW_CAP+H4ABS_REPORT_CAP+H4ABS_LOG_CAP),'ABS storage reserve')
     h4m6_reserve_tech(path,auth)
     h4m6_write_bounded(path.parent/'parent.json',dict(authorization=auth,pid=os.getpid()),exclusive=True)
@@ -12765,7 +12817,7 @@ def h4abs_dispatch(root,child=False):
                     h4abs_req(total<=H4ABS_LOG_CAP,'ABS log cap')
             rc=proc.wait(timeout=max(.01,deadline-time.monotonic()));f.flush();os.fsync(f.fileno())
         h4abs_req(rc==0 and h4abs_authorize(root)[0]==auth,'ABS child completion')
-        verified=h4abs_read_records(path.parent,inputs,complete=True)
+        verified=h4abs_read_records(path.parent,inputs,complete=True,deadline=deadline)
         report=json.loads(path.read_bytes())
         h4abs_req(path.stat().st_size<=H4ABS_REPORT_CAP and report['status']=='COMPLETE'
             and report['authorization']==auth and report['provenance']==inputs['provenance']
@@ -12775,6 +12827,7 @@ def h4abs_dispatch(root,child=False):
             and g['samples']>0 and 0<=gi['used_mib']<.95*12288,'ABS final GPU')
         h4abs_req(json.loads((path.parent/'runtime.entered.json').read_bytes())==
             dict(authorization=auth,pid=proc.pid,parent_pid=os.getpid()),'ABS child receipt')
+        h4abs_req(time.monotonic()<deadline,'ABS final watchdog')
         status='COMPLETE'
     except BaseException as exc:
         error=repr(exc)[:4096];kill()
