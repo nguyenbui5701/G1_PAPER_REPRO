@@ -2632,6 +2632,7 @@ def h4_shared_frozen_loader(action_size,paper,networks,running_statistics,serial
 
 
 def run(args):
+    abs_mode=bool(getattr(args,'h4abs_native',False))
     m7_snapshot=bool(getattr(args,'h4m7_snapshot',False))
     m6=bool(getattr(args,'h4m6_phase',None)=='dev')
     if getattr(args,'h4m6_phase',None) is not None:
@@ -2640,8 +2641,10 @@ def run(args):
     if getattr(args,'h4m5_obs_attribution',False):
         raise RuntimeError('M470_H4M5_DEDICATED_DISPATCH_REQUIRED')
     feasibility=bool(getattr(args,'h4m4_feasibility',False))
-    placement=bool(getattr(args,'h4m3_placement',False)) or feasibility or m7_snapshot
-    if m7_snapshot:
+    placement=bool(getattr(args,'h4m3_placement',False)) or feasibility or m7_snapshot or abs_mode
+    if abs_mode:
+        h4abs_enter(args)
+    elif m7_snapshot:
         h4m7_enter_runtime(args)
     elif feasibility:
         h4m4_enter_runtime(args)
@@ -2823,7 +2826,9 @@ def run(args):
             h4m4_require(args.h3_session['manifest']==args.h4m4_approved_manifest,
                 'H4M3_MODEL_IDENTITY')
             args.h3_session['kinematics']=h4m4_model_geometry(env,args.h3_session['manifest'],np)
-        if m7_snapshot:
+        if abs_mode:
+            h4abs_req(args.h3_session['manifest']==args.h4abs_inputs['manifest'],'ABS MODEL_ARCHIVE')
+        elif m7_snapshot:
             h4m7_require(args.h3_session['manifest']==args.h4m7_manifest,'MODEL_ARCHIVE')
             h4m7_write_report(args)
         else:
@@ -2837,7 +2842,10 @@ def run(args):
         h4m3_runtime_model_source(env,session)
         args.h4m6_rich['manifest']=h4m3_manifest(env,np)
         h4m6_rich_write(args.h4m6_rich)
-    if m7_snapshot:
+    if abs_mode:
+        load_policy=h4_shared_frozen_loader(env.action_size,paper,networks,running_statistics,
+            serialization,jax,jnp,np,template_event=lambda k,v: args.h4abs_journal.event(['template',k,v]))
+    elif m7_snapshot:
         def template_event(kind,event):
             key=kind+'_'+event
             counts=args.h3_session['template_counts']
@@ -2913,7 +2921,7 @@ def run(args):
         for name,policy in ([(selected,policies[selected])] if placement else policies.items()):
             # JIT step/diagnostics; a single MJX state (no vectorized envs) is active at a time.
             def one_step(state, effective_command=None, *, placement_capture=False,
-                         probe_residual=None,probe_selected=None):
+                         probe_residual=None,probe_selected=None,absolute_action=None,actor_only=False):
                 cmd = (
                     command
                     if effective_command is None
@@ -2933,7 +2941,14 @@ def run(args):
                 state=state.replace(info=info,obs=obs)
                 if placement_capture:
                     pre_placement=h4m3_pre_capture(state)
-                action,_=policy(state.obs,jax.random.PRNGKey(0))
+                if absolute_action is None:
+                    action,_=policy(state.obs,jax.random.PRNGKey(0))
+                else:
+                    h4abs_req(abs_mode and placement_capture and probe_residual is None and not actor_only,'ABS action source')
+                    action=absolute_action
+                if actor_only:
+                    h4abs_req(abs_mode and absolute_action is None and probe_residual is None,'ABS actor only')
+                    return action
                 if probe_residual is not None:
                     h4m4_require(feasibility and placement_capture and probe_selected is not None,
                                   'OPT_IN_CAPTURE_REQUIRED')
@@ -3195,8 +3210,12 @@ def run(args):
                                 probe_meta)
                     return next_state,diag,h4m3_post_capture(pre_placement,action,next_state,env)
                 return next_state,diag
-            step_fn=(jax.jit(one_step,static_argnames=('placement_capture',))
+            step_fn=(jax.jit(one_step,static_argnames=('placement_capture','actor_only')) if abs_mode else
+                     jax.jit(one_step,static_argnames=('placement_capture',))
                      if placement or m6 else jax.jit(one_step))
+            if abs_mode:
+                h4abs_native_lane(args,lane_index,env,step_fn,jax,jnp,np)
+                continue
             if m7_snapshot:
                 h4m7_native_lane(args,args.h4m7_lanes[lane_index],env,step_fn,jax,jnp,np)
                 continue
@@ -11937,6 +11956,7 @@ H4ABS_BANDS = {'vx':.1,'vy':.1,'yaw_rate':.1,'height':.05,'tilt_deg':5.}
 
 
 def h4abs_legacy_projection(raw):
+    raw=h4abs_runtime_projection(raw)
     # Remove this exact isolated block and restore the one historical call site.
     begin=b'# H4ABS_'+b'HOST_BEGIN\n';end=b'# H4ABS_'+b'HOST_END\n'
     h4abs_req(raw.count(begin)==raw.count(end)==1,'ABS projection markers')
@@ -12290,4 +12310,526 @@ def h4abs_host_static(root):
     print('H4ABS_FULL_STATIC_NOT_RUN; NATIVE_DISPATCH_HOLD',flush=True)
     return result
 # H4ABS_HOST_END
-if __name__=='__main__':main()
+# H4ABS_RUNTIME_BEGIN
+H4ABS_OUTPUT=Path('m463_runs/m470_h4abs_v1/report.json')
+H4ABS_HIST=Path('m463_runs/m470_h3_m1_3_corrected_20261124_192702_101671859/report.json')
+H4ABS_M7_REPORT='1ada01617a539c237faa35acb3c948f11a0912b8bff977f8606631e036de07ba'
+H4ABS_M7_RAW='69afc1ff40fa8a41c3b8d2166a98c55130dca342c0b020bf08c1ba5ab76a4fd6'
+H4ABS_PREV='8dffd91ade91a620a295df5d133a1e59d6e6f2181ba0a397a0e035ebeffc851b'
+H4ABS_MIB=1024**2
+H4ABS_REPORT_CAP=32*H4ABS_MIB
+H4ABS_RAW_CAP=384*H4ABS_MIB
+H4ABS_LOG_CAP=16*H4ABS_MIB
+H4ABS_WATCHDOG=5400
+# Held implementation: no active authorization marker is created by static.
+def h4abs_runtime_projection(raw):
+    a=b'# H4ABS_'+b'RUNTIME_BEGIN\n';b=b'# H4ABS_'+b'RUNTIME_END\n'
+    h4abs_req(raw.count(a)==raw.count(b)==1,'ABS runtime projection markers')
+    i=raw.index(a);j=raw.index(b,i)+len(b)
+    s=(raw[:i]+raw[j:]).decode('utf8')
+    for old,new in reversed(H4ABS_INTEGRATION_PATCHES):
+        h4abs_req(s.count(new)==1,'ABS runtime reverse anchor')
+        s=s.replace(new,old,1)
+    data=s.encode('utf8')
+    h4abs_req(hashlib.sha256(data).hexdigest()==H4ABS_PREV,'ABS previous exact bytes')
+    return data
+
+def h4abs_plan():
+    return dict(id='ND-SSTR-ABS-V1',lanes=[list(x[:3]) for x in H4M3_LANES],
+        candidates=64,variables=16,fork=335,absolute=[336,385],search_end=584,
+        confirmation_end=1000,physical_cap=91330,reset_cap=5,branch_cap=320,
+        confirmation_cap=5,template_cap=2,raw_cap=H4ABS_RAW_CAP,report_cap=H4ABS_REPORT_CAP,
+        log_cap=H4ABS_LOG_CAP,watchdog_s=H4ABS_WATCHDOG,gpu_total=12288,
+        basis_sha=h4abs_B_SHA,coeff_sha=h4abs_C_SHA,output=str(H4ABS_OUTPUT))
+
+def h4abs_json_bytes(x):
+    return (json.dumps(x,sort_keys=True,separators=(',',':'),allow_nan=False)+'\n').encode('utf8')
+
+def h4abs_pin(path,digest,cap):
+    p=Path(path)
+    h4abs_req(p.is_file() and not p.is_symlink() and p.resolve()==p.absolute()
+        and 0<p.stat().st_size<=cap and sha256(p)==digest,'ABS pin '+str(p))
+    return p
+
+def h4abs_inputs(root):
+    """Static/parent preflight only, exact local historical inputs, no native imports."""
+    import numpy as np
+    root=Path(root).resolve();h4m3_no_runtime_imports()
+    source=h4m3_source_map(root);external=h4m7_external_sources(root)
+    # Reuse M7 preflight for current external files, old bootstrap/dependency pins,
+    # reward, policies and accepted M3/M4 source and report provenance.
+    p7,lanes7,manifest=h4m7_preflight(root,dict(source_sha256=h4m3_digest(source),
+        external_sha256=h4m3_digest(external)))
+    m3=h4m3_pinned_json(root/H4M3_OUTPUT,H4ABS_M3_SHA)
+    ar,cur,hist=h4m3_read_archives(root/H4CC_EVAL_OUTPUT,root/H4ABS_HIST)
+    h4abs_req(cur['brax_source_verification']==hist['brax_source_verification']==p7['brax_source_verification'],'ABS Brax archive')
+    # Historical training artifact pins remain distinct from current source map.
+    oldpins=p7['historical_input_sha256']
+    for k,v in cur['input_sha256'].items():
+        if k.startswith(('ref/','ccrc/')):
+            arm,name=k.split('/',1)
+            h4abs_req(Path(name).name==name,'ABS artifact path')
+            h4abs_pin(root/'m463_runs'/('m470_h4_m2_'+arm+'_v1')/name,v,1024**3)
+    old=subprocess.check_output(['git','-C',str(root),'show','d478c810152d2b7a1119514c94f09028d33f52da:m463_gate3_cp_eval.py'])
+    h4abs_req(hashlib.sha256(old).hexdigest()==cur['evaluator_sha256'],'ABS original evaluator pin')
+    m7=h4m3_pinned_json(root/H4M7_OUTPUT,H4ABS_M7_REPORT)
+    raw7=h4abs_pin((root/H4M7_OUTPUT).parent/'snapshots.bin',H4ABS_M7_RAW,12*H4ABS_MIB).read_bytes()
+    h4abs_req(h4m7_read_report(m7,raw7,lanes7,m7['provenance'],manifest,np)==m7['verification'],'ABS M7 reader')
+    h4abs_req(m7['provenance']['external']==external,'ABS M7 external')
+    out=[]
+    for i,(lane,x) in enumerate(zip(ar,m3['lanes'])):
+        report=hist if lane['policy']=='C' else cur
+        gs=[g for g in report['groups'] if (g['policy'],g['seed'],g['profile'])==(lane['policy'],lane['seed'],'stand')]
+        h4abs_req(len(gs)==1,'ABS full group')
+        d=gs[0]['directions'][lane['direction']]
+        double=d['double_suffix'];single=d['single_suffix'][35:]
+        prefix=lane['rows']['nominal']+lane['rows']['first']+double[:1]
+        h4abs_req(len(prefix)==335 and len(single)==666 and 1<=len(double)<=666
+            and double[:len(lane['rows']['double'])]==lane['rows']['double']
+            and prefix==x['segments']['nominal']+x['segments']['first']+x['segments']['double'][:1],
+            'ABS full reference length')
+        for rows in (prefix,single,double):
+            a=np.asarray(rows);di=H4M3_COLUMNS.index('done')
+            h4abs_req(a.shape==(len(rows),46) and np.isfinite(a).all() and not a[:-1,di].any(),'ABS archive finite chronology')
+        h4abs_req(not single[-1][di] and bool(double[-1][di])==(len(double)<666 or bool(double[-1][di])),'ABS reference termination')
+        rich={q['tick']:q['data'] for q in x['rich'] if q['segment']!='single'}
+        h4abs_req(all(t in rich for t in range(295,336)),'ABS prefix rich')
+        snap=None
+        if i in H4M7_INDICES:
+            z=m7['lanes'][H4M7_INDICES.index(i)];q=z['snapshots'][0]
+            h4abs_req(z['index']==i and q['tick']==335,'ABS snapshot identity')
+            snap=(z['meta'],q['fields'],raw7[q['offset']:q['offset']+q['size']])
+        out.append(dict(key=list(H4M3_LANES[i][:3]),prefix=prefix,double=double,single=single,
+            rich=rich,kicks=x['kick_audits'],first=lane['first'],second=lane['second'],snapshot=snap))
+    prov=dict(source=source,external=external,old_inputs=oldpins,policies=p7['policy_sha256'],
+        brax=p7['brax_source_verification'],archives=[*H4M3_ARCHIVES,H4ABS_M3_SHA,H4M7_ARCHIVES[1],H4ABS_M7_REPORT,H4ABS_M7_RAW],
+        plan=h4m3_digest(h4abs_plan()))
+    h4m3_no_runtime_imports()
+    return dict(provenance=prov,manifest=manifest,lanes=out)
+
+def h4abs_marker(rules):
+    import re
+    active=[l for l in rules.splitlines() if re.match(r'^[A-Z0-9_]+_GO:',l)]
+    h4abs_req(len(active)==1 and active[0].startswith('H4ABS_ACTIVE_GO:'),'ABS EXECUTION_HOLD')
+    a=active[0].split()
+    h4abs_req(len(a)==7 and a[1]=='ND-SSTR-ABS-V1' and a[2]==str(H4ABS_OUTPUT),'ABS authorization syntax')
+    h4abs_req(all(re.fullmatch('[0-9a-f]{64}',x) for x in (a[3],a[4],a[6])),'ABS authorization hash')
+    p=Path(a[5])
+    h4abs_req(p.parent==Path('m463_runs') and p.name.startswith('m470_h4abs_full_static_') and p.suffix=='.log','ABS static path')
+    return dict(id=a[1],output=a[2],source=a[3],provenance=a[4],static_path=a[5],static_sha=a[6])
+
+def h4abs_authorize(root,inputs=None):
+    root=Path(root).resolve()
+    auth=h4abs_marker((root/'G1_RESEARCH_RULES.md').read_text('utf8'))
+    if inputs is None:inputs=h4abs_inputs(root)
+    h4abs_req(auth['source']==h4m3_digest(inputs['provenance']['source'])
+        and auth['provenance']==h4m3_digest(inputs['provenance']),'ABS auth provenance')
+    p=h4abs_pin(root/auth['static_path'],auth['static_sha'],H4ABS_LOG_CAP)
+    lines=p.read_text('utf8').splitlines()
+    for line in ('H4ABS_FULL_STATIC_PASS','H4ABS_SOURCE '+auth['source'],'H4ABS_PROVENANCE '+auth['provenance']):
+        h4abs_req(lines.count(line)==1,'ABS static receipt')
+    return auth,inputs
+
+def h4abs_enter(args):
+    # Called before imports in shared run; parent reservation and child token exact.
+    h4m3_no_runtime_imports()
+    root=H4_EVAL_ROOT;auth,inputs=h4abs_authorize(root)
+    base=root/H4ABS_OUTPUT
+    h4abs_req(args.output==base and args.h4abs_auth==auth
+        and args.h4abs_inputs['provenance']==inputs['provenance']
+        and os.environ.get('JAX_PLATFORMS')=='cuda'
+        and json.loads((base.parent/'attempt.json').read_bytes())=={'authorization':auth,'reserved':True}
+        and json.loads((base.parent/'parent.json').read_bytes())=={'authorization':auth,'pid':os.getppid()},
+        'ABS runtime reservation')
+    h4m6_write_bounded(base.parent/'runtime.entered.json',
+        {'authorization':auth,'pid':os.getpid(),'parent_pid':os.getppid()},exclusive=True)
+    args.h4abs_inputs=inputs
+
+class H4AbsJournal:
+    """Durable bounded event journal; reserve before native calls, never retry."""
+    def __init__(self,path):
+        self.path=Path(path);self.j=self.path/'events.jsonl';self.raw=self.path/'rows.bin'
+        self.count=0;self.pending=None;self.raw_bytes=0;self.event_bytes=0
+        self.hash=hashlib.sha256()
+        for p in (self.j,self.raw):
+            with p.open('xb'):pass
+    def event(self,x):
+        import shutil
+        b=h4abs_json_bytes(x)
+        h4abs_req(len(b)<=4096 and self.event_bytes+len(b)<=H4ABS_REPORT_CAP
+            and self.raw_bytes+self.event_bytes+len(b)<=H4ABS_RAW_CAP
+            and shutil.disk_usage(self.path).free>=2*1024**3+len(b),'ABS journal cap')
+        with self.j.open('ab') as f:
+            f.write(b);f.flush();os.fsync(f.fileno())
+        self.event_bytes+=len(b)
+    def reserve(self,key,t):
+        h4abs_req(self.pending is None and self.count<H4ABS_CAP,'ABS attempt cap')
+        self.event(['attempt',*key,t]);self.pending=[*key,t]
+    def record(self,row,rich_sha=None):
+        key=[int(row[k]) for k in ('lane','branch','candidate','tick')]
+        h4abs_req(self.pending==key,'ABS record pending')
+        b=row.tobytes();h4abs_req(len(b)==h4abs_row_dtype().itemsize and self.raw_bytes+len(b)+self.event_bytes<=H4ABS_RAW_CAP,'ABS record cap')
+        with self.raw.open('ab') as f:
+            f.write(b);f.flush();os.fsync(f.fileno())
+        self.event(['record',hashlib.sha256(b).hexdigest(),rich_sha])
+        self.hash.update(b);self.raw_bytes+=len(b);self.count+=1;self.pending=None
+
+def h4abs_eval_branch(forkrow,rows,lane):
+    import numpy as np
+    a=np.asarray(rows,dtype=h4abs_row_dtype())
+    complete=len(a)==249
+    safe=bool(complete and all(h4abs_row_safety(r,lane['manifest'],H4M3_COLUMNS)[0] for r in a))
+    if not safe:return dict(complete=complete,safe=False)
+    frames=[forkrow['packed'].tolist()]+a['packed'].tolist()
+    return dict(complete=True,safe=True,metrics=h4abs_recovery(lane['single'][:250],frames,H4M3_COLUMNS))
+
+def h4abs_local_decision(results):
+    h4abs_req(len(results)==5,'ABS five results')
+    primary=all(results[i]['witness'] for i in (1,2))
+    controls=all(results[i]['witness'] for i in (0,4))
+    useful=[results[i]['transfers_before_recovery'] for i in (1,2)]
+    mech=primary and controls and min(useful)>=1 and max(useful)>=2
+    return dict(decision='LOCAL_WITNESS' if primary and controls else 'NOT_ESTABLISHED',
+        hypothesis='SUPPORTED_LOCAL_WITNESS' if mech else 'NOT_ESTABLISHED',
+        positive_controls_preserved=controls,primary_both=primary,
+        scientific_dev_pass=False,training_authorized=False,promotion_authorized=False)
+
+def h4abs_native_lane(args,i,env,step_fn,jax,jnp,np):
+    lane=dict(args.h4abs_inputs['lanes'][i],manifest=args.h4abs_inputs['manifest'])
+    m=lane['manifest'];j=args.h4abs_journal;dg=lambda st:h4abs_state_digest(st,jax.tree_util.tree_flatten_with_path,jax.device_get)
+    def clone(st):
+        return h4abs_clone_state(st,lambda x:jax.tree_util.tree_map(lambda v:v,x),
+            jax.tree_util.tree_flatten_with_path,jax.device_get)[0]
+    j.event(['reset',i,'attempted'])
+    st=env.reset(jax.random.PRNGKey(lane['key'][1]))
+    h4abs_req(st.obs['state'].shape==(103,) and st.obs['privileged_state'].shape==(216,) and not bool(jax.device_get(st.done)),'ABS reset')
+    j.event(['reset',i,'recorded'])
+    def check_parent():
+        h4abs_req(dg(parent)==parent_sha,'ABS sibling mutation')
+    def advance(st,key,t,action=None,expected=None,rich=None):
+        before=dg(st)
+        j.reserve(key,t)
+        if action is None:res=step_fn(st,placement_capture=True)
+        else:res=step_fn(st,placement_capture=True,absolute_action=jnp.asarray(action))
+        out,diag,cap=res
+        row=h4m4_row(jax.device_get(diag),np)
+        if expected is not None:h4abs_req(row==expected,'ABS archive row '+str(t))
+        p=h4m3_pack_capture(jax.device_get(cap),row,m,np)
+        p=json.loads(json.dumps(p,allow_nan=False,default=lambda a:np.asarray(a).tolist()))
+        if rich is not None:h4abs_req(p==rich,'ABS archive rich '+str(t))
+        rich_sha=h4m3_digest(p) if rich is not None else None
+        source=int(key[1]>=3 and t<=385)
+        if source:p.pop('inference_key',None) # explicit source byte in compact record, no actor call
+        record=h4abs_row(p,row,m,lane=i,branch=key[1],candidate=key[2],tick=t,
+            source=source,before=before,after=dg(out))
+        h4abs_row_safety(record,m,H4M3_COLUMNS)
+        j.record(record,rich_sha)
+        if j.count%100==0:h3_gpu_check(args.h3_monitor)
+        return out,record
+    key=[i,0,-1];j.event(['begin',*key,dg(st)]);forkrow=None
+    for t in range(1,336):
+        if t in (300,335):
+            ix=int(t==335)
+            st,meta,audit=h4m3_native_kick(st,lane['key'][2],.35 if ix else .50,t,jax,jnp,np)
+            h4abs_req(meta==lane['second' if ix else 'first'] and audit==lane['kicks'][ix],'ABS kick')
+            j.event(['kick',i,t,h4m3_digest(audit)])
+        st,forkrow=advance(st,key,t,expected=lane['prefix'][t-1],rich=lane['rich'].get(t))
+    parent=clone(st);parent_sha=dg(parent)
+    if lane['snapshot'] is not None:
+        meta,desc,raw=lane['snapshot']
+        h4abs_req(h4m7_model_meta(env.mjx_model,parent.data,np)==meta,'ABS snapshot meta')
+        got,blob=h4m7_capture_returned(parent.data,meta,jax.device_get,np)
+        h4abs_req(got==desc and blob==raw,'ABS M7 exact snapshot')
+        j.event(['snapshot',i,hashlib.sha256(blob).hexdigest()])
+    j.event(['end',*key,'FULL']);check_parent()
+    A,rho=h4abs_generate(np.asarray(jax.device_get(parent.data.qpos),np.float32)[7:],
+        h4abs_domain(m),h4abs_frozen_basis(m['actuator_names']),h4abs_coefficients())
+    def branch(b,c,end):
+        key=[i,b,c];st=clone(parent);check_parent();j.event(['begin',*key,parent_sha])
+        rows=[];reason='FULL'
+        for t in range(336,end+1):
+            action=None
+            if b>=3:
+                action=A[c,t-336] if t<=385 else np.asarray(jax.device_get(step_fn(st,actor_only=True)))
+                q=np.asarray(jax.device_get(st.data.qpos))
+                try:h4abs_pre_guard(action,q,m)
+                except ValueError:
+                    h4abs_req(action.shape==(29,) and action.dtype==np.float32 and q.shape==(36,) and q.dtype==np.float32,'ABS guard receipt schema')
+                    j.event(['guard',*key,t,action.tobytes().hex(),q.tobytes().hex()])
+                    reason='PRE_GUARD';break
+            st,row=advance(st,key,t,action,
+                expected=lane['double'][t-335] if b<3 else None,
+                rich=lane['rich'].get(t) if b<3 else None)
+            rows.append(row)
+            safe,_=h4abs_row_safety(row,m,H4M3_COLUMNS)
+            if b>=3 and not safe:reason='POST_STOP';break
+            if row['packed'][H4M3_COLUMNS.index('done')]:reason='TERMINAL';break
+        check_parent();j.event(['end',*key,reason])
+        h3_gpu_check(args.h3_monitor)
+        return np.asarray(rows,dtype=h4abs_row_dtype()),reason
+    last=334+len(lane['double'])
+    base,_=branch(1,-1,last);sham,_=branch(2,-1,last)
+    h4abs_req(len(base)==len(sham)==last-335,'ABS historical full suffix')
+    h4abs_compare_replay(base.tobytes(),sham.tobytes(),1,2)
+    results=[];best=None;bestkey=None
+    for c in range(64):
+        rows,reason=branch(3,c,584)
+        v=h4abs_eval_branch(forkrow,rows,lane);v['id']=c;results.append(v)
+        if v['safe'] and v['metrics']['recovery']['recovered'] and v['metrics']['stable_tail']:
+            rank=(v['metrics']['recovery']['recovery_s'],v['metrics']['mean_normalized_error'],c)
+            if bestkey is None or rank<bestkey:bestkey=rank;best=rows.copy()
+    selected=h4abs_choose(results);witness=False;transfers=0;confirmation=None
+    if selected is not None:
+        rows,reason=branch(4,selected,1000)
+        if len(rows)>=249:h4abs_compare_replay(best.tobytes(),rows[:249].tobytes(),3,4)
+        witness=len(rows)==665 and reason=='FULL' and all(h4abs_row_safety(v,m,H4M3_COLUMNS)[0] for v in rows)
+        if witness:
+            rec=results[selected]['metrics']['recovery']['recovery_s']
+            endpoint=334+int(round(rec/.02))
+            loads=[forkrow['load'].tolist()]+rows['load'].tolist()
+            confirmation=h4abs_transfers(loads,range(335,1001))
+            transfers=sum(e['confirmed_tick']<=endpoint for e in confirmation['events'])
+    result=dict(selected=selected,witness=bool(witness),transfers_before_recovery=transfers,telemetry=confirmation)
+    j.event(['lane_end',i,result]);args.h4abs_results.append(result)
+    print('H4ABS_LANE',i,json.dumps(result,sort_keys=True),flush=True)
+
+def h4abs_read_records(path,inputs,complete=False):
+    """Host independent journal/record reader, never run a policy or physics."""
+    import numpy as np
+    path=Path(path);jpath=path/'events.jsonl';rpath=path/'rows.bin'
+    for p,cap in ((jpath,H4ABS_REPORT_CAP),(rpath,H4ABS_RAW_CAP)):
+        h4abs_req(p.is_file() and not p.is_symlink() and p.stat().st_size<=cap,'ABS reader file')
+    h4abs_req(jpath.stat().st_size+rpath.stat().st_size<=H4ABS_RAW_CAP,'ABS reader total')
+    m=inputs['manifest'];dtype=h4abs_row_dtype();results=[];rows=[];key=None;pending=None;guard=None;start=None
+    attempted=recorded=0;lane_idx=0;reset_state=0;templates=[];stage=0;candidates=[];best=None;bestkey=None
+    fork=None;parent=None;A=None;base=None;kicks=[];snapshot=False;allhash=hashlib.sha256()
+    with jpath.open('rb') as jf,rpath.open('rb') as rf:
+        for line in jf:
+            h4abs_req(len(line)<=4096 and line.endswith(b'\n'),'ABS journal row')
+            e=json.loads(line);h4abs_req(h4abs_json_bytes(e)==line and type(e) is list and len(e)>0,'ABS journal canonical')
+            tag=e[0]
+            if tag=='template':
+                expected=[['template','actor','attempted'],['template','actor','recorded'],['template','critic','attempted'],['template','critic','recorded']]
+                h4abs_req(lane_idx==0 and reset_state==0 and len(templates)<4 and e==expected[len(templates)],'ABS templates')
+                templates.append(e);continue
+            h4abs_req(len(templates)==4 and lane_idx<5,'ABS reader lane')
+            lane=dict(inputs['lanes'][lane_idx],manifest=m)
+            if tag=='reset':
+                h4abs_req(key is None and stage==0 and e==['reset',lane_idx,'attempted' if reset_state==0 else 'recorded'] and reset_state<2,'ABS reset receipt')
+                reset_state+=1
+            elif tag=='begin':
+                h4abs_req(reset_state==2 and key is None and pending is None and len(e)==5,'ABS begin')
+                b=0 if stage==0 else 1 if stage==1 else 2 if stage==2 else 3 if stage==3 and len(candidates)<64 else 4
+                c=-1 if b<3 else len(candidates) if b==3 else h4abs_choose(candidates)
+                h4abs_req(c is not None and e[1:4]==[lane_idx,b,c] and (b!=4 or stage==3)
+                    and (b==0 or e[4]==parent),'ABS branch order')
+                key=e[1:4];start=e[4];rows=[];guard=None
+            elif tag=='kick':
+                t=1+len(rows)
+                h4abs_req(key==[lane_idx,0,-1] and t in (300,335) and pending is None
+                    and e==['kick',lane_idx,t,h4m3_digest(lane['kicks'][int(t==335)])] and t not in kicks,'ABS kick receipt')
+                kicks.append(t)
+            elif tag=='attempt':
+                h4abs_req(key is not None and pending is None and guard is None and len(e)==5 and e[1:4]==key
+                    and e[4]==(1 if key[1]==0 else 336)+len(rows) and attempted<H4ABS_CAP,'ABS attempt chronology')
+                t=e[4];h4abs_req(t<=(335 if key[1]==0 else 584 if key[1]==3 else 1000),'ABS attempt horizon')
+                if key[1]==0 and t in (300,335):h4abs_req(t in kicks,'ABS kick missing')
+                if rows:
+                    h4abs_req(not bool(rows[-1]['packed'][H4M3_COLUMNS.index('done')]),'ABS after terminal')
+                    if key[1]>=3:h4abs_req(h4abs_row_safety(rows[-1],m,H4M3_COLUMNS)[0],'ABS after unsafe')
+                pending=e[1:];attempted+=1
+            elif tag=='record':
+                h4abs_req(pending is not None and len(e)==3,'ABS record receipt')
+                raw=rf.read(dtype.itemsize);h4abs_req(len(raw)==dtype.itemsize and hashlib.sha256(raw).hexdigest()==e[1],'ABS record hash')
+                rr=np.frombuffer(raw,dtype=dtype)[0].copy();allhash.update(raw)
+                h4abs_req([int(rr[k]) for k in ('lane','branch','candidate','tick')]==pending,'ABS record key')
+                t=pending[-1];b=key[1]
+                h4abs_req(int(rr['source'])==int(b>=3 and t<=385),'ABS record source')
+                h4abs_row_safety(rr,m,H4M3_COLUMNS)
+                if b<3:
+                    exp=lane['prefix'][t-1] if b==0 else lane['double'][t-335]
+                    h4abs_req(rr['packed'].tolist()==exp,'ABS reader archive row')
+                    rich=lane['rich'].get(t)
+                    h4abs_req(e[2]==(h4m3_digest(rich) if rich is not None else None),'ABS reader rich receipt')
+                else:
+                    h4abs_req(e[2] is None,'ABS candidate rich label')
+                    if t<=385:h4abs_req(h4abs_raw_equal(rr['sent'],A[key[2],t-336]),'ABS reader candidate action')
+                rows.append(rr);pending=None;recorded+=1
+            elif tag=='guard':
+                h4abs_req(key is not None and key[1]>=3 and pending is None and guard is None
+                    and len(e)==7 and e[1:4]==key and e[4]==336+len(rows),'ABS guard receipt')
+                action=np.frombuffer(bytes.fromhex(e[5]),dtype=np.float32);q=np.frombuffer(bytes.fromhex(e[6]),dtype=np.float32)
+                h4abs_req(action.shape==(29,) and q.shape==(36,) and h4abs_raw_equal(q,(rows[-1] if rows else fork)['qpos_post']),'ABS guard qpos')
+                if e[4]<=385:h4abs_req(h4abs_raw_equal(action,A[key[2],e[4]-336]),'ABS guard action')
+                try:h4abs_pre_guard(action,q,m)
+                except ValueError:guard=e
+                else:raise ValueError('ABS guard accepted')
+            elif tag=='snapshot':
+                h4abs_req(key==[lane_idx,0,-1] and len(rows)==335 and not snapshot and lane['snapshot'] is not None
+                    and e==['snapshot',lane_idx,hashlib.sha256(lane['snapshot'][2]).hexdigest()],'ABS snapshot receipt')
+                snapshot=True
+            elif tag=='end':
+                h4abs_req(key is not None and pending is None and len(e)==5 and e[1:4]==key,'ABS end receipt')
+                b=key[1];a=np.asarray(rows,dtype=dtype);reason=e[4]
+                h4abs_branch_records(a.tobytes(),m,H4M3_COLUMNS,lane=lane_idx,branch=b,candidate=key[2],first_digest=start,
+                    sequence=A[key[2]] if b>=3 else None)
+                if b==0:
+                    h4abs_req(reason=='FULL' and len(a)==335 and kicks==[300,335] and snapshot==(lane['snapshot'] is not None),'ABS prefix end')
+                    fork=a[-1];parent=fork['state_after'].tobytes().hex()
+                    A,_=h4abs_generate(fork['qpos_post'][7:],h4abs_domain(m),h4abs_frozen_basis(m['actuator_names']),h4abs_coefficients());stage=1
+                elif b<3:
+                    h4abs_req(len(a)==len(lane['double'])-1 and reason==('TERMINAL' if lane['double'][-1][H4M3_COLUMNS.index('done')] else 'FULL'),'ABS baseline end')
+                    if b==1:base=a.copy()
+                    else:h4abs_compare_replay(base.tobytes(),a.tobytes(),1,2)
+                    stage=b+1
+                else:
+                    n=249 if b==3 else 665
+                    unsafe=bool(len(a) and not h4abs_row_safety(a[-1],m,H4M3_COLUMNS)[0])
+                    h4abs_req((reason=='FULL' and len(a)==n and not unsafe and guard is None)
+                        or (reason=='POST_STOP' and unsafe and guard is None)
+                        or (reason=='PRE_GUARD' and guard is not None and len(a)<n and not unsafe),'ABS candidate stop')
+                    if b==3:
+                        v=h4abs_eval_branch(fork,a,lane);v['id']=key[2];candidates.append(v)
+                        if v['safe'] and v['metrics']['recovery']['recovered'] and v['metrics']['stable_tail']:
+                            rank=(v['metrics']['recovery']['recovery_s'],v['metrics']['mean_normalized_error'],key[2])
+                            if bestkey is None or rank<bestkey:bestkey=rank;best=a.copy()
+                    else:
+                        if len(a)>=249:h4abs_compare_replay(best.tobytes(),a[:249].tobytes(),3,4)
+                        witness=reason=='FULL' and len(a)==665
+                        tel=h4abs_transfers([fork['load'].tolist()]+a['load'].tolist(),range(335,1001)) if witness else None
+                        endpoint=334+int(round(candidates[key[2]]['metrics']['recovery']['recovery_s']/.02))
+                        result=dict(selected=key[2],witness=witness,transfers_before_recovery=sum(v['confirmed_tick']<=endpoint for v in tel['events']) if witness else 0,telemetry=tel)
+                        stage=4
+                key=None;rows=[];guard=None
+            elif tag=='lane_end':
+                h4abs_req(key is None and len(candidates)==64 and len(e)==3 and e[1]==lane_idx,'ABS lane receipt')
+                sel=h4abs_choose(candidates)
+                if sel is None:
+                    h4abs_req(stage==3,'ABS no candidate stage')
+                    result=dict(selected=None,witness=False,transfers_before_recovery=0,telemetry=None)
+                else:h4abs_req(stage==4,'ABS confirmation missing')
+                h4abs_req(e[2]==result,'ABS lane result replay')
+                results.append(result);lane_idx+=1;reset_state=stage=0;candidates=[];best=bestkey=fork=parent=A=base=None;kicks=[];snapshot=False
+            else:raise ValueError('ABS unknown event')
+        h4abs_req(not rf.read(1),'ABS raw trailing/uncommitted row')
+    h4abs_req(0<=recorded<=attempted<=H4ABS_CAP and attempted-recorded==int(pending is not None),'ABS ledger counts')
+    if complete:h4abs_req(lane_idx==5 and pending is None and key is None and reset_state==0,'ABS final completeness')
+    return dict(attempted=attempted,recorded=recorded,pending=pending,lanes=results,
+        raw_sha256=allhash.hexdigest(),decision=h4abs_local_decision(results) if lane_idx==5 else None)
+
+def h4abs_worker(root,auth,inputs):
+    from types import SimpleNamespace
+    from m462_ppo_warmstart_run import GPUMonitor,sample_gpu
+    path=root/H4ABS_OUTPUT;h4m3_no_runtime_imports()
+    gpu=sample_gpu();h4abs_req(gpu['total_mib']==12288 and 0<=gpu['used_mib']<.95*12288,'ABS GPU initial')
+    p=inputs['provenance'];journal=H4AbsJournal(path.parent);monitor=GPUMonitor()
+    args=SimpleNamespace(h4abs_native=True,h4abs_auth=auth,h4abs_inputs=inputs,h4abs_journal=journal,
+        h4abs_results=[],h3_monitor=monitor,h3_session=dict(input_sha256=p['old_inputs'],external_sources=p['external'],
+            mjx_sources=p['external']['mjx'],brax_train_path=p['brax']['path']),
+        output=path,checkpoint_c=root/H4M3_BASE_POLICY,seeds=[x[1] for x in H4M3_LANES],
+        profiles=['stand'],h2a=False,h2b=False)
+    # The shared bootstrap checks the report path only if it exists; no historical output is used.
+    with monitor:run(args)
+    final_gpu=h3_gpu_check(monitor)
+    h4abs_req(args.h3_session['brax_source_verification']==p['brax'],'ABS native Brax identity')
+    result=h4abs_read_records(path.parent,inputs,complete=True)
+    h4abs_req(result['lanes']==args.h4abs_results,'ABS worker reader replay')
+    h4m6_write_bounded(path,dict(status='COMPLETE',authorization=auth,provenance=p,
+        plan=h4abs_plan(),gpu_initial=gpu,gpu=final_gpu,verification=result),exclusive=True,cap=H4ABS_REPORT_CAP)
+
+def h4abs_dispatch(root,child=False):
+    import selectors,signal,shutil,time
+    root=Path(root).resolve();auth,inputs=h4abs_authorize(root);path=root/H4ABS_OUTPUT
+    h4abs_req(os.environ.get('JAX_PLATFORMS')=='cuda','ABS CUDA only')
+    if child:return h4abs_worker(root,auth,inputs)
+    h4abs_req(shutil.disk_usage(path.parent.parent).free>=2*1024**3+2*(H4ABS_RAW_CAP+H4ABS_REPORT_CAP+H4ABS_LOG_CAP),'ABS storage reserve')
+    h4m6_reserve_tech(path,auth)
+    h4m6_write_bounded(path.parent/'parent.json',dict(authorization=auth,pid=os.getpid()),exclusive=True)
+    proc=None;error=None;rc=None;total=0;status='STOP';verified=None
+    def kill():
+        if proc is not None:
+            try:os.killpg(proc.pid,signal.SIGKILL)
+            except ProcessLookupError:pass
+    try:
+        with (path.parent/'runtime.log').open('xb') as f:
+            proc=subprocess.Popen([sys.executable,'-B','-u',str(root/'m463_gate3_cp_eval.py'),'--h4abs','child'],
+                cwd=root,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,start_new_session=True)
+            with selectors.DefaultSelector() as sel:
+                sel.register(proc.stdout,selectors.EVENT_READ);deadline=time.monotonic()+H4ABS_WATCHDOG
+                while True:
+                    remaining=deadline-time.monotonic();h4abs_req(remaining>0,'ABS watchdog')
+                    if not sel.select(min(remaining,1.0)):continue
+                    b=os.read(proc.stdout.fileno(),65536)
+                    if not b:break
+                    f.write(b[:max(0,H4ABS_LOG_CAP-total)]);total+=len(b)
+                    h4abs_req(total<=H4ABS_LOG_CAP,'ABS log cap')
+            rc=proc.wait(timeout=max(.01,deadline-time.monotonic()));f.flush();os.fsync(f.fileno())
+        h4abs_req(rc==0 and h4abs_authorize(root)[0]==auth,'ABS child completion')
+        verified=h4abs_read_records(path.parent,inputs,complete=True)
+        report=json.loads(path.read_bytes())
+        h4abs_req(path.stat().st_size<=H4ABS_REPORT_CAP and report['status']=='COMPLETE'
+            and report['authorization']==auth and report['provenance']==inputs['provenance']
+            and report['plan']==h4abs_plan() and report['verification']==verified,'ABS final report')
+        g=report['gpu'];gi=report['gpu_initial']
+        h4abs_req(g['total_mib']==gi['total_mib']==12288 and 0<g['peak_used_mib']<.95*12288 and not g['sampler_errors']
+            and g['samples']>0 and 0<=gi['used_mib']<.95*12288,'ABS final GPU')
+        h4abs_req(json.loads((path.parent/'runtime.entered.json').read_bytes())==
+            dict(authorization=auth,pid=proc.pid,parent_pid=os.getpid()),'ABS child receipt')
+        status='COMPLETE'
+    except BaseException as exc:
+        error=repr(exc)[:4096];kill()
+        if proc is not None:rc=proc.wait()
+        try:verified=h4abs_read_records(path.parent,inputs,complete=False)
+        except Exception as read_error:error+='; partial reader: '+repr(read_error)[:1000]
+    h4m6_write_bounded(path.parent/'attempt_result.json',dict(authorization=auth,status=status,rc=rc,
+        log_bytes=min(total,H4ABS_LOG_CAP),error=error,verified=verified),exclusive=True,cap=H4ABS_REPORT_CAP)
+    h4abs_req(status=='COMPLETE','ABS bounded STOP '+str(error))
+
+def h4abs_cli(argv):
+    p=argparse.ArgumentParser();p.add_argument('mode',choices=('static','run','child'));a=p.parse_args(argv)
+    root=H4_EVAL_ROOT
+    if a.mode=='static':return h4abs_full_static(root)
+    return h4abs_dispatch(root,child=a.mode=='child')
+
+def h4abs_full_static(root):
+    import tempfile
+    root=Path(root).resolve();h4m3_no_runtime_imports()
+    h4abs_req(not (root/H4ABS_OUTPUT).parent.exists(),'ABS output used')
+    raw=(root/'m463_gate3_cp_eval.py').read_bytes();compile(raw,'<ABS full evaluator>','exec')
+    h4abs_runtime_projection(raw);h4red_eval_project(root)
+    inputs=h4abs_inputs(root)
+    result=h4abs_host_fixtures(h4m3_pinned_json(root/H4M3_OUTPUT,H4ABS_M3_SHA))
+    def reject(fn):
+        try:fn()
+        except (ValueError,RuntimeError,KeyError,TypeError):return
+        raise ValueError('ABS static negative accepted')
+    reject(lambda:h4abs_marker(''))
+    for mode in ('run','child'):
+        proc=subprocess.run([sys.executable,'-B',str(root/'m463_gate3_cp_eval.py'),'--h4abs',mode],
+            cwd=root,capture_output=True,text=True,timeout=30)
+        h4abs_req(proc.returncode!=0 and 'ABS EXECUTION_HOLD' in proc.stderr,'ABS CLI HOLD')
+    with tempfile.TemporaryDirectory() as d:
+        j=H4AbsJournal(d)
+        h4abs_req(h4abs_read_records(d,inputs)['attempted']==0,'ABS empty partial')
+        j.event(['template','actor','attempted']);j.event(['template','actor','recorded'])
+        j.event(['template','critic','attempted']);j.event(['template','critic','recorded'])
+        j.event(['reset',0,'attempted'])
+        h4abs_req(h4abs_read_records(d,inputs)['recorded']==0,'ABS partial reset')
+        j.event(['reset',0,'recorded']);j.event(['begin',0,0,-1,'a'*64])
+        j.reserve([0,0,-1],1)
+        h4abs_req(h4abs_read_records(d,inputs)['pending']==[0,0,-1,1],'ABS partial pending')
+        reject(lambda:h4abs_read_records(d,inputs,complete=True))
+        reject(lambda:j.reserve([0,0,-1],2))
+    h4m3_no_runtime_imports()
+    print('H4ABS_SOURCE',h4m3_digest(inputs['provenance']['source']),flush=True)
+    print('H4ABS_PROVENANCE',h4m3_digest(inputs['provenance']),flush=True)
+    print('H4ABS_INTEGRATION_STATIC_FIXTURES',json.dumps(result,sort_keys=True),flush=True)
+    # This is a held integration candidate. Do not advertise full static acceptance
+    # until the end-to-end reader/dispatcher fixture coverage has been reviewed.
+    print('H4ABS_HELD_INTEGRATION_STATIC_PASS; FULL_STATIC_ACCEPTANCE_HOLD',flush=True)
+
+H4ABS_INTEGRATION_PATCHES=[["def run(args):\n    m7_snapshot=","def run(args):\n    abs_mode=bool(getattr(args,'h4abs_native',False))\n    m7_snapshot="],["    placement=bool(getattr(args,'h4m3_placement',False)) or feasibility or m7_snapshot\n    if m7_snapshot:","    placement=bool(getattr(args,'h4m3_placement',False)) or feasibility or m7_snapshot or abs_mode\n    if abs_mode:\n        h4abs_enter(args)\n    elif m7_snapshot:"],["        if m7_snapshot:\n            h4m7_require(args.h3_session['manifest']==args.h4m7_manifest,'MODEL_ARCHIVE')","        if abs_mode:\n            h4abs_req(args.h3_session['manifest']==args.h4abs_inputs['manifest'],'ABS MODEL_ARCHIVE')\n        elif m7_snapshot:\n            h4m7_require(args.h3_session['manifest']==args.h4m7_manifest,'MODEL_ARCHIVE')"],["    if m7_snapshot:\n        def template_event(kind,event):","    if abs_mode:\n        load_policy=h4_shared_frozen_loader(env.action_size,paper,networks,running_statistics,\n            serialization,jax,jnp,np,template_event=lambda k,v: args.h4abs_journal.event(['template',k,v]))\n    elif m7_snapshot:\n        def template_event(kind,event):"],["                         probe_residual=None,probe_selected=None):\n                cmd = (","                         probe_residual=None,probe_selected=None,absolute_action=None,actor_only=False):\n                cmd = ("],["                action,_=policy(state.obs,jax.random.PRNGKey(0))\n                if probe_residual is not None:","                if absolute_action is None:\n                    action,_=policy(state.obs,jax.random.PRNGKey(0))\n                else:\n                    h4abs_req(abs_mode and placement_capture and probe_residual is None and not actor_only,'ABS action source')\n                    action=absolute_action\n                if actor_only:\n                    h4abs_req(abs_mode and absolute_action is None and probe_residual is None,'ABS actor only')\n                    return action\n                if probe_residual is not None:"],["            step_fn=(jax.jit(one_step,static_argnames=('placement_capture',))\n                     if placement or m6 else jax.jit(one_step))\n            if m7_snapshot:","            step_fn=(jax.jit(one_step,static_argnames=('placement_capture','actor_only')) if abs_mode else\n                     jax.jit(one_step,static_argnames=('placement_capture',))\n                     if placement or m6 else jax.jit(one_step))\n            if abs_mode:\n                h4abs_native_lane(args,lane_index,env,step_fn,jax,jnp,np)\n                continue\n            if m7_snapshot:"],["def h4abs_legacy_projection(raw):\n    # Remove","def h4abs_legacy_projection(raw):\n    raw=h4abs_runtime_projection(raw)\n    # Remove"],["if __name__=='__main__':main()\n","if __name__=='__main__':\n    if len(sys.argv)>1 and sys.argv[1]=='--h4abs':h4abs_cli(sys.argv[2:])\n    else:main()\n"]]
+# H4ABS_RUNTIME_END
+if __name__=='__main__':
+    if len(sys.argv)>1 and sys.argv[1]=='--h4abs':h4abs_cli(sys.argv[2:])
+    else:main()
