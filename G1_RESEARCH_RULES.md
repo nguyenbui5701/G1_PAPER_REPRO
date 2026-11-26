@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.249  
+**Version:** 1.2.250  
 **Ngày cập nhật:** 2026-11-27 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -3095,6 +3095,14 @@ Reader report additions: per-branch outcomes, frozen H3 common-prefix comparativ
 
 SA actual focused local host check using transcribed exact new helpers and accepted constants/schema (not a full remote evaluator import): /tmp/h4abs_final_contract_test.py SHA52c743bb86969a3ad30a16b1c8e0c6580fc84b502413fe6fd4e0aaad828ebc58, output FINAL_CONTRACT_HOST_HELPERS_PASS:7 receipt negatives, actual old held receipt rejected, comparative negative1, shared-prefix max1, transfer context1, empty branch1, row2199, physical0. Source-level projection reverified after push. New full evaluator compile and integrated static suite not executed on SA host; do not claim new full static PASS or actual native equivalence. Owner must run --h4abs static only at new exact source, submit complete new log with both exit statuses and SHA256; static pass alone never activates runtime. Next separate GO only after exact new receipt accepted and final authorization marker generated for that log/source/provenance; do not run native in this task. If static fails, STOP same task, preserve log. No changes to H-R5c hypothesis, no PPO reward/training, holdout or promotion. Decision FINAL SOURCE REVIEW/RECEIPT CONTRACT IMPLEMENTED, FOCUSED HOST PASS, OWNER NEW FULL STATIC PENDING, RUNTIME HOLD. Branch A research ACTIVE; Branch B HOLD.
 
+### H4-M14-6 FINAL — Owner FULL STATIC PASS ACCEPTED / held implementation closed / distinct runtime GO pending (v1.2.250; 2026-11-27)
+
+SA read actual uploaded m470_h4abs_full_static_20261127_001332_298377787.log, 1042 bytes, SHA25635b99beb48b94a41ffcf13d4032bfdd26a452409204d0543d1edfbda992c64ca. Timestamp 2026-11-27T00:13:32+07:00. Verified remote HEADbe0b64d57067e935c24257ad699cd5426c4a6707, Rules1.2.249 blob3ea60a57c690c2f116de657308da258d07c6f5ce SHA8245542014539b1e7cbf06474a685d4c2712e2887993d653f19c1331a044a570, evaluator blob2e26a9173750289a43f117ed53bca3a711a575e6 SHA20d297e924566660d957d3da59099b496a9053d1a8b4e415850b12a002880b48. Both Git blob SHA256 independently recomputed and exactly match actual log. Full current Rules retrieved; relevant final acceptance/frozen design and exact h4abs_receipt_lines/h4abs_authorize/h4abs_full_static reviewed. No executable modifications in this acceptance.
+
+Actual receipt H4ABS_SOURCE 17d6bb206b6b9e66792dddcdb01c226b616bd9733f7a26f660f663a3a2b3dbff and H4ABS_PROVENANCE 61c75f596a852584c6fef75f8cf6c00496a6aed15d4e06371513773ee7ef7e5f. Match exact receipt structure and required unique source/provenance/evaluator digest lines, exact component summary (16000 vectors,211 rows,2 fixture transfers,30 negatives,2199B raw row,200834670 raw_max,full_static:false component scope), exact reader summary (5 mock lanes,5902 mock transitions,3 negatives,native_calls0), final contract fixture PASS, final two lines H4ABS_FULL_STATIC_PASS then STATIC_EXIT_CODE=0 TEE_EXIT_CODE=0; no HOLD/conflicting receipt. By source, full marker requires compile, layered reverse projection, native step-tail AST, pinned inputs/checkpoints/M7/dependencies, CLI HOLD, journal/reader and final-contract fixtures. Source/provenance aggregate digests accepted as actual Owner receipt, not independently regenerated from complete installed source maps/filesystem on SA host. Do not claim native execution correctness/physical feasibility/learnability from static. Native physical transitions0, inference0, resets0, optimizer updates0. Accept H4-M14-6 FULL STATIC PASS, close held implementation stage; retain prior static/component evidence. No need to rerun static on unchanged executable/provenance merely for formalism.
+
+Next proposed H4-M14-7 ND-SSTR-ABS-V1 bounded native recovery feasibility search only on distinct explicit Owner GO, using exact accepted static path m463_runs/m470_h4abs_full_static_20261127_001332_298377787.log and above SHA/source/provenance. At that separate GO verify current evaluator and source-map contract, ensure no prior attempt/exclusive output used, create exactly one active H4ABS_ACTIVE_GO marker with frozen output m463_runs/m470_h4abs_v1/report.json and receipt digests/path; fresh local runtime preflight must pass, no manual marker/log editing, no reuse after attempt, no retry. Rules-only changes do not enter H4M3_SOURCE_NAMES, verify unchanged executable source map at runtime. Preserve exact five lanes, 64 candidates/lane,16 variables,91330 physical cap,5 resets,320 candidate branches,<=5 confirmations,75080 actor cap,original residual guard, strict all29 envelope, source physics/reward/observation/termination, matched reference, local witness and H-R5c transfer criteria; 5400s watchdog/12288MiB GPU and existing artifact limits. Native runtime not authorized in this acceptance: no active marker, actual authorized future physical budget0, no runtime command. H-R5c causal UNTESTED, no new training design/PPO/holdout/promotion. Branch A research ACTIVE; Branch B HOLD.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -3356,6 +3364,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-26)
+
+**H4-M14-6 FINAL OWNER FULL STATIC PASS ACCEPTED / distinct H4-M14-7 runtime GO pending (v1.2.250):** exact actual log1042B SHA35b99beb48b94a41ffcf13d4032bfdd26a452409204d0543d1edfbda992c64ca; evaluator2e26a917 unchanged, both source SHA256 match, receipt fields/fixture summaries and final exit0/0 accepted. Held implementation closed, not dynamic witness. Source17d6bb206b6b9e66792dddcdb01c226b616bd9733f7a26f660f663a3a2b3dbff provenance61c75f596a852584c6fef75f8cf6c00496a6aed15d4e06371513773ee7ef7e5f. No active marker, actual authorized budget0. Next distinct Owner GO for bounded native search only; no PPO/holdout/promotion, Branch B HOLD.
 
 **H4-M14-6 FINAL RECEIPT CONTRACT IMPLEMENTED / OWNER NEW STATIC PENDING (v1.2.249):** evaluator2e26a9173750289a43f117ed53bca3a711a575e6; exact prior held log accepted but not runtime receipt. Final contract enforces source/provenance/evaluator/fixture and both exit codes; reader reports comparative safety maxima and transfer context. Focused host helpers PASS7 receipt negatives plus old actual log reject, reverse projection exact. Source changed; fresh Owner --h4abs static only, then review new receipt; no active GO or native/PPO/holdout/promotion, Branch B HOLD.
 
@@ -4207,6 +4217,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-27 | H4-M14-6 FINAL Owner receipt acceptance | actual log35b99beb, exact source hashes and receipt, 5902 mock rows, exit0/0, zero native | FULL STATIC PASS ACCEPTED / held implementation closed / distinct runtime GO pending | 1.2.250 |
+
 | 2026-11-27 | H4-M14-6 FINAL held source and receipt review | source2e26a917, exact prior projection, strict receipt and comparative reader, focused helper tests | FINAL CONTRACT IMPLEMENTED / new full static pending / runtime HOLD | 1.2.249 |
 
 | 2026-11-27 | H4-M14-6 Owner held static review | actual log 1bf632e4..., exact Rules/evaluator SHA, exit0/0, 5902 mock rows, zero native | HELD STATIC ACCEPTED / final runtime receipt HOLD | 1.2.248 |
@@ -4767,6 +4779,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.250 — 2026-11-27:** Accept exact Owner final ABS full static receipt and close held implementation H4-M14-6. Preserve immutable evidence and source; propose H4-M14-7 bounded native search only on separate explicit GO. No active authorization, no native work/PPO, Branch B HOLD.
 
 - **v1.2.249 — 2026-11-27:** Final held review and strict full-static receipt contract, reader comparative maxima/transfer context, bounded final read. Prior accepted log preserved, focused host tests pass, updated-source Owner full static receipt pending. No runtime or PPO authorization, Branch B HOLD.
 
