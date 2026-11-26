@@ -13252,12 +13252,13 @@ def h4absd_capture(state,flatten,host):
     import numpy as np
     pairs,tree=flatten(state);cached=[];keys=[];size=len(str(tree).encode())
     for path,leaf in pairs:
-        h4abs_req(hasattr(leaf,'shape') and hasattr(leaf,'dtype'),'ABSD leaf precopy schema')
-        size+=math.prod(leaf.shape)*np.dtype(leaf.dtype).itemsize
+        preview=leaf if hasattr(leaf,'shape') and hasattr(leaf,'dtype') else np.asarray(leaf) if isinstance(leaf,(bool,int,float,complex,np.generic)) else None
+        h4abs_req(preview is not None,'ABSD leaf precopy schema')
+        size+=math.prod(preview.shape)*np.dtype(preview.dtype).itemsize
         key=[[type(k).__module__,type(k).__qualname__,repr(k)] for k in path]
         size+=len(json.dumps(key).encode())+256
         h4abs_req(size<=8*H4ABSD_MIB,'ABSD precopy cap')
-        a=np.asarray(host(leaf));h4abs_req(a.dtype.kind in 'biufc','ABSD leaf dtype')
+        a=np.asarray(host(leaf));h4abs_req(a.dtype.kind in 'biufc' and a.shape==preview.shape and a.dtype==np.dtype(preview.dtype),'ABSD leaf dtype/shape')
         cached.append((path,a));keys.append((key,bool(getattr(leaf,'weak_type',False))))
     old,parts=h4m6_diag_snapshot(cached,tree,lambda v:v,8*H4ABSD_MIB)
     leaves=[];offset=0
@@ -13302,14 +13303,16 @@ def h4absd_compare(a,u,b,v):
         if not changes and p==q:continue
         entry=dict(index=i,key=x['key'],metadata=changes,payload_changed=p!=q)
         if changes:entry['other_key']=y['key']
-        root='.'.join(k[2] for k in x['key'])
-        entry['category']='solver/contact' if any(k in root for k in ('efc','contact','qacc','qLD','qM','qfrc')) else 'native data' if 'data' in root else 'obs' if 'obs' in root else 'info/metrics' if ('info' in root or 'metrics' in root) else 'reward/done' if ('reward' in root or 'done' in root) else 'other'
+        root=x['key'][0][2] if x['key'] else ''
+        path='.'.join(k[2] for k in x['key'][1:])
+        def isroot(k):return root in (repr(k),"GetAttrKey(name="+repr(k)+")","DictKey(key="+repr(k)+")")
+        entry['category']=('solver/contact' if any(k in path for k in ('efc','contact','qacc','qLD','qM','qfrc')) else 'native data') if isroot('data') else 'obs' if isroot('obs') else 'info/metrics' if isroot('info') or isroot('metrics') else 'reward/done' if isroot('reward') or isroot('done') else 'other'
         if p!=q and x['dtype']==y['dtype'] and x['shape']==y['shape']:
             dt=np.dtype(x['dtype']);aa=np.frombuffer(p,dtype=np.uint8).reshape(-1,dt.itemsize)
             bb=np.frombuffer(q,dtype=np.uint8).reshape(-1,dt.itemsize);mask=aa!=bb
             ids=np.flatnonzero(mask.any(axis=1));av=np.frombuffer(p,dtype=dt)[ids];bv=np.frombuffer(q,dtype=dt)[ids]
             zeros=(av==0)&(bv==0) if dt.kind=='f' else np.zeros(len(ids),dtype=bool)
-            nan_payload=(np.isnan(av)&np.isnan(bv)) if dt.kind in 'fc' else np.zeros(len(ids),dtype=bool)
+            nan_payload=(np.isnan(av)&np.isnan(bv)) if dt.kind=='f' else np.zeros(len(ids),dtype=bool)
             numeric=(av!=bv)&~nan_payload
             entry.update(changed_elements=len(ids),changed_bytes=int(mask.sum()),zero_sign_elements=int(zeros.sum()),
                 nan_payload_elements=int(nan_payload.sum()),numeric_elements=int(numeric.sum()),
@@ -13449,6 +13452,7 @@ def h4absd_read(path,inputs,complete=False,deadline=None):
         trailing=rf.read(1)
         h4abs_req(not trailing,'ABSD uncommitted raw row')
     h4abs_req(attempted-n==int(pending is not None),'ABSD count')
+    historical_digest_mismatch={k:sum(rr[k].tobytes()!=inputs['historical_rows'][i][k].tobytes() for i,rr in enumerate(rows)) for k in ('state_before','state_after')}
     result=None
     present={p.name for p in path.iterdir()}
     retained={name+suffix for name in snapshots for suffix in ('.json','.bin')}
@@ -13466,7 +13470,7 @@ def h4absd_read(path,inputs,complete=False,deadline=None):
     return dict(attempted=attempted,recorded=n,pending=pending,actor_attempted=attempted,actor_recorded=n,
         reset_attempted=reset_attempted,reset_recorded=reset_recorded,templates=templates,
         capture_pending=capture_pending,captures=captures,logical_bytes=logical,uncommitted_snapshots=uncommitted,
-        raw_sha256=sha256(r),decision=result,passed=False)
+        raw_sha256=sha256(r),historical_digest_mismatch=historical_digest_mismatch,decision=result,passed=False)
 
 def h4absd_marker(rules):
     import re
@@ -13478,18 +13482,27 @@ def h4absd_marker(rules):
     p=Path(a[5]);h4abs_req(p.parent==Path('m463_runs') and p.name.startswith('m470_h4absd_static_') and p.suffix=='.log','ABSD static path')
     return dict(id=a[1],output=a[2],source=a[3],provenance=a[4],static_path=a[5],static_sha=a[6])
 
+def h4absd_receipt(lines,source,provenance,evaluator):
+    for line in ('H4ABSD_SOURCE '+source,'H4ABSD_PROVENANCE '+provenance,
+        'H4ABSD_EVALUATOR_SHA256 '+evaluator,'H4ABSD_FULL_STATIC_PASS','STATIC_EXIT_CODE=0 TEE_EXIT_CODE=0'):
+        h4abs_req(lines.count(line)==1,'ABSD static receipt')
+    for prefix in ('H4ABSD_SOURCE ','H4ABSD_PROVENANCE ','H4ABSD_EVALUATOR_SHA256 ','STATIC_EXIT_CODE='):
+        h4abs_req(sum(x.startswith(prefix) for x in lines)==1,'ABSD ambiguous receipt')
+    for prefix,expected in (
+        ('H4ABSD_COMPONENT_STATIC ',dict(framing=3,negative=9,mixed=1,metadata=1,equal=1,signed_zero=1,nan_payload=1,native_calls=0)),
+        ('H4ABSD_READER_STATIC ',dict(mock_rows=1001,negative=7,native_calls=0))):
+        found=[x[len(prefix):] for x in lines if x.startswith(prefix)]
+        h4abs_req(len(found)==1 and json.loads(found[0])==expected,'ABSD fixture receipt')
+    h4abs_req(not any('FULL_STATIC_ACCEPTANCE_HOLD' in x for x in lines)
+        and lines[-2:]==['H4ABSD_FULL_STATIC_PASS','STATIC_EXIT_CODE=0 TEE_EXIT_CODE=0'],'ABSD exit receipt')
+    return True
+
 def h4absd_authorize(root):
     auth=h4absd_marker((root/'G1_RESEARCH_RULES.md').read_text('utf8'));inputs=h4absd_inputs(root)
     p=inputs['provenance'];h4abs_req(auth['source']==h4m3_digest(p['source'])
         and auth['provenance']==h4m3_digest(p),'ABSD authorization provenance')
     lines=h4abs_pin(root/auth['static_path'],auth['static_sha'],16*H4ABSD_MIB).read_text('utf8').splitlines()
-    for line in ('H4ABSD_SOURCE '+auth['source'],'H4ABSD_PROVENANCE '+auth['provenance'],
-        'H4ABSD_EVALUATOR_SHA256 '+p['source']['m463_gate3_cp_eval.py'],'H4ABSD_FULL_STATIC_PASS','STATIC_EXIT_CODE=0 TEE_EXIT_CODE=0'):
-        h4abs_req(lines.count(line)==1,'ABSD static receipt')
-    for prefix in ('H4ABSD_SOURCE ','H4ABSD_PROVENANCE ','H4ABSD_EVALUATOR_SHA256 ','STATIC_EXIT_CODE='):
-        h4abs_req(sum(x.startswith(prefix) for x in lines)==1,'ABSD ambiguous receipt')
-    h4abs_req(lines.count('H4ABSD_FULL_STATIC_PASS')==1 and not any('FULL_STATIC_ACCEPTANCE_HOLD' in x for x in lines)
-        and lines[-2:]==['H4ABSD_FULL_STATIC_PASS','STATIC_EXIT_CODE=0 TEE_EXIT_CODE=0'],'ABSD exit receipt')
+    h4absd_receipt(lines,auth['source'],auth['provenance'],p['source']['m463_gate3_cp_eval.py'])
     return auth,inputs
 
 def h4absd_fixtures():
@@ -13507,13 +13520,22 @@ def h4absd_fixtures():
     mixed=h4absd_compare(a,u,b,v);meta=h4absd_compare(a,u,c,w)
     h4abs_req(mixed['changed_leaves'][0]['kind']=='MIXED' and mixed['changed_leaves'][0]['zero_sign_elements']==1
         and meta['changed_leaves'][0]['kind']=='METADATA_ONLY' and h4absd_compare(a,u,a,u)['decision']=='NOT_REPRODUCED','ABSD fixture classification')
+    z,zraw=h4absd_capture(Leaf([-0.,1.]),flatten,host)
+    h4abs_req(h4absd_compare(a,u,z,zraw)['changed_leaves'][0]['kind']=='SIGNED_ZERO_ONLY','ABSD zero fixture')
+    n1,n2=Leaf([0.]),Leaf([0.]);n1.a.view(np.uint32)[0]=0x7fc00001;n2.a.view(np.uint32)[0]=0x7fc00002
+    nm,nr=h4absd_capture(n1,flatten,host);om,orr=h4absd_capture(n2,flatten,host)
+    h4abs_req(h4absd_compare(nm,nr,om,orr)['changed_leaves'][0]['kind']=='NAN_PAYLOAD_ONLY','ABSD NaN fixture')
+    def mutate(key,value):
+        m=json.loads(json.dumps(a));m['leaves'][0][key]=value;return h4absd_validate(m,u)
     negatives=0
     for fn in (lambda:h4absd_validate(a,u+b'x'),lambda:h4absd_validate(a,bytes([u[0]^1])+u[1:]),
-               lambda:h4absd_marker(''),lambda:h4absd_marker('H4ABS_ACTIVE_GO: bad')):
+               lambda:mutate('offset',1),lambda:mutate('shape',[3]),lambda:mutate('weak_type',True),
+               lambda:mutate('dtype','<i4'),lambda:h4absd_marker(''),lambda:h4absd_marker('H4ABS_ACTIVE_GO: bad'),
+               lambda:h4absd_marker('H4ABSD_ACTIVE_GO: bad')):
         try:fn()
         except (ValueError,TypeError,KeyError):negatives+=1
         else:raise ValueError('ABSD fixture negative accepted')
-    return dict(framing=3,negative=negatives,mixed=1,metadata=1,equal=1,native_calls=0)
+    return dict(framing=3,negative=negatives,mixed=1,metadata=1,equal=1,signed_zero=1,nan_payload=1,native_calls=0)
 
 def h4absd_reader_fixtures(inputs):
     """Synthetic full snapshot endpoints on immutable historical direct records.
@@ -13564,6 +13586,8 @@ def h4absd_reader_fixtures(inputs):
             else:bad[i][-1]='0'*64
             write(bad);reject()
         write(ev);raw=(p/'A.bin').read_bytes();(p/'A.bin').write_bytes(bytes([raw[0]^1])+raw[1:]);reject();(p/'A.bin').write_bytes(raw)
+        bad=ev.copy();i=next(i for i,e in enumerate(ev) if e[0]=='capture_attempt');bad.insert(i,ev[i]);write(bad);reject()
+        write(ev);(p/'A.bin').write_bytes(raw[:-1]);reject();(p/'A.bin').write_bytes(raw)
         # Partial prefix (pending next native call), no later snapshot artifacts.
         for name in snapshots:
             for suffix in ('.json','.bin'):(p/(name+suffix)).unlink()
@@ -13586,6 +13610,16 @@ def h4absd_static(root):
     h4abs_req(step(raw)==step(prev),'ABSD native graph unchanged')
     inputs=h4absd_inputs(root);p=inputs['provenance'];fixtures=h4absd_fixtures()
     reader=h4absd_reader_fixtures(inputs)
+    source=h4m3_digest(p['source']);provenance=h4m3_digest(p);evaluator=p['source']['m463_gate3_cp_eval.py']
+    receipt=['H4ABSD_SOURCE '+source,'H4ABSD_PROVENANCE '+provenance,'H4ABSD_EVALUATOR_SHA256 '+evaluator,
+        'H4ABSD_COMPONENT_STATIC '+json.dumps(fixtures,sort_keys=True),'H4ABSD_READER_STATIC '+json.dumps(reader,sort_keys=True),
+        'H4ABSD_FULL_STATIC_PASS','STATIC_EXIT_CODE=0 TEE_EXIT_CODE=0']
+    h4absd_receipt(receipt,source,provenance,evaluator)
+    for bad in (receipt[:-1],receipt[:-1]+['STATIC_EXIT_CODE=1 TEE_EXIT_CODE=0'],receipt[:3]+receipt[4:],
+                [receipt[0]]+receipt,receipt[:-2]+['FULL_STATIC_ACCEPTANCE_HOLD',receipt[-1]]):
+        try:h4absd_receipt(bad,source,provenance,evaluator)
+        except (ValueError,TypeError,KeyError):pass
+        else:raise ValueError('ABSD static receipt negative accepted')
     schedule=h4absd_schedule(inputs['historical_events'])
     h4abs_req(sum(e[0]=='attempt' for e in schedule)==1001 and sum(e[0]=='capture_attempt' for e in schedule)==5,'ABSD schedule fixtures')
     for mode in ('run','child'):
@@ -13598,7 +13632,8 @@ def h4absd_static(root):
     print('H4ABSD_EVALUATOR_SHA256',p['source']['m463_gate3_cp_eval.py'],flush=True)
     print('H4ABSD_COMPONENT_STATIC',json.dumps(fixtures,sort_keys=True),flush=True)
     print('H4ABSD_READER_STATIC',json.dumps(reader,sort_keys=True),flush=True)
-    print('H4ABSD_HELD_STATIC_CANDIDATE; FULL_STATIC_ACCEPTANCE_HOLD',flush=True)
+    h4abs_req(not (root/H4ABSD_OUTPUT).parent.exists(),'ABSD static created output')
+    print('H4ABSD_FULL_STATIC_PASS',flush=True)
 
 def h4absd_cli(argv):
     p=argparse.ArgumentParser();p.add_argument('mode',choices=('static','run','child'));a=p.parse_args(argv)
