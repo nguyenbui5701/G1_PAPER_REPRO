@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.229  
+**Version:** 1.2.230  
 **Ngày cập nhật:** 2026-11-26 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -2690,6 +2690,14 @@ SA actual host-only evidence: final exact extracted reducer FNV1a32 9bb945e8, 1 
 
 Frozen budget unchanged 5,242,880 training/800 optimizer/2,000 diagnostic eval, total5,244,880 physical, 24576 train reset lanes/2 eval reset lanes, 8192 worlds/32 unroll/20 rollouts/4 chunks; future controlled DEV only separate approval, max44808 fresh physical/60 logical/12 resets, original both +2/8 primary survival/recovery5 and all nominal/moving/standing/safety gates, archived CTRL official and M12 descriptive secondary only. No runtime GO, no budget escalation, no source graph change in evaluator, no independent holdout/promotion. H4-M13-2 FULL HELD SOURCE IMPLEMENTED / SA FOCUSED HOST PASS / OWNER EXACT FULL STATIC PENDING. Only next step Owner ff-only pull exact HEAD, run --h4red-static via pinned g1_m463 with original checkpoint/restore/reward provenance inputs, send m470_h4red_static_*.log and producer exit. STOP on any static failure, no runtime or retry. Branch A ACTIVE; Branch B HOLD. SA zero physical transitions/reset/inference/optimizer/checkpoint saves.
 
+### H4-M13-2A — actual Owner static STOP / tracked-local provenance verifier repair (v1.2.230; 2026-11-26)
+
+Reviewed actual Owner uploaded m470_h4red_static_20261126_211146_933992624.log,1878B SHA25651629dad35253d49055d289a62110e8a4326ad6c6109fd3dbce8984182330f86, exact HEADc218c7f21efff474cb980025773c4f5b1d7599b0, Rules1.2.229, recorded trainer SHA25669bf1d9c0754381d22753fa21c88d00034331b6f3d9036591ee17fbf847573c5. Source reviewed from exact trainer blob1de66d78da3244eefe942819d5ffb73c7e5c49b7 and Rules blob6fb21cbffc0d169b6badcb8420a6d5ad3052d53a. Actual static reached h4red_project_sources unchanged-file loop after prior full-source compile and three-file reverse checks; stopped on git show base2ac406d5:m462_ppo_warmstart_run.py exit128. No H4RED_FULL_STATIC_PASS. Outer shell exit line not supplied. This is SA verifier design error, not evidence of corruption in the local dependency or of RED/PPO efficacy.
+
+Confirmed exact base GitHub lookup: train.py blobb36b69a38d2ebb1a218342b3f34386d47624383e, paper_config.py blob6dc390de5eec3cd0b036b2d766c71e3164e1b17f, evaluator blob1110260e3f9804dadcd4e2d2b98e62f9b164cbb2 tracked; m462_ppo_warmstart_run.py, m462_typed_orbax_stage.py and paper_config_preflight.json all 404 at same base, expected local provenance. Existing H4R_LOCAL_SHA and H4R_CONFIG_SHA pins are authoritative for these local files, not Git absence fallback. EDIT-FIRST minimal host-only verifier repair commit4b025d639f9f9899a2cf9c676460e4f9c93b5a47 trainer blobb99285c410be5f2c32d3257399c46e36b46c8a0b: replace faulty blanket git-show loop with explicit h4red_unchanged_sources partition (3 projected +3 tracked +3 local; exact set equality and disjointness), tracked bytes still equal base Git bytes, all local files checked with existing h4x_file_pin (regular non-symlink file and exact existing SHA). No fallback/skip, no pin relaxation, unchanged bootstrap origin checks and worker parent-source pins. No scheduler/generator/reward/physics/PPO/ledger/reader changes. SA exact helper extract length1115 FNV1a32 897190df manually copied and checksum verified; actual host-only temporary Git repo fixture with three tracked and three untracked files, synthetic SHA pins and equivalent require/file-pin functions: positive1 PASS, negatives19/19 PASS (byte mutation/missing/symlink for all six files plus unexpected partition member). Not actual Owner dependencies or full-checkout static. No native imports/calls, physical transitions, reset, inference or optimizer updates by SA. Previous v1.2.229 reducer/replay assertions were not independently re-executed during this review; actual owner full static fixtures pending.
+
+Only next step Owner exact ff-only pull and corrected source pins, rerun full held static once; preserve prior failure log, no output reservation or active marker. Original budget/spec and all scientific gates unchanged. No training, no CTRL/M12 rerun, no runtime diagnostics, no promotion/holdout. Branch A ACTIVE, Branch B HOLD.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -2951,6 +2959,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-26)
+
+**H4-M13-2A ACTUAL STATIC STOP / LOCAL-PIN VERIFIER REPAIRED / OWNER STATIC PENDING (v1.2.230):** actual log51629dad, git-show exit128 on untracked restore helper, explicit tracked/local partition preserves existing pins, source4b025d63, SA host fixture1+19 PASS. No active marker, full static rerun only. PPO/runtime/holdout/promotion/Branch B HOLD.
 
 **H4-M13-2 RED-V1 FULL HELD SOURCE IMPLEMENTED / SA FOCUSED HOST PASS / OWNER FULL STATIC PENDING (v1.2.229):** source commits through546f3d40, exact final three-file reverse projection PASS, reducer host1+5 and replay2+6 PASS. Isolated RED mode/guard/compact13 counters/shared M12 typed restore/reader/ledger, no active marker. Original CTRL/M12 immutable, proposed matched budget unchanged. Owner exact local static only; no runtime/PPO/evaluation/holdout/promotion, Branch B HOLD.
 
@@ -3762,6 +3772,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-26 | H4-M13-2A source provenance static repair | Owner log51629dad, exact Git base lookup and helper1+19 fixtures | STATIC STOP / verifier repaired; Owner full static pending | 1.2.230 |
+
 | 2026-11-26 | H4-M13-2 RED-V1 full held implementation | source546f3d40, exact reverse projection, final reducer1+5/replay2+6 host fixtures | HELD SOURCE IMPLEMENTED / OWNER FULL STATIC PENDING; no runtime | 1.2.229 |
 
 | 2026-11-26 | H4-M13-1 RED-V1 prospective design | exact M12 train report/source, prior S15/CAND/REF/CCRC comparison, integer schedule bounds | OFFLINE DESIGN COMPLETE / selected HELD; implementation and all runtime pending Owner GO | 1.2.228 |
@@ -4282,6 +4294,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.230 — 2026-11-26:** Record actual RED static STOP caused by blanket Git comparison of local pinned dependencies, repair explicit tracked/local partition without weakening existing pins, record actual focused host fixtures, preserve all runtime HOLDs.
 
 - **v1.2.229 — 2026-11-26:** Stage full held RED-V1 opt-in scheduler/compact reducer/shared continuation and strict matched-control provenance, bounded guards and focused static fixtures, record actual SA host evidence and Owner exact static pending; no runtime authorization, all scientific gates and Branch B HOLD.
 
