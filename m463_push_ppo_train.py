@@ -7086,6 +7086,11 @@ def h4red_project_sources(root):
         t=t[:i]+h4red_once(t[i:j],new,old)+t[j:]
     h4red_require(t.encode('utf8')==historical('m463_push_ppo_train.py',
         '9523fb51d536e38095c339165f0041cfbba70214'),'TRAINER_PROJECTION')
+    changed={'m463_coverage_env.py','m463_instrument_brax.py','m463_push_ppo_train.py'}
+    for name in (*H4_FILES,'m463_gate3_cp_eval.py','paper_config_preflight.json'):
+        if name not in changed:
+            h4red_require((root/name).read_bytes()==subprocess.check_output(
+                ['git','show',H4RED_BASE_HEAD+':'+name],cwd=root),'UNCHANGED_'+name)
     return True
 
 
@@ -7152,14 +7157,16 @@ def h4red_chunk_counts(q):
     h4red_require(actual['bad']==0 and actual['assigned']==c('assigned') and
         0<=actual['late_assigned']<=actual['assigned'],'ASSIGNMENT')
     for k,kind in (('first',1),('repeat',2)):
-        h4red_require(actual[k]==c(k+'_events') and actual['late_'+k]==sum(
-            c(f'age_{kind}_{lo}_{hi}') for lo,hi in ((240,308),(309,348),(349,639))) and
+        bins=[c(f'age_{kind}_{lo}_{hi}') for lo,hi in
+              ((0,32),(33,239),(240,308),(309,348),(349,639))]
+        h4red_require(actual[k]==c(k+'_events')==sum(bins) and
+            actual['late_'+k]==sum(bins[2:]) and
             0<=actual['late_'+k]<=actual[k],'AGE_'+k)
     h4red_require(c('gap_41_639')==0,'GAP')
-    h4red_require(actual['matched_1']+actual['matched_2']==c('repeat_matched'),'MATCHED')
+    h4red_require(actual['matched_1']+actual['matched_2']==c('repeat_matched')<=actual['repeat'],'MATCHED')
     for s in (1,2):
         h4red_require(0<=actual[f'gap_{s}']<=actual[f'joint_{s}']<=actual[f'matched_{s}']
-            and actual[f'joint_{s}']<=c(f'support_2_{s}'),'JOINT_'+str(s))
+            and actual[f'matched_{s}']<=c(f'support_2_{s}'),'JOINT_'+str(s))
     h4red_require(actual['joint_1']+actual['joint_2']<=actual['late_repeat'] and
         actual['gap_1']+actual['gap_2']<=c('gap_30_40'),'JOINT_PARTITION')
     return actual
@@ -7328,8 +7335,11 @@ def h4red_static_fixtures(root,parent,auth,src):
                 rejected(lambda:h4m12_check_complete(out,z,auth,red=True))
                 p.write_bytes(original)
                 continue
+            if fieldname in ('bad','missing','late','joint','gap','history'):
+                rejected(lambda:h4red_exposure_replay(z))
             rejected(lambda:h4m12_check_complete(out,z,auth,red=True))
-    return dict(typed_negative=5,reader_negative=15,positive=2,fixture_only=True,native_calls=0)
+    return dict(typed_negative=5,reader_negative=15,red_replay_negative=6,
+                positive=2,fixture_only=True,native_calls=0)
 
 
 def h4red_full_static(root,brax_train_path,a):
