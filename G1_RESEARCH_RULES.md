@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.258  
+**Version:** 1.2.259  
 **Ngày cập nhật:** 2026-11-27 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -3181,6 +3181,18 @@ Independent SA offline NumPy/stdlib decode of exact2199B dtype:335 rows,681 jour
 
 DECISION: raw accounting PASS; H4-M14-7D-V1 TECHNICAL STOP at historical fork, authorization consumed/deactivated, investigation CLOSED INCONCLUSIVE/HOLD per Owner frozen contract (not NOT_REPRODUCED, since no A/B comparison). Historical H4-M14-7 strict STOP preserved, H-R5c UNTESTED, no scientific or physical recoverability/learnability verdict. Actual this diagnostic335 physical/335 actor/1 reset/2 templates, zero full captures/baseline/sham/candidates/confirmations/PPO, remaining666 transitions not authorized for reuse; original ABS1665 plus diagnostic335 =2000 physical transitions across these two attempts (not total H4). No retry, comparator relaxation, source edits, further diagnostic or escalation. No active authorization, future runtime allocation0. SA actual native work0. Branch A research ACTIVE, Branch B HOLD; Owner separately decides next scientific research direction; no automatic new training, holdout or promotion. Preserve all artifacts and exclusive namespaces.
 
+### H4-M15 — Owner-directed reward-only PPO research lock (v1.2.259; 2026-11-27)
+
+Owner directs temporarily retaining the previously used PPO training workflow and conducting experiments only on the newly listed recovery rewards, maintaining this objective until the reward/PPO training campaign is completed (or explicitly changed by Owner). This is a strategic scope lock, not scientific acceptance of any candidate or blanket runtime authorization. Supersedes proposals to expand into independent diagnostics, new control methods, capturability curriculum, new sampling/exposure manipulation, temporal-credit changes or architecture changes during this campaign. Preserve H4-M14-7D-V1 closed INCONCLUSIVE/HOLD and all historical NO_GO/UNTESTED outcomes; no ABS retry. Branch A only; Branch B HOLD.
+
+Scientific target: when estimated Capture Point lies outside the dynamically reachable next-foot region, learn feasible recovery stepping, stable support, qualified load transfer and subsequent step readiness, reducing destabilizing momentum over multiple steps and resuming original command. No forced contact switching, no mandatory number of steps, no reward merely for foot contact or step count. Do not assert LIPM N-step regions equal full G1 dynamic viability or that every perturbation is recoverable.
+
+Reward candidate scope from preceding Owner/SA discussion (design hypotheses, not approved formulas): R1 support leg stability; R2 recovery foot placement; R3 effective support transfer; R4 dynamic balance recovery; R5 resume command (retain existing objective where adequate); R6 multi-step capturability/progress; R7 adaptive recovery step timing; R8 dynamic reachability-aware placement; R9 controlled COM lowering (not support collapse); R10 directional angular momentum (review prior CAM evidence, no renamed repeat); R11 next-step readiness. New R6–R11 are primary experimental focus; R1–R5 supporting mechanism/reference scope, no automatic rerun or stacking. Prioritize offline design of one attributable learning objective, initially R6 and R11 feasibility, then choose order and finite matched reward candidates using accepted evidence; all candidates should receive a recorded disposition (test, redundant, infeasible or already falsified) rather than automatically training eleven separate arms. Do not add other learning objectives or run a composite treatment until individual evidence supports it and Owner explicitly approves. Reward-only conditional gating may be part of a selected listed reward; independent command-tracking reweighting, scheduler and curriculum treatments are out of scope unless Owner changes the lock.
+
+Keep prior validated PPO workflow, original pinned Brax PPO implementation, network, observation/action semantics, optimizer/learning rate, discount/GAE, rollout/unroll/batch/minibatches/update schedule, reset/DR, push scheduler/curriculum, physics/PD/actuator/safety/termination and resource guards unchanged. Preferred matched reference is historical H4-M12/H4-M13 continuation workflow: immutable Official CTRL fullstate reset-edge fork, exact optimizer/normalizer/RNG restore, original CTRL distribution, existing M12 original-reward continuation as immutable matched control only after exact compatibility recheck. Historical per-arm reference +5242880 env transitions/800 optimizer updates/2000 diagnostic eval transitions, not a newly authorized budget or automatic training prescription; final actual source/config and matched protocol must be verified and frozen before separate Owner runtime GO. No weights-only fallback, independent budget expansion or silent hyperparameter changes. New telemetry only where indispensable to compute/validate selected reward using existing code and actual on-policy transitions; no standalone native diagnostic campaign, no exploratory simulation outside the approved training/evaluation workflow. Preserve nominal exposure and frozen recovery/safety/nominal/moving gates; technical training completion is not efficacy. Stop invalid/nonfinite/resource/safety failures per existing rules. Complete each approved training/evaluation and record result before choosing next; no automatic retry, no promotion/holdout without applicable gates. Goal lock does not override safety or justify continuing an invalid experiment.
+
+NEXT H4-M15-0 Held Offline Reward-Only Multi-Step Recovery Learning Objective Design: review accepted H-R1..6 and H4-M8/M12/M13/M14 evidence and exact existing source/reward inventory under EDIT-FIRST; identify minimal implementable reward, normalization/gating, failure modes, falsifier and matched unchanged PPO protocol; avoid repetitive diagnostics and unnecessary scripts. No executable changes, no new native/PPO work, no active marker, zero allocated runtime in this Rules update. Subsequent implementation/static/one-use PPO approvals remain distinct. Keep this reward-only campaign as current goal until approved PPO training plan is completed or Owner changes direction.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -3442,6 +3454,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-26)
+
+**H4-M15 OWNER REWARD-ONLY PPO CAMPAIGN LOCK (v1.2.259):** keep validated prior PPO workflow/config/distribution unchanged; only listed R1–R11 recovery reward hypotheses, new R6–R11 primary focus, one attributable treatment at a time, reuse exact compatible matched CTRL/M12 continuation. NEXT H4-M15-0 held offline design; no further ABS/standalone diagnostic, curriculum/sampling/GAE/network changes, executable changes or runtime allocation. Lock until approved reward PPO training campaign completed or Owner changes direction. Historical STOP/NO_GO preserved, Branch A ACTIVE, B HOLD.
 
 **H4-M14-7D-V1 TECHNICAL STOP / investigation CLOSED INCONCLUSIVE/HOLD (v1.2.258):** seven actual artifacts hash verified,335 physical/actor,1 reset,2 templates,335 raw row hashes/keys/internal chains PASS. Historical fork mismatch actual3d817070 vs488244c7; M7 selected-field snapshot passed, full F/A/B not reached, partial reader decision:null. Historical digest mismatches80 before/81 after per Owner reader. Consumed marker inactive, zero future authorization, no retry/escalation. Historical ABS STOP preserved; H-R5c UNTESTED; Branch A research ACTIVE, Branch B HOLD; no PPO/holdout/promotion.
 
@@ -4311,6 +4325,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-27 | H4-M15 Owner reward-only PPO research scope lock | R1–R11 candidate scope, R6–R11 priority, preserve historical matched training workflow | DIRECTION APPROVED / H4-M15-0 held offline / zero runtime | 1.2.259 |
+
 | 2026-11-27 | H4-M14-7D-V1 Owner native review and closure | seven exact hashes,335 verified rows, fork3d817070 !=488244c7,0 captures | TECHNICAL STOP / consumed / CLOSED INCONCLUSIVE-HOLD | 1.2.258 |
 
 | 2026-11-27 | H4-M14-7D-V1 distinct Owner native authorization | exact receipt04fc0d72, unchanged evaluator34966a1b, sole marker, frozen 1001/1 reset/5 captures | ONE-USE CONDITIONAL GO / Owner runtime pending / SA native0 | 1.2.257 |
@@ -4889,6 +4905,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.259 — 2026-11-27:** Owner locks reward-only PPO campaign until training completion; retain existing PPO workflow and isolate recovery reward candidates, no unrelated diagnostic or curriculum/optimizer/network changes. H4-M15-0 held offline design next; no executable edit/runtime authorization, Branch B HOLD.
 
 - **v1.2.258 — 2026-11-27:** Accept raw accounting of actual Owner diagnostic STOP at historical full-state fork before F/A/B, preserve historical ABS STOP and unresolved cause. Deactivate consumed H4ABSD marker, close investigation INCONCLUSIVE/HOLD without retry/escalation. Rules only, zero new runtime authorization; Branch B HOLD.
 
