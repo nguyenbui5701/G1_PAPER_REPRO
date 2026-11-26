@@ -231,6 +231,121 @@ def h4m6_post(xp, old, pre, *, done, eligible, raw, shadow):
     return {'h4m6_'+k:xp.asarray(v,xp.int32) for k,v in vals.items()}
 
 
+# H4-M8-CAM-V1: common read-only telemetry. No native reward hook.
+H4M8_STATE = ('active','age','side','consumed','positive')
+H4M8_INT_FIELDS = ('qualified','event_terminal','start','event_side','eligible',
+    'tick_age','tick_side','weight8','positive_start','completed','close_terminal',
+    'close_truncation','close_boundary','close_command','close_event',
+    'opportunity_side','attempt_side','bad')
+H4M8_FLOAT_FIELDS = ('mass','h2','cost','shadow')
+H4M8_FIELDS = H4M8_INT_FIELDS + H4M8_FLOAT_FIELDS
+
+
+def h4m8_momentum(xp, mass, inertia, xipos, ximat, cvel, subtree_com, rootid):
+    """Same last-forward epoch; actual per-world model, no extra forward."""
+    arrays = tuple(xp.asarray(x) for x in (mass,inertia,xipos,ximat,cvel,subtree_com))
+    if tuple(x.shape for x in arrays) != ((31,),(31,3),(31,3),(31,3,3),(31,6),(31,3)):
+        raise RuntimeError('M470_H4M8_MOMENTUM_SHAPE')
+    if any(x.dtype != xp.float32 for x in arrays) or rootid.shape != (31,):
+        raise RuntimeError('M470_H4M8_MOMENTUM_DTYPE')
+    mass,inertia,xipos,ximat,cvel,subtree_com = arrays
+    m,I,r,R,cv = mass[1:],inertia[1:],xipos[1:],ximat[1:],cvel[1:]
+    M = xp.sum(m)
+    omega = cv[:,:3]
+    v = cv[:,3:] + xp.cross(omega,r-subtree_com[1])
+    center = xp.sum(m[:,None]*r,axis=0)/M
+    vc = xp.sum(m[:,None]*v,axis=0)/M
+    iw = (R*I[:,None,:]) @ xp.swapaxes(R,1,2)
+    H = xp.sum((iw@omega[:,:,None])[:,:,0] +
+               xp.cross(r-center,m[:,None]*(v-vc)),axis=0)
+    h2 = xp.sum(H*H)
+    href = M*xp.asarray(.793,xp.float32)*xp.asarray(.35,xp.float32)
+    cost = h2/(href*href+h2)
+    good = (xp.all(rootid[1:]==1) & (rootid[0]==0) & (mass[0]==0) &
+            xp.all(m>0) & xp.all(I>0) & (M>0) & (h2>=0) & (cost>=0) & (cost<=1))
+    for x in (*arrays,H,center,vc,M,h2,cost):
+        good = good & xp.all(xp.isfinite(x))
+    return M,h2,cost,good
+
+
+def h4m8_pre(xp, old, *, event, repeat, cls, first_age, first_mag, gap,
+              magnitude, first_motion, pre_motion, actor_motion, direction,
+              support_side, boundary, age, clock, wrapper_steps,
+              command, actor_command, critic_command):
+    active = old['h4m8_active'] > 0
+    old_age = old['h4m8_age']
+    consumed = (old['h4m8_consumed'] > 0) & (~boundary)
+    side = xp.where(direction==2,1,xp.where(direction==3,2,0))
+    mature = (event & repeat & (cls==3) & (first_age>=240) & (first_age<=308) &
+              (first_mag>=.45) & (first_mag<=.55) & (gap>=30) & (gap<=40) &
+              (magnitude>=.30) & (magnitude<=.40) & (first_motion==pre_motion) &
+              (actor_motion==pre_motion))
+    native_qual = mature & (pre_motion==0) & (side>0) & (support_side==side)
+    coherent = xp.all(command==actor_command) & xp.all(command==critic_command)
+    zero = xp.all(command==0) & coherent
+    clock_ok = (clock==age) & (wrapper_steps==age) & (clock<500)
+    trunc = wrapper_steps+1>=1000
+    qualified = native_qual & zero & clock_ok & (~boundary) & (~trunc) & (~active) & (~consumed)
+    valid_old = (old_age>=0) & (old_age<50) & ((old['h4m8_side']==1)|(old['h4m8_side']==2))
+    cb = active & boundary
+    ce = active & (~boundary) & event
+    ct = active & (~boundary) & (~event) & trunc
+    cc = active & (~boundary) & (~event) & (~trunc) & ((~zero)|(clock>=500))
+    eligible = active & valid_old & (~boundary) & (~event) & (~trunc) & zero & clock_ok
+    bad = (native_qual & (~qualified)) | (active & (~valid_old)) | cb | ce
+    bad = bad | (active & (~coherent)) | (active & (~boundary) & (~trunc) &
+              (clock<500) & ((clock!=age)|(wrapper_steps!=age)))
+    bad = bad | ((~active) & ((old_age!=0)|(old['h4m8_side']!=0)|(old['h4m8_positive']!=0)))
+    bad = bad | (active & (~consumed) & (~boundary))
+    for key in ('active','consumed','positive'):
+        x=old['h4m8_'+key]
+        bad=bad | ((x!=0)&(x!=1))
+    return dict(active=active,consumed=consumed,k=old_age+1,side=side,
+        mature=mature,native_qual=native_qual,qualified=qualified,eligible=eligible,
+        close_boundary=cb,close_event=ce,close_truncation=ct,close_command=cc,
+        opportunity_side=xp.where(boundary & (cls==3) & (pre_motion==0),side,0),
+        attempt_side=xp.where(event & repeat & (cls==3) & (first_motion==0) & (pre_motion==0),side,0),bad=bad)
+
+
+def h4m8_post(xp, old, pre, *, done, post_zero, post_coherent, native_mature,
+               native_side, mass, h2, cost, momentum_good):
+    # Source terminal is known before EpisodeWrapper and AutoReset.
+    qualified=pre['qualified']
+    prior_close=pre['close_boundary']|pre['close_event']|pre['close_truncation']|pre['close_command']
+    close_terminal=pre['active'] & (~prior_close) & done
+    late_command=pre['eligible'] & (~done) & (~(post_zero & post_coherent))
+    close_command=pre['close_command']|late_command
+    start=qualified & (~done) & post_zero & post_coherent
+    eligible=pre['eligible'] & (~done) & post_zero & post_coherent
+    k=pre['k']
+    weight8=xp.where(eligible,xp.minimum(8,xp.minimum(xp.maximum(0,k-7),xp.maximum(0,51-k))),0)
+    shadow=xp.where(weight8>0,xp.asarray(.25,xp.float32)*xp.asarray(.02,xp.float32)*
+                    (weight8.astype(xp.float32)/xp.asarray(8.,xp.float32))*cost,
+                    xp.asarray(0.,xp.float32))
+    complete=eligible & (k==50)
+    keep=start | (eligible & (~complete))
+    positive=eligible & (shadow>0)
+    old_positive=old['h4m8_positive']>0
+    closed=prior_close|close_terminal|late_command|complete
+    bad=pre['bad'] | (~momentum_good) | (~xp.isfinite(shadow)) | (shadow<0) | (shadow>xp.asarray(.005,xp.float32))
+    bad=bad | (pre['mature']!=native_mature) | (xp.where(pre['native_qual'],pre['side'],0)!=native_side)
+    bad=bad | (qualified & (~done) & (~start)) | (pre['eligible'] & (~done) & (~post_coherent))
+    bad=bad | (pre['active'] & (~(closed|eligible))) | (closed & keep)
+    vals=dict(qualified=qualified,event_terminal=qualified & done,start=start,
+        event_side=xp.where(qualified,pre['side'],0),eligible=eligible,
+        tick_age=xp.where(eligible,k,0),tick_side=xp.where(pre['active'],old['h4m8_side'],0),
+        weight8=weight8,positive_start=positive & (~old_positive),completed=complete,
+        close_terminal=close_terminal,close_truncation=pre['close_truncation'],
+        close_boundary=pre['close_boundary'],close_command=close_command,close_event=pre['close_event'],
+        opportunity_side=pre['opportunity_side'],attempt_side=pre['attempt_side'],bad=bad,
+        active=keep,age=xp.where(keep & (~start),k,0),side=xp.where(keep,xp.where(start,pre['side'],old['h4m8_side']),0),
+        consumed=pre['consumed']|qualified,positive=keep & (~start) & (old_positive|positive))
+    result={'h4m8_'+key:xp.asarray(value,xp.int32) for key,value in vals.items()}
+    result.update(h4m8_mass=xp.asarray(mass,xp.float32),h4m8_h2=xp.asarray(h2,xp.float32),
+                  h4m8_cost=xp.asarray(cost,xp.float32),h4m8_shadow=xp.asarray(shadow,xp.float32))
+    return result
+
+
 def heading_from_wxyz(quat):
     w, x, y, z = quat[0], quat[1], quat[2], quat[3]
     return jp.arctan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
@@ -254,7 +369,7 @@ class CoverageJoystick(joystick.Joystick):
     boundary for re-sampling push targets and counters.  Tracking `age` also
     supports a direct/unwrapped one-env diagnostic.
     """
-    def __init__(self, *, stage: str, config, task='flat_terrain', h1_m1=False, h1_m2=False, h3_m1=False, h4_arm=None, h4cc_arm=None, h4m6_arm=None, h4m6_tech_capture=False):
+    def __init__(self, *, stage: str, config, task='flat_terrain', h1_m1=False, h1_m2=False, h3_m1=False, h4_arm=None, h4cc_arm=None, h4m6_arm=None, h4m6_tech_capture=False, h4m8_common=False):
         if stage not in STAGES:
             raise ValueError('M463_BAD_STAGE')
         if bool(config.push_config.enable):
@@ -291,6 +406,13 @@ class CoverageJoystick(joystick.Joystick):
             raise ValueError('M470_H4M6_ENV_CONTRACT')
         if h4m6_tech_capture and h4m6_arm is None:
             raise ValueError('M470_H4M6_CAPTURE_CONTRACT')
+        if type(h4m8_common) is not bool or (h4m8_common and (
+                h4_arm!='candidate' or h4cc_arm!='ref' or h4m6_arm is not None or h4m6_tech_capture or
+                float(config.reward_config.scales.stand_still)!=-1.0 or
+                float(config.reward_config.scales.termination)!=-100.0 or
+                len(config.reward_config.scales)!=24 or int(config.episode_length)!=1000)):
+            raise ValueError('M470_H4M8_ENV_CONTRACT')
+        self._h4m8_common = h4m8_common
         self._h4m6_tech_capture = bool(h4m6_tech_capture)
         self._h4m6_arm = h4m6_arm
         self._h4cc_arm = h4cc_arm
@@ -452,6 +574,9 @@ class CoverageJoystick(joystick.Joystick):
             if self._h4m6_tech_capture:
                 info['h4m6_raw_rewards'] = jp.zeros((24,),jp.float32)
                 info['h4m6_tech_treatment'] = zeros
+        if getattr(self,'_h4m8_common',False):
+            info.update({'h4m8_'+k:zeros for k in H4M8_STATE+H4M8_INT_FIELDS})
+            info.update({'h4m8_'+k:jp.asarray(0.,jp.float32) for k in H4M8_FLOAT_FIELDS})
         return state.replace(info=info)
 
     def step(self, state, action):
@@ -585,6 +710,16 @@ class CoverageJoystick(joystick.Joystick):
                 critic_command=state.obs['privileged_state'][9:12])
             info['h4m6_pre_eligible'] = m6['eligible_pre'].astype(jp.int32)
             info['h4m6_pre_k'] = m6['k'].astype(jp.int32)
+        if getattr(self,'_h4m8_common',False):
+            m8 = h4m8_pre(jp,info,event=event,repeat=event & (count>0),cls=h4_class,
+                first_age=jp.where(boundary,-1,info['h4_first_age']),
+                first_mag=jp.where(boundary,0.,info['h4_first_mag']),
+                gap=age-last_event_age,magnitude=magnitude,
+                first_motion=jp.where(boundary,-1,info['h4_first_motion']),
+                pre_motion=pre_motion,actor_motion=actor_motion,direction=direction,
+                support_side=support_side,boundary=boundary,age=age,clock=pre_source_step,
+                wrapper_steps=info['steps'],command=pre_command,
+                actor_command=state.obs['state'][9:12],critic_command=state.obs['privileged_state'][9:12])
         updated_qvel = state.data.qvel.at[:2].add(world_delta)
         if self._h4_arm is not None:
             h4_actual_delta = updated_qvel[:2] - state.data.qvel[:2]
@@ -809,4 +944,17 @@ class CoverageJoystick(joystick.Joystick):
             m6out['h4m6_bad'] = bad.astype(jp.int32)
             out.update(m6out)
             out['h4_bad'] = jp.maximum(out['h4_bad'],m6out['h4m6_bad'])
+        if getattr(self,'_h4m8_common',False):
+            model,d=self.mjx_model,after.data
+            M,h2,cost,good=h4m8_momentum(jp,model.body_mass,model.body_inertia,
+                d.xipos,d.ximat,d.cvel,d.subtree_com,model.body_rootid)
+            post_command=out['command']
+            post_coherent=(jp.all(post_command==after.obs['state'][9:12]) &
+                           jp.all(post_command==after.obs['privileged_state'][9:12]))
+            m8out=h4m8_post(jp,info,m8,done=after.done>0,
+                post_zero=jp.all(post_command==0),post_coherent=post_coherent,
+                native_mature=out['h4_mature_repeat']>0,native_side=out['h4_event_qual'],
+                mass=M,h2=h2,cost=cost,momentum_good=good)
+            out.update(m8out)
+            out['h4_bad']=jp.maximum(out['h4_bad'],m8out['h4m8_bad'])
         return after.replace(info=out)
