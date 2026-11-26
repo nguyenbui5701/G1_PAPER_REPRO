@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.222  
+**Version:** 1.2.223  
 **Ngày cập nhật:** 2026-11-26 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -2485,6 +2485,10 @@ Owner supplied traceback M470_H4M12_EVAL_STEP_GRAPH at h4m12_static before train
 
 Patched only existing evaluator static verifier in commit0d060745dca52d569247fac776238ae2e22b4631, blob1110260e3f9804dadcd4e2d2b98e62f9b164cbb2. Extract exactly one top-level run and one nested one_step; preserve exact AST comparison; host-only focused regressions ignore unrelated same-name helper and reject real body change, missing/duplicate step, duplicate run. No runtime graph, loader, PPO, physics, reward, PD, frozen comparator, checkpoints or acceptance gates modified. Source review only; Owner full static execution and actual pins/reader checks pending, no claim of PASS. Rollback only reviewed static verifier patch, preserve historical failure and artifacts. One next action: Owner fast-forward pull exact reviewed branch and run full static, return timestamped m470_h4m12_dev_static_*.log with SHA and producer exit. No runtime marker, no CTRL rerun, no diagnostic or further PPO. Frozen 12 groups/60 logical/44808 physical max/12 resets and original +2/8 survival and recovery5 unchanged. All runtime, holdout, readiness, production, promotion and Branch B HOLD.
 
+### H4-M12-3A — Owner CLI invocation STOP / corrected static command (v1.2.223; 2026-11-26)
+
+Owner log m470_h4m12_dev_static_20261126_193722_179621511.log (9009 bytes, SHA256 1c151a9f1ea42d29d0e38fdfff76f12f1cc26f0635d4bfe1d0578d8923e03c65) confirms exact HEAD a63c8e41cb78f13689d47af5f277eb39d5683c2a, Rules1.2.222, evaluator SHA256 7d7be7a13cd26840bd94f1a3d387fcb4c317193f3d1522ed074221a0ecd763ed. Argparse stopped before h4m12_static: required --mode and --output absent in SA-supplied command; exact main also requires --h4m12-eval alongside --h4m12-static, plan mode and fixed absolute output. Correct invocation: g1_m463 -B m463_gate3_cp_eval.py --mode plan --h4m12-eval --h4m12-static --output "$PWD/m463_runs/m470_h4_m12_3_dev_v1/report.json". Do not create output namespace. Existing untracked historical files preserved. No executable edits needed, no native calls, no reservation or evidence of graph/reader fixture execution. Prior SA user-facing 5/5 regression PASS was unsupported by an execution record; correct to source-reviewed fixtures, execution PENDING. Owner pull and exact full static only; no new training, no CTRL rerun, no runtime marker, all runtime/holdout/promotion/Branch B HOLD. Preserve both failed logs.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -2746,6 +2750,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-26)
+
+**H4-M12-3A CLI STOP / CORRECTED OWNER STATIC PENDING (v1.2.223):** actual uploaded log confirms correct source but argparse missing required flags; no full static evidence. Correct plan invocation includes --h4m12-eval, --h4m12-static and fixed output; no executable change. All runtime/PPO/holdout/promotion/Branch B HOLD.
 
 **H4-M12-3A STATIC VERIFIER SCOPE REPAIR SOURCE PUSHED / OWNER FULL STATIC PENDING (v1.2.222):** initial static STEP_GRAPH false positive confirmed, run.one_step unchanged; scoped exact AST guard and focused host regressions in commit0d060745dca52d569247fac776238ae2e22b4631. H4-M12-2 technical PASS preserved, no efficacy result. Owner pull and exact full static only; all runtime/PPO/holdout/promotion/Branch B HOLD.
 
@@ -3543,6 +3549,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-26 | H4-M12-3A CLI correction | Owner log SHA1c151a9f, exact main parser | CLI STOP / corrected plan command only; static pending | 1.2.223 |
+
 | 2026-11-26 | H4-M12-3A static scope repair | Owner STEP_GRAPH traceback, exact baseline/current one_step unchanged, source commit0d060745 | VERIFIER REPAIR PUSHED / OWNER FULL STATIC PENDING; no runtime | 1.2.222 |
 
 | 2026-11-26 | H4-M12-3 held controlled DEV integration | accepted training reporta28ebc6f, original evaluator, archive CTRL | SOURCE IMPLEMENTED / OWNER FULL STATIC PENDING; no runtime | 1.2.221 |
@@ -4049,6 +4057,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.223 — 2026-11-26:** Record Owner CLI STOP caused by incomplete SA command, correct exact static invocation and unsupported fixture execution claim; source and all runtime holds unchanged.
 
 - **v1.2.222 — 2026-11-26:** Record confirmed static verifier self-match failure and narrowly scoped exact graph guard plus focused regressions; Owner reconfirms SA source edit/push delegation v1.2.56; Owner pull/full static only. All runtime and scientific gates remain unchanged/HOLD.
 
