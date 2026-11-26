@@ -1484,3 +1484,30 @@ def make_h4m12_held_source(raw):
         raise RuntimeError('M470_H4M12_REVERSE_OR_HOLD')
     compile(s, '<H4-M12 held generated>', 'exec')
     return s, original
+
+
+def make_h4m12_integrated_source(raw):
+    """Same held core; distinct fail-closed entry, parent byte check, no loss edits."""
+    base, original = make_h4m12_held_source(raw)
+    patches = (
+        ("  raise RuntimeError('M470_H4M12_GENERATED_EXECUTION_HOLD')\n",
+         "  from m463_push_ppo_train import h4m12_generated_guard\n"
+         "  h4m12_generated_guard(h4x_audit_fn, __file__, environment, m470_resume_state_path)\n"),
+        ("    m470_payload = _m470_serialization.from_bytes(\n"
+         "        m470_template, m470_file.read_bytes())\n",
+         "    from hashlib import sha256 as _m470_sha\n"
+         "    m470_raw = m470_file.read_bytes()\n"
+         "    if _m470_sha(m470_raw).hexdigest() != '9b19312da08d71513ad8fa6638c632401bec20e09399fdf4a9f6f6e2b2619c80':\n"
+         "      raise RuntimeError('M470_H4M12_PARENT_CHANGED')\n"
+         "    m470_payload = _m470_serialization.from_bytes(m470_template, m470_raw)\n"),
+    )
+    s = base
+    for old,new in patches:
+        s=h4c_once(s,old,new)
+    back=s
+    for old,new in reversed(patches):
+        back=h4c_once(back,new,old)
+    if back!=base:
+        raise RuntimeError('M470_H4M12_INTEGRATION_PROJECTION')
+    compile(s,'<H4-M12 integrated generated>','exec')
+    return s,original

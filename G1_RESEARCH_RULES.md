@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.214  
+**Version:** 1.2.215  
 **Ngày cập nhật:** 2026-11-26 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -2427,6 +2427,12 @@ EDIT-FIRST core only: appended make_h4m12_held_source in existing instrumenter, 
 
 Remaining before full held acceptance: integrate actual continuation-only runner/dispatcher and generated callback with exact saved typed payload policy/Adam slots/count/normalizer/RNG/DR/schema validation, chunk/carry/coverage and checkpoint edge wiring, resource/watchdog, exclusive reservation/one-use auth, partial ledger/final reader, exact generated/static positive and negative regressions. No bypass of legacy h4x_validate_cli/m470_resume_manifest or H4 guards; no runtime gate may be opened until integrated and reviewed. Avoid standalone extra runtime diagnostics, combine remaining implementation and full static in next scope. Frozen v1.2.212 +5242880 training/800 updates/2000 eval, max24576 training reset lanes, separate DEV max44808 and all original scientific/safety gates unchanged. Zero native calls/resets/physical transitions/optimizer updates/checkpoint saves by SA. No new repository files, no reward/network/physics/PD/curriculum change. H4-M12-1 CORE IMPLEMENTED / FULL INTEGRATION PENDING / ALL RUNTIME HOLD; not training-ready. M11 treatment NO-GO, H-R6 INCONCLUSIVE/UNTESTED, all prior decisions preserved, Branch B HOLD.
 
+### H4-M12-1 — full held continuation integration SOURCE IMPLEMENTED / exact static PENDING (v1.2.215; 2026-11-26)
+
+Owner explicit GO full held integration only. Retrieved complete Rules1.2.214 blob2b283dc27fbd2de67b4bdca5c8d7de18893cd13c, AGENTS, exact base HEADb41d148ef6b5ca6e94a19cf2513dbde06dcf21d1, runner e09fc35b78c77214e48d96b6cc7f62a0fe8f6083 and instrumenter6f877976029091d860e3d1d1457c20bc714b6270. Reviewed actual immutable CTRL report available in container and historical/current source contracts, H4X callback/coverage/bootstrap/serializer/guard. No new reward or treatment, H-R1–6 standard telemetry interpretation only. Same fixed M12-0 budget and scientific gates.
+
+EDIT-FIRST: existing runner main receives distinct first-token --h4m12-continuation route; new supervisor/worker/authorization/parser/strict parent and final readers, typed restore callback, GPU/storage/partial ledger, single final policy+fullstate+manifest, original h4_chunk_callback with default-zero reporting step_offset (new route only10485760); original h4_epoch_audit control final=False on one original epoch, original h4_legacy_audit and exposure replay; h4r_bootstrap_pins/h4x_bootstrap optional default False h4m12 path pins exact new env and rejects other arms. No legacy marker unlocked, no generic resume_state accepted, no new repo file. Instrumenter appends make_h4m12_integrated_source, reuses held generator and exact historical generated SHA then reversible guard and parent bytes check only; native numerical PPO training_step/loss/GAE/SGD, observation/action/reward/physics/PD unchanged. Restored policy+optimizer+normalizer+keys exact typed compare before first chunk, historical DR/schema and advancing chunk/epoch/eval RNG, finite chunk metrics, explicit attempted vs recorded ledger, one epoch/four chunks, no initial diagnostic eval, exact final Adam2400/steps15728640. New supervisor one-use output m463_runs/m470_h4_m12_ctrl_continue_v1, exclusive attempt/worker/dispatch markers, separate child with inherited launcher, 16MiB log cap and 3600s watchdog (SA-selected conservative operational cap, not learning change), existing storage 512MiB/2GiB reserve and sampled GPU<95%12288MiB. Distinct marker H4M12_ACTIVE_GO schema binds source/generated/approved static log; no active marker now. Actual installed dependencies/parent files must pass local preflight. Runtime callback, checkpoint serialization and supervisor NOT executed; no claim verified restoration or efficacy. Source generation/legacy comparison/actual local static must be performed before runtime authorization; static function currently checks core generation, environment projection, historical file provenance, host budget and marker negatives, not exhaustive actual callback/worker mock regression. No diagnostic or runtime in this task. Zero resets/physical transitions/inference/eval/optimizer/checkpoint saves. All runtime/holdout/promotion/production/Branch B HOLD. Rollback reviewed commit only; no historical artifact changes.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -2688,6 +2694,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-26)
+
+**H4-M12-1 FULL HELD SOURCE INTEGRATION / EXACT STATIC PENDING (v1.2.215):** distinct continuation dispatcher, typed restore and original graph/coverage callback, budget/one-use/guard/checkpoint/final reader added. Local full static and runtime callback validation pending; no active marker, zero runtime, no treatment, all PPO/holdout/production/promotion/Branch B HOLD.
 
 **H4-M12-1 HELD CORE IMPLEMENTED / FULL INTEGRATION PENDING (v1.2.214):** reversible generated one-epoch held source, immutable parent preflight, environment projection and host budget core appended; exact local static not run, no runtime dispatcher/callback/checkpoint integration yet, zero runtime, no treatment, all PPO/holdout/production/promotion/Branch B HOLD.
 
@@ -3469,6 +3477,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-26 | H4-M12-1 full held integration | exact v1.2.214 core, isolated dispatcher/typed restore/ledger/checkpoint/guards/final reader | SOURCE IMPLEMENTED / EXACT STATIC PENDING; all runtime HOLD | 1.2.215 |
+
 | 2026-11-26 | H4-M12-1 held continuation core | exact old/current sources, actual CTRL report2ab06f3c, appended generator/preflight/projection/budget | CORE IMPLEMENTED / FULL INTEGRATION PENDING; exact static pending, all runtime HOLD | 1.2.214 |
 
 | 2026-11-26 | H4-M12-0A recovery hypothesis/learning signal integration | actual CTRL2ab06f3c/REF6fce8747/CCRC831aee76, pinned Joystick/coverage/losses and accepted H-R1..6 | OFFLINE COMPLETE; control only HELD, recovery treatment NO-GO, no runtime | 1.2.213 |
@@ -3959,6 +3969,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.215 — 2026-11-26:** Integrate held original CTRL continuation path and owner static entry; keep historical gates, no runtime authorization.
 
 - **v1.2.214 — 2026-11-26:** Add isolated held CTRL reset-edge continuation core, preserve legacy sources and holds; full dispatcher/callback integration and exact static pending, no runtime authorization.
 
