@@ -2653,7 +2653,7 @@ def run(args):
     m12=bool(getattr(args,'h4m12_eval',False))
     h4_mode=bool(getattr(args,'h4_m1_eval',False)) or cc or m6 or m12
     if m12:
-        h4m12_enter(args)
+        h4m12_enter(args,red=getattr(args,'h4red_eval',False))
     elif m6:
         import m463_push_ppo_train as trainer
         auth=trainer.h4m6_authorization(phase='dev')
@@ -2849,7 +2849,9 @@ def run(args):
         load_policy=h4_shared_frozen_loader(env.action_size,paper,networks,running_statistics,
             serialization,jax,jnp,np)
     if m12:
-        policies={'M12':load_policy(H4_EVAL_ROOT/H4M12_TRAIN_DIR/H4M12_POLICY)}
+        red=getattr(args,'h4red_eval',False)
+        policies={('RED' if red else 'M12'):load_policy(H4_EVAL_ROOT/
+            (H4RED_EVAL_TRAIN_DIR if red else H4M12_TRAIN_DIR)/H4M12_POLICY)}
     elif m6:
         from m463_push_ppo_train import H4M6_PATHS
         policies={label:load_policy(H4_EVAL_ROOT/H4M6_PATHS[arm]/H4_EVAL_POLICY_FILE)
@@ -3224,14 +3226,14 @@ def run(args):
                                H4_EVAL_PHYSICAL,rich=capture)
                     h4m6_rich_write(args.h4m6_rich)
                 elif m12:
-                    h4m12_req(h4m12_eval_auth(H4_EVAL_ROOT)==session['authorization'],'AUTH_CHANGED')
+                    h4m12_req(h4m12_eval_auth(H4_EVAL_ROOT,red=getattr(args,'h4red_eval',False))==session['authorization'],'AUTH_CHANGED')
                     g=h3_group(args,env,step_fn,jax,jnp,np,session,name,seed,profile,44808)
                 else:
                     g=h3_group(args,env,step_fn,jax,jnp,np,session,name,seed,profile,
                                H4_EVAL_PHYSICAL if h4_mode else H3_EVAL_PHYSICAL)
                 session['gpu']=h3_gpu_check(args.h3_monitor)
                 if m12:
-                    h4m12_ledger(session,partial=True)
+                    h4m12_ledger(session,partial=True,red=getattr(args,'h4red_eval',False))
                     h4m12_write(args.output,session)
                 else:
                     h3_write(args.output,session)
@@ -3507,7 +3509,8 @@ def run(args):
         return
     if h3_mode:
         if m12:
-            args.h3_session['decision']=h4m12_decide(args.h4m12_archive,args.h3_session)
+            args.h3_session['decision']=(h4red_eval_decide(H4_EVAL_ROOT,args.h4m12_archive,args.h3_session)
+                if getattr(args,'h4red_eval',False) else h4m12_decide(args.h4m12_archive,args.h3_session))
             return
         if m6:
             session=args.h3_session
@@ -10758,7 +10761,19 @@ def main():
     # H4LITE_CLI_END
     p.add_argument('--h4m12-eval',action='store_true')
     p.add_argument('--h4m12-static',action='store_true')
+    p.add_argument('--h4red-eval',action='store_true')
+    p.add_argument('--h4red-eval-static',action='store_true')
     args=p.parse_args()
+    if args.h4red_eval:
+        allowed={'mode','output','h4red_eval','h4red_eval_static'}
+        h4m12_req(all(getattr(args,k)==p.get_default(k) for k in vars(args) if k not in allowed),'RED_FLAG_CONFLICT')
+        h4m12_req(args.output.absolute()==args.output.resolve()==H4_EVAL_ROOT/H4RED_EVAL_OUTPUT,'RED_OUTPUT')
+        if args.mode=='run':
+            h4m12_req(not args.h4red_eval_static,'RED_MODE_CONFLICT')
+            return h4m12_dispatch(args,red=True)
+        if args.h4red_eval_static:return h4red_eval_static(H4_EVAL_ROOT)
+        print('H4RED_EVAL_PLAN',json.dumps(H4RED_EVAL_SPEC,sort_keys=True));return
+    if args.h4red_eval_static:p.error('H4RED_EVAL_FLAG_REQUIRED')
     if args.h4m12_eval:
         allowed={'mode','output','h4m12_eval','h4m12_static'}
         h4m12_req(all(getattr(args,k)==p.get_default(k) for k in vars(args) if k not in allowed),'FLAG_CONFLICT')
@@ -11160,34 +11175,39 @@ def h4m12_source(root):
     return h4m3_digest({name:sha256(root/name) for name in names})
 
 
-def h4m12_eval_auth(root):
+def h4m12_eval_auth(root,*,red=False):
     import m463_push_ppo_train as t
     h4m12_req(not any((H4_EVAL_EXECUTION_AUTHORIZED,H4CC_EVAL_EXECUTION_AUTHORIZED,
         t.H4_EXECUTION_AUTHORIZED,t.H4R_EXECUTION_AUTHORIZED,t.H4C_EXECUTION_AUTHORIZED,
         t.H4CC_EXECUTION_AUTHORIZED,t.H4M8_EXECUTION_AUTHORIZED)),'LEGACY_HOLD')
-    auth=h4m12_parse_eval_marker((root/'G1_RESEARCH_RULES.md').read_text('utf8'))
-    h4m12_req(h4m12_source(root)==auth['source_sha256'],'SOURCE')
+    auth=(h4red_eval_marker if red else h4m12_parse_eval_marker)((root/'G1_RESEARCH_RULES.md').read_text('utf8'))
+    h4m12_req((h4red_eval_source if red else h4m12_source)(root)==auth['source_sha256'],'SOURCE')
     p=root/auth['static_path']
     t.h4x_file_pin(p,auth['static_sha256'])
     h4m12_req(p.stat().st_size<=16*1024**2,'STATIC_LOG_CAP')
     lines=p.read_text('utf8').splitlines()
-    for line in ('H4M12_DEV_FULL_STATIC_PASS','H4M12_DEV_SOURCE '+auth['source_sha256'],
-                 'H4M12_DEV_PROVENANCE '+auth['provenance_sha256']):
+    prefix='H4RED_DEV' if red else 'H4M12_DEV'
+    for line in (prefix+'_FULL_STATIC_PASS',prefix+'_SOURCE '+auth['source_sha256'],
+                 prefix+'_PROVENANCE '+auth['provenance_sha256']):
         h4m12_req(lines.count(line)==1,'STATIC_EVIDENCE')
     return auth
 
 
-def h4m12_inputs(root):
+def h4m12_inputs(root,*,red=False):
     import m463_push_ppo_train as t
     root=Path(root).resolve()
-    out=root/H4M12_TRAIN_DIR
+    out=root/(H4RED_EVAL_TRAIN_DIR if red else H4M12_TRAIN_DIR)
+    training_pins=H4RED_EVAL_TRAIN_PINS if red else H4M12_TRAIN_PINS
     pins={}
-    for name,expected in H4M12_TRAIN_PINS.items():
+    for name,expected in training_pins.items():
         t.h4x_file_pin(out/name,expected);pins['training/'+name]=expected
     r=json.loads((out/'report.json').read_bytes())
     auth=r['authorization']
-    h4m12_req(t.h4m12_read_final(root,H4M12_TRAIN_PINS['report.json'],auth)==r,'TRAIN_READER')
-    approved='H4M12_TRAINING_APPROVED: '+' '.join(H4M12_TRAIN_PINS[n] for n in
+    h4m12_req(t.h4m12_read_final(root,training_pins['report.json'],auth,red=red)==r,'TRAIN_READER')
+    if red:
+        h4red_eval_training_contract(root,r)
+        pins.update(h4red_eval_archive_pins(root))
+    approved=('H4RED_TRAINING_APPROVED: ' if red else 'H4M12_TRAINING_APPROVED: ')+' '.join(training_pins[n] for n in
         ('report.json',H4M12_POLICY,'m470_fullstate_step_015728640.msgpack','m470_fullstate_step_015728640.json'))
     h4m12_req((root/'G1_RESEARCH_RULES.md').read_text('utf8').splitlines().count(approved)==1,'TRAIN_APPROVAL')
     archive=h4cc_read_archive(root/H4_EVAL_OUTPUT)
@@ -11218,12 +11238,15 @@ def h4m12_inputs(root):
     h4m12_req(wrapper.is_file() and h4m3_git_blob(wrapper)=='2c09c8268a29d14c832dd07050575e4541ee98af','WRAPPER')
     pins['dependency/episode_wrapper']=sha256(wrapper)
     ext=h4m3_external_sources(root)
+    if red:
+        pins['source/paper_config_preflight.json']=t.H4R_CONFIG_SHA
+        pins['training/static.log']=H4RED_EVAL_TRAIN_AUTH['static_sha256']
     return pins,archive,ext
 
 
-def h4m12_ledger(session,partial=False):
+def h4m12_ledger(session,partial=False,*,red=False):
     groups=session['groups']
-    expected=[('M12',s,p) for s in H3_EVAL_SEEDS for p in H3_EVAL_PROFILES]
+    expected=[(('RED' if red else 'M12'),s,p) for s in H3_EVAL_SEEDS for p in H3_EVAL_PROFILES]
     keys=[(g['policy'],g['seed'],g['profile']) for g in groups]
     h4m12_req(keys==expected[:len(keys)] and len(keys)<=12,'GROUP_ORDER')
     complete=sum(g['complete'] is True for g in groups)
@@ -11280,8 +11303,8 @@ def h4m12_validate_group(g,columns):
     return True
 
 
-def h4m12_decide(archive,fresh):
-    ledger=h4m12_ledger(fresh)
+def h4m12_decide(archive,fresh,*,red=False):
+    ledger=h4m12_ledger(fresh,red=red)
     h4m12_req(all(archive[k]==fresh[k] for k in H4M12_PROTOCOL)
                   and tuple(fresh['frame_columns'])==H4M3_COLUMNS,'MATCHED_PROTOCOL')
     ctrl=[g for g in archive['groups'] if g['policy']=='CTRL']
@@ -11294,22 +11317,22 @@ def h4m12_decide(archive,fresh):
     decision=h3_decide(view,policies=H4_EVAL_POLICIES,comparator='CTRL',candidate='CAND',
                        logical_cap=120,physical_cap=89616)
     h4m12_req(all(v['CTRL']==6 for v in decision['primary_stand_double'].values()),'ARCHIVED_PRIMARY')
-    return {'decision':decision['decision'],'official':decision,'comparison_roles':{'CTRL':'ARCHIVED_CTRL','CAND':'M12'},
+    return {'decision':decision['decision'],'official':decision,'comparison_roles':{'CTRL':'ARCHIVED_CTRL','CAND':('RED' if red else 'M12')},
         'new_physical':ledger['physical'],'archived_ctrl_physical':41052,'combined_physical':total,
         'promotion_authorized':False,'further_training_authorized':False}
 
 
-def h4m12_enter(args):
+def h4m12_enter(args,*,red=False):
     root=H4_EVAL_ROOT
-    auth=h4m12_eval_auth(root)
-    pins,archive,ext=h4m12_inputs(root)
+    auth=h4m12_eval_auth(root,red=red)
+    pins,archive,ext=h4m12_inputs(root,red=red)
     session=args.h3_session
     h4m12_req(h4m3_digest([pins,ext])==auth['provenance_sha256']
         and session['authorization']==auth and session['input_sha256']==pins
-        and session['status']=='M470_H4M12_DEV_IN_PROGRESS'
+        and session['status']==('M470_H4RED_DEV_IN_PROGRESS' if red else 'M470_H4M12_DEV_IN_PROGRESS')
         and session['groups']==[] and all(session[k]==0 for k in ('physical_transitions_attempted',
             'physical_transitions_recorded','logical_trajectories_completed','reset_lanes_attempted','reset_lanes_recorded'))
-        and args.output==root/H4M12_EVAL_OUTPUT
+        and args.output==root/(H4RED_EVAL_OUTPUT if red else H4M12_EVAL_OUTPUT)
         and json.loads(args.output.read_bytes())==session
         and json.loads((args.output.parent/'attempt.json').read_bytes())=={'authorization':auth,'reserved':True},
         'SESSION')
@@ -11318,39 +11341,42 @@ def h4m12_enter(args):
     h4m6_write_bounded(args.output.parent/'dispatch.started.json',{'authorization':auth},exclusive=True)
 
 
-def h4m12_final_check(root,session,auth,pins,archive):
-    h4m12_req(session['status']=='M470_H4M12_DEV_COMPLETE' and session['authorization']==auth
-        and session['input_sha256']==pins and session['spec']==H4M12_EVAL_SPEC
+def h4m12_final_check(root,session,auth,pins,archive,*,red=False):
+    h4m12_req(session['status']==('M470_H4RED_DEV_COMPLETE' if red else 'M470_H4M12_DEV_COMPLETE') and session['authorization']==auth
+        and session['input_sha256']==pins and session['spec']==(H4RED_EVAL_SPEC if red else H4M12_EVAL_SPEC)
         and session['promotion_authorized'] is False and session['further_training_authorized'] is False
-        and session['ledger']==h4m12_ledger(session)
-        and session['decision']==h4m12_decide(archive,session),'FINAL_REPLAY')
+        and session['ledger']==h4m12_ledger(session,red=red)
+        and session['decision']==(h4red_eval_decide(root,archive,session) if red else h4m12_decide(archive,session)),
+        'FINAL_REPLAY')
+    if red:
+        h4m12_req(session['evaluator_sha256']==pins['source/m463_gate3_cp_eval.py'],'RED_FINAL_EVALUATOR')
     gpu=session['gpu']
     h4m12_req(gpu['total_mib']==12288 and 0<gpu['peak_used_mib']<.95*12288
               and gpu['samples']>0 and not gpu['sampler_errors'],'FINAL_GPU')
     return True
 
 
-def h4m12_read_eval_final(root,expected_sha,auth):
+def h4m12_read_eval_final(root,expected_sha,auth,*,red=False):
     import m463_push_ppo_train as t
-    path=root/H4M12_EVAL_OUTPUT
+    path=root/(H4RED_EVAL_OUTPUT if red else H4M12_EVAL_OUTPUT)
     t.h4x_file_pin(path,expected_sha)
     session=json.loads(path.read_bytes())
-    pins,archive,ext=h4m12_inputs(root)
+    pins,archive,ext=h4m12_inputs(root,red=red)
     h4m12_req(h4m3_digest([pins,ext])==auth['provenance_sha256'],'FINAL_PROVENANCE')
     for name,value in (('attempt.json',{'authorization':auth,'reserved':True}),
         ('dispatch.started.json',{'authorization':auth}),
         ('attempt_result.json',{'authorization':auth,'status':'COMPLETE','report_sha256':expected_sha})):
         p=path.parent/name
         h4m12_req(p.is_file() and not p.is_symlink() and json.loads(p.read_bytes())==value,'FINAL_RECEIPT')
-    h4m12_final_check(root,session,auth,pins,archive)
+    h4m12_final_check(root,session,auth,pins,archive,red=red)
     return session
 
 
-def h4m12_dispatch(args):
+def h4m12_dispatch(args,*,red=False):
     import shutil
-    root=H4_EVAL_ROOT;path=root/H4M12_EVAL_OUTPUT
-    auth=h4m12_eval_auth(root)
-    pins,archive,ext=h4m12_inputs(root)
+    root=H4_EVAL_ROOT;path=root/(H4RED_EVAL_OUTPUT if red else H4M12_EVAL_OUTPUT)
+    auth=h4m12_eval_auth(root,red=red)
+    pins,archive,ext=h4m12_inputs(root,red=red)
     h4m12_req(h4m3_digest([pins,ext])==auth['provenance_sha256']
         and args.mode=='run' and args.output.absolute()==args.output.resolve()==path
         and os.environ.get('JAX_PLATFORMS')=='cuda'
@@ -11360,11 +11386,13 @@ def h4m12_dispatch(args):
         'PREFLIGHT')
     h4m3_no_runtime_imports()
     args.output=path
+    if red:args.h4m12_eval=True  # shared single-policy graph; only reached after RED auth
     args.seeds=list(H3_EVAL_SEEDS);args.profiles=list(H3_EVAL_PROFILES);args.directions=['left','right']
     args.push_step=300;args.push_magnitude=.50;args.second_push_step=335;args.second_push_magnitude=.35
     args.max_steps=1000;args.max_cases=60
     h4m6_reserve_tech(path,auth)
-    session={'status':'M470_H4M12_DEV_IN_PROGRESS','authorization':auth,'spec':H4M12_EVAL_SPEC,
+    session={'status':('M470_H4RED_DEV_IN_PROGRESS' if red else 'M470_H4M12_DEV_IN_PROGRESS'),
+        'authorization':auth,'spec':(H4RED_EVAL_SPEC if red else H4M12_EVAL_SPEC),
         'source_commit':PIN,'brax_train_sha256':TRAIN_SHA,'evaluator_sha256':sha256(Path(__file__)),
         'input_sha256':pins,'seeds':args.seeds,'profiles':args.profiles,'directions':args.directions,
         'push_step':300,'push_magnitude_mps':.50,'second_push_step':335,'second_push_magnitude_mps':.35,
@@ -11388,22 +11416,23 @@ def h4m12_dispatch(args):
         session['gpu']=h3_gpu_check(monitor)
         # Re-read provenance in a clean process, without a native import.
         cmd=[sys.executable,'-B','-c','import json;from pathlib import Path;import m463_gate3_cp_eval as e;'
-             'r=Path.cwd();p,_,x=e.h4m12_inputs(r);print(json.dumps([e.h4m12_eval_auth(r),p,x]))']
+             'r=Path.cwd();red='+repr(red)+';p,_,x=e.h4m12_inputs(r,red=red);'
+             'print(json.dumps([e.h4m12_eval_auth(r,red=red),p,x]))']
         h4m12_req(json.loads(subprocess.check_output(cmd,cwd=root,text=True))==[auth,pins,ext],'POST_INPUTS')
-        session['ledger']=h4m12_ledger(session)
-        session['status']='M470_H4M12_DEV_COMPLETE'
-        h4m12_final_check(root,session,auth,pins,archive)
+        session['ledger']=h4m12_ledger(session,red=red)
+        session['status']='M470_H4RED_DEV_COMPLETE' if red else 'M470_H4M12_DEV_COMPLETE'
+        h4m12_final_check(root,session,auth,pins,archive,red=red)
         h4m12_req(json.loads((path.parent/'dispatch.started.json').read_bytes())=={'authorization':auth}
                   and json.loads((path.parent/'attempt.json').read_bytes())=={'authorization':auth,'reserved':True},'RECEIPT')
         h4m12_write(path,session)
         digest=sha256(path)
         h4m6_write_bounded(path.parent/'attempt_result.json',{'authorization':auth,'status':'COMPLETE',
                               'report_sha256':digest},exclusive=True)
-        print('M470_H4M12_DEV_COMPLETE',session['decision']['decision'],digest,flush=True)
+        print(session['status'],session['decision']['decision'],digest,flush=True)
     except BaseException as exc:
-        session['status']='M470_H4M12_DEV_STOP';session['error']=repr(exc)[:4096]
+        session['status']='M470_H4RED_DEV_STOP' if red else 'M470_H4M12_DEV_STOP';session['error']=repr(exc)[:4096]
         if monitor is not None:session['gpu']=monitor.snapshot()
-        try:session['partial_ledger']=h4m12_ledger(session,partial=True)
+        try:session['partial_ledger']=h4m12_ledger(session,partial=True,red=red)
         except BaseException as err:session['partial_ledger_error']=repr(err)[:4096]
         try:
             h4m12_write(path,session)
@@ -11493,4 +11522,239 @@ def h4m12_static(root):
     print('H4M12_DEV_FULL_STATIC_PASS',flush=True)
 
 
+
+# H4RED_DEV_BEGIN
+H4RED_EVAL_BASE='b2e7396d03ed1ad83010d376363dadd75f9ab3e3'
+H4RED_EVAL_TRAIN_DIR=Path('m463_runs/m470_h4_m13_red_v1')
+H4RED_EVAL_OUTPUT=Path('m463_runs/m470_h4_m13_4_dev_v1/report.json')
+H4RED_EVAL_TRAIN_PINS={
+    'report.json':'58dfa2c3722187b57456d5c058b7beaa9983c098bfafc218bba41e58d3230735',
+    H4M12_POLICY:'b7c217d2196ff405b3aa6302fc770f98346668274ee7efc2aa94c94ed717c3bd',
+    'm470_fullstate_step_015728640.msgpack':'333f86fb8b45bff4887691a62f48239268ef2ca8248332daec8fb6866e1aef3b',
+    'm470_fullstate_step_015728640.json':'ea08b6fa7e7f640d7b47ec7291658accfae231973344a38bee8f08afe562011c',
+    'attempt.json':'3a7eff318b8c82072c090f7fac5d1f153bc0076e6cef1da5929cd469e8261c7c',
+    'worker.started.json':'1edf59cc336a47513706ec3153c20622ddf6df5dfe4e4208a72e013bf70244af',
+    'dispatch.started.json':'fdfe5e10b5edc47cff171332e31bc9dd9765dfa6b0f1c7262f4501a60585af67',
+    'attempt_result.json':'d925eb5c65c6514b4ec1cf411e5ebd9236dc9ba38f555a72379ba44a56cda8aa',
+    'worker.log':'1260b68cce1b637a5ab9997cae5f5dbe273d3897494c9acfbb2e97c37cf0d284',
+    'm463_brax_ppo_instrumented.py':'255792bc58901dc73b01e8e6ae1dbcfe064d8b3c738eddd98055543ea08ad389',
+}
+H4RED_EVAL_TRAIN_AUTH={'id':'H4-M13-RED-V1','output':str(H4RED_EVAL_TRAIN_DIR),
+    'source_sha256':'c92266ebc9085fb18e3c5c51343c4fa18ddf42416645b1f267193e92f748f453',
+    'generated_sha256':H4RED_EVAL_TRAIN_PINS['m463_brax_ppo_instrumented.py'],
+    'static_path':'m463_runs/m470_h4red_static_20261126_211430_173239981.log',
+    'static_sha256':'53a2036d88eb71abc4eb84e29c392ff28a45497b406df9addcb2abe808f68368'}
+H4RED_EVAL_M12_PINS={
+    'report.json':'eb44c364983078fc35b89152d7a42eae310ed31caba6d4a9b4abf335027826b1',
+    'attempt.json':'c492fd2aef3a3d0c07f0fd5f382014d238a6d7b2d302fff44fd4196bbd20a530',
+    'dispatch.started.json':'3f7e318bf8768665091519802b03d53a0a11c59d33490485323fa884660895e4',
+    'attempt_result.json':'d9478bc3b5b90d3661c68511bac7f8ac92e917994cfd817e3239eb536cad8f24',
+}
+H4RED_EVAL_SPEC=dict(H4M12_EVAL_SPEC,id='H4-M13-RED-DEV-V1',output=str(H4RED_EVAL_OUTPUT),
+    new_policy='RED',secondary='ARCHIVED_M12_DESCRIPTIVE_ONLY',secondary_physical=42246)
+
+
+def h4red_eval_source(root):
+    # Bind config as well as all common executable source and local helpers.
+    import m463_push_ppo_train as t
+    names=(*t.H4_FILES,'m463_gate3_cp_eval.py','paper_config_preflight.json')
+    h4m12_req(len(names)==len(set(names))==9,'RED_SOURCE_SET')
+    for n in names:
+        p=root/n
+        h4m12_req(p.is_file() and not p.is_symlink(),'RED_SOURCE_PATH_'+n)
+    return h4m3_digest({n:sha256(root/n) for n in names})
+
+
+def h4red_eval_marker(rules):
+    import re
+    lines=[x for x in rules.splitlines() if re.match(r'^[A-Z0-9_]+_GO:',x)]
+    h4m12_req(len(lines)==1,'HOLD_OR_CONFLICT')
+    m=re.fullmatch(r'H4RED_EVAL_ACTIVE_GO: H4-M13-RED-DEV-V1 m463_runs/m470_h4_m13_4_dev_v1/report.json '
+        r'([0-9a-f]{64}) ([0-9a-f]{64}) (m463_runs/m470_h4red_dev_static_[A-Za-z0-9_]+\.log) ([0-9a-f]{64})',lines[0])
+    h4m12_req(m is not None,'RED_MARKER')
+    source,provenance,log,digest=m.groups()
+    return dict(id=H4RED_EVAL_SPEC['id'],output=str(H4RED_EVAL_OUTPUT),source_sha256=source,
+                provenance_sha256=provenance,static_path=log,static_sha256=digest)
+
+
+def h4red_eval_training_contract(root,r):
+    import m463_push_ppo_train as t
+    h4m12_req(r['authorization']==H4RED_EVAL_TRAIN_AUTH and r['status']=='TECHNICAL_PASS'
+        and r['red_exposure']['decision']=='EXPOSURE_PASS'
+        and r['red_exposure']==t.h4red_exposure_replay(r)
+        and all(r['red_exposure']['checks'].values())
+        and r['artifacts'][H4M12_POLICY]==H4RED_EVAL_TRAIN_PINS[H4M12_POLICY]
+        and r['parent']['matched_control']['m12_dev_sha256']==H4RED_EVAL_M12_PINS['report.json'],
+        'RED_TRAIN_APPROVAL')
+    static=root/H4RED_EVAL_TRAIN_AUTH['static_path']
+    t.h4x_file_pin(static,H4RED_EVAL_TRAIN_AUTH['static_sha256'])
+    h4m12_req(static.stat().st_size<=16*1024**2,'RED_TRAIN_STATIC_CAP')
+    lines=static.read_text('utf8').splitlines()
+    for line in ('H4RED_FULL_STATIC_PASS','H4RED_SOURCE '+H4RED_EVAL_TRAIN_AUTH['source_sha256'],
+                 'H4RED_GENERATED '+H4RED_EVAL_TRAIN_AUTH['generated_sha256']):
+        h4m12_req(lines.count(line)==1,'RED_TRAIN_STATIC')
+    # The evaluator itself was part of the training source digest. Reconstruct
+    # the historical digest, not a fictitious digest of today's edited evaluator.
+    old=subprocess.check_output(['git','show',H4RED_EVAL_BASE+':m463_gate3_cp_eval.py'],cwd=root)
+    h4m12_req(hashlib.sha256(old).hexdigest()=='7d7be7a13cd26840bd94f1a3d387fcb4c317193f3d1522ed074221a0ecd763ed',
+        'RED_HISTORICAL_EVALUATOR')
+    names=(*t.H4_FILES,'m463_gate3_cp_eval.py','paper_config_preflight.json')
+    payload={n:(hashlib.sha256(old).hexdigest() if n=='m463_gate3_cp_eval.py' else sha256(root/n)) for n in names}
+    h4m12_req(h4m3_digest(payload)==H4RED_EVAL_TRAIN_AUTH['source_sha256'],'RED_HISTORICAL_TRAIN_SOURCE')
+
+
+def h4red_eval_archive_pins(root):
+    import m463_push_ppo_train as t
+    out=(root/H4M12_EVAL_OUTPUT).parent
+    h4m12_req(out.is_dir() and not out.is_symlink(),'RED_M12_ARCHIVE_PATH')
+    for name,expected in H4RED_EVAL_M12_PINS.items():t.h4x_file_pin(out/name,expected)
+    return {'secondary/'+n:h for n,h in H4RED_EVAL_M12_PINS.items()}
+
+
+def h4red_eval_secondary(root,archive):
+    h4red_eval_archive_pins(root)
+    path=root/H4M12_EVAL_OUTPUT
+    r=json.loads(path.read_bytes())
+    auth=r['authorization']
+    h4m12_req(auth['id']==H4M12_EVAL_SPEC['id'] and auth['output']==str(H4M12_EVAL_OUTPUT)
+        and r['status']=='M470_H4M12_DEV_COMPLETE' and r['spec']==H4M12_EVAL_SPEC
+        and r['input_sha256']['training/'+H4M12_POLICY]==H4M12_TRAIN_PINS[H4M12_POLICY]
+        and r['input_sha256']['archive/report.json']==H4CC_ARCHIVE_SHA
+        and r['promotion_authorized'] is False and r['further_training_authorized'] is False
+        and r['ledger']==h4m12_ledger(r) and r['ledger']['physical']==42246
+        and r['decision']==h4m12_decide(archive,r),'RED_M12_ARCHIVE_REPLAY')
+    for name,value in (('attempt.json',{'authorization':auth,'reserved':True}),
+        ('dispatch.started.json',{'authorization':auth}),
+        ('attempt_result.json',{'authorization':auth,'status':'COMPLETE',
+                                 'report_sha256':H4RED_EVAL_M12_PINS['report.json']})):
+        h4m12_req(json.loads((path.parent/name).read_bytes())==value,'RED_M12_RECEIPT')
+    return r
+
+
+def h4red_eval_descriptive(m12,fresh):
+    h4m12_req(all(m12[k]==fresh[k] for k in H4M12_PROTOCOL),'RED_SECONDARY_PROTOCOL')
+    old=h4m12_ledger(m12);new=h4m12_ledger(fresh,red=True)
+    groups=[dict(g,policy='CTRL') for g in m12['groups']]+[dict(g,policy='CAND') for g in fresh['groups']]
+    total=old['physical']+new['physical']
+    view=dict(fresh,groups=groups,logical_trajectories_completed=120,
+        physical_transitions_attempted=total,physical_transitions_recorded=total)
+    d=h3_decide(view,policies=H4_EVAL_POLICIES,comparator='CTRL',candidate='CAND',
+                logical_cap=120,physical_cap=89616)
+    # Retain exact paired metric readouts, not a second scientific verdict.
+    # CTRL/CAND here refer ONLY to archived M12 / new RED.
+    return dict(comparison_roles={'CTRL':'ARCHIVED_M12','CAND':'RED'},
+        descriptive_only=True,archived_m12_physical=old['physical'],new_physical=new['physical'],
+        combined_physical=total,primary_stand_double={k:{n:v[n] for n in ('CTRL','CAND','gain')}
+            for k,v in d['primary_stand_double'].items()},
+        discordance_counts=d['discordance_counts'],moving_double_recovery5=d['moving_double_recovery5'],
+        nominal_survivors=d['nominal_survivors'],standing_common_windows=d['standing_common_windows'],
+        paired_cases=d['paired_cases'])
+
+
+def h4red_eval_decide(root,archive,fresh):
+    result=h4m12_decide(archive,fresh,red=True)
+    m12=h4red_eval_secondary(root,archive)
+    result['secondary']=h4red_eval_descriptive(m12,fresh)
+    return result
+
+
+def h4red_eval_project(root):
+    import ast
+    raw=(root/'m463_gate3_cp_eval.py').read_bytes()
+    compile(raw,'<RED evaluator>','exec')
+    old=subprocess.check_output(['git','show',H4RED_EVAL_BASE+':m463_gate3_cp_eval.py'],cwd=root)
+    h4m12_req(hashlib.sha256(old).hexdigest()=='7d7be7a13cd26840bd94f1a3d387fcb4c317193f3d1522ed074221a0ecd763ed',
+        'RED_BASE_SHA')
+    s=raw.decode('utf8')
+    begin='\n# H4RED_'+'DEV_BEGIN\n';end='# H4RED_'+'DEV_END\n'
+    h4m12_req(s.count(begin)==s.count(end)==1,'RED_BLOCK')
+    i=s.index(begin);j=s.index(end,i)+len(end)
+    s=s[:i]+s[j:]
+    for before,after in reversed(H4RED_EVAL_PATCHES):
+        h4m12_req(s.count(after)==1,'RED_PROJECTION_ANCHOR')
+        s=s.replace(after,before,1)
+    h4m12_req(s.encode('utf8')==old,'RED_BYTE_PROJECTION')
+    a,b=ast.parse(old),ast.parse(raw)
+    def fn(tree,name):
+        xs=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name==name]
+        h4m12_req(len(xs)==1,'RED_FUNCTION_'+name)
+        return xs[0]
+    def graph(tree):
+        xs=[n for n in ast.walk(fn(tree,'run')) if isinstance(n,ast.FunctionDef) and n.name=='one_step']
+        h4m12_req(len(xs)==1,'RED_GRAPH_COUNT')
+        return ast.dump(xs[0],include_attributes=False)
+    h4m12_req(graph(a)==graph(b),'RED_STEP_GRAPH')
+    for n in ('h3_group','h3_decode','h3_summary','h3_decide','h4_shared_frozen_loader'):
+        h4m12_req(ast.dump(fn(a,n),include_attributes=False)==ast.dump(fn(b,n),include_attributes=False),
+            'RED_UNCHANGED_'+n)
+
+
+def h4red_eval_static(root):
+    root=Path(root).resolve()
+    h4m3_no_runtime_imports()
+    path=root/H4RED_EVAL_OUTPUT
+    log=root/'m463_runs/m470_h4red_dev_runtime_v1.log'
+    h4m12_req(not path.parent.exists() and not path.parent.is_symlink()
+        and not log.exists() and not log.is_symlink(),'RED_STATIC_USED')
+    h4red_eval_project(root)
+    pins,archive,ext=h4m12_inputs(root,red=True)
+    source=h4red_eval_source(root);prov=h4m3_digest([pins,ext])
+    marker='H4RED_EVAL_ACTIVE_GO: '+H4RED_EVAL_SPEC['id']+' '+str(H4RED_EVAL_OUTPUT)+' '+source+' '+prov+' m463_runs/m470_h4red_dev_static_fixture.log '+'a'*64
+    auth=h4red_eval_marker(marker)
+    def rejects(fn):
+        try:fn()
+        except (RuntimeError,ValueError,KeyError,TypeError):return
+        raise RuntimeError('M470_H4RED_DEV_STATIC_NEGATIVE_ACCEPTED')
+    for bad in ('',marker+'\n'+marker,marker+'\nH4RED_ACTIVE_GO: bad',marker[:-1],
+                marker.replace(str(H4RED_EVAL_OUTPUT),str(H4M12_EVAL_OUTPUT))):
+        rejects(lambda:h4red_eval_marker(bad))
+    try:h4m12_eval_auth(root,red=True)
+    except RuntimeError as exc:h4m12_req('HOLD_OR_CONFLICT' in str(exc),'RED_STATIC_HOLD_REASON')
+    else:raise RuntimeError('M470_H4RED_DEV_STATIC_HOLD_OPEN')
+    # Archived rows copied as host fixtures, not a new policy observation.
+    m12=h4red_eval_secondary(root,archive)
+    fresh={k:archive[k] for k in H4M12_PROTOCOL}
+    fresh.update(groups=[dict(g,policy='RED') for g in m12['groups']],
+        physical_transitions_attempted=42246,physical_transitions_recorded=42246,
+        logical_trajectories_completed=60,reset_lanes_attempted=12,reset_lanes_recorded=12)
+    d=h4red_eval_decide(root,archive,fresh)
+    h4m12_req(d['official']==m12['decision']['official'] and d['decision']=='NO_GO'
+        and all(v['gain']==0 for v in d['secondary']['primary_stand_double'].values())
+        and 'decision' not in d['secondary'],'RED_ARCHIVE_CLONE')
+    fresh.update(status='M470_H4RED_DEV_COMPLETE',authorization=auth,spec=H4RED_EVAL_SPEC,input_sha256=pins,
+        evaluator_sha256=pins['source/m463_gate3_cp_eval.py'],promotion_authorized=False,
+        further_training_authorized=False,ledger=h4m12_ledger(fresh,red=True),
+        decision=d,gpu={'total_mib':12288,'peak_used_mib':1000,'samples':1,'sampler_errors':[]})
+    h4m12_final_check(root,fresh,auth,pins,archive,red=True)
+    for k,v in (('physical_transitions_attempted',44809),('reset_lanes_recorded',13),
+                ('logical_trajectories_completed',55),('decision',dict(d,secondary={})),
+                ('promotion_authorized',True),('evaluator_sha256','0'*64)):
+        rejects(lambda:h4m12_final_check(root,dict(fresh,**{k:v}),auth,pins,archive,red=True))
+    bad=dict(fresh,groups=fresh['groups'][:-1]+[fresh['groups'][0]])
+    rejects(lambda:h4m12_ledger(bad,red=True))
+    bad=dict(fresh,groups=[dict(fresh['groups'][0],policy='M12')]+fresh['groups'][1:])
+    rejects(lambda:h4m12_ledger(bad,red=True))
+    # Partial ledger accepts one outstanding attempted step, never two.
+    part=dict(fresh,groups=fresh['groups'][:1])
+    n=part['groups'][0]['physical_transitions']
+    part.update(physical_transitions_attempted=n,physical_transitions_recorded=n,
+                logical_trajectories_completed=5,reset_lanes_attempted=1,reset_lanes_recorded=1)
+    h4m12_req(h4m12_ledger(part,partial=True,red=True)['complete_groups']==1,'RED_PARTIAL')
+    for flag,out,reason in (('--h4red-eval',H4RED_EVAL_OUTPUT,'HOLD_OR_CONFLICT'),
+                            ('--h4m12-eval',H4M12_EVAL_OUTPUT,'HOLD_OR_CONFLICT')):
+        proc=subprocess.run([sys.executable,'-B',str(root/'m463_gate3_cp_eval.py'),'--mode','run',
+            flag,'--output',str(root/out)],cwd=root,capture_output=True,text=True,timeout=30)
+        h4m12_req(proc.returncode!=0 and reason in proc.stderr,'RED_CLI_HOLD')
+    h4m3_no_runtime_imports()
+    h4m12_req(not path.parent.exists() and not log.exists(),'RED_STATIC_RESERVED')
+    print('H4RED_DEV_SOURCE',source,flush=True)
+    print('H4RED_DEV_PROVENANCE',prov,flush=True)
+    print('H4RED_DEV_STATIC_FIXTURES',json.dumps(dict(archive_clone='NO_GO',secondary_identity=True,
+        marker_negatives=5,reader_negatives=8,partial_positive=1,byte_projection=True,step_graph=True,
+        cli_hold=2,physical_transitions=0,resets=0,optimizer_updates=0,inference=0)),flush=True)
+    print('H4RED_DEV_FULL_STATIC_PASS',flush=True)
+
+
+H4RED_EVAL_PATCHES=[["    if m12:\n        h4m12_enter(args)\n","    if m12:\n        h4m12_enter(args,red=getattr(args,'h4red_eval',False))\n"],["        policies={'M12':load_policy(H4_EVAL_ROOT/H4M12_TRAIN_DIR/H4M12_POLICY)}","        red=getattr(args,'h4red_eval',False)\n        policies={('RED' if red else 'M12'):load_policy(H4_EVAL_ROOT/\n            (H4RED_EVAL_TRAIN_DIR if red else H4M12_TRAIN_DIR)/H4M12_POLICY)}"],["                    h4m12_req(h4m12_eval_auth(H4_EVAL_ROOT)==session['authorization'],'AUTH_CHANGED')","                    h4m12_req(h4m12_eval_auth(H4_EVAL_ROOT,red=getattr(args,'h4red_eval',False))==session['authorization'],'AUTH_CHANGED')"],["                    h4m12_ledger(session,partial=True)\n","                    h4m12_ledger(session,partial=True,red=getattr(args,'h4red_eval',False))\n"],["            args.h3_session['decision']=h4m12_decide(args.h4m12_archive,args.h3_session)","            args.h3_session['decision']=(h4red_eval_decide(H4_EVAL_ROOT,args.h4m12_archive,args.h3_session)\n                if getattr(args,'h4red_eval',False) else h4m12_decide(args.h4m12_archive,args.h3_session))"],["    p.add_argument('--h4m12-static',action='store_true')\n    args=p.parse_args()\n","    p.add_argument('--h4m12-static',action='store_true')\n    p.add_argument('--h4red-eval',action='store_true')\n    p.add_argument('--h4red-eval-static',action='store_true')\n    args=p.parse_args()\n    if args.h4red_eval:\n        allowed={'mode','output','h4red_eval','h4red_eval_static'}\n        h4m12_req(all(getattr(args,k)==p.get_default(k) for k in vars(args) if k not in allowed),'RED_FLAG_CONFLICT')\n        h4m12_req(args.output.absolute()==args.output.resolve()==H4_EVAL_ROOT/H4RED_EVAL_OUTPUT,'RED_OUTPUT')\n        if args.mode=='run':\n            h4m12_req(not args.h4red_eval_static,'RED_MODE_CONFLICT')\n            return h4m12_dispatch(args,red=True)\n        if args.h4red_eval_static:return h4red_eval_static(H4_EVAL_ROOT)\n        print('H4RED_EVAL_PLAN',json.dumps(H4RED_EVAL_SPEC,sort_keys=True));return\n    if args.h4red_eval_static:p.error('H4RED_EVAL_FLAG_REQUIRED')\n"],["def h4m12_eval_auth(root):","def h4m12_eval_auth(root,*,red=False):"],["    auth=h4m12_parse_eval_marker((root/'G1_RESEARCH_RULES.md').read_text('utf8'))\n    h4m12_req(h4m12_source(root)==auth['source_sha256'],'SOURCE')","    auth=(h4red_eval_marker if red else h4m12_parse_eval_marker)((root/'G1_RESEARCH_RULES.md').read_text('utf8'))\n    h4m12_req((h4red_eval_source if red else h4m12_source)(root)==auth['source_sha256'],'SOURCE')"],["    for line in ('H4M12_DEV_FULL_STATIC_PASS','H4M12_DEV_SOURCE '+auth['source_sha256'],\n                 'H4M12_DEV_PROVENANCE '+auth['provenance_sha256']):","    prefix='H4RED_DEV' if red else 'H4M12_DEV'\n    for line in (prefix+'_FULL_STATIC_PASS',prefix+'_SOURCE '+auth['source_sha256'],\n                 prefix+'_PROVENANCE '+auth['provenance_sha256']):"],["def h4m12_inputs(root):","def h4m12_inputs(root,*,red=False):"],["    out=root/H4M12_TRAIN_DIR\n    pins={}\n    for name,expected in H4M12_TRAIN_PINS.items():","    out=root/(H4RED_EVAL_TRAIN_DIR if red else H4M12_TRAIN_DIR)\n    training_pins=H4RED_EVAL_TRAIN_PINS if red else H4M12_TRAIN_PINS\n    pins={}\n    for name,expected in training_pins.items():"],["    h4m12_req(t.h4m12_read_final(root,H4M12_TRAIN_PINS['report.json'],auth)==r,'TRAIN_READER')\n    approved='H4M12_TRAINING_APPROVED: '+' '.join(H4M12_TRAIN_PINS[n] for n in","    h4m12_req(t.h4m12_read_final(root,training_pins['report.json'],auth,red=red)==r,'TRAIN_READER')\n    if red:\n        h4red_eval_training_contract(root,r)\n        pins.update(h4red_eval_archive_pins(root))\n    approved=('H4RED_TRAINING_APPROVED: ' if red else 'H4M12_TRAINING_APPROVED: ')+' '.join(training_pins[n] for n in"],["    ext=h4m3_external_sources(root)\n    return pins,archive,ext\n\n\ndef h4m12_ledger(session,partial=False):","    ext=h4m3_external_sources(root)\n    if red:\n        pins['source/paper_config_preflight.json']=t.H4R_CONFIG_SHA\n        pins['training/static.log']=H4RED_EVAL_TRAIN_AUTH['static_sha256']\n    return pins,archive,ext\n\n\ndef h4m12_ledger(session,partial=False,*,red=False):"],["    expected=[('M12',s,p) for s in H3_EVAL_SEEDS for p in H3_EVAL_PROFILES]","    expected=[(('RED' if red else 'M12'),s,p) for s in H3_EVAL_SEEDS for p in H3_EVAL_PROFILES]"],["def h4m12_decide(archive,fresh):\n    ledger=h4m12_ledger(fresh)","def h4m12_decide(archive,fresh,*,red=False):\n    ledger=h4m12_ledger(fresh,red=red)"],["'comparison_roles':{'CTRL':'ARCHIVED_CTRL','CAND':'M12'},","'comparison_roles':{'CTRL':'ARCHIVED_CTRL','CAND':('RED' if red else 'M12')},"],["def h4m12_enter(args):\n    root=H4_EVAL_ROOT\n    auth=h4m12_eval_auth(root)\n    pins,archive,ext=h4m12_inputs(root)","def h4m12_enter(args,*,red=False):\n    root=H4_EVAL_ROOT\n    auth=h4m12_eval_auth(root,red=red)\n    pins,archive,ext=h4m12_inputs(root,red=red)"],["        and session['status']=='M470_H4M12_DEV_IN_PROGRESS'","        and session['status']==('M470_H4RED_DEV_IN_PROGRESS' if red else 'M470_H4M12_DEV_IN_PROGRESS')"],["        and args.output==root/H4M12_EVAL_OUTPUT\n","        and args.output==root/(H4RED_EVAL_OUTPUT if red else H4M12_EVAL_OUTPUT)\n"],["def h4m12_final_check(root,session,auth,pins,archive):\n    h4m12_req(session['status']=='M470_H4M12_DEV_COMPLETE' and session['authorization']==auth\n        and session['input_sha256']==pins and session['spec']==H4M12_EVAL_SPEC","def h4m12_final_check(root,session,auth,pins,archive,*,red=False):\n    h4m12_req(session['status']==('M470_H4RED_DEV_COMPLETE' if red else 'M470_H4M12_DEV_COMPLETE') and session['authorization']==auth\n        and session['input_sha256']==pins and session['spec']==(H4RED_EVAL_SPEC if red else H4M12_EVAL_SPEC)"],["        and session['ledger']==h4m12_ledger(session)\n        and session['decision']==h4m12_decide(archive,session),'FINAL_REPLAY')","        and session['ledger']==h4m12_ledger(session,red=red)\n        and session['decision']==(h4red_eval_decide(root,archive,session) if red else h4m12_decide(archive,session)),\n        'FINAL_REPLAY')\n    if red:\n        h4m12_req(session['evaluator_sha256']==pins['source/m463_gate3_cp_eval.py'],'RED_FINAL_EVALUATOR')"],["def h4m12_read_eval_final(root,expected_sha,auth):\n    import m463_push_ppo_train as t\n    path=root/H4M12_EVAL_OUTPUT","def h4m12_read_eval_final(root,expected_sha,auth,*,red=False):\n    import m463_push_ppo_train as t\n    path=root/(H4RED_EVAL_OUTPUT if red else H4M12_EVAL_OUTPUT)"],["    pins,archive,ext=h4m12_inputs(root)\n    h4m12_req(h4m3_digest([pins,ext])==auth['provenance_sha256'],'FINAL_PROVENANCE')","    pins,archive,ext=h4m12_inputs(root,red=red)\n    h4m12_req(h4m3_digest([pins,ext])==auth['provenance_sha256'],'FINAL_PROVENANCE')"],["    h4m12_final_check(root,session,auth,pins,archive)\n    return session\n","    h4m12_final_check(root,session,auth,pins,archive,red=red)\n    return session\n"],["def h4m12_dispatch(args):\n    import shutil\n    root=H4_EVAL_ROOT;path=root/H4M12_EVAL_OUTPUT\n    auth=h4m12_eval_auth(root)\n    pins,archive,ext=h4m12_inputs(root)","def h4m12_dispatch(args,*,red=False):\n    import shutil\n    root=H4_EVAL_ROOT;path=root/(H4RED_EVAL_OUTPUT if red else H4M12_EVAL_OUTPUT)\n    auth=h4m12_eval_auth(root,red=red)\n    pins,archive,ext=h4m12_inputs(root,red=red)"],["    args.output=path\n    args.seeds=list(H3_EVAL_SEEDS);args.profiles=list(H3_EVAL_PROFILES);args.directions=['left','right']\n    args.push_step=300;args.push_magnitude=.50;args.second_push_step=335;args.second_push_magnitude=.35\n    args.max_steps=1000;args.max_cases=60\n    h4m6_reserve_tech(path,auth)\n    session={'status':'M470_H4M12_DEV_IN_PROGRESS','authorization':auth,'spec':H4M12_EVAL_SPEC,","    args.output=path\n    if red:args.h4m12_eval=True  # shared single-policy graph; only reached after RED auth\n    args.seeds=list(H3_EVAL_SEEDS);args.profiles=list(H3_EVAL_PROFILES);args.directions=['left','right']\n    args.push_step=300;args.push_magnitude=.50;args.second_push_step=335;args.second_push_magnitude=.35\n    args.max_steps=1000;args.max_cases=60\n    h4m6_reserve_tech(path,auth)\n    session={'status':('M470_H4RED_DEV_IN_PROGRESS' if red else 'M470_H4M12_DEV_IN_PROGRESS'),\n        'authorization':auth,'spec':(H4RED_EVAL_SPEC if red else H4M12_EVAL_SPEC),"],["             'r=Path.cwd();p,_,x=e.h4m12_inputs(r);print(json.dumps([e.h4m12_eval_auth(r),p,x]))']","             'r=Path.cwd();red='+repr(red)+';p,_,x=e.h4m12_inputs(r,red=red);'\n             'print(json.dumps([e.h4m12_eval_auth(r,red=red),p,x]))']"],["        session['ledger']=h4m12_ledger(session)\n        session['status']='M470_H4M12_DEV_COMPLETE'\n        h4m12_final_check(root,session,auth,pins,archive)","        session['ledger']=h4m12_ledger(session,red=red)\n        session['status']='M470_H4RED_DEV_COMPLETE' if red else 'M470_H4M12_DEV_COMPLETE'\n        h4m12_final_check(root,session,auth,pins,archive,red=red)"],["        print('M470_H4M12_DEV_COMPLETE',session['decision']['decision'],digest,flush=True)","        print(session['status'],session['decision']['decision'],digest,flush=True)"],["        session['status']='M470_H4M12_DEV_STOP';session['error']=repr(exc)[:4096]","        session['status']='M470_H4RED_DEV_STOP' if red else 'M470_H4M12_DEV_STOP';session['error']=repr(exc)[:4096]"],["        try:session['partial_ledger']=h4m12_ledger(session,partial=True)","        try:session['partial_ledger']=h4m12_ledger(session,partial=True,red=red)"]]
+# H4RED_DEV_END
 if __name__=='__main__':main()
