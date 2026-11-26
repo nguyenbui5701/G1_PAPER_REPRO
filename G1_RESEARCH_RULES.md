@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.246  
+**Version:** 1.2.247  
 **Ngày cập nhật:** 2026-11-26 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -3065,6 +3065,16 @@ SA reopened exact remote Rules1.2.245 blob46cc8a59d3308d50b480542b3a941d9b1ec382
 
 Decision: OWNER_HOST_COMPONENT_PASS accepted; H4-M14-6 remains partial source integration, full_static=false, native dispatcher/actual full-state reconstruction and identity, complete persistent ledger/strict readers, launcher/authorization and full static remain INCOMPLETE/HOLD as v1.2.245. No need to repeat component test or mechanical analysis; next separate Owner GO may continue same frozen held integration, not new task/runtime. Preserve 5 lanes/64 candidates per lane/16 variables/91330 cap, original residual guard and M14-3/4 STOP. Actual authorized budget0, no new source modifications, native simulation/inference/PPO, holdout or promotion. Rules only. Branch A research ACTIVE; Branch B HOLD.
 
+### H4-M14-6 CONTINUE — native dispatcher and end-to-end held integration candidate / Owner full static pending (v1.2.247; 2026-11-26)
+
+Owner explicit held continuation, read Rules1.2.246 at HEAD2e9d1b32c6ea729a38234282caa70ad086436abd, exact Rules blobdd679ea9162b6b363db96338243d3ca5185d8f28 and accepted evaluator820f455fc352ea479f37cef56d90559eced72640, relevant historical run/one_step/loader, M3/M7 archive and capture, RED projection and existing h4abs host functions. Preserve Owner component acceptance, M14-3/4 STOP and frozen ND-SSTR-ABS-V1. Reopened actual immutable M3 20115142 bytes SHA329ff0564d47e05e2360fdf95350928895cf515e8cec6ca9aa2182133319258b; REF/CCRC historical DEV 59111112 bytes SHAa231ff30abcd053f3e31e147fe4877fe0fe8da996229930c2d3b5fe69510a476; H3 DEV 80281355 bytes SHAbeaef42162c16c8a8397e5e62164e2c09f443c0b8c5fa7bf3960c7917d3030e8. All five full single reference suffixes have666 rows335..1000; double ends1000/370/375/366/1000; all335 prefix rows match M3 for five lanes. Local M7 report/snapshot binary and installed dependencies/checkpoint bytes still require Owner static preflight; not independently recovered by SA. No source execution in a native environment.
+
+Actual source commits: 037ea4c4800e0cbed540bc0c44fcd4df20d80aef held dispatcher; 9ca37135ff3495bf8426d1ad0df09ac4c07feb30 tail actor ledger and strict partial replay; f32a908515ebbda70c220e539166afb7face3a6d synthetic end-to-end reader fixture and shared tail static check; e4cf8b5027c7df0b89bce4968a5bef4d0f5bb47d final isolation/pre-action safety/fixture fixes, evaluator blobc919570caa29ad550f1a2d3ced2eaf5785284720. Existing evaluator only, no new repository executable file. H4ABS_RUNTIME_BEGIN/END and ten exact reversible integration patches; SA independently removed block and reversed all ten replacements against exact prior820f455f bytes, equality PASS. Native run shares original bootstrap, frozen loader and one_step env.step diagnostics tail; static AST comparison added. Absolute phase bypasses actor, tail actor-only call separately journaled and submitted unchanged through pre-guard, old residual/base_ok unchanged. Mutually exclusive flags and native Brax archive equality before rollout. Exact post335 full-state fork digest, original kicks/335 archive rows/rich equality, M7 exact native capture for four pinned lanes, no-sibling-mutation checks, baseline/sham original full observed suffix byte replay. Five lanes,64 candidates/lane,16 variables, ticks336..385 absolute, tail386..584 and selected confirmation to1000. Strict all29 pre/post checks, candidate stop reasons, recovery5/stable tail, deterministic selection, causal transfer telemetry and confirmation prefix identity. No promotion or PPO change.
+
+Persistent bounded journal and raw records: attempt receipt before transition, reset/template and tail actor receipts, partial reader tracks outstanding transition and actor, verifies branch chronology, archive/rich bytes, state chain, action/guard proof, strict pre-action guard on delivered candidate rows, termination, selection and confirmation. Compact lane_end digest, full telemetry reconstructed by reader. Parent exclusive reservation and child token, one-use marker and exact accepted static hash/source/provenance required; no active authorization or H4ABS_FULL_STATIC_PASS receipt currently. Bounded supervisor uses GPU12288MiB/<95%, disk reserve2GiB plus artifact headroom, raw384MiB/report32MiB/log16MiB and 5400s deadline. Host checked arithmetic max91330 physical (5*335+10*665+320*249+5*665), reset5, actor cap75080, row2199B, raw_max200834670B. No actual runtime capacity/performance claim.
+
+Added held static entry --h4abs static: full Python compile, historical projections, shared step tail AST, local exact M3/M7/DEV/checkpoint/dependency provenance, necessary host regressions, HOLD CLI/marker negatives, partial journal fixtures, synthetic five-lane journal/reader fixture including 320 search branches, four mock confirmations, invalid handoff, terminal STOP, no-candidate and replay corruption checks. Mock nonzero anchor and invalid ankle action .6 checked against actual manifest (upper .5235999823). Source-level checks and archive/numeric checks only performed by SA this turn; new fixture and full evaluator compile not yet executed in Owner environment. SA cannot claim end-to-end/full static PASS; actual native orchestrator remains untested and runtime forbidden. Static success marker intentionally H4ABS_HELD_INTEGRATION_STATIC_PASS; FULL_STATIC_ACCEPTANCE_HOLD, not a runtime-eligible FULL_STATIC_PASS receipt. Owner next action one combined pull and --h4abs static, send complete log and exit statuses/hash for review; no runtime command. If static fails STOP and fix same task, no retry of native or new design. Actual newly authorized and executed physical transitions0, resets0, inference0, optimizer0. Branch A research ACTIVE; Branch B HOLD; holdout/promotion HOLD.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -3326,6 +3336,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-26)
+
+**H4-M14-6 HELD NATIVE INTEGRATION CANDIDATE / OWNER STATIC PENDING (v1.2.247):** evaluator c919570caa29ad550f1a2d3ced2eaf5785284720, ten exact reversible integration patches checked, new native absolute dispatch and durable reader/supervisor source integrated, full archives rehashed and prefix matched; new static fixture not executed by SA. Owner next --h4abs static only; no FULL_STATIC_PASS receipt or active GO; native/PPO/holdout/promotion/Branch B HOLD.
 
 **H4-M14-6 OWNER HOST COMPONENT PASS ACCEPTED (v1.2.246):** pasted two-line Owner result matches exact evaluator820f455f, 16000 vectors/211 rows/30 negatives/2 synthetic transfers/2199B row/200834670 raw max; full evaluator compile and layered historical source projection checks implied by PASS source. No full log/exit/local SHA receipt independently verified. full_static=false, native dispatcher and complete integration still HOLD; no active GO or PPO/holdout/promotion, Branch B HOLD.
 
@@ -4171,6 +4183,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-26 | H4-M14-6 native dispatcher held integration | evaluator c919570c, exact reverse projection, immutable full reference archives; new ledger/static fixture source | HELD INTEGRATION CANDIDATE / Owner full static pending; runtime HOLD | 1.2.247 |
+
 | 2026-11-26 | H4-M14-6 Owner host component acceptance | exact pasted marker fields and evaluator820f455f source review | OWNER HOST PASS ACCEPTED / full static NOT RUN / native HOLD | 1.2.246 |
 
 | 2026-11-26 | H4-M14-6 CONTINUE isolated ABS host component integration | evaluator04fcf2e, exact reverse projection,211 archived rows/16000 vectors/30 negatives,2199B row and host reader/selection | PARTIAL SOURCE INTEGRATION / FULL STATIC NOT RUN / STOP, no native path | 1.2.245 |
@@ -4725,6 +4739,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.247 — 2026-11-26:** Integrate ND-SSTR-ABS-V1 native dispatcher, shared tail, full-state fork, durable journal/reader, supervisor and held static entry. Retain prior host acceptance and frozen spec. Exact source reverse projection and immutable archive checks performed; actual new full static pending Owner. No runtime authorization, Branch B HOLD.
 
 - **v1.2.246 — 2026-11-26:** Accept Owner-reported ABS host component verification, including source-defined compile and layered projection checks, distinguish excerpt from full log/provenance receipt. No executable changes or runtime authorization; remaining H4-M14-6 integration HOLD, Branch B HOLD.
 
