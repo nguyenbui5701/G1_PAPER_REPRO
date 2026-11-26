@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.234  
+**Version:** 1.2.235  
 **Ngày cập nhật:** 2026-11-26 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -2889,6 +2889,12 @@ raise SystemExit(0 if ok else 1)
 # H4RED_DEV_OWNER_LAUNCHER_END
 ```
 
+### H4-M13-4 — actual Owner RED controlled DEV full static PASS / evaluation GO pending (v1.2.235; 2026-11-26)
+
+Read exact Rules1.2.234 blob246b9ac77d97ecbfdfb8baea03adf70228f0bea4 at HEAD900c9f75ccf41579a566654fa5b1c04c19ffc9bc and operative held integration/launcher contract. SA reopened actual Owner m470_h4red_dev_static_20261126_214813_900336066.log,1222B SHA2567cdb5b93866dd700d1e80acdea340fb8e1c6415de5cf773b1600685c1f254d51; exact branch/head/Rules and final H4RED_DEV_FULL_STATIC_PASS. Owner explicitly supplied STATIC_EXIT_CODE=0, completing outer footer. Independently computed exact GitHub Rules SHA37a681af6020303d3fa905cab184f02c2efbcd5ec772bb8611938a1c5eb1d6e6 from blob (path fetch returned empty content, corrected by exact blob fetch), evaluator3dc7d0bd9b56fd01dbda61ff92d079cfb12b8ea146b45d177300190ee3c0060e, trainerf9bff7f6cc394a1e03b11f45a84a98f8783853df7c3e1d143b8d6feafa3f2bd3, enve99c4ba8534f80a4217297e633316e220cc60059331f797ad798a206013a3fb6, instrumenter5556e08109d90a4746cde7aa19a8886f6cc7bf230f3c49d0430d5300ac2b544e, train.py83e4371a29d96998461b7f5791e08b37bf3647e29c0212d873c6496ce07ed771, paper_config.pydb3a6c7189bbd6d952d06e9b13a46929be8a79203510b18e12d8ddd53065c887. All five logged hashes match. Reconstructed canonical nine-file source digest with six tracked hashes and three frozen local pins, exact87df8a6bfd1290b0fcc36c0586e8fac00530c18f7a2c1e514c20badb2143d050. Independently extracted exact 144-line launcher block plus trailing newline from Rules blob and SHA256aaeb1192370ea55b64ed83cd5689836c52e0caed7b8f0cf3f388628d4b84cc58 matches. Owner provenance87ae0f96b30298d2ef73465614b5a6b4eb2c6411cec554c117b1541e47a125d4 accepted from full static, not independently reconstructed from local binary/installed dependency/official CTRL archive bytes by SA. All such pins must be rechecked by existing runtime preflight.
+
+Actual static reports archive_clone NO_GO as intended synthetic M12-as-RED fixture, secondary_identity true, marker negatives5, final reader negatives8, partial positive1/negatives3, launcher negative1, byte_projection true, step_graph true, CLI HOLD2. Zero physical transitions/resets/optimizer updates/inference. This confirms static gate only, not RED policy efficacy. No executable changes and no new native execution in SA review. Accept H4-M13-4 FULL STATIC PASS, next H4-M13-5 one-use bounded controlled DEV only on separate explicit Owner GO. No repeat static solely for Rules version bump if source/launcher unchanged. Keep launcher block byte-identical, distinct marker must bind exact accepted static path+SHA and source/provenance digests; fixed fresh report namespace and exclusive log, 5400s shared child watchdog, 16MiB log, 128MiB report, disk and sampled GPU guards unchanged. Only RED new policy,12 groups/60 logical/max44808 physical/12 resets/0 PPO, primary immutable Official CTRL, M12 descriptive secondary; both +2/8 standing double survival and recovery5 and all existing nominal/moving/standing/safety gates unchanged. No active marker, no CTRL/M12 rerun, extra diagnostics, further training, independent holdout or promotion. Branch A ACTIVE; Branch B HOLD.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -3150,6 +3156,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-26)
+
+**H4-M13-4 RED CONTROLLED DEV ACTUAL FULL STATIC PASS / H4-M13-5 GO PENDING (v1.2.235):** Owner exit0, log7cdb5b93, source87df8a6b and launcheraaeb1192 independently reconstructed, local provenance87ae0f96 accepted from static, all fixtures and zero runtime. No executable change, no active authorization; separate Owner evaluation GO required, no CTRL/M12 rerun/extra PPO/holdout/promotion/Branch B.
 
 **H4-M13-4 RED-V1 CONTROLLED DEV HELD SOURCE IMPLEMENTED / OWNER FULL STATIC PENDING (v1.2.234):** evaluator0e0abc94, exact 33-edit reverse projection, SA ledger3+7/marker1+5 host PASS; RED training approval pins exact, immutable CTRL primary/M12 descriptive secondary, frozen12 groups/60 logical/max44808 physical/12 resets. Distinct launcher/static/provenance guards, no active marker. Owner full static only; no runtime/PPO/CTRL or M12 rerun/holdout/promotion/Branch B.
 
@@ -3971,6 +3979,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-26 | H4-M13-4 actual full static acceptance | Owner exit0, log7cdb5b93, source87df8a6b, provenance87ae0f96, launcheraaeb1192 | FULL STATIC PASS / H4-M13-5 separate runtime GO pending | 1.2.235 |
+
 | 2026-11-26 | H4-M13-4 RED-V1 controlled DEV held integration | exact accepted train58dfa2c3, archived M12eb44c364, evaluator0e0abc94, reverse projection and host fixtures | HELD SOURCE IMPLEMENTED / OWNER FULL STATIC PENDING | 1.2.234 |
 
 | 2026-11-26 | H4-M13-3 actual RED-V1 training review | seven rehashed uploads, report58dfa2c3, exact ledger and 5 exposure gates | TECHNICAL PASS / EXPOSURE_PASS / CONSUMED; efficacy pending, DEV held | 1.2.233 |
@@ -4501,6 +4511,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.235 — 2026-11-26:** Accept actual RED controlled DEV full static and Owner exit0, independently verify source/launcher digests, preserve frozen protocol and all runtime holds until separate Owner GO.
 
 - **v1.2.234 — 2026-11-26:** Implement held RED-V1 controlled DEV via shared M12 evaluator, strict training and archive pins, separate descriptive M12 comparison, bounded launcher/partial-final readers and focused static. Frozen official scientific gates unchanged; no runtime authorization, Branch B HOLD.
 
