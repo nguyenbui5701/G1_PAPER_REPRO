@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.225  
+**Version:** 1.2.226  
 **Ngày cập nhật:** 2026-11-26 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -2503,7 +2503,7 @@ Exactly one Owner launch through existing g1_m463, with inherited pinned interpr
 
 Only continuation M12 policy SHA50b7d2034692ec9fa49699d541b8bd98dd502322e5bf28cacfa3475c158e0f5a; exact 12 groups/60 logical/max44808 new physical/12 group resets, no CTRL rerun (archived report SHA32bf04d64bafd7e80b250b862493b54a7c8db6af1bcf1010bf0df984a904f40c, 41052 historical physical). Seeds7331/7357/7601/7613, stand/forward_fast/turn_left, nominal/single/double left/right, push300/.50 and335/.35, horizon1000 dt.02, deterministic actor, DR/source random push OFF, original reward/PD/termination, original h3_decide, both +2/8 survival and recovery5 (8/8), all nominal/moving/safety gates unchanged. Zero optimizer updates, no PPO, no extra diagnostics, no independent holdout, no readiness/production/promotion, Branch B HOLD. Evaluation tests push recovery while upright, not get-up.
 
-H4M12_EVAL_ACTIVE_GO: H4-M12-DEV-V1 m463_runs/m470_h4_m12_3_dev_v1/report.json 394732f72b86f45f3f3ff1e83e9c74a453a46504465e212be4c707c8dd46a13f e805f45d4ef94aed4973692ef1da449725c683f4724bc9627ba920dd46c8de53 m463_runs/m470_h4m12_dev_static_20261126_193845_911550919.log 377547acdb543cc85b54575ca11425cfa0ab9c51da6ab2d46fe62f1e58f27759
+Consumed historical authorization (closed v1.2.226): `H4M12_EVAL_ACTIVE_GO: H4-M12-DEV-V1 m463_runs/m470_h4_m12_3_dev_v1/report.json 394732f72b86f45f3f3ff1e83e9c74a453a46504465e212be4c707c8dd46a13f e805f45d4ef94aed4973692ef1da449725c683f4724bc9627ba920dd46c8de53 m463_runs/m470_h4m12_dev_static_20261126_193845_911550919.log 377547acdb543cc85b54575ca11425cfa0ab9c51da6ab2d46fe62f1e58f27759`
 
 ```python
 # H4M12_DEV_OWNER_LAUNCHER_BEGIN
@@ -2637,6 +2637,14 @@ for name in ("report.json","attempt.json","dispatch.started.json","attempt_resul
 raise SystemExit(0 if ok else 1)
 # H4M12_DEV_OWNER_LAUNCHER_END
 ```
+
+### H4-M12-3 — actual controlled DEV evaluator COMPLETE / scientific NO_GO / authorization consumed (v1.2.226; 2026-11-26)
+
+Read Rules1.2.225 blob30e138655bdf23cf9a5b00449ce3715d14480977 and exact HEADf29cb2f343c0a5213c929efe16709ce84d7d11f5, operative evaluator ledger/dispatch/decision and frozen scope. SA independently read and rehashed five actual uploads: report.json 30359528B SHA256eb44c364983078fc35b89152d7a42eae310ed31caba6d4a9b4abf335027826b1; m470_h4m12_dev_runtime_v1.log 8521B f83bbef7305cc3150a4f5968340b268c33512e936c5b92efa3746668c900472f; attempt.json442B c492fd2aef3a3d0c07f0fd5f382014d238a6d7b2d302fff44fd4196bbd20a530; dispatch.started.json426B 3f7e318bf8768665091519802b03d53a0a11c59d33490485323fa884660895e4; attempt_result.json529B d9478bc3b5b90d3661c68511bac7f8ac92e917994cfd817e3239eb536cad8f24. Authorization exactly matches across all receipts/report/active frozen source/provenance/static evidence, report hash matches completion receipt and log producer COMPLETE and strict final-reader PASS. Independently rehashed prior static log and recomputed source-map digest from reported source hashes; archive/policy pins and actual local strict reader consistent; archive/checkpoint/installed binary bytes not independently rehashed by SA. Verified all 42246 new physical rows, shape46, finite, finite flags, done/terminal flag consistency and binary ground contacts, group row cap/conservation, 12 complete groups/60 logical/12 resets, attempted=recorded and no outstanding calls. 120 combined logical and83298 combined physical (41052 archived only); no CTRL rerun. GPU sampled peak723/12288MiB, 501 samples, zero sampler errors. Report and log below caps. Owner outer H4M12_DEV_BOUNDED_STATUS and H4M12_EXIT_CODE not included in uploads; request existing terminal footer only, no replay. Internal evaluator COMPLETE and strict reader PASS evidenced; supervisor final exit/overflow/fsync acceptance not yet independently confirmed. Log 25 XLA cast warnings plus one HLO literal parser error; all recorded rows finite and run completed, cause/impact not proven. Preserve warnings; do not suppress/change numerical graph.
+
+Frozen primary stand/double both survival and recovery5 CTRL6/8 vs M12 6/8, gain0 vs required+2, same two failures 7601R/7613L. Stand/double recovery2 4/8->1/8; surviving paired recovery5 times slower in 4 of 6 cases, faster in 2. All48 pushed exposed; descriptive all-push survival42->44, recovery5 34->39, recovery2 11->8. Nominal survival12/12 both; all17 available standing common windows pass all four fixed standing metrics, no missing required windows, no new critical terminal flags. Moving double recovery5 forward_fast7->7, turn_left3->5. Per profile/kind survival and recovery5 CTRL->M12: stand/single7->8 and7->8, stand/double6->6 and6->6; forward_fast/single7->8 and7->7, double8->8 and7->7; turn_left/single7->7 and4->6, double7->7 and3->5. New survival wins7613 stand single L and7601 forward_fast single R, no survival loss. Remaining four M12 terminals all native foot-foot: stand double7601R367->368 and7613L370->377; turn_left7601 singleR346->347 and doubleR345->346, all also CTRL failures. No inference of initiating contact solely from terminal flag. M12 raw double suffixes stand7601R and7613L show lateral separation narrowing .20524->.03362m and .25248->.04612m, root height .77248->.30364m and .78127->.48936m, terminal foot-foot; descriptive, not causal proof. Safety 23 hard-failure entries across21 distinct cases (15 control-limit and8 joint-limit, force0); largest matched excess increment ctrl .0587341785 (7613 stand doubleR), joint .0242881179 (7601 turn_left singleR). Thus no primary gain and safety hard failures, unambiguous frozen scientific NO_GO / NO-PROMOTE even if supervisor footer later confirms. Not a general PPO impossibility claim; single development continuation, mixed benefits, not independent evidence.
+
+Close consumed one-use runtime marker immediately; preserve all historical artifacts and accepted training technical PASS, no further PPO, no retry, no new diagnostic, no independent holdout, no readiness/production/promotion. SA zero new simulation/inference/optimizer/physical. Next only collect existing bounded terminal status if available, then Owner decision on a held offline synthesis of M12 against prior H-R1..H-R6 evidence and original PPO training progression, using existing reports; no new budget/treatment automatically, no repeats of already accepted diagnostics. Branch A active, Branch B HOLD.
 
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
@@ -2899,6 +2907,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-26)
+
+**H4-M12-3 ACTUAL EVALUATOR COMPLETE / SCIENTIFIC NO_GO / ONE-USE CONSUMED (v1.2.226):** exact reporteb44c364, strict final reader PASS, 42246 physical/60 logical/12 resets, both primary gains0 (6/8 unchanged), 23 safety entries/21 cases, descriptive survival42->44/recovery5 34->39/recovery2 11->8. Outer supervisor footer pending, no retry. All runtime/PPO/holdout/promotion/Branch B HOLD.
 
 **H4-M12-3 CONTROLLED DEV ONE-USE GO (v1.2.225):** Owner confirmed static exit0 and explicit scope; source/provenance/static log frozen, single active evaluator marker, bounded inline launcher5400s/16MiB and exclusive log, 12 groups/60 logical/44808 new physical max/12 resets. Owner actual evaluation pending; no CTRL rerun/PPO/holdout/promotion/Branch B.
 
@@ -3702,6 +3712,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-26 | H4-M12-3 actual controlled DEV review | five rehashed uploads, reporteb44c364, 42246 rows, strict reader | EVALUATOR COMPLETE / SCIENTIFIC NO_GO / CONSUMED; outer footer pending; no promotion | 1.2.226 |
+
 | 2026-11-26 | H4-M12-3 controlled DEV one-use authorization | Owner exit0 + explicit GO, static SHA377547ac, frozen source/provenance | GO ONE OWNER EVAL; actual result pending, no PPO/holdout/promotion | 1.2.225 |
 
 | 2026-11-26 | H4-M12-3A actual full static review | Owner log SHA377547ac, exact reviewed source, zero runtime | FULL STATIC PASS CONTENT; shell exit confirmation and separate DEV GO pending | 1.2.224 |
@@ -4214,6 +4226,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.226 — 2026-11-26:** Close M12 one-use DEV authorization after actual complete evaluator/reader and frozen scientific NO_GO; record exact five artifact hashes, raw ledger/finite audit, primary failures and mixed descriptive improvement/safety regression; outer terminal status pending, no retry or further runtime. Branch B HOLD.
 
 - **v1.2.225 — 2026-11-26:** Accept Owner static exit0 and explicit controlled DEV GO, freeze single evaluator marker and bounded inline launcher with watchdog/exclusive log/strict final reader; no executable source or scientific gate change, all other runtime/PPO/holdout/promotion/Branch B HOLD.
 
