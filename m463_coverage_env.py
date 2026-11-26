@@ -956,5 +956,5 @@ class CoverageJoystick(joystick.Joystick):
                 native_mature=out['h4_mature_repeat']>0,native_side=out['h4_event_qual'],
                 mass=M,h2=h2,cost=cost,momentum_good=good)
             out.update(m8out)
-            out['h4_bad']=jp.maximum(out['h4_bad'],m8out['h4m8_bad'])
+            # CAM validity stays in its own new telemetry; old leaves are untouched.
         return after.replace(info=out)
