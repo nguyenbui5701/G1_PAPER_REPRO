@@ -1087,3 +1087,124 @@ def make_h4m6_source(raw):
         raise RuntimeError('M470_H4M6_GENERATED_REVERSE')
     compile(s,'<H4M6 held generated>','exec')
     return s,original
+
+
+# H4-M8: staged held generator. Not reachable from the production builder.
+H4M8_EXT_FIELDS = tuple('h4m8_'+k for k in (
+    'qualified','event_terminal','start','event_side','eligible','tick_age',
+    'tick_side','weight8','positive_start','completed','close_terminal',
+    'close_truncation','close_boundary','close_command','close_event',
+    'opportunity_side','attempt_side','bad','mass','h2','cost','shadow'))
+
+
+def h4m8_learning_reward(xp, native, discount, truncation, extras, treatment):
+    """Pure batch arithmetic. No new loss, physics, or policy computation."""
+    treatment=xp.asarray(treatment)
+    if treatment.shape!=() or treatment.dtype!=xp.bool_:
+        raise RuntimeError('M470_H4M8_TREATMENT_SCHEMA')
+    if native.ndim!=2 or native.shape[1]!=32 or native.dtype!=xp.float32:
+        raise RuntimeError('M470_H4M8_REWARD_SCHEMA')
+    if discount.shape!=native.shape or truncation.shape!=native.shape:
+        raise RuntimeError('M470_H4M8_MASK_SHAPE')
+    for key in H4M8_EXT_FIELDS:
+        x=extras[key]
+        dtype=xp.float32 if key in ('h4m8_mass','h4m8_h2','h4m8_cost','h4m8_shadow') else xp.int32
+        if x.shape!=native.shape or x.dtype!=dtype:
+            raise RuntimeError('M470_H4M8_EXTRA_SCHEMA '+key)
+    e=extras['h4m8_eligible']; k=extras['h4m8_tick_age']; w=extras['h4m8_weight8']
+    c=extras['h4m8_cost']; shadow=extras['h4m8_shadow']
+    mass=extras['h4m8_mass']; h2=extras['h4m8_h2']
+    expected_w=xp.where(e==1,xp.minimum(8,xp.minimum(xp.maximum(0,k-7),xp.maximum(0,51-k))),0)
+    allowed=(e==1)&(discount==1)&(truncation==0)
+    desired=xp.where(allowed,shadow,xp.asarray(0.,xp.float32))
+    # Selecting original leaf preserves negative zero and unchanged reward bits.
+    learning=xp.where(treatment & allowed & (desired>0),native-desired,native)
+    actual=xp.where(treatment & allowed & (desired>0),native-learning,xp.asarray(0.,xp.float32))
+    bad=((extras['h4m8_bad']!=0)|(~xp.isfinite(native))|(~xp.isfinite(learning))|
+         (~xp.isfinite(mass))|(~xp.isfinite(h2))|(~xp.isfinite(c))|(~xp.isfinite(shadow))|
+         (mass<=0)|(h2<0)|(c<0)|(c>1)|(shadow<0)|(shadow>xp.asarray(.005,xp.float32))|
+         ((e!=0)&(e!=1))|((discount!=0)&(discount!=1))|((truncation!=0)&(truncation!=1))|
+         ((e==1)&((k<1)|(k>50)))|((e==0)&(k!=0))|(w!=expected_w)|
+         ((w==0)&(shadow!=0))|((w>0)&((discount!=1)|(truncation!=0)))|
+         (actual<0))
+    href=mass*xp.asarray(.793,xp.float32)*xp.asarray(.35,xp.float32)
+    expected_c=h2/(href*href+h2)
+    expected_shadow=xp.where(w>0,xp.asarray(.25,xp.float32)*xp.asarray(.02,xp.float32)*
+                    (w.astype(xp.float32)/xp.asarray(8.,xp.float32))*c,xp.asarray(0.,xp.float32))
+    # Exact arithmetic comparison is a conservative technical guard; a compiled
+    # context mismatch is STOP, not permission to adjust a tolerance.
+    bad=bad | (expected_c!=c) | (expected_shadow!=shadow)
+    for key in ('qualified','event_terminal','start','eligible','positive_start','completed',
+                'close_terminal','close_truncation','close_boundary','close_command','close_event','bad'):
+        x=extras['h4m8_'+key]
+        bad=bad | ((x!=0)&(x!=1))
+    for key in ('event_side','tick_side','opportunity_side','attempt_side'):
+        x=extras['h4m8_'+key]
+        bad=bad | (x<0)|(x>2)
+    bad=bad | ((extras['h4m8_start']+extras['h4m8_event_terminal'])!=extras['h4m8_qualified'])
+    bad=bad | ((e==1)&(extras['h4m8_tick_side']==0))
+    return learning,desired,actual,bad
+
+
+H4M8_TRANSFORM_SOURCE = '''    # Common collected native data is preserved for coverage and reporting.
+    from m463_instrument_brax import h4m8_learning_reward
+    h8_reward,h8_desired,h8_actual,h8_bad = h4m8_learning_reward(
+        jnp,data.reward,data.discount,data.extras['state_extras'],h4m8_treatment)
+    learning_data = data._replace(reward=jax.lax.stop_gradient(h8_reward))
+'''
+
+H4M8_METRICS_SOURCE = '''    # Exact collected batch; no extra rollout or optimizer invocation.
+    coverage['h4m8_bad_per_rollout'] = jnp.sum(h8_bad.astype(jnp.float32))
+    coverage['h4m8_desired_sum'] = jnp.sum(h8_desired)
+    coverage['h4m8_actual_sum'] = jnp.sum(h8_actual)
+    coverage['h4m8_native_reward_sum'] = jnp.sum(data.reward)
+    coverage['h4m8_learning_reward_sum'] = jnp.sum(learning_data.reward)
+    coverage['h4m8_round_to_identity_count'] = jnp.sum(
+        ((h8_desired>0)&(h8_actual==0)&h4m8_treatment).astype(jnp.float32))
+    h8 = data.extras['state_extras']
+    for h8side in (1,2):
+      event_side=h8['h4m8_event_side']==h8side
+      tick_side=h8['h4m8_tick_side']==h8side
+      prefix='h4m8_side_'+str(h8side)+'_'
+      for name in ('qualified','start','event_terminal'):
+        coverage[prefix+name]=jnp.sum((event_side&(h8['h4m8_'+name]==1)).astype(jnp.float32))
+      for name in ('eligible','positive_start','completed','close_terminal',
+                   'close_truncation','close_boundary','close_command','close_event'):
+        coverage[prefix+name]=jnp.sum((tick_side&(h8['h4m8_'+name]==1)).astype(jnp.float32))
+      coverage[prefix+'weight8']=jnp.sum(jnp.where(tick_side,h8['h4m8_weight8'],0))
+      coverage[prefix+'reach25']=jnp.sum((tick_side&(h8['h4m8_tick_age']==25)).astype(jnp.float32))
+      coverage[prefix+'opportunities']=jnp.sum((h8['h4m8_opportunity_side']==h8side).astype(jnp.float32))
+      coverage[prefix+'attempts']=jnp.sum((h8['h4m8_attempt_side']==h8side).astype(jnp.float32))
+      coverage[prefix+'desired']=jnp.sum(jnp.where(tick_side,h8_desired,0.))
+      coverage[prefix+'actual']=jnp.sum(jnp.where(tick_side,h8_actual,0.))
+'''
+
+
+def make_h4m8_source(raw):
+    """Held only; separate generator, byte-reversible to accepted CCRC base."""
+    base,original=make_h4_exploratory_source(raw,enable_h4cc=True)
+    old=EXT_FIELDS+H4_EXT_FIELDS+H4CC_EXT_FIELDS
+    fmt=lambda fields: "extra_fields=('truncation', " + ', '.join(repr(k) for k in fields) + '),'
+    patches=(
+        (fmt(old),fmt(old+H4M8_EXT_FIELDS)),
+        ('    h4x_audit_fn: Optional[Callable[..., None]] = None,\n',
+         '    h4m8_treatment=None,\n    h4x_audit_fn: Optional[Callable[..., None]] = None,\n'),
+        ('  from m463_push_ppo_train import h4cc_generated_guard\n'
+         '  h4cc_generated_guard(h4x_audit_fn, __file__, environment)\n',
+         "  raise RuntimeError('M470_H4M8_GENERATED_EXECUTION_HOLD')\n"),
+        ('    assert data.discount.shape[1:] == (unroll_length,)\n',
+         '    assert data.discount.shape[1:] == (unroll_length,)\n'+H4M8_TRANSFORM_SOURCE),
+        ('sgd_step, data=data, normalizer_params=normalizer_params',
+         'sgd_step, data=learning_data, normalizer_params=normalizer_params'),
+        (H4CC_METRICS_SOURCE,H4CC_METRICS_SOURCE+H4M8_METRICS_SOURCE),
+    )
+    s=base
+    for a,b in patches:
+        s=h4c_once(s,a,b)
+    reverse=s
+    for a,b in reversed(patches):
+        reverse=h4c_once(reverse,b,a)
+    if reverse!=base or original!=PINNED_SHA:
+        raise RuntimeError('M470_H4M8_GENERATED_REVERSE')
+    compile(s,'<H4M8 held generated>','exec')
+    return s,original
