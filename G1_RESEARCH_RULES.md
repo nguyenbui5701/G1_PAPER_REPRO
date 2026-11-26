@@ -1,7 +1,7 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.247  
-**Ngày cập nhật:** 2026-11-26 (Asia/Ho_Chi_Minh)  
+**Version:** 1.2.248  
+**Ngày cập nhật:** 2026-11-27 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
 **Nhánh làm việc:** `experiment/b1-hardware-scaled` — **KHÔNG sửa `main` hoặc tag/checkpoint baseline**  
@@ -3075,6 +3075,16 @@ Persistent bounded journal and raw records: attempt receipt before transition, r
 
 Added held static entry --h4abs static: full Python compile, historical projections, shared step tail AST, local exact M3/M7/DEV/checkpoint/dependency provenance, necessary host regressions, HOLD CLI/marker negatives, partial journal fixtures, synthetic five-lane journal/reader fixture including 320 search branches, four mock confirmations, invalid handoff, terminal STOP, no-candidate and replay corruption checks. Mock nonzero anchor and invalid ankle action .6 checked against actual manifest (upper .5235999823). Source-level checks and archive/numeric checks only performed by SA this turn; new fixture and full evaluator compile not yet executed in Owner environment. SA cannot claim end-to-end/full static PASS; actual native orchestrator remains untested and runtime forbidden. Static success marker intentionally H4ABS_HELD_INTEGRATION_STATIC_PASS; FULL_STATIC_ACCEPTANCE_HOLD, not a runtime-eligible FULL_STATIC_PASS receipt. Owner next action one combined pull and --h4abs static, send complete log and exit statuses/hash for review; no runtime command. If static fails STOP and fix same task, no retry of native or new design. Actual newly authorized and executed physical transitions0, resets0, inference0, optimizer0. Branch A research ACTIVE; Branch B HOLD; holdout/promotion HOLD.
 
+### H4-M14-6 CONTINUE — Owner held integration static accepted / final runtime receipt HOLD (v1.2.248; 2026-11-27)
+
+SA reviewed exact actual Owner log m463_runs/m470_h4abs_full_static_20261127_000048_603251936.log, 971 bytes SHA256 1bf632e4ab03bae35f8e72a79ef0b56ad8280533e1dd10e1896f879e62683b91. Owner timestamp 2026-11-27T00:00:48+07:00, HEAD4b149c5040c5a75158b0df8d960051531ddcf8e7, Rules1.2.247 blob6e2e031a9435a0fc0d22b59967b84e6a19a8c1f5 SHA19df021486c790199537f55279e42d223bbcef111c235ed282dbbfccda21ca7e, evaluator blobc919570caa29ad550f1a2d3ced2eaf5785284720 SHAe1f80719ad97600ad0aac2df138ef979db709004c7baeae5996a8a64c67c09d4. Both Git blob SHA256 independently recomputed and exact match log; complete Rules blob retrieved, relevant North Star/decision sequence/M14-1/M14-5/M14-6/current sections and exact evaluator static/authorization/shared step/native decision paths reviewed, not new audit of all historical tasks. No executable changes.
+
+Actual Owner H4ABS_SOURCE 03273f756cf4fa56ef823aeb025410d4689d39966986d14c73660dfc875d15f8 and H4ABS_PROVENANCE 51a2daae4218f6fda7415c9d0333898568be9297308986e1ef4032c221fa7410 recorded as Owner receipts, not independently recomputed nine-file/source/external aggregate because installed source map/provenance dictionary and Owner filesystem are not present in log. Full compile, reverse projection, historical RED projection, shared step tail AST, pinned archive/checkpoint/M7/dependency readers, marker negatives, CLI HOLD, partial journal checks are required by fetched static function before terminal marker. Actual fixture summary 16000 action vectors,211 archived rows,2 synthetic transfers,30 host negative tests,2199 bytes per raw row,200834670 bytes max (91330*2199), full_static:false is component scope, not a failure. New independent reader fixture5 mock lanes,5902 mock transitions,3 negative cases,native_calls0; fixture outcomes do not demonstrate dynamic feasibility. Both exit codes0, no reported error; physical transitions0,resets0,inference0,optimizer updates0. Accept actual Owner HELD INTEGRATION STATIC PASS for exact tested source; preserve prior HOST_COMPONENT_PASS. No repeat accepted fixtures just for formalism.
+
+Final log marker deliberately H4ABS_HELD_INTEGRATION_STATIC_PASS; FULL_STATIC_ACCEPTANCE_HOLD. No standalone H4ABS_FULL_STATIC_PASS line required by existing h4abs_authorize, and no active H4ABS_ACTIVE_GO. Thus this is not a runtime-eligible receipt, and no native run or authorization granted. Next proposed H4-M14-6 final held acceptance/authorization-contract review on distinct Owner GO: review remaining native dispatcher/strict reader and exact full static receipt contract, use accepted evidence rather than repeat host suite without need, resolve marker mismatch without weakening source/provenance/one-use gates, preserve frozen spec/budgets, no runtime until separate GO. Do not edit or forge accepted log. Branch A ACTIVE; native execution/PPO/holdout/promotion/Branch B HOLD.
+
+Owner additional conceptual question only, not scope change: still H-R5c Sequential Support-Transfer Recovery within North Star and failure-mechanism-driven PPO. ND-SSTR-ABS-V1 seeks limited native simulated dynamical witness of feasible bounded recovery sequence before choosing learnable on-policy PPO mechanism; no actual witness, policy learnability, causality or physical-hardware certification from static tests. Qualified transfers in both primaries before recovery, at least one with >=2, both positive controls preserved, original recovery5 and stable tail/confirmation/safety retained. No mandatory alternating contact, no replay of optimized actions as fresh PPO samples. No new research track or training design approved.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -3336,6 +3346,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-26)
+
+**H4-M14-6 OWNER HELD INTEGRATION STATIC ACCEPTED / FINAL RECEIPT HOLD (v1.2.248; 2026-11-27):** actual 971B log SHA1bf632e4ab03bae35f8e72a79ef0b56ad8280533e1dd10e1896f879e62683b91, tested Rules/evaluator SHA independently matched, both exit0, 5902 mock rows/5 lanes/3 negative, zero native work. Existing final marker HOLD is not standalone H4ABS_FULL_STATIC_PASS and cannot authorize runtime. Next final held acceptance/receipt contract review on distinct GO; no automatic repeat, no runtime, no PPO, no promotion, Branch B HOLD. H-R5c objective unchanged.
 
 **H4-M14-6 HELD NATIVE INTEGRATION CANDIDATE / OWNER STATIC PENDING (v1.2.247):** evaluator c919570caa29ad550f1a2d3ced2eaf5785284720, ten exact reversible integration patches checked, new native absolute dispatch and durable reader/supervisor source integrated, full archives rehashed and prefix matched; new static fixture not executed by SA. Owner next --h4abs static only; no FULL_STATIC_PASS receipt or active GO; native/PPO/holdout/promotion/Branch B HOLD.
 
@@ -4183,6 +4195,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-27 | H4-M14-6 Owner held static review | actual log 1bf632e4..., exact Rules/evaluator SHA, exit0/0, 5902 mock rows, zero native | HELD STATIC ACCEPTED / final runtime receipt HOLD | 1.2.248 |
+
 | 2026-11-26 | H4-M14-6 native dispatcher held integration | evaluator c919570c, exact reverse projection, immutable full reference archives; new ledger/static fixture source | HELD INTEGRATION CANDIDATE / Owner full static pending; runtime HOLD | 1.2.247 |
 
 | 2026-11-26 | H4-M14-6 Owner host component acceptance | exact pasted marker fields and evaluator820f455f source review | OWNER HOST PASS ACCEPTED / full static NOT RUN / native HOLD | 1.2.246 |
@@ -4739,6 +4753,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.248 — 2026-11-27:** Accept exact Owner held integration static log, verify Rules/evaluator SHA, preserve zero runtime and HOLD receipt contract. H-R5c objective unchanged; final held acceptance review proposed, not runtime GO.
 
 - **v1.2.247 — 2026-11-26:** Integrate ND-SSTR-ABS-V1 native dispatcher, shared tail, full-state fork, durable journal/reader, supervisor and held static entry. Retain prior host acceptance and frozen spec. Exact source reverse projection and immutable archive checks performed; actual new full static pending Owner. No runtime authorization, Branch B HOLD.
 
