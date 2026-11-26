@@ -8013,6 +8013,179 @@ def h4m6_prefix_authorization(root=None):
 
 
 
+def h4m6_prefix_child(args,auth,provenance,history):
+    """One reserved process, no independent child authorization."""
+    import m463_push_ppo_train as t
+    req=h4m6_eval_require;context=args.h4m6_prefix_child;path=args.output
+    root=path.parent.parent
+    marker=root/'collector.started.json'
+    req(marker.is_file() and not marker.is_symlink()
+        and json.loads(marker.read_bytes())=={'authorization':auth,'pid':os.getppid()}
+        and (root/'probe.log').is_file() and not (root/'probe.log').is_symlink()
+        and json.loads((root/'attempt.json').read_bytes())=={'authorization':auth,'reserved':True}
+        and json.loads((path.parent/'parent.dispatch.json').read_bytes())=={'authorization':auth,'context':context,'pid':os.getppid()}
+        and json.loads((path.parent/'attempt.json').read_bytes())=={'authorization':auth,'reserved':True},'PREFIX_PARENT')
+    if context=='P':
+        cpath=root/'C/report.json'
+        req(cpath.is_file() and not cpath.is_symlink() and cpath.stat().st_size<=H4M6_PREFIX_SPEC['child_report_cap']
+            and json.loads((root/'C/attempt_result.json').read_bytes())=={'authorization':auth,'status':'COMPLETE'},'PREFIX_C_REQUIRED')
+        c=json.loads(cpath.read_bytes());h4m6_prefix_report_replay(c,history,auth,provenance,'C')
+    r={'status':'M470_H4M6_PREFIX_IN_PROGRESS','context':context,'prefix_spec':H4M6_PREFIX_SPEC,
+        'spec':t.H4M6_SPEC,'authorization':auth,'provenance':provenance,'source_commit':PIN,'lanes':[],
+        'physical_transitions_attempted':0,'physical_transitions_recorded':0,
+        'reset_lanes_attempted':0,'reset_lanes_recorded':0,'actor_calls_attempted':0,'actor_calls_recorded':0,
+        'key_audits_attempted':0,'key_audits_recorded':0,'template_initializations_attempted':0,
+        'template_initializations_recorded':0,'optimizer_updates':0,'evaluation_transitions':0,'checkpoint_saves':0,
+        'training_performed':False,'efficacy_evaluated':False,'promotion_authorized':False,
+        'further_training_authorized':False,'passed':False}
+    def persist():
+        h4m6_write_bounded(path,r,cap=H4M6_PREFIX_SPEC['child_report_cap'])
+    h4m6_write_bounded(path,r,exclusive=True,cap=H4M6_PREFIX_SPEC['child_report_cap'])
+    monitor=None
+    try:
+        from m462_ppo_warmstart_run import GPUMonitor,sample_gpu
+        h4m3_no_runtime_imports()
+        gpu=sample_gpu()
+        req(gpu['total_mib']==12288 and 0<=gpu['used_mib']<.95*12288,'PREFIX_GPU_PREFLIGHT')
+        r['gpu_initial']=gpu;persist()
+        monitor=GPUMonitor()
+        with monitor:
+            h4cc_tech_actual(args,r,monitor,persist,rss=True,prefix_context=context)
+        r['gpu']=h3_gpu_check(monitor)
+        r['status']='M470_H4M6_PREFIX_COMPLETE'
+        h4m6_prefix_report_replay(r,history,auth,provenance,context)
+        persist()
+        h4m6_write_bounded(path.parent/'attempt_result.json',{'authorization':auth,'status':'COMPLETE'},exclusive=True)
+        print(r['status'],context,r['endpoint']['classification'],flush=True)
+    except BaseException as exc:
+        r['status']='M470_H4M6_PREFIX_STOP';r['error']=(type(exc).__name__+': '+str(exc))[:4096]
+        if monitor is not None:r['gpu']=monitor.snapshot()
+        try:r['partial_ledger']=h4m6_prefix_ledger(r,history,partial=True)
+        except BaseException as err:r['partial_ledger_error']=(type(err).__name__+': '+str(err))[:4096]
+        try:
+            persist()
+            h4m6_write_bounded(path.parent/'attempt_result.json',{'authorization':auth,'status':'STOPPED'},exclusive=True)
+        except BaseException as err:print('PREFIX_PARTIAL_WRITE_FAILED',repr(err),flush=True)
+        raise
+
+
+def h4m6_prefix_report_replay(r,history,auth,provenance,context):
+    req=h4m6_eval_require
+    req(r['status']=='M470_H4M6_PREFIX_COMPLETE' and r['context']==context
+        and r['authorization']==auth and r['provenance']==provenance
+        and r['compiler']['jax']==r['compiler']['jaxlib']=='0.4.35'
+        and r['compiler']['device']=='cuda:0' and r['gpu']['total_mib']==12288
+        and 0<r['gpu']['peak_used_mib']<.95*12288 and r['gpu']['samples']>0
+        and not r['gpu']['sampler_errors'],'PREFIX_REPORT')
+    audit=h4m6_prefix_ledger(r,history)
+    req(audit==r['audit'],'PREFIX_AUDIT_REPLAY')
+    h4m6_prefix_snapshot_replay(r['endpoint'],r['lanes'][-1]['rows'][-1],history)
+    return audit
+
+
+def h4m6_prefix_dispatch(args):
+    """Sequential C then P, one exclusive root, aggregate bounded collector."""
+    import signal
+    root=Path(__file__).resolve().parent;auth=h4m6_prefix_authorization(root)
+    context=args.h4m6_prefix_child;path=root/h4m6_prefix_path(context)
+    req=h4m6_eval_require
+    req(args.mode=='run' and args.h4m6_phase=='prefix'
+        and args.output.absolute()==args.output.resolve()==path
+        and all(isinstance(x,Path) for x in (args.checkpoint_c,args.h4_reward_report,args.h4cc_restore_report))
+        and os.environ.get('JAX_PLATFORMS')=='cuda'
+        and os.environ.get('JAX_DEFAULT_MATMUL_PRECISION')=='highest'
+        and os.environ.get('XLA_PYTHON_CLIENT_PREALLOCATE')=='false','PREFIX_PREFLIGHT')
+    provenance=h4m6_tech_inputs(args,auth,prefix=True);history=h4m6_prefix_history(root)
+    h4m3_no_runtime_imports()
+    if context is not None:return h4m6_prefix_child(args,auth,provenance,history)
+    h4m6_reserve_tech(path,auth)
+    h4m6_write_bounded(path.parent/'collector.started.json',{'authorization':auth,'pid':os.getpid()},exclusive=True)
+    r={'authorization':auth,'provenance':provenance,'prefix_spec':H4M6_PREFIX_SPEC,
+        'status':'M470_H4M6_PREFIX_IN_PROGRESS','passed':False,'children':[],
+        'post_immutability':False,'comparison':None}
+    def persist():
+        h4m6_write_bounded(path,r,cap=H4M6_PREFIX_SPEC['summary_cap'])
+    h4m6_write_bounded(path,r,exclusive=True,cap=H4M6_PREFIX_SPEC['summary_cap'])
+    log=path.parent/'probe.log';cap=H4M6_PREFIX_SPEC['log_cap']
+    total=stored=0;overflow=False;error=None;proc=None;reports={};decision='STOP'
+    def kill():
+        if proc is not None:
+            try:os.killpg(proc.pid,signal.SIGKILL)
+            except ProcessLookupError:pass
+    try:
+        with log.open('xb') as f:
+            for label in H4M6_PREFIX_SPEC['contexts']:
+                child=root/h4m6_prefix_path(label)
+                h4m6_reserve_tech(child,auth)
+                h4m6_write_bounded(child.parent/'parent.dispatch.json',
+                    {'authorization':auth,'context':label,'pid':os.getpid()},exclusive=True)
+                entry={'context':label,'producer_rc':None,'status':'STARTED'}
+                r['children'].append(entry);persist()
+                cmd=[sys.executable,'-B','-u',str(Path(__file__).resolve()),'--mode','run',
+                    '--h4m6-phase','prefix','--h4m6-prefix-child',label,'--output',str(child),
+                    '--checkpoint-c',str(args.checkpoint_c),'--h4-reward-report',str(args.h4_reward_report),
+                    '--h4cc-restore-report',str(args.h4cc_restore_report)]
+                proc=subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,start_new_session=True)
+                while True:
+                    data=proc.stdout.read1(65536)
+                    if not data:break
+                    total+=len(data);chunk=data[:max(0,cap-stored)];f.write(chunk);stored+=len(chunk)
+                    if total>cap and not overflow:overflow=True;kill()
+                entry['producer_rc']=proc.wait();proc=None;f.flush();os.fsync(f.fileno());persist()
+                req(h4m6_prefix_authorization(root)==auth and h4m6_tech_inputs(args,auth,prefix=True)==provenance,'PREFIX_PARENT_POST')
+                req(entry['producer_rc']==0 and not overflow,'PREFIX_BOUNDED_PROCESS')
+                req(child.is_file() and not child.is_symlink() and 0<child.stat().st_size<=H4M6_PREFIX_SPEC['child_report_cap'],'PREFIX_CHILD_REPORT')
+                report=json.loads(child.read_bytes())
+                req(json.loads((child.parent/'attempt.json').read_bytes())=={'authorization':auth,'reserved':True}
+                    and json.loads((child.parent/'dispatch.started.json').read_bytes())=={'authorization':auth}
+                    and json.loads((child.parent/'attempt_result.json').read_bytes())=={'authorization':auth,'status':'COMPLETE'},'PREFIX_CHILD_MARKERS')
+                h4m6_prefix_report_replay(report,history,auth,provenance,label)
+                entry.update(status='COMPLETE',sha256=sha256(child),bytes=child.stat().st_size,
+                    physical=report['physical_transitions_recorded'],resets=report['reset_lanes_recorded'],
+                    actor_calls=report['actor_calls_recorded'],key_audits=report['key_audits_recorded'],
+                    templates=report['template_initializations_recorded'])
+                reports[label]=report;persist()
+        req(reports['C']['compiler']==reports['P']['compiler'],'PREFIX_COMPILER_CONTEXT')
+        for k,capkey in [('physical','physical'),('resets','resets'),('actor_calls','actor_calls'),
+            ('key_audits','key_audits'),('templates','template_initializations')]:
+            req(sum(e[k] for e in r['children'])<=H4M6_PREFIX_SPEC[capkey],'PREFIX_TOTAL_'+k)
+        req(sum(x['endpoint']['bytes'] for x in reports.values())<=H4M6_PREFIX_SPEC['host_cap'],'PREFIX_HOST_CAP')
+        r['comparison']=h4m6_prefix_compare(reports['C'],reports['P'],history)
+        req(h4m6_prefix_authorization(root)==auth and h4m6_tech_inputs(args,auth,prefix=True)==provenance
+            and all(sha256(root/h4m6_prefix_path(e['context']))==e['sha256'] for e in r['children']),'PREFIX_FINAL_IMMUTABILITY')
+        r['post_immutability']=True;r['status']='M470_H4M6_PREFIX_COMPLETE';persist()
+        h4m6_write_bounded(path.parent/'attempt_result.json',{'authorization':auth,'status':'COMPLETE'},exclusive=True)
+        decision='PREFIX_DIAGNOSTIC_COMPLETE'
+    except BaseException as exc:
+        error=(type(exc).__name__+': '+str(exc))[:4096];kill()
+        if proc is not None:
+            r['children'][-1]['producer_rc']=proc.wait()
+        r['status']='M470_H4M6_PREFIX_STOP';r['error']=error
+        # Preserve available child partial evidence; missing report means unknown, never zero.
+        for entry in r['children']:
+            child=root/h4m6_prefix_path(entry['context'])
+            if child.is_file() and not child.is_symlink() and 0<child.stat().st_size<=H4M6_PREFIX_SPEC['child_report_cap']:
+                entry['partial_sha256']=sha256(child)
+                try:
+                    z=json.loads(child.read_bytes());entry['partial_counts']={k:z[k] for k in (
+                        'physical_transitions_attempted','physical_transitions_recorded','reset_lanes_attempted',
+                        'reset_lanes_recorded','actor_calls_attempted','actor_calls_recorded',
+                        'key_audits_attempted','key_audits_recorded','template_initializations_attempted','template_initializations_recorded')}
+                except (ValueError,KeyError):entry['partial_counts']=None
+            else:entry['partial_counts']=None
+        try:
+            persist()
+            h4m6_write_bounded(path.parent/'attempt_result.json',{'authorization':auth,'status':'STOPPED'},exclusive=True)
+        except BaseException as err:print('PREFIX_PARENT_PARTIAL_WRITE_FAILED',repr(err),flush=True)
+    status={'decision':decision,'error':error,'overflow':overflow,'total_bytes':total,
+        'stored_bytes':stored,'authorization':auth,'post_immutability':r['post_immutability'],'children':r['children']}
+    h4m6_write_bounded(path.parent/'collector.json',status,exclusive=True)
+    print('BOUNDED_LOG_STATUS',json.dumps(status,sort_keys=True),flush=True)
+    for p in sorted(path.parent.rglob('*')):
+        if p.is_file() and not p.is_symlink():print('ARTIFACT_SHA256',sha256(p),p,flush=True)
+    req(decision=='PREFIX_DIAGNOSTIC_COMPLETE','PREFIX_COLLECTOR_STOP')
+
+
 def h4m6_tech_inputs(args,auth,*,diagnostic=False,prefix=False):
     import m463_push_ppo_train as t
     from types import SimpleNamespace
@@ -8692,25 +8865,33 @@ def main():
     p.add_argument('--h4m4-feasibility',action='store_true')
     p.add_argument('--h4m4-historical-archive',type=Path)
     p.add_argument('--h4m5-obs-attribution',action='store_true')
-    p.add_argument('--h4m6-phase',choices=('tech','dev','diag'),help='H4-M6 separately authorized phases')
+    p.add_argument('--h4m6-phase',choices=('tech','dev','diag','prefix'),help='H4-M6 separately authorized phases')
     p.add_argument('--h4m6-diag-child',action='store_true',help=argparse.SUPPRESS)
+    p.add_argument('--h4m6-prefix-child',choices=('C','P'),help=argparse.SUPPRESS)
     args=p.parse_args()
+    if args.h4m6_prefix_child is not None and not (args.mode=='run' and args.h4m6_phase=='prefix'):
+        p.error('M470_H4M6_PREFIX_CHILD_CONFLICT')
     if args.h4m6_diag_child and not (args.mode=='run' and args.h4m6_phase=='diag'):
         p.error('M470_H4M6_DIAG_CHILD_CONFLICT')
     if args.h4m6_phase is not None:
         try:
             if args.mode=='run':
-                if args.h4m6_phase=='diag':h4m6_diag_authorization()
+                if args.h4m6_phase=='prefix':h4m6_prefix_authorization()
+                elif args.h4m6_phase=='diag':h4m6_diag_authorization()
                 else:h4m6_runtime_gate(args.h4m6_phase)
             allowed=('mode','output','h4m6_phase')
-            if args.mode=='run' and args.h4m6_phase in ('tech','diag'):
+            if args.mode=='run' and args.h4m6_phase in ('tech','diag','prefix'):
                 allowed+=('checkpoint_c','h4_reward_report','h4cc_restore_report')
             if args.mode=='run' and args.h4m6_phase=='diag':allowed+=('h4m6_diag_child',)
+            if args.mode=='run' and args.h4m6_phase=='prefix':allowed+=('h4m6_prefix_child',)
             h4m6_eval_require(all(getattr(args,k)==p.get_default(k) for k in vars(args)
                 if k not in allowed),'PLAN_CONFLICT')
             root=Path(__file__).resolve().parent
-            expected=root/(H4M6_DIAG_OUTPUT if args.h4m6_phase=='diag' else (H4M6_TECH_OUTPUT if args.h4m6_phase=='tech' else H4M6_DEV_OUTPUT))
+            expected=root/(h4m6_prefix_path(args.h4m6_prefix_child) if args.h4m6_phase=='prefix' else (H4M6_DIAG_OUTPUT if args.h4m6_phase=='diag' else (H4M6_TECH_OUTPUT if args.h4m6_phase=='tech' else H4M6_DEV_OUTPUT)))
             h4m6_eval_require(args.output.absolute()==args.output.resolve()==expected,'PLAN_OUTPUT')
+            if args.h4m6_phase=='prefix':
+                if args.mode=='run':return h4m6_prefix_dispatch(args)
+                print('M470_H4M6_PREFIX_PLAN',json.dumps(dict(H4M6_PREFIX_SPEC,execution_authorized=False),sort_keys=True));return
             if args.h4m6_phase=='diag':
                 if args.mode=='run':return h4m6_diag_dispatch(args)
                 print('M470_H4M6_DIAG_PLAN',json.dumps(dict(H4M6_DIAG_SPEC,execution_authorized=False),sort_keys=True));return
