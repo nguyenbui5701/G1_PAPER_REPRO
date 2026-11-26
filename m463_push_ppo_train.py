@@ -7086,12 +7086,31 @@ def h4red_project_sources(root):
         t=t[:i]+h4red_once(t[i:j],new,old)+t[j:]
     h4red_require(t.encode('utf8')==historical('m463_push_ppo_train.py',
         '9523fb51d536e38095c339165f0041cfbba70214'),'TRAINER_PROJECTION')
-    changed={'m463_coverage_env.py','m463_instrument_brax.py','m463_push_ppo_train.py'}
-    for name in (*H4_FILES,'m463_gate3_cp_eval.py','paper_config_preflight.json'):
-        if name not in changed:
-            h4red_require((root/name).read_bytes()==subprocess.check_output(
-                ['git','show',H4RED_BASE_HEAD+':'+name],cwd=root),'UNCHANGED_'+name)
+    h4red_unchanged_sources(root)
     return True
+
+
+def h4red_unchanged_sources(root):
+    """Explicit tracked/local partition; never fall back on a missing Git path."""
+    import subprocess
+    changed={'m463_coverage_env.py','m463_instrument_brax.py','m463_push_ppo_train.py'}
+    tracked=('train.py','paper_config.py','m463_gate3_cp_eval.py')
+    local={
+        'm462_ppo_warmstart_run.py':H4R_LOCAL_SHA['m462_ppo_warmstart_run'],
+        'm462_typed_orbax_stage.py':H4R_LOCAL_SHA['m462_typed_orbax_stage'],
+        'paper_config_preflight.json':H4R_CONFIG_SHA,
+    }
+    expected=set((*H4_FILES,'m463_gate3_cp_eval.py','paper_config_preflight.json'))
+    h4red_require(changed.isdisjoint(tracked) and changed.isdisjoint(local)
+        and set(tracked).isdisjoint(local)
+        and changed|set(tracked)|set(local)==expected,'SOURCE_PARTITION')
+    for name in tracked:
+        p=root/name
+        h4red_require(p.is_file() and not p.is_symlink() and
+            p.read_bytes()==subprocess.check_output(
+                ['git','show',H4RED_BASE_HEAD+':'+name],cwd=root),'UNCHANGED_'+name)
+    for name,sha in local.items():
+        h4x_file_pin(root/name,sha)
 
 
 def h4red_parent_preflight(root,*,require_unused=True):
