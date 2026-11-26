@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.245  
+**Version:** 1.2.246  
 **Ngày cập nhật:** 2026-11-26 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -3055,6 +3055,16 @@ Implemented isolated host functions: frozen basis/coefficient/domain/generator, 
 
 Remaining: native isolated dispatcher with mutually exclusive action source and original shared step tail, native frozen loader/reconstruction of all335 prefix + M7 compare and full DEV reference, actual full native state/sibling checks, native pre-action actor-tail guard/actual post-solve safety and comparative gates, prefix/baseline/sham exact archive replay, integrated transfer/selection/confirmation, persistent raw attempted/recorded branch/reset/template ledger and strict end-to-end partial/final readers, full watchdog/GPU/storage/one-use authorization and complete static. Basic components do not establish end-to-end completeness, semantic validity of all branch stop receipts or runtime capacity. Full static NOT RUN. No runtime route may be activated by this commit, actual authorized budget0. Optional local component-only check (not a prerequisite for approving new runtime): from repo via existing g1_m463 Python launcher: g1_m463 -B -c 'from pathlib import Path; import m463_gate3_cp_eval as e; e.h4abs_host_static(Path.cwd())' ; emits H4ABS_HOST_COMPONENT_PASS and H4ABS_FULL_STATIC_NOT_RUN; NATIVE_DISPATCH_HOLD. This command not executed on Owner here; cannot substitute for full static or authorize execution. No active marker or next runtime task. Decision H4-M14-6 CONTINUE PARTIAL SOURCE INTEGRATION / STOP before native execution, same task remains incomplete; scientific H-R5c UNTESTED, ABS-V1 unchanged. No training/holdout/promotion, Branch A research ACTIVE, Branch B HOLD.
 
+### H4-M14-6 CONTINUE — Owner host component acceptance / remaining integration HELD (v1.2.246; 2026-11-26)
+
+Owner supplied terminal excerpt exactly:
+`H4ABS_HOST_COMPONENT_PASS {"action_vectors": 16000, "archived_rows": 211, "fixture_transfers": 2, "full_static": false, "inference": 0, "negative_tests": 30, "optimizer_updates": 0, "physical_transitions": 0, "raw_max": 200834670, "resets": 0, "row_bytes": 2199}`
+`H4ABS_FULL_STATIC_NOT_RUN; NATIVE_DISPATCH_HOLD`
+
+SA reopened exact remote Rules1.2.245 blob46cc8a59d3308d50b480542b3a941d9b1ec3829a at HEADe779e3d6dafaf9ab482f53ad6a6815b8d48867b5 and evaluator blob820f455fc352ea479f37cef56d90559eced72640, h4abs_host_static/h4abs_host_fixtures/h4red_eval_project. All reported fields match accepted component evidence; raw_max=91330*2199=200834670. By exact source, PASS emitted only after full evaluator compile, ABS legacy projection, RED historical git-base SHA/byte reverse projection and one_step/h3_group/h3_decode/h3_summary/h3_decide/frozen-loader AST checks, pinned M3 JSON hash, host fixtures and no-runtime-import checks. Accept Owner-reported component PASS and source-defined checks, not full RED input/runtime static or full ABS static. Only two pasted lines provided, no full log file, exit code, local HEAD/SHA receipt or independently rehashable Owner artifact; do not fabricate those or claim independent local reproduction. Remote source unchanged in this acceptance step.
+
+Decision: OWNER_HOST_COMPONENT_PASS accepted; H4-M14-6 remains partial source integration, full_static=false, native dispatcher/actual full-state reconstruction and identity, complete persistent ledger/strict readers, launcher/authorization and full static remain INCOMPLETE/HOLD as v1.2.245. No need to repeat component test or mechanical analysis; next separate Owner GO may continue same frozen held integration, not new task/runtime. Preserve 5 lanes/64 candidates per lane/16 variables/91330 cap, original residual guard and M14-3/4 STOP. Actual authorized budget0, no new source modifications, native simulation/inference/PPO, holdout or promotion. Rules only. Branch A research ACTIVE; Branch B HOLD.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -3316,6 +3326,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-26)
+
+**H4-M14-6 OWNER HOST COMPONENT PASS ACCEPTED (v1.2.246):** pasted two-line Owner result matches exact evaluator820f455f, 16000 vectors/211 rows/30 negatives/2 synthetic transfers/2199B row/200834670 raw max; full evaluator compile and layered historical source projection checks implied by PASS source. No full log/exit/local SHA receipt independently verified. full_static=false, native dispatcher and complete integration still HOLD; no active GO or PPO/holdout/promotion, Branch B HOLD.
 
 **H4-M14-6 CONTINUE ABS HOST COMPONENT SOURCE INTEGRATED / INCOMPLETE / STOP (v1.2.245):** commit04fcf2e4f920b6ea631e6f9b6cf232778a2b35c4 evaluator820f455f, exact 25702B host block, reverse projection original SHA verified. Host fixtures211 archived rows/16000 vectors/30 negatives, row2199B, mock state and branch/selection/transfer/ledger components. No native dispatcher, strict complete persistent readers/authorization/launcher or full static, no runtime route/GO. Frozen ABS-V1 unchanged; all runtime/PPO/holdout/promotion/Branch B HOLD.
 
@@ -4159,6 +4171,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-26 | H4-M14-6 Owner host component acceptance | exact pasted marker fields and evaluator820f455f source review | OWNER HOST PASS ACCEPTED / full static NOT RUN / native HOLD | 1.2.246 |
+
 | 2026-11-26 | H4-M14-6 CONTINUE isolated ABS host component integration | evaluator04fcf2e, exact reverse projection,211 archived rows/16000 vectors/30 negatives,2199B row and host reader/selection | PARTIAL SOURCE INTEGRATION / FULL STATIC NOT RUN / STOP, no native path | 1.2.245 |
 
 | 2026-11-26 | H4-M14-6 ND-SSTR-ABS-V1 held implementation | exact source/M3, local host generator16000 vectors,15 negatives, partial schema and integration review | PARTIAL HOST PASS / IMPLEMENTATION INCOMPLETE / FULL STATIC NOT RUN / STOP | 1.2.244 |
@@ -4711,6 +4725,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.246 — 2026-11-26:** Accept Owner-reported ABS host component verification, including source-defined compile and layered projection checks, distinguish excerpt from full log/provenance receipt. No executable changes or runtime authorization; remaining H4-M14-6 integration HOLD, Branch B HOLD.
 
 - **v1.2.245 — 2026-11-26:** Integrate tested isolated ABS host components in existing evaluator, exact layered legacy projection, preserve original run/one_step/residual. Record actual partial source and embedded fixture evidence, incomplete native dispatcher/ledger/reader/authorization and full static. Runtime remains HOLD, no new research treatment, Branch B HOLD.
 
