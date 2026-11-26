@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.255  
+**Version:** 1.2.256  
 **Ngày cập nhật:** 2026-11-27 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -3159,6 +3159,10 @@ Bounded plan unchanged: only m463_runs/m470_h4abs_diag_v1/report.json, F/A/B per
 
 Actual SA focused host verification: transcribed26 relevant exact functions from final remote source, independently matched FNV-1a of each full function text, compiled/executed with NumPy/stdlib only on pinned real M3 manifest and original1001-record prefix/baseline/first sham subset; /tmp/h4absd_verify.py SHA2567802a757589a97a005bcd84ee30678c6551dc2cdd2b7a762d0d499624a85987b. Actual H4ABSD_COMPONENT_STATIC {decision_matrix:4,equal:1,framing:3,metadata:1,mixed:1,nan_payload:1,native_calls:0,negative:13,signed_zero:1}; H4ABSD_READER_STATIC {mock_rows:1001,native_calls:0,negative:7}; receipt negatives5. Mock snapshots synthetic, actual historical direct rows reused with synthetic digest chain at fork/A/B only; tests do not imply native state reproducibility. No native imports, physical transitions0, resets0, inference0, optimizer0. This is actual focused function-level execution, not full evaluator compile or actual launcher/native runtime. Final readback verified full previous source projection and one_step byte equality. Full static --h4absd static on Owner requires exact installed source/checkpoint/dependency/M7/history preflight, full evaluator compile, layered projection + AST, focused components and full mock reader, CLI HOLD and receipt negatives; not yet executed on updated full source by SA. Owner must return complete new static log with both exit codes and SHA before any consideration of distinct runtime GO. No full static PASS claimed at this point. If static fails STOP same task, no native attempt or escalation. If diagnostic later does not reproduce historic mismatch or lacks decision-relevant evidence, close investigation INCONCLUSIVE/HOLD without further automatic diagnostic. H-R5c UNTESTED, no PPO/holdout/promotion; Branch A ACTIVE, Branch B HOLD.
 
+### H4-M14-7D-1 — Owner full held static accepted / distinct native GO pending (v1.2.256; 2026-11-27)
+
+SA reviewed Owner's exact uploaded m470_h4absd_static_20261127_004348_283746576.log, 862 bytes, SHA256 04fc0d72feef8fed8e61067ca55aa1aa987f136af3bf2d9ce75e8f5632215568, timestamp2026-11-27T00:43:48+07:00, HEADc3c387296a40988b87ddcf05b49e04e0cfe83a23, Rules1.2.255. Independently retrieved exact remote Rules blob c2c33b8b2eed34e35e5d3d2d0c94924e17d633ee and evaluator blob34966a1b15042dd10d4790f9a9d9bd12a505539a, recomputed UTF-8 SHA256 a31c36e7d18457574854d0635eb8c01fa186686067a67299642971946b69aa6f and 22ce48c71233e713f3f9677e7b96ee3ff68e57eb0f292351fa4223fd516bac4e respectively, both exact matches. Static receipt source791e3daea4f5a6cce752338a3d3cd47ae78437e238ab2137bc9f057d48cb1665, provenance1933e0450e6428255689b24e4dffa053c8b49030e5e63e70bfe97800bfa0c41c (Owner-reported aggregate pins; not independently rebuilt from local dependencies/artifacts). Compared actual log against pinned evaluator h4absd_receipt and h4absd_static: exact unique markers, component fixture dictionary matching all 9 keys incl13 negatives and4 decision cases, reader1001 mock rows/7 negatives, native_calls0 both, final H4ABSD_FULL_STATIC_PASS followed by STATIC_EXIT_CODE=0 TEE_EXIT_CODE=0, no acceptance HOLD. Owner full evaluator compile/AST/reverse projection, inputs preflight, five receipt negatives, schedule fixture and CLI run/child HOLD are evidenced by terminal marker's source ordering, not separately printed or rerun by SA. Full held static PASS accepted; actual native leaf size, real JAX capture compatibility and mismatch reproducibility remain untested. No scientific PASS, no physical/actor work by SA, no executable changes, no native authorization, no allocation or active marker. Prior ABS STOP/consumed authorization/98 post-state mismatches preserved, H-R5c UNTESTED. NEXT only distinct explicit Owner GO for H4-M14-7D-V1 bounded diagnostic, if desired: exact original frozen scope1001 physical/actor,1 reset,2 separately counted templates,5 captures/3 retained, exclusive output and original caps/one-use receipt. No retry, escalation, new lane, PPO, holdout or promotion. If not reproduced or not decision-relevant, close INCONCLUSIVE/HOLD. Branch A research ACTIVE, Branch B HOLD.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -3420,6 +3424,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-26)
+
+**H4-M14-7D-1 OWNER FULL HELD STATIC PASS ACCEPTED / DISTINCT NATIVE GO PENDING (v1.2.256):** exact862B Owner log SHA04fc0d72feef8fed8e61067ca55aa1aa987f136af3bf2d9ce75e8f5632215568, both remote file SHA256 independently matched, exact fixture receipt and exit0/0; evaluator unchanged. Actual native capture/leaf size/reproduction UNTESTED, no active marker, budget allocated0; separate explicit Owner GO required for frozen single diagnostic. Historical ABS STOP preserved, H-R5c UNTESTED, no retry/PPO/holdout/promotion, Branch B HOLD.
 
 **H4-M14-7D-1 HELD SOURCE INTEGRATED / FOCUSED HOST PASS / OWNER FULL STATIC PENDING (v1.2.255):** evaluator34966a1b15042dd10d4790f9a9d9bd12a505539a,21 reverse patches exact, one_step bytes unchanged; isolated ABS diagnostic host mode, 3 retained snapshots, exact ABS/M6 replay, strict bounded reader and one-use contract. Actual26 function checksums matched,1001 mock records/13 component negatives/7 reader negatives/5 receipt negatives, zero native work. Owner --h4absd static only; no active authorization, no native/ABS retry/PPO/holdout/promotion, H-R5c UNTESTED, Branch B HOLD.
 
@@ -4283,6 +4289,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-27 | H4-M14-7D-1 Owner full static review | exact log04fc0d72, remote Rules/evaluator SHA256 match, fixture receipt exact, exit0/0 | FULL HELD STATIC PASS ACCEPTED / native GO pending / zero native | 1.2.256 |
+
 | 2026-11-27 | H4-M14-7D-1 held diagnostic implementation | evaluator34966a1b,21 reverse patches/one_step exact,26 function host checks,1001 mock records/13+7+5 negatives | HELD INTEGRATED / FOCUSED HOST PASS / Owner full static pending / zero native | 1.2.255 |
 
 | 2026-11-27 | H4-M14-7D targeted first-step diagnostic design | exact M6/ABS source, immutable raw hashes and336 endpoints, synthetic framing/zero classification | DESIGN COMPLETE / conditional held implementation only / zero runtime | 1.2.254 |
@@ -4855,6 +4863,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.256 — 2026-11-27:** Accept actual Owner H4ABSD full static receipt after exact remote file hash and source receipt review. Preserve native uncertainty and original STOP; no executable change or active runtime marker. Distinct Owner GO required; Branch B HOLD.
 
 - **v1.2.255 — 2026-11-27:** Integrate single isolated H4-M14-7D-V1 held diagnostic in existing evaluator, preserve exact graph and historical projections, implement full leaf/raw comparison and strict bounded diagnostic reader/authorization. Record actual focused host fixture PASS, Owner updated-source full static pending. No runtime allocation or active marker, no retry or automatic further diagnostic, Branch B HOLD.
 
