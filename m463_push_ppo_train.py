@@ -3797,6 +3797,8 @@ def run(args):
 
 
 def _run_impl(args,h4x=None):
+    if getattr(args,'h4m8_arm',None) is not None:
+        h4m8_execution_gate()
     m6_arm=getattr(args,'h4m6_arm',None)
     if m6_arm is not None:
         h4m6_train_gate(m6_arm)
@@ -5542,6 +5544,376 @@ def h4m8_static_regression(root,brax_train_path):
         'window_rows':len(rows),'nonzero_reward_rows':int(mask.sum()),
         'physical_transitions':0,'resets':0,'optimizer_updates':0,
         'runtime_authorized':False,'full_integration_pending':True}
+
+
+# H4-M8-2B held integration contracts. These do not authorize runtime.
+H4M8_TECH_PATH = 'm463_runs/m470_h4_m8_technical_v1'
+H4M8_ACCEPTED_CORE_HEAD = 'a19ad5c75d0441f13f23d7b558536e8153e73804'
+H4M8_CORE_LOG_SHA = '5c5bc9aff3f5ed50f974f06b0441f0236d75ca77a990f8156d2dcb84fc2efa06'
+H4M8_CORE_GENERATED_SHA = '0640513be9119a9b78141f98e657b1549f4fee97565712081f9b84957b034388'
+H4M8_LEDGER_CAP = 16*1024**2
+H4M8_LATCH_FIELDS = tuple('h4m8_'+k for k in ('active','age','side','positive','consumed'))
+
+
+def h4m8_require(ok,label):
+    if not ok:
+        raise RuntimeError('M470_H4M8_'+label)
+
+
+def h4m8_sha_text(s):
+    return hashlib.sha256(json.dumps(s,sort_keys=True,separators=(',',':'),allow_nan=False).encode()).hexdigest()
+
+
+def h4m8_source_identity(root):
+    root=Path(root).resolve()
+    files={}
+    for name in (*H4_FILES,'m463_gate3_cp_eval.py','paper_config_preflight.json'):
+        p=root/name
+        h4m8_require(p.is_file() and not p.is_symlink(),'SOURCE_FILE '+name)
+        files[name]=digest(p)
+    return {'files':files,'sha256':h4m8_sha_text(files)}
+
+
+def h4m8_manifest_check(auth,source,generated,external,static):
+    """Future distinct authorization schema; no marker may open this revision."""
+    import re
+    keys={'id','phase','output','source_sha256','spec_sha256','generated_sha256',
+          'external_sha256','static_sha256','checkpoint_sha256','restore_sha256','orbax_sha256',
+          'technical_sha256','ref_sha256'}
+    h4m8_require(type(auth) is dict and set(auth)==keys,'AUTH_SCHEMA')
+    phase=auth['phase']
+    paths={**H4M8_PATHS,'technical':H4M8_TECH_PATH}
+    h4m8_require(phase in paths and auth['id']=='H4-M8-CAM-V1' and auth['output']==paths[phase],'AUTH_SCOPE')
+    fixed={'source_sha256':source,'spec_sha256':h4m8_sha_text(H4M8_SPEC),
+           'generated_sha256':generated,'external_sha256':external,'static_sha256':static,
+           'checkpoint_sha256':SEED1_SHA,'restore_sha256':H3_CAUSAL_RESTORE_SHA,'orbax_sha256':H4_ORBAX_SHA}
+    sha=lambda x:isinstance(x,str) and re.fullmatch('[0-9a-f]{64}',x) is not None
+    h4m8_require(all(sha(v) and auth[k]==v for k,v in fixed.items()),'AUTH_PIN')
+    h4m8_require((auth['technical_sha256']=='-' if phase=='technical' else sha(auth['technical_sha256']))
+                 and (sha(auth['ref_sha256']) if phase=='cam' else auth['ref_sha256']=='-'),'AUTH_EVIDENCE')
+    return auth
+
+
+def h4m8_execution_gate():
+    # Deliberate immutable hold: even a fabricated marker or caller cannot enter.
+    raise RuntimeError('M470_H4M8_EXECUTION_HOLD')
+
+
+def h4m8_reserve_attempt(root,auth):
+    h4m8_execution_gate()
+    # Reserved for a separately approved dispatch revision, not callable now.
+    out=Path(root).resolve()/auth['output']
+    h4m8_require(out.parent.is_dir() and not out.parent.is_symlink() and
+                  not out.exists() and not out.is_symlink(),'ATTEMPT_NAMESPACE')
+    h4x_storage(out,initial=True)
+    out.mkdir(exist_ok=False)
+    h4x_write_json(out/'attempt.json',{'authorization':auth,'reserved':True},exclusive=True)
+    return out
+
+
+def h4m8_gpu_guard(s):
+    h4m8_require(type(s) is dict and s['total_mib']==12288 and
+        type(s['peak_used_mib']) in (int,float) and math.isfinite(s['peak_used_mib']) and
+        0<=s['peak_used_mib']<.95*12288 and not s['sampler_errors'],'GPU_STOP')
+    return True
+
+
+def h4m8_project_state(state,cam):
+    """Exclude only exact newly introduced info keys, never historical fields."""
+    from m463_instrument_brax import H4M8_EXT_FIELDS
+    allowed=set(H4M8_EXT_FIELDS)|set(H4M8_LATCH_FIELDS)
+    info=dict(state.info)
+    observed={k for k in info if k.startswith('h4m8_')}
+    h4m8_require(observed==(allowed if cam else set()),'STATE_PROJECTION_KEYS')
+    return state.replace(info={k:v for k,v in info.items() if k not in allowed})
+
+
+def h4m8_project_transition(transition,cam):
+    from m463_instrument_brax import H4M8_EXT_FIELDS
+    allowed=set(H4M8_EXT_FIELDS)
+    extras=dict(transition.extras)
+    state_extras=dict(extras['state_extras'])
+    observed={k for k in state_extras if k.startswith('h4m8_')}
+    h4m8_require(observed==(allowed if cam else set()),'TRANSITION_PROJECTION_KEYS')
+    extras['state_extras']={k:v for k,v in state_extras.items() if k not in allowed}
+    return transition._replace(extras=extras)
+
+
+def h4m8_tree_exact(np,flatten,host,a,b,label):
+    """Raw leaf bytes, dtype, shape and exact treedef; signed zero stays distinct."""
+    al,at=flatten(a); bl,bt=flatten(b)
+    h4m8_require(at==bt and len(al)==len(bl),'TREEDEF '+label)
+    for i,(x,y) in enumerate(zip(al,bl)):
+        x,y=np.asarray(host(x)),np.asarray(host(y))
+        h4m8_require(x.dtype.kind in 'biuf' and y.dtype.kind in 'biuf' and
+            x.dtype==y.dtype and x.shape==y.shape and np.isfinite(x).all() and
+            np.isfinite(y).all() and x.tobytes()==y.tobytes(),'RAW_LEAF '+label+' '+str(i))
+    return len(al)
+
+
+def h4m8_compare_technical_step(np,flatten,host,reference,common):
+    """Host comparator only, consumes already-produced paired records."""
+    names={'model','axes','rng_before','rng_after','state_before','state_after','action','transition'}
+    h4m8_require(set(reference)==set(common)==names,'TECH_RECORD_KEYS')
+    results={}
+    for key in sorted(names):
+        a,b=reference[key],common[key]
+        if key.startswith('state_'):
+            a,b=h4m8_project_state(a,False),h4m8_project_state(b,True)
+        elif key=='transition':
+            a,b=h4m8_project_transition(a,False),h4m8_project_transition(b,True)
+        results[key]=h4m8_tree_exact(np,flatten,host,a,b,key)
+    return results
+
+
+def h4m8_verify_fixed_batch(np,flatten,host,native):
+    """Read-only reward-leaf verifier on the same collected batch; no optimizer."""
+    from m463_instrument_brax import h4m8_learning_reward
+    x=host(native)
+    ex=x.extras['state_extras']
+    ref,_,actual,bad=h4m8_learning_reward(np,x.reward,x.discount,ex['truncation'],ex,np.bool_(False))
+    h4m8_require(not bad.any() and not actual.any(),'FIXED_SHAM')
+    h4m8_tree_exact(np,flatten,host,x,x._replace(reward=ref),'SHAM_FULL_TREE')
+    cam,desired,actual,bad=h4m8_learning_reward(np,x.reward,x.discount,ex['truncation'],ex,np.bool_(True))
+    h4m8_require(not bad.any(),'FIXED_CAM')
+    expected=np.where(desired>0,x.reward-desired,x.reward)
+    h4m8_tree_exact(np,flatten,host,cam,expected,'CAM_REWARD')
+    changed=x._replace(reward=cam)
+    h4m8_tree_exact(np,flatten,host,x,changed._replace(reward=x.reward),'CAM_NONREWARD_TREE')
+    return {'nonzero_desired':int((desired>0).sum()),'nonzero_actual':int((actual>0).sum())}
+
+
+def h4m8_chunk_counts(np,metrics,pending_before,pending_after,arm):
+    """H8 reducer uses SUM across 5 scan slots, not legacy mean*5."""
+    h4m8_require(arm in H4M8_PATHS and len(pending_before)==len(pending_after)==2,'CHUNK_ARM')
+    def scalar(key):
+        a=np.asarray(metrics[key])
+        h4m8_require(a.shape==() and a.dtype.kind in 'iuf' and np.isfinite(a),'METRIC '+key)
+        return a.item()
+    def count(key,cap=5*TOTAL_STEPS_BATCH):
+        v=scalar(key)
+        h4m8_require(0<=v<=cap and v==int(v),'COUNT '+key)
+        return int(v)
+    collected=count('h4m8_batch_collected',5)
+    committed=count('h4m8_batch_committed',5)
+    rejected=count('h4m8_batch_rejected',5)
+    failed=count('h4m8_chunk_failed',1)
+    h4m8_require(collected==committed+rejected and 1<=collected<=5 and rejected<=1 and
+        (failed==1 or (collected==committed==5 and rejected==0)) and
+        (rejected==0 or failed==1),'BATCH_COUNTS')
+    result={'collected':collected,'committed':committed,'rejected':rejected,'failed':failed,'sides':[]}
+    for side in (1,2):
+        p='h4m8_side_'+str(side)+'_'
+        c={k:count(p+k) for k in ('qualified','start','event_terminal','eligible','positive_start',
+            'completed','close_terminal','close_truncation','close_boundary','close_command',
+            'close_event','reach25','opportunities','attempts')}
+        c['weight8']=count(p+'weight8',8*5*TOTAL_STEPS_BATCH);c['host_reset']=0
+        ages=[count(p+'age_'+str(k)) for k in range(1,51)]
+        offsets=[count(p+'offset_'+str(k)) for k in range(32)]
+        positive=count(p+'positive_rows');delivered=count(p+'delivered_rows')
+        desired=scalar(p+'desired');actual=scalar(p+'actual');consumed=scalar(p+'consumed_desired')
+        h4m8_require(sum(ages)==c['eligible'] and ages[24]==c['reach25'] and
+            sum(offsets)==positive and 0<=delivered<=positive and
+            0<=consumed<=desired and actual>=0,'EXPOSURE_HISTOGRAM')
+        h4m8_require(sum(v*min(8,max(0,k-7),max(0,51-k)) for k,v in enumerate(ages,1))==c['weight8'],'WEIGHT_HISTOGRAM')
+        h4m8_require(arm!='cam-ref' or (actual==consumed==0 and delivered==0),'SHAM_COST')
+        # STOP records may contain inconsistent data: preserve raw evidence,
+        # do not pass a failed chunk as a valid ledger row.
+        if failed==0:
+            h4m8_window_ledger(c,pending_before[side-1],pending_after[side-1])
+        result['sides'].append({'counts':c,'ages':ages,'offsets':offsets,'positive_rows':positive,
+            'delivered_rows':delivered,'desired':desired,'actual':actual,'consumed_desired':consumed,
+            'pending_before':pending_before[side-1],'pending_after':pending_after[side-1]})
+    return result
+
+
+def h4m8_abort_record(path,authorization,index,metrics):
+    """Persist a bounded, JSON-safe STOP witness before raising in a future dispatch."""
+    h4m8_require(type(index) is int and 1<=index<=4,'ABORT_INDEX')
+    # Do not silently sanitize nonfinite metrics to ordinary zero.
+    def encode(x):
+        v=float(x)
+        return v if math.isfinite(v) else {'nonfinite':repr(v)}
+    row={'status':'STOP','authorization':authorization,'index':index,
+         'metrics':{k:encode(v) for k,v in metrics.items() if k.startswith('h4m8_')},
+         'training_complete':False,'promotion_authorized':False}
+    raw=(json.dumps(row,sort_keys=True,allow_nan=False)+'\n').encode()
+    h4m8_require(len(raw)<=H4M8_LEDGER_CAP,'ABORT_CAP')
+    h4x_write_json(Path(path),row,exclusive=True)
+    return row
+
+
+def h4m8_read_stop_report(path,expected_sha,auth):
+    """Strict STOP witness reader only; not a full training acceptance reader."""
+    path=Path(path)
+    h4m8_require(path.is_file() and not path.is_symlink() and 0<path.stat().st_size<=H4M8_LEDGER_CAP and
+                  digest(path)==expected_sha,'STOP_REPORT_PIN')
+    def unique(pairs):
+        d={}
+        for k,v in pairs:
+            h4m8_require(k not in d,'DUPLICATE_JSON_KEY');d[k]=v
+        return d
+    def reject(x):
+        raise RuntimeError('M470_H4M8_NONFINITE_JSON')
+    r=json.loads(path.read_text('utf8'),object_pairs_hook=unique,parse_constant=reject)
+    h4m8_require(set(r)=={'status','authorization','index','metrics','training_complete','promotion_authorized'} and
+        r['status']=='STOP' and r['authorization']==auth and type(r['index']) is int and 1<=r['index']<=4 and
+        r['training_complete'] is False and r['promotion_authorized'] is False and type(r['metrics']) is dict and
+        r['metrics'].get('h4m8_chunk_failed')==1,'STOP_REPORT_SCHEMA')
+    h4m8_require(all(k.startswith('h4m8_') and (type(v) in (int,float) and math.isfinite(v) or
+        type(v) is dict and set(v)=={'nonfinite'} and v['nonfinite'] in ('nan','inf','-inf'))
+        for k,v in r['metrics'].items()),'STOP_REPORT_METRIC')
+    return r
+
+
+def h4m8_integration_static(root,brax_train_path):
+    """Focused changed-source verification: host-only mocks, no native imports."""
+    import ast
+    import subprocess
+    import tempfile
+    from collections import namedtuple
+    from types import SimpleNamespace
+    import numpy as np
+    import m463_instrument_brax as gen
+    root=Path(root).resolve()
+    req=h4m8_require
+    names=('m463_coverage_env.py','m463_instrument_brax.py','m463_push_ppo_train.py','m463_gate3_cp_eval.py')
+    src={k:(root/k).read_bytes() for k in names}
+    old=lambda name:subprocess.check_output(['git','show',H4M8_ACCEPTED_CORE_HEAD+':'+name],cwd=root)
+    for name,raw in src.items():
+        compile(raw,name,'exec')
+    req(src[names[3]]==old(names[3]),'EVAL_IDENTITY')
+    expected=old(names[0]).replace(
+        b"            out['h4_bad']=jp.maximum(out['h4_bad'],m8out['h4m8_bad'])\n",
+        b"            # CAM validity stays in its own new telemetry; old leaves are untouched.\n")
+    req(src[names[0]]==expected and expected!=old(names[0]),'ENV_EXACT_DIFF')
+    previous={'__name__':'_h4m8_core_instrumenter'}
+    exec(compile(old(names[1]),'<accepted core instrumenter>','exec'),previous)
+    raw=Path(brax_train_path).read_bytes()
+    for name,kw in [('make_h4_exploratory_source',{}),('make_h4_exploratory_source',{'enable_h4cc':True}),
+                    ('make_h4m6_source',{}),('make_h4m8_source',{})]:
+        req(getattr(gen,name)(raw,**kw)==previous[name](raw,**kw),'GEN_LEGACY '+name)
+    base,sha=gen.make_h4m8_source(raw)
+    req(sha==H3_CAUSAL_ORIGINAL_BRAX_SHA and hashlib.sha256(base.encode()).hexdigest()==H4M8_CORE_GENERATED_SHA,'CORE_GENERATED_PIN')
+    generated,meta=gen.h4m8_build_held(raw)
+    compile(generated,'<CAM integrated>','exec')
+    req(meta['runtime_authorized'] is False and generated.count("raise RuntimeError('M470_H4M8_GENERATED_EXECUTION_HOLD')")==1,
+        'GEN_HOLD')
+    # Unique executable optimizer call is nested in the valid branch.
+    tree=ast.parse(generated)
+    funcs={n.name:n for n in ast.walk(tree) if isinstance(n,ast.FunctionDef)}
+    update=funcs['h8_update']; reject=funcs['h8_reject']; skip=funcs['skip']
+    req('sgd_step' in ast.unparse(update) and 'sgd_step' not in ast.unparse(reject) and
+        'running_statistics.update' not in ast.unparse(reject) and
+        'training_step(c,None)' not in ast.unparse(skip),'PRE_SGD_AST')
+    req("jax.lax.cond(h8_valid, h8_update, h8_reject, None)" in ast.unparse(funcs['training_step']) and
+        "jax.lax.cond(failed, skip, collect, original)" in ast.unparse(funcs['h8_scan']),'COND_AST')
+    def negative(fn,label):
+        try:
+            fn()
+        except (RuntimeError,ValueError):
+            return
+        raise RuntimeError('M470_H4M8_NEGATIVE_ACCEPTED '+label)
+    negative(h4m8_execution_gate,'EXECUTION')
+    negative(lambda:gen.build_instrumented_ppo(None,Path('unused'),enable_h4m8=True),'BUILDER')
+    negative(lambda:_run_impl(SimpleNamespace(h4m8_arm='cam')),'DIRECT_RUN')
+    # One synthetic batch spanning a recovery start and a cross-unroll pending window.
+    shape=(1,32)
+    ex={k:np.zeros(shape,np.float32 if k in ('h4m8_mass','h4m8_h2','h4m8_cost','h4m8_shadow') else np.int32)
+        for k in gen.H4M8_EXT_FIELDS}
+    for k in ('h4_bad','h4cc_bad','h4_event_qual','h4_source_terminal','h4_boundary'):
+        ex[k]=np.zeros(shape,np.int32)
+    ex['truncation']=np.zeros(shape,np.float32)
+    for k,v in [('qualified',1),('start',1),('event_side',1)]:
+        ex['h4m8_'+k][0,0]=v
+    ex['h4_event_qual'][0,0]=1
+    ex['h4m8_eligible'][0,1:]=1;ex['h4m8_tick_side'][0,1:]=1
+    ex['h4m8_tick_age'][0,1:]=np.arange(1,32,dtype=np.int32)
+    ex['h4m8_weight8'][0,1:]=np.minimum(8,np.maximum(0,np.arange(1,32)-7))
+    ex['h4m8_mass'].fill(30);ex['h4m8_h2'].fill(900)
+    hr=ex['h4m8_mass']*np.float32(.793)*np.float32(.35)
+    ex['h4m8_cost'][:]=ex['h4m8_h2']/(hr*hr+ex['h4m8_h2'])
+    ex['h4m8_shadow'][:]=np.float32(.25)*np.float32(.02)*(ex['h4m8_weight8'].astype(np.float32)/np.float32(8))*ex['h4m8_cost']
+    ex['h4m8_positive_start'][0,8]=1
+    before={k:np.zeros(1,np.int32) for k in H4M8_LATCH_FIELDS}
+    after={k:np.array([v],np.int32) for k,v in zip(H4M8_LATCH_FIELDS,(1,31,1,1,1))}
+    req(not gen.h4m8_batch_contract(np,ex,before,after).any(),'BATCH_CONTINUITY')
+    for key,pos,value in [('h4m8_tick_age',9,8),('h4m8_positive_start',9,1),
+                          ('h4_event_qual',0,2),('h4_bad',9,1),('h4m8_completed',9,1)]:
+        corrupt={k:v.copy() for k,v in ex.items()};corrupt[key][0,pos]=value
+        req(gen.h4m8_batch_contract(np,corrupt,before,after).any(),'BATCH_NEGATIVE '+key)
+    native=np.full(shape,-0.,np.float32);discount=np.ones(shape,np.float32)
+    cam,desired,actual,bad=gen.h4m8_learning_reward(np,native,discount,ex['truncation'],ex,np.bool_(True))
+    req(not bad.any() and (actual>0).sum()==24,'FIXED_BATCH')
+    # Exact generated pre-SGD block using synchronous mocks of cond and scan.
+    # eval_shape mock returns metadata without invoking the update function.
+    State=namedtuple('MockTrainingState','optimizer_state params normalizer_params')
+    Batch=namedtuple('MockBatch','reward observation discount extras')
+    ts=State(np.array([7],np.int32),np.array([2.],np.float32),np.array([3.],np.float32))
+    data=Batch(native,np.zeros((1,32,1),np.float32),discount,{'state_extras':ex})
+    def flatten(x):
+        leaves=[]
+        def walk(v):
+            if isinstance(v,dict):
+                return ('dict',tuple((k,walk(v[k])) for k in sorted(v)))
+            if isinstance(v,tuple):
+                return (type(v).__name__,tuple(walk(z) for z in v))
+            leaves.append(v);return 'leaf'
+        return leaves,walk(x)
+    # walk must happen before returning list, and list is shared.
+    def test_gate(invalid):
+        calls={'normalizer':0,'sgd':0}
+        def norm(*a,**kw):
+            calls['normalizer']+=1
+            return ts.normalizer_params+np.float32(1)
+        def scan(fn,initial,unused,length):
+            for _ in range(length):
+                initial,_=fn(initial,None)
+            return initial,{'loss':np.float32(1)}
+        def sgd(c,_,**kw):
+            calls['sgd']+=1
+            return (c[0]+np.int32(1),c[1]+np.float32(1),c[2]),None
+        def tree_map(fn,x):
+            return {k:fn(v) for k,v in x.items()}
+        fake=SimpleNamespace(lax=SimpleNamespace(pmin=lambda x,_:x,cond=lambda p,a,b,x:(a if p else b)(x),scan=scan),
+             tree_util=SimpleNamespace(tree_leaves=lambda x:flatten(x)[0],tree_map=tree_map),
+             eval_shape=lambda f,_:(None,None,None,{'loss':np.zeros((),np.float32)}))
+        scope=dict(jax=fake,jnp=np,h8_bad=np.full(shape,invalid,np.bool_),data=data,
+            training_state=ts,state=SimpleNamespace(info=after),learning_data=data._replace(reward=cam),
+            h8_before=before,h8_actual=actual,_PMAP_AXIS_NAME='mock',running_statistics=SimpleNamespace(update=norm),
+            _remove_pixels=lambda x:x,functools=functools,sgd_step=sgd,key_sgd=np.zeros(2,np.uint32),num_updates_per_batch=5)
+        # Real tree contains State, not SimpleNamespace; give mock state proper leaves.
+        Env=namedtuple('MockEnv','info')
+        scope['state']=Env(after)
+        exec(compile(__import__('textwrap').dedent(gen.H4M8_GATED_UPDATE_BLOCK),'<mock gate>','exec'),scope)
+        req(calls==({'normalizer':0,'sgd':0} if invalid else {'normalizer':1,'sgd':5}),'GATE_CALLS')
+        if invalid:
+            for k,v in [('optimizer_state',ts.optimizer_state),('params',ts.params),('normalizer_params',ts.normalizer_params)]:
+                req(scope[k].tobytes()==v.tobytes(),'REJECT_IDENTITY '+k)
+            req(not scope['h8_actual'].any(),'REJECT_COST')
+    test_gate(False);test_gate(True)
+    # Exact raw comparison negative including signed zero.
+    h4m8_tree_exact(np,flatten,lambda x:x,np.array([-0.],np.float32),np.array([-0.],np.float32),'FIXTURE')
+    negative(lambda:h4m8_tree_exact(np,flatten,lambda x:x,np.array([-0.],np.float32),np.array([0.],np.float32),'SIGN'),'SIGNED_ZERO')
+    h4m8_gpu_guard({'total_mib':12288,'peak_used_mib':782,'sampler_errors':[]})
+    negative(lambda:h4m8_gpu_guard({'total_mib':12288,'peak_used_mib':12288,'sampler_errors':[]}), 'GPU')
+    # CLI actual parser, no runtime dispatch; temporary paths not created.
+    for arm in ('cam-ref','cam'):
+        args=['--stage','easy_repeat_support','--checkpoint','absent.msgpack','--restore-report','absent.json',
+              '--output-dir',H4M8_PATHS[arm],'--h4m8-arm',arm]
+        def cli(mode,extra=()):
+            return subprocess.run([sys.executable,'-B',str(root/names[2]),'--mode',mode,*args,*extra],
+                cwd=root,capture_output=True,text=True,timeout=30)
+        pos=cli('plan');req(pos.returncode==0 and 'M470_H4M8_PLAN_NO_GPU' in pos.stdout,'CLI_PLAN')
+        for mode,flags in [('longtrain',()),('smoke',()),('plan',('--h4cc-arm','ref')),('plan',('--rollouts','40'))]:
+            neg=cli(mode,flags);req(neg.returncode!=0 and 'M470_H4M8_' in neg.stderr,'CLI_NEGATIVE')
+    req(not H4M8_EXECUTION_AUTHORIZED and not any(k in sys.modules for k in ('jax','mujoco','brax.training.agents.ppo.train')),'NO_NATIVE_IMPORT')
+    return {'decision':'HELD_INTEGRATION_COMPONENT_STATIC_PASS','implementation_complete':False,
+            'generated_sha256':meta['instrumented_sha256'],'original_brax_sha256':sha,
+            'files_sha256':{k:hashlib.sha256(v).hexdigest() for k,v in src.items()},
+            'pre_sgd_mock_positive_updates':5,'pre_sgd_mock_negative_updates':0,
+            'physical_transitions':0,'resets':0,'optimizer_updates':0,'runtime_authorized':False,
+            'full_dispatch_integration_pending':True}
 
 
 def main():
