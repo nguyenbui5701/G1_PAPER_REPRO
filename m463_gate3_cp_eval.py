@@ -13220,7 +13220,7 @@ def h4absd_history(root):
 def h4absd_inputs(root):
     inputs=h4abs_inputs(root);a,e=h4absd_history(root)
     h4abs_req(inputs['lanes'][0]['key']==['CCRC',7357,'left'] and len(inputs['lanes'][0]['double'])==666,'ABSD lane archive')
-    inputs['historical_rows']=a[:1001];inputs['historical_events']=e
+    inputs['historical_rows']=a[:1001];inputs['historical_events']=e;inputs['fork_digest']=H4ABSD_FORK
     inputs['provenance']=dict(inputs['provenance'],diagnostic_plan=h4m3_digest(h4absd_plan()),historical_stop=H4ABSD_PINS)
     return inputs
 
@@ -13231,8 +13231,10 @@ def h4absd_framed(meta,raw):
     def field(b):
         h.update(len(b).to_bytes(8,'little'));h.update(b)
     field(meta['tree'].encode('utf8'));field(str(len(meta['leaves'])).encode('ascii'))
+    h4abs_req(type(meta['tree']) is str and type(meta['leaves']) is list and len(meta['leaves'])>0,'ABSD tree schema')
     paths=set()
     for x in meta['leaves']:
+        h4abs_req(set(x)=={'key','path','dtype','shape','nbytes','sha256','weak_type','offset'} and type(x['path']) is str,'ABSD leaf metadata')
         key=x['key'];dt=np.dtype(x['dtype']);shape=x['shape'];size=x['nbytes']
         h4abs_req(type(key) is list and all(type(k) is list and len(k)==3 and all(type(v) is str for v in k) for k in key)
             and type(x['weak_type']) is bool and type(shape) is list and all(type(n) is int and n>=0 for n in shape)
@@ -13307,8 +13309,11 @@ def h4absd_compare(a,u,b,v):
             bb=np.frombuffer(q,dtype=np.uint8).reshape(-1,dt.itemsize);mask=aa!=bb
             ids=np.flatnonzero(mask.any(axis=1));av=np.frombuffer(p,dtype=dt)[ids];bv=np.frombuffer(q,dtype=dt)[ids]
             zeros=(av==0)&(bv==0) if dt.kind=='f' else np.zeros(len(ids),dtype=bool)
+            nan_payload=(np.isnan(av)&np.isnan(bv)) if dt.kind in 'fc' else np.zeros(len(ids),dtype=bool)
+            numeric=(av!=bv)&~nan_payload
             entry.update(changed_elements=len(ids),changed_bytes=int(mask.sum()),zero_sign_elements=int(zeros.sum()),
-                kind='SIGNED_ZERO_ONLY' if zeros.all() else 'MIXED' if zeros.any() else 'NUMERIC_OR_REPRESENTATION')
+                nan_payload_elements=int(nan_payload.sum()),numeric_elements=int(numeric.sum()),
+                kind='SIGNED_ZERO_ONLY' if zeros.all() else 'NAN_PAYLOAD_ONLY' if nan_payload.all() else 'MIXED' if zeros.any() or nan_payload.any() else 'NUMERIC_OR_REPRESENTATION')
             if witnesses<16:
                 ix=int(ids[0]);entry['first']=dict(index=list(map(int,np.unravel_index(ix,x['shape']))) if x['shape'] else [],
                     byte_offset=int(np.flatnonzero(mask.ravel())[0]),a=aa[ix].tobytes().hex(),b=bb[ix].tobytes().hex());witnesses+=1
@@ -13338,6 +13343,8 @@ class H4ABSDJournal(H4AbsJournal):
         super().reserve(key,t)
     def capture(self,name,state,jax,expected):
         h4abs_req(len(self.captures)<5 and name==H4ABSD_CAPTURE_ORDER[len(self.captures)],'ABSD capture order')
+        import shutil
+        h4abs_req(shutil.disk_usage(self.path).free>=2*1024**3+16*H4ABSD_MIB,'ABSD capture storage')
         self.event(['capture_attempt',name])
         meta,raw=h4absd_capture(state,jax.tree_util.tree_flatten_with_path,jax.device_get)
         h4abs_req(meta['digest']==expected,'ABSD live original digest')
@@ -13383,7 +13390,7 @@ def h4absd_read(path,inputs,complete=False,deadline=None):
     path=Path(path);h4absd_storage(path)
     j=path/'events.jsonl';r=path/'rows.bin';d=h4abs_row_dtype()
     h4abs_req(j.stat().st_size<=2*H4ABSD_MIB and r.stat().st_size<=2201199,'ABSD reader cap')
-    schedule=h4absd_schedule(inputs['historical_events']);n=attempted=0;pending=None;last=None;start=None
+    schedule=h4absd_schedule(inputs['historical_events']);fork_digest=inputs['fork_digest'];n=attempted=0;pending=None;last=None;start=None
     reset_attempted=reset_recorded=0;templates=[];snapshots={};captures=[];capture_pending=None;logical=metadata=0;rows=[];pos=0
     with j.open('rb') as jf,r.open('rb') as rf:
         for line in jf:
@@ -13393,7 +13400,7 @@ def h4absd_read(path,inputs,complete=False,deadline=None):
             tag=want[0];h4abs_req(e[0]==tag,'ABSD event tag')
             if tag=='begin':
                 h4abs_req(len(e)==5 and e[:4]==want[:4] and len(bytes.fromhex(e[4]))==32
-                    and (e[2]==0 or e[4]==H4ABSD_FORK),'ABSD begin');start=e[4];last=None
+                    and (e[2]==0 or e[4]==fork_digest),'ABSD begin');start=e[4];last=None
             elif tag=='attempt':
                 h4abs_req(e==want and pending is None and attempted<1001,'ABSD attempt')
                 pending=e[1:];attempted+=1
@@ -13413,13 +13420,15 @@ def h4absd_read(path,inputs,complete=False,deadline=None):
             elif tag=='capture_attempt':
                 h4abs_req(e==want and capture_pending is None,'ABSD capture attempt');capture_pending=e[1]
             elif tag=='capture_record':
-                h4abs_req(len(e)==7 and e[:2]==want and capture_pending==e[1]
+                h4abs_req(len(e)==6 and e[:2]==want and capture_pending==e[1]
                     and type(e[3]) is int and 0<e[3]<=8*H4ABSD_MIB,'ABSD capture record')
                 name=e[1];logical+=e[3];h4abs_req(logical<=40*H4ABSD_MIB,'ABSD logical total')
-                expected=H4ABSD_FORK if name in ('F','preA','preB') else rows[-1]['state_after'].tobytes().hex()
+                expected=fork_digest if name in ('F','preA','preB') else rows[-1]['state_after'].tobytes().hex()
                 h4abs_req(e[2]==expected,'ABSD snapshot link')
+                if name=='F':h4abs_req(rows[-1]['state_after'].tobytes().hex()==fork_digest,'ABSD fork row link')
                 if name.startswith('pre'):
-                    h4abs_req(e[4:] == [None,None] and name!='F','ABSD transient receipt')
+                    fm,fr=snapshots['F']
+                    h4abs_req(e[4:] == [None,None] and e[3]==len(h4abs_json_bytes(fm))+len(fr),'ABSD transient receipt')
                 else:
                     mp=path/(name+'.json');rp=path/(name+'.bin')
                     h4abs_req(mp.stat().st_size+rp.stat().st_size==e[3],'ABSD snapshot size')
@@ -13441,17 +13450,22 @@ def h4absd_read(path,inputs,complete=False,deadline=None):
         h4abs_req(not trailing,'ABSD uncommitted raw row')
     h4abs_req(attempted-n==int(pending is not None),'ABSD count')
     result=None
+    present={p.name for p in path.iterdir()}
+    retained={name+suffix for name in snapshots for suffix in ('.json','.bin')}
+    snapshot_names={name+suffix for name in ('F','A','B') for suffix in ('.json','.bin')}
+    uncommitted=sorted((present&snapshot_names)-retained)
+    h4abs_req(not uncommitted or (not complete and capture_pending in ('F','A','B') and all(n.startswith(capture_pending+'.') for n in uncommitted)),'ABSD uncommitted snapshot')
     if complete:
         h4abs_req(pos==len(schedule) and n==attempted==1001 and pending is None
             and captures==list(H4ABSD_CAPTURE_ORDER) and capture_pending is None
             and reset_attempted==reset_recorded==1 and len(templates)==4,'ABSD incomplete')
-        h4abs_req(rows[334]['state_after'].tobytes().hex()==H4ABSD_FORK
-            and rows[335]['state_before'].tobytes().hex()==rows[1000]['state_before'].tobytes().hex()==H4ABSD_FORK,'ABSD fork link')
+        h4abs_req(rows[334]['state_after'].tobytes().hex()==fork_digest
+            and rows[335]['state_before'].tobytes().hex()==rows[1000]['state_before'].tobytes().hex()==fork_digest,'ABSD fork link')
         h4absd_direct(rows[335],rows[1000],paired=True)
         result=h4absd_compare(*snapshots['A'],*snapshots['B'])
     return dict(attempted=attempted,recorded=n,pending=pending,actor_attempted=attempted,actor_recorded=n,
         reset_attempted=reset_attempted,reset_recorded=reset_recorded,templates=templates,
-        capture_pending=capture_pending,captures=captures,logical_bytes=logical,
+        capture_pending=capture_pending,captures=captures,logical_bytes=logical,uncommitted_snapshots=uncommitted,
         raw_sha256=sha256(r),decision=result,passed=False)
 
 def h4absd_marker(rules):
@@ -13472,7 +13486,10 @@ def h4absd_authorize(root):
     for line in ('H4ABSD_SOURCE '+auth['source'],'H4ABSD_PROVENANCE '+auth['provenance'],
         'H4ABSD_EVALUATOR_SHA256 '+p['source']['m463_gate3_cp_eval.py'],'H4ABSD_FULL_STATIC_PASS','STATIC_EXIT_CODE=0 TEE_EXIT_CODE=0'):
         h4abs_req(lines.count(line)==1,'ABSD static receipt')
-    h4abs_req(lines[-2:]==['H4ABSD_FULL_STATIC_PASS','STATIC_EXIT_CODE=0 TEE_EXIT_CODE=0'],'ABSD exit receipt')
+    for prefix in ('H4ABSD_SOURCE ','H4ABSD_PROVENANCE ','H4ABSD_EVALUATOR_SHA256 ','STATIC_EXIT_CODE='):
+        h4abs_req(sum(x.startswith(prefix) for x in lines)==1,'ABSD ambiguous receipt')
+    h4abs_req(lines.count('H4ABSD_FULL_STATIC_PASS')==1 and not any('FULL_STATIC_ACCEPTANCE_HOLD' in x for x in lines)
+        and lines[-2:]==['H4ABSD_FULL_STATIC_PASS','STATIC_EXIT_CODE=0 TEE_EXIT_CODE=0'],'ABSD exit receipt')
     return auth,inputs
 
 def h4absd_fixtures():
@@ -13498,6 +13515,65 @@ def h4absd_fixtures():
         else:raise ValueError('ABSD fixture negative accepted')
     return dict(framing=3,negative=negatives,mixed=1,metadata=1,equal=1,native_calls=0)
 
+def h4absd_reader_fixtures(inputs):
+    """Synthetic full snapshot endpoints on immutable historical direct records.
+    Not native state capture: mock digest links deliberately replace old digests only."""
+    import numpy as np
+    import tempfile
+    class Leaf:
+        def __init__(self,values):
+            self.a=np.array(values,np.float32);self.dtype=self.a.dtype;self.shape=self.a.shape;self.weak_type=False
+    def snap(values):return h4absd_capture(Leaf(values),lambda v:([(('data','qacc'),v)],'mock-tree'),lambda v:v.a)
+    snapshots={'F':snap([1.,2.]),'A':snap([0.,1.]),'B':snap([-0.,2.])}
+    f,a,b=(snapshots[k][0]['digest'] for k in ('F','A','B'))
+    rows=inputs['historical_rows'].copy()
+    def put(i,k,d):rows[i][k]=np.frombuffer(bytes.fromhex(d),np.uint8)
+    put(334,'state_after',f);put(335,'state_before',f);put(335,'state_after',a);put(336,'state_before',a)
+    put(1000,'state_before',f);put(1000,'state_after',b)
+    mock=dict(inputs,fork_digest=f,historical_rows=rows)
+    schedule=h4absd_schedule(inputs['historical_events']);ev=[];n=0;neg=0
+    with tempfile.TemporaryDirectory() as tmp:
+        p=Path(tmp);jp=p/'events.jsonl';rp=p/'rows.bin'
+        for name,(m,raw) in snapshots.items():
+            (p/(name+'.json')).write_bytes(h4abs_json_bytes(m));(p/(name+'.bin')).write_bytes(raw)
+        for e0 in schedule:
+            e=e0.copy();tag=e[0]
+            if tag=='begin' and e[2]!=0:e[4]=f
+            if tag=='record':
+                e[1]=hashlib.sha256(rows[n].tobytes()).hexdigest();n+=1
+            if tag=='capture_record':
+                name=e[1];pre=name.startswith('pre');m,raw=snapshots['F' if pre else name]
+                mb=h4abs_json_bytes(m);e.extend([m['digest'],len(mb)+len(raw),
+                    None if pre else hashlib.sha256(mb).hexdigest(),None if pre else hashlib.sha256(raw).hexdigest()])
+            ev.append(e)
+        def write(events):jp.write_bytes(b''.join(h4abs_json_bytes(e) for e in events))
+        rp.write_bytes(rows.tobytes());write(ev)
+        got=h4absd_read(p,mock,complete=True)
+        h4abs_req(got['recorded']==1001 and got['captures']==list(H4ABSD_CAPTURE_ORDER)
+            and got['decision']['decision']=='NEW_MISMATCH_LOCALIZED' and got['passed'] is False,'ABSD full reader fixture')
+        def reject():
+            nonlocal neg
+            try:h4absd_read(p,mock,complete=True)
+            except (ValueError,RuntimeError,KeyError,TypeError):neg+=1;return
+            raise ValueError('ABSD invalid reader fixture accepted')
+        for tag in ('attempt','capture_record','begin'):
+            bad=[e.copy() for e in ev]
+            i=next(i for i,e in enumerate(bad) if e[0]==tag and (tag!='begin' or e[2]==1))
+            if tag=='attempt':bad[i][-1]+=1
+            elif tag=='capture_record':bad[i][2]='0'*64
+            else:bad[i][-1]='0'*64
+            write(bad);reject()
+        write(ev);raw=(p/'A.bin').read_bytes();(p/'A.bin').write_bytes(bytes([raw[0]^1])+raw[1:]);reject();(p/'A.bin').write_bytes(raw)
+        # Partial prefix (pending next native call), no later snapshot artifacts.
+        for name in snapshots:
+            for suffix in ('.json','.bin'):(p/(name+suffix)).unlink()
+        i=next(i for i,e in enumerate(ev) if e[0]=='attempt')
+        write(ev[:i+1]);rp.write_bytes(b'')
+        got=h4absd_read(p,mock)
+        h4abs_req(got['attempted']==1 and got['recorded']==0 and got['pending']==[0,0,-1,1],'ABSD partial pending')
+        reject()
+    return dict(mock_rows=1001,negative=neg,native_calls=0)
+
 def h4absd_static(root):
     root=Path(root).resolve();h4m3_no_runtime_imports()
     h4abs_req(not (root/H4ABSD_OUTPUT).parent.exists() and not (root/H4ABSD_OUTPUT).parent.is_symlink(),'ABSD namespace used')
@@ -13509,6 +13585,7 @@ def h4absd_static(root):
         return ast.dump(next(n for n in ast.walk(run) if isinstance(n,ast.FunctionDef) and n.name=='one_step'),include_attributes=False)
     h4abs_req(step(raw)==step(prev),'ABSD native graph unchanged')
     inputs=h4absd_inputs(root);p=inputs['provenance'];fixtures=h4absd_fixtures()
+    reader=h4absd_reader_fixtures(inputs)
     schedule=h4absd_schedule(inputs['historical_events'])
     h4abs_req(sum(e[0]=='attempt' for e in schedule)==1001 and sum(e[0]=='capture_attempt' for e in schedule)==5,'ABSD schedule fixtures')
     for mode in ('run','child'):
@@ -13520,6 +13597,7 @@ def h4absd_static(root):
     print('H4ABSD_PROVENANCE',h4m3_digest(p),flush=True)
     print('H4ABSD_EVALUATOR_SHA256',p['source']['m463_gate3_cp_eval.py'],flush=True)
     print('H4ABSD_COMPONENT_STATIC',json.dumps(fixtures,sort_keys=True),flush=True)
+    print('H4ABSD_READER_STATIC',json.dumps(reader,sort_keys=True),flush=True)
     print('H4ABSD_HELD_STATIC_CANDIDATE; FULL_STATIC_ACCEPTANCE_HOLD',flush=True)
 
 def h4absd_cli(argv):
