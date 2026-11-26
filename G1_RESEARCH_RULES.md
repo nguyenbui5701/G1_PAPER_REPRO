@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.208  
+**Version:** 1.2.209  
 **Ngày cập nhật:** 2026-11-26 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -2369,6 +2369,14 @@ H4LITE_STATIC_APPROVED: 741daf2266e4de787be87bbac66d8d13377a38b2b6597bc2f081e26e
 
 Static approval only, not active execution permission. Owner asks what bounded native observation does and to continue according to Rules; explain frozen design and prepare next gate, do not infer separate explicit CUDA/MJX execution GO. No active marker. Next eligible step ONLY one explicit Owner-authorized H4-M10-OBS-LITE-V1 observation-only run, exact already accepted evaluator, no extra diagnostic or repeat static. First actual block within frozen cap validates native schema/action/extras/continuity/GPU/storage before subsequent blocks; fail closed STOP with partial evidence, no retry. Frozen 8101/8102 x1024 worlds x13 native32 blocks, max851968 transitions/2048 initial reset lanes/851968 actor and878592 critic sample-equivalents, zero optimizer/normalizer/checkpoint update. Native S/F/C/E survival endpoints, paired raw A32/A64 and frozen credit decision screens unchanged. Positive screen merits separate credit-specific PPO design review only; nonpositive/inconclusive closes scoped study without auto diagnostic or treatment. H-R6 broad UNTESTED, OBS-V1/M10-3 STOP preserved, official CTRL/C401M and all prior evidence unchanged, all runtime/PPO/holdout/readiness/production/promotion/Branch B HOLD.
 
+### H4-M10-LITE-2 — explicit Owner GO for one bounded native Transition credit observation (v1.2.209; 2026-11-26)
+
+Owner explicitly approved one H4-M10-OBS-LITE-V1 observation-only attempt, first-block native validation inside the frozen budget, no PPO/optimizer/normalizer update/checkpoint save, extra diagnostic or retry. Read Rules1.2.208 blob fac28e53441f74ea70359d869fc0a987617818b3 and AGENTS, retrieved exact operative design/current/ledger and immutable source, verified remote base HEAD5d441712fb1db4756655cd1ee1165f80793e9558 and evaluator blob b63f34699578baff68363d5a371900280018cb30 unchanged. Recomputed uploaded Owner static log actual SHA256 b782738e7386dbb00e81fd2bbb02370f7f1750513aed04fc5fcb693075fd005f (353 bytes), exact five markers and zero counters match accepted v1.2.208. Static approval retained byte-for-byte, no repeated static suite. Reviewed exact h4lite_marker/authorization, dispatcher/worker, native validation and continuity, counters, decision and final-reader source; checked proposed active marker exact token count/order and uniqueness against accepted static marker, no conflicting live GO. Source-map and installed provenance are Owner-static evidence only; runtime preflight must independently revalidate local bytes and actual installed dependencies. Rules-only change; no executable modifications, no new repo files, no native execution by SA.
+
+H4LITE_ACTIVE_GO: H4-M10-OBS-LITE-V1 m463_runs/m470_h4_m10_obs_lite_v1/report.json 741daf2266e4de787be87bbac66d8d13377a38b2b6597bc2f081e26eb22e5ddf c259e9604f54e2896225f74dd2a1cab83f3955cd40d7dfc1d286ea5dccbe763b 7f7a86ce245e9585f86d0c3d6ec5307b03a1c50d6275bb90dc89a0679489317b b782738e7386dbb00e81fd2bbb02370f7f1750513aed04fc5fcb693075fd005f
+
+One conditional Owner local dispatch only, via original g1_m463 launcher from clean tracked exact experiment branch safely fast-forwarded to this Rules commit; exact evaluator blob, immutable static log, unique unused output namespace and original CUDA env required. Use --mode run --h4lite --output absolute path to m463_runs/m470_h4_m10_obs_lite_v1/report.json, never --h4lite-child directly, no other flags. Preserve stdout/stderr launch log, native bounded probe.log, attempt.json/parent.json/dispatch.started.json/report.json/attempt_result.json and all raw/partial blocks. Dispatcher owns exclusive reservation, bounded native log16MiB, GPU sampling <95%12288MiB, free>=6GiB initial and 2GiB reserve, 4096-byte row-equivalent, 4GiB output, 512MiB staging, 5400s watchdog and process group kill; any violation STOP, preserve partial evidence, no retry even if preflight stops before reservation. First native32 block (32768 transitions) is part of the original 26-block cap; exact schema, finite/action-range/flag/episode/observation continuity, archiving and GPU/storage guards before next block. No separate test, no new seed, no cap expansion, no tolerance changes. Frozen C401M/REF scheduler/DR/reward/PD/physics/termination, seeds8101 then8102, 1024 worlds/cohort, 13 native32 blocks/cohort, max851968 physical transitions, 2048 initial reset lanes, 832 actor calls/851968 actor sample-equivalents, 52 critic calls/878592 critic sample-equivalents, 2 templates separate, 26 A32/24 paired adjacent A64, no training or mutation. Exact raw action/log_prob native capture (no distribution reconstruction), frozen host GAE and S/F/C/E/credit gates unchanged. Technical completion is not robustness or causal efficacy; even positive screen permits only separately authorized credit design review. Inconclusive/nonpositive closes scoped study, no automatic treatment or diagnostic. Owner returns combined launch log and its SHA, report.json and all existing small receipts plus raw inventory/hashes, retains raw blocks locally for audit; STOP requires all partial receipts and logs. Actual runtime correctness/fit and credit results pending. H-R6 broad UNTESTED; OBS-V1/M10-3 historical STOP, official CTRL/C401M, all historical verdicts preserved. Every other runtime, PPO, independent holdout, readiness, production, promotion, Branch B HOLD.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -2630,6 +2638,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-26)
+
+**H4-M10-LITE-2 CONDITIONAL ONE OBSERVATION GO (v1.2.209):** explicit Owner authorization, distinct one-use active marker, unchanged accepted static/evaluator and frozen budget; Owner runtime pending, no SA native execution. H-R6 UNTESTED; every other runtime/PPO/holdout/readiness/production/promotion/Branch B HOLD.
 
 **H4-M10-LITE-1 OWNER FULL STATIC ACCEPTED (v1.2.208):** actual immutable log and independent frozen plan digest match; static approval recorded only, no active marker. One bounded OBS-LITE-V1 runtime eligible solely after separate explicit Owner GO; native runtime correctness/credit screen UNTESTED, all runtime/PPO/holdout/Branch B HOLD.
 
@@ -3399,6 +3409,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-26 | H4-M10-LITE-2 bounded native observation authorization | explicit Owner GO, static log b782738e, evaluator b63f3469 unchanged | CONDITIONAL ONE OBSERVATION GO; execution pending; zero SA runtime | 1.2.209 |
+
 | 2026-11-26 | H4-M10-LITE-1 Owner full static review | actual five-marker log SHA b782738e, spec digest independently matched | OWNER FULL STATIC ACCEPTED; static approval only; runtime HOLD | 1.2.208 |
 
 | 2026-11-26 | H4-M10-LITE-1 native Transition held implementation | evaluator b63f3469, legacy exact projection and host subset pass | AUTHORED HELD; Owner full static pending; zero runtime | 1.2.207 |
@@ -3877,6 +3889,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.209 — 2026-11-26:** Activate one distinct Owner-approved bounded OBS-LITE-V1 observation attempt with frozen static/provenance/budget and fail-closed gates; Rules only, runtime evidence pending, no PPO or other authorization.
 
 - **v1.2.208 — 2026-11-26:** Accept actual Owner full static log and exact independently recomputed frozen plan digest; pin static approval only, no runtime authorization or executable change; preserve all frozen budgets, historical evidence and holds.
 
