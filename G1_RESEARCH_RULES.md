@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.183  
+**Version:** 1.2.184  
 **Ngày cập nhật:** 2026-11-26 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -2073,6 +2073,13 @@ Capture only existing returned last-solve native data via host device_get, same 
 Decision value of snapshots: (1) compare native qM to M7-3 inertia reconstruction with coordinate transform; (2) reconstruct all constraint row classes and friction edges, validate native force projection J^T f and smooth balance M*qacc_smooth=qfrc_smooth, solver residual M*qacc-qfrc_smooth-qfrc_constraint, exact source force/active rule with captured arrays; (3) only if arithmetic/convergence and row-boundary ambiguity are accounted for, explore fixed-active-set stationary sensitivity (M+J^T diag(D*active)J)^-1 B with original action-to-torque bounds and archived native state, distinguish friction saturated rows. Residual and boundary margins must be reported in physical units and normalized; freeze numeric verification/convergence criteria before any native execution, not from observed data. This sensitivity is of a local stationary system, not the actual finite-iteration solver derivative, dynamic touchdown or causal recovery; last-solve only. Cannot capture pre-solve warmstart/actual iteration history via existing output. M7-3 proposed comprehensive pre/last-solve evidence refined to avoid new native graph outputs: do not silently label post snapshot full solver history; if post-only evidence cannot resolve decision, STOP INCONCLUSIVE, no automatic instrumentation/replay of substeps or further runtime. No action perturbation, no design candidate/dose, no reward/network/PD/physics/termination edits. H-R5a/H-R5b causal interventions remain untested, all H-R1..H-R5b and frozen scientific gates preserved, H4-M6 CLOSED INCONCLUSIVE/HOLD historical323, STOPs/positive4101/two NOT_REPRODUCED preserved. Official H4 CTRL unchanged, all runtime/independent holdout/readiness/production/promotion/Branch B HOLD. Zero physical transitions/reset/inference/simulation/evaluation/PPO/optimizer/checkpoint saves; Rules-only update. Next owner-local inventory and separate explicit GO for held implementation only if useful evidence truly absent; no automatic runtime.
 
 
+### H4-M7-4 — Owner-local scoped inventory accepted / held implementation pending explicit GO (v1.2.184; 2026-11-26)
+
+Owner supplied read-only inventory of original M3/M4 run directories: m470_h4_m3_placement_v1/report.json 20115142 bytes, dispatch.started.json and runtime.entered.json 841 bytes each; m470_h4_m4_feasibility_v1/report.json 23900443 bytes, dispatch.started.json and runtime.entered.json 913 bytes each. Sizes match known archived reports; not a fresh owner-local SHA rehash. Remote HEAD8f8daae5ff052a7a2ea14473c8ea0f040491c45c, Rules1.2.183 blobb4300f8dd74169913defbbd60d74c5a9ed962f7e, AGENTS1025bb1bd35e6489d1f23e1422374f944bcaf1d8 and evaluator01f6dac99e9fe66b07b9dde72ed288994f86dd41 confirmed. Retrieved full Rules and reviewed operative M7/current/ledger sections; source output paths H4M3_OUTPUT/H4M4_OUTPUT and reservation/runtime marker paths match inventory. No separate native solver snapshot listed in these two directories. Scoped absence accepted; not proof of absence elsewhere on Owner machine; reuse any matching sufficient snapshot found later and cancel replay. Original packed field inventory and24 historical matches from v1.2.183 retained, not rerun. No new raw archive rehash or local dependency verification in this review.
+
+Decision: inventory gate accepted within supplied scope. H4-M7-4A held snapshot implementation may be proposed for separate explicit Owner GO, using already designed four lanes, maximum1360 future control transitions/4 resets/24 snapshots, unchanged graph/legacy packing, exact archived replay gates, distinct one-use authorization and bounded provenance/static tests. No runtime budget authorized or executable edits now; inventory submission alone is not implementation GO. Numerical verification/convergence criteria to be frozen prospectively before any execution; no new scientific acceptance tolerance. H-R1..H-R5b unchanged; H-R5a/b causal interventions UNTESTED. H4-M6 CLOSED INCONCLUSIVE/HOLD323 historical, STOPs/positive4101/two NOT_REPRODUCED preserved; official H4 CTRL unchanged. Zero new physical transitions/inference/simulation/evaluation/PPO/optimizer/checkpoint saves; all runtime, independent holdout, readiness, production, promotion and Branch B HOLD. Rules-only update.
+
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -2334,6 +2341,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-26)
+
+**H4-M7-4 OWNER-LOCAL SCOPED INVENTORY ACCEPTED / HELD IMPLEMENTATION PENDING GO (v1.2.184):** six listed files in original M3/M4 directories, report sizes match, no separate native snapshot listed; not exhaustive machine search or fresh SHA verification. H4-M7-4A proposed held implementation only, no runtime authorization. H4-M6 closed323, Branch B HOLD.
 
 **H4-M7-4 HELD OFFLINE EVIDENCE DESIGN COMPLETE / IMPLEMENTATION AND RUNTIME HOLD (v1.2.183):** actual M3/M4/M5 rehash and1425 record field inventory,24 target M3/M4 packed correspondence, M6 snapshots nonmatching. Proposed host-only existing-return last-solve capture 4 lanes through340,1360 future control steps/4 resets/24 snapshots if owner-local inventory insufficient; no pre-solve warmstart or actual solver iteration history claim. No code or runtime authorized; H-R5a/b intervention UNTESTED, H4-M6 closed323, Branch B HOLD.
 
@@ -3053,6 +3062,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-26 | H4-M7-4 Owner-local inventory review | six original M3/M4 files, report sizes match, no separate snapshot listed | scoped inventory accepted; H4-M7-4A pending explicit held implementation GO; zero runtime | 1.2.184 |
+
 | 2026-11-26 | H4-M7-4 minimal native solver snapshot evidence design | raw archive SHA,1425 records field inventory,24 target packed matches, pinned solver epoch review | HELD DESIGN COMPLETE; owner-local inventory pending, proposed1360/4/24 future bound only; implementation/runtime HOLD; zero new transitions | 1.2.183 |
 
 | 2026-11-26 | H4-M7-3 whole-body dynamics and contact feasibility | M3/M4/M5 SHA;24 archived states, rigid-body algebra, ideal contact sensitivity and 96 positive floor slots, four existing M4 first-step contrasts | OFFLINE COMPLETE; native response INCONCLUSIVE; STOP intervention design/HOLD; zero runtime and preserve historical gates | 1.2.182 |
@@ -3481,6 +3492,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.184 — 2026-11-26:** Record Owner-local scoped inventory acceptance and retain separate held implementation/runtime gates; no executable changes or new transitions.
 
 - **v1.2.183 — 2026-11-26:** Scope archive availability and define minimal existing-output last-solve native evidence capture; clarify post-solve warmstart/solver iteration limitations, proposed bounded replay only conditional on local evidence absence and separate authorization; no executable changes/runtime, preserve H-R1..H-R5b and H4-M6 closure.
 
