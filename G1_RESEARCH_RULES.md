@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.223  
+**Version:** 1.2.224  
 **Ngày cập nhật:** 2026-11-26 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -2489,6 +2489,12 @@ Patched only existing evaluator static verifier in commit0d060745dca52d569247fac
 
 Owner log m470_h4m12_dev_static_20261126_193722_179621511.log (9009 bytes, SHA256 1c151a9f1ea42d29d0e38fdfff76f12f1cc26f0635d4bfe1d0578d8923e03c65) confirms exact HEAD a63c8e41cb78f13689d47af5f277eb39d5683c2a, Rules1.2.222, evaluator SHA256 7d7be7a13cd26840bd94f1a3d387fcb4c317193f3d1522ed074221a0ecd763ed. Argparse stopped before h4m12_static: required --mode and --output absent in SA-supplied command; exact main also requires --h4m12-eval alongside --h4m12-static, plan mode and fixed absolute output. Correct invocation: g1_m463 -B m463_gate3_cp_eval.py --mode plan --h4m12-eval --h4m12-static --output "$PWD/m463_runs/m470_h4_m12_3_dev_v1/report.json". Do not create output namespace. Existing untracked historical files preserved. No executable edits needed, no native calls, no reservation or evidence of graph/reader fixture execution. Prior SA user-facing 5/5 regression PASS was unsupported by an execution record; correct to source-reviewed fixtures, execution PENDING. Owner pull and exact full static only; no new training, no CTRL rerun, no runtime marker, all runtime/holdout/promotion/Branch B HOLD. Preserve both failed logs.
 
+### H4-M12-3A — actual Owner full static PASS marker / separate DEV GO pending (v1.2.224; 2026-11-26)
+
+Read Rules1.2.223 blobd15d7c2333a602e7b9a187b3281904cabf3e946f, exact HEAD0abe59a5e897b1067ef2289b329cec20b1dfd9ed and relevant evaluator static/dispatch source. Reopened uploaded m463_runs/m470_h4m12_dev_static_20261126_193845_911550919.log, 756B SHA256377547acdb543cc85b54575ca11425cfa0ab9c51da6ab2d46fe62f1e58f27759. Exact branch/HEAD/Rules and reported evaluator SHA2567d7be7a13cd26840bd94f1a3d387fcb4c317193f3d1522ed074221a0ecd763ed match previously tested revision; owner source digest394732f72b86f45f3f3ff1e83e9c74a453a46504465e212be4c707c8dd46a13f and provenance e805f45d4ef94aed4973692ef1da449725c683f4724bc9627ba920dd46c8de53. Actual FULL_STATIC_PASS marker, archive identity NO_GO, marker negatives5, reader negatives6, legacy AST/step graph/CLI HOLD true, zero physical/resets/optimizer/inference. The five scoped AST regressions executed before final marker, not independently executed by SA. Owner shell exit code printed outside uploaded log, not yet supplied; request existing STATIC_EXIT_CODE=0 line, no repeat static merely for this if existing evidence available. Accept actual full static content PASS, not runtime or efficacy PASS; require exit confirmation and separate explicit Owner DEV GO before active marker. Binary checkpoint/installed dependency/archive bytes not available to independently rehash by SA; local static reader checks and future dispatcher reverify.
+
+Next only H4-M12-3 controlled evaluation on separate explicit Owner GO, freeze bounded launcher/watchdog and log cap before active authorization. Existing output namespace unused at static, preserve source and provenance; only M12 12 groups/60 logical/44808 max new physical/12 group resets, archived CTRL 12 groups41052 historical, no rerun, same fixed seeds/commands/push/horizon/DR off, original +2/8 survival and recovery5 (both 8/8), unchanged nominal/moving/safety. 128MiB report, 2GiB reserve plus temp, GPU peak<95%12288MiB, one-use receipts, no retry, preserve partials. No active marker inserted, no native evaluation/physical/reset/optimizer by SA. No further PPO, independent holdout, production, promotion or Branch B authorization.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -2750,6 +2756,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-26)
+
+**H4-M12-3A ACTUAL FULL STATIC PASS CONTENT / DEV GO PENDING (v1.2.224):** log SHA377547ac, source394732f7, provenancee805f45d, all printed fixtures PASS including identity NO_GO, zero runtime. Owner exit line not included; confirm existing producer exit and explicit DEV GO, then freeze bounded launcher/authorization. No active marker, all runtime/PPO/holdout/promotion/Branch B HOLD.
 
 **H4-M12-3A CLI STOP / CORRECTED OWNER STATIC PENDING (v1.2.223):** actual uploaded log confirms correct source but argparse missing required flags; no full static evidence. Correct plan invocation includes --h4m12-eval, --h4m12-static and fixed output; no executable change. All runtime/PPO/holdout/promotion/Branch B HOLD.
 
@@ -3549,6 +3557,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-26 | H4-M12-3A actual full static review | Owner log SHA377547ac, exact reviewed source, zero runtime | FULL STATIC PASS CONTENT; shell exit confirmation and separate DEV GO pending | 1.2.224 |
+
 | 2026-11-26 | H4-M12-3A CLI correction | Owner log SHA1c151a9f, exact main parser | CLI STOP / corrected plan command only; static pending | 1.2.223 |
 
 | 2026-11-26 | H4-M12-3A static scope repair | Owner STEP_GRAPH traceback, exact baseline/current one_step unchanged, source commit0d060745 | VERIFIER REPAIR PUSHED / OWNER FULL STATIC PENDING; no runtime | 1.2.222 |
@@ -4057,6 +4067,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.224 — 2026-11-26:** Accept actual H4-M12-3A full static PASS content, source/provenance/log pins, distinguish shell exit evidence missing and runtime untested; preserve explicit Owner DEV GO and launcher guard prerequisite, no live authorization.
 
 - **v1.2.223 — 2026-11-26:** Record Owner CLI STOP caused by incomplete SA command, correct exact static invocation and unsupported fixture execution claim; source and all runtime holds unchanged.
 
