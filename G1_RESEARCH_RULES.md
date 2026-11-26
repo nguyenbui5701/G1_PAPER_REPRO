@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.235  
+**Version:** 1.2.236  
 **Ngày cập nhật:** 2026-11-26 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -2895,6 +2895,16 @@ Read exact Rules1.2.234 blob246b9ac77d97ecbfdfb8baea03adf70228f0bea4 at HEAD900c
 
 Actual static reports archive_clone NO_GO as intended synthetic M12-as-RED fixture, secondary_identity true, marker negatives5, final reader negatives8, partial positive1/negatives3, launcher negative1, byte_projection true, step_graph true, CLI HOLD2. Zero physical transitions/resets/optimizer updates/inference. This confirms static gate only, not RED policy efficacy. No executable changes and no new native execution in SA review. Accept H4-M13-4 FULL STATIC PASS, next H4-M13-5 one-use bounded controlled DEV only on separate explicit Owner GO. No repeat static solely for Rules version bump if source/launcher unchanged. Keep launcher block byte-identical, distinct marker must bind exact accepted static path+SHA and source/provenance digests; fixed fresh report namespace and exclusive log, 5400s shared child watchdog, 16MiB log, 128MiB report, disk and sampled GPU guards unchanged. Only RED new policy,12 groups/60 logical/max44808 physical/12 resets/0 PPO, primary immutable Official CTRL, M12 descriptive secondary; both +2/8 standing double survival and recovery5 and all existing nominal/moving/standing/safety gates unchanged. No active marker, no CTRL/M12 rerun, extra diagnostics, further training, independent holdout or promotion. Branch A ACTIVE; Branch B HOLD.
 
+### H4-M13-5 — RED-V1 controlled recovery evaluation ONE-USE GO (v1.2.236; 2026-11-26)
+
+Owner explicitly authorized H4-M13-5 controlled evaluation only after confirming STATIC_EXIT_CODE=0. Read exact Rules1.2.235 blob0253a6aa0e10bf24126e496754968b85855308e3 at HEAD5773938bba67211ca359ac43bc1bbf1beab95052, operative H4RED_DEV_OWNER_LAUNCHER block and h4red_eval_marker/h4m12_eval_auth in unchanged evaluator bloba42124818be879dd434ec4d3363249e8b7ba563b. Reopened and rehashed actual accepted 1222B m470_h4red_dev_static_20261126_214813_900336066.log SHA2567cdb5b93866dd700d1e80acdea340fb8e1c6415de5cf773b1600685c1f254d51, full-static PASS/zero runtime/step graph and archive-clone fixture markers, source87df8a6bfd1290b0fcc36c0586e8fac00530c18f7a2c1e514c20badb2143d050, provenance87ae0f96b30298d2ef73465614b5a6b4eb2c6411cec554c117b1541e47a125d4, launcher aaeb1192370ea55b64ed83cd5689836c52e0caed7b8f0cf3f388628d4b84cc58 all match accepted v1.2.235. No repeat static. Reopened/rehashed RED training report142665B 58dfa2c3722187b57456d5c058b7beaa9983c098bfafc218bba41e58d3230735, final manifest1050B ea08b6fa7e7f640d7b47ec7291658accfae231973344a38bee8f08afe562011c, attempt_result582B d925eb5c65c6514b4ec1cf411e5ebd9236dc9ba38f555a72379ba44a56cda8aa, archived M12 DEV report30359528B eb44c364983078fc35b89152d7a42eae310ed31caba6d4a9b4abf335027826b1; all match prior accepted artifacts. Training TECHNICAL_PASS and EXPOSURE_PASS with all five checks true, producer0 receipt matches exact report, final manifest step15728640/Adam2400, policyb7c217d2196ff405b3aa6302fc770f98346668274ee7efc2aa94c94ed717c3bd and fullstate333f86fb8b45bff4887691a62f48239268ef2ca8248332daec8fb6866e1aef3b agree with report and frozen pins. SA does not independently possess checkpoint binaries, official CTRL archive or all local dependencies; accepted Owner static/runtime preflight validates these. Prior M12 outer footer remains unavailable as already recorded.
+
+Authorize exactly one Owner invocation of unchanged H4RED_DEV_OWNER_LAUNCHER block via g1_m463 -B -u -, extracted by exact begin/end sentinels from Rules and verified against accepted launcher SHA. Clean tracked exact branch, ff-only pull, exact authorized HEAD, accepted log SHA, unique marker, untouched executable blobs, CUDA/highest/no preallocation, fresh fixed runtime log and output namespace; do not launch evaluator directly. Existing launcher exclusive log claim m463_runs/m470_h4red_dev_runtime_v1.log is outer one-use claim, even if native reservation never occurs. Preserve log/output and all partials on any STOP, no retry, no remove/rename to reuse authorization. Shared child deadline5400s, combined16MiB log, report128MiB, free disk >=2GiB+2*128MiB+16MiB, sampled GPU peak<95%12288MiB/zero sampler errors, unchanged strict partial/final reader and receipts. Host preflight/cleanup/hash outside child watchdog may add time; no guarantee of crash-durable unpersisted rows. No executable changes, launcher byte-identical.
+
+Evaluate only frozen RED policy using exactly 12 groups/60 logical/max44808 future physical transitions/12 group resets/0 optimizer updates; seeds7331/7357/7601/7613, stand/forward_fast/turn_left, nominal/single/double left/right, push300/.50 and335/.35, horizon1000 dt.02, deterministic DR OFF/source random push OFF. Original Official CTRL immutable primary (41052 archived physical) and M12 immutable secondary (42246 archived physical) only; no reruns. Both frozen +2/8 standing double survival and recovery5 (8/8 vs CTRL6/8) and nominal/moving/standing/safety gates unchanged. M12 secondary paired descriptive only; not a scientific verdict or substitute threshold. Distinguish technical COMPLETE with producer0+strict reader0/no overflow/error from scientific DEV_PASS/NO_GO. Return runtime log and report.json, attempt.json, dispatch.started.json, attempt_result.json if present, H4RED_DEV_BOUNDED_STATUS and H4RED_DEV_EXIT_CODE plus artifact hashes; close authorization after outcome. No extra diagnostics, PPO, independent holdout, readiness/production/promotion or budget increase. SA zero new physical transitions, resets, inference or optimizer calls. Branch A ACTIVE; Branch B HOLD.
+
+H4RED_EVAL_ACTIVE_GO: H4-M13-RED-DEV-V1 m463_runs/m470_h4_m13_4_dev_v1/report.json 87df8a6bfd1290b0fcc36c0586e8fac00530c18f7a2c1e514c20badb2143d050 87ae0f96b30298d2ef73465614b5a6b4eb2c6411cec554c117b1541e47a125d4 m463_runs/m470_h4red_dev_static_20261126_214813_900336066.log 7cdb5b93866dd700d1e80acdea340fb8e1c6415de5cf773b1600685c1f254d51
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -3156,6 +3166,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-26)
+
+**H4-M13-5 RED-V1 CONTROLLED RECOVERY EVALUATION ONE-USE GO (v1.2.236):** explicit Owner GO after static exit0, log7cdb5b93/source87df8a6b/provenance87ae0f96/launcheraaeb1192, frozen RED report58dfa2c3 and policyb7c217d2. Only RED new 12 groups/60 logical/max44808 physical/12 resets, archived CTRL primary/M12 descriptive secondary, existing bounded launcher and scientific gates unchanged. Actual outcome pending. All other runtime/PPO/holdout/promotion/Branch B HOLD.
 
 **H4-M13-4 RED CONTROLLED DEV ACTUAL FULL STATIC PASS / H4-M13-5 GO PENDING (v1.2.235):** Owner exit0, log7cdb5b93, source87df8a6b and launcheraaeb1192 independently reconstructed, local provenance87ae0f96 accepted from static, all fixtures and zero runtime. No executable change, no active authorization; separate Owner evaluation GO required, no CTRL/M12 rerun/extra PPO/holdout/promotion/Branch B.
 
@@ -3979,6 +3991,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-26 | H4-M13-5 RED-V1 controlled recovery evaluation authorization | Owner explicit GO, accepted static7cdb5b93 and frozen source/provenance/launcher/checkpoint | GO ONE OWNER EVALUATION; actual outcome pending | 1.2.236 |
+
 | 2026-11-26 | H4-M13-4 actual full static acceptance | Owner exit0, log7cdb5b93, source87df8a6b, provenance87ae0f96, launcheraaeb1192 | FULL STATIC PASS / H4-M13-5 separate runtime GO pending | 1.2.235 |
 
 | 2026-11-26 | H4-M13-4 RED-V1 controlled DEV held integration | exact accepted train58dfa2c3, archived M12eb44c364, evaluator0e0abc94, reverse projection and host fixtures | HELD SOURCE IMPLEMENTED / OWNER FULL STATIC PENDING | 1.2.234 |
@@ -4511,6 +4525,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.236 — 2026-11-26:** Activate single distinct RED controlled DEV marker after Owner GO and exact accepted static, reuse byte-identical launcher and evaluator with immutable CTRL/M12 archives and original scientific criteria. No other runtime, PPO, holdout, promotion or Branch B authorization.
 
 - **v1.2.235 — 2026-11-26:** Accept actual RED controlled DEV full static and Owner exit0, independently verify source/launcher digests, preserve frozen protocol and all runtime holds until separate Owner GO.
 
