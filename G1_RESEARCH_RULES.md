@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.218  
+**Version:** 1.2.219  
 **Ngày cập nhật:** 2026-11-26 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -2449,6 +2449,14 @@ Owner requested review and whether training can proceed, not explicit runtime GO
 
 H4M12_STATIC_APPROVED: de84848bef028c8c8d61700beded9a7c48a3d2d4e2bb33744d19b5907ae5e180 7f9abc070e38bc287ae1948a3f55ee625d457d0abed6fe99bebf5fdf2ed9c37a m463_runs/m470_h4m12_static_20261126_164832_fO6bjM.log 844be296368189a2d80844fd93aa6d43f1efa4447f4896644aaf50002e22cc60
 
+### H4-M12-2 — one-use Original CTRL true reset-edge PPO continuation CONDITIONAL GO (v1.2.219; 2026-11-26)
+
+Owner explicit GO H4-M12-2 bounded training exactly once under v1.2.218, no further diagnostic/treatment, no retry or escalation. Read Rules1.2.218 blob8eda4ce4635df516f4a807c8111c1b4391af501d and AGENTS, exact HEAD9859db75216b171ec14ca42038d601ef10af38de, runner9523fb51d536e38095c339165f0041cfbba70214 and instrumenter4baac41d654a6d22e1d159470b2276d5a76e5d8d, exact h4m12_main/auth/parser/supervisor/receipt contract and frozen M12-0/0A/1. Reopened actual corrected static log m470_h4m12_static_20261126_164832_fO6bjM.log 2736B and independently rehashed SHA844be296368189a2d80844fd93aa6d43f1efa4447f4896644aaf50002e22cc60; exact source de84848bef028c8c8d61700beded9a7c48a3d2d4e2bb33744d19b5907ae5e180, integrated generated7f9abc070e38bc287ae1948a3f55ee625d457d0abed6fe99bebf5fdf2ed9c37a, corrected template/full static/owner completion, 25 event fixture, typed/report negatives and all six historical parent pins agree with accepted approval. Reopened archived CTRL report to ground input paths, source contract and immutable parent. Source/generated/local binary provenance remains Owner-local evidence, actual typed restore and native execution pending; no independently verified native runtime or scientific improvement claim.
+
+Authorize exactly one Owner dispatch via g1_m463 -B m463_push_ppo_train.py --h4m12-continuation --checkpoint m430_seed1/checkpoint_pilot_20261114_120515_1722937_step_401080320.msgpack --restore-report m462_runs/typed_restore_20261120_162901.json --reward-report m463_runs/m470_h3_m1_2_independent_10M_20261124_183319_225465810/report.json. Three frozen evidence hashes respectively 1ccf579ea35d4518713b00ea20d77db8463bc469b7de903b8f10f457b3dc90b8,9c46427c16aa482730e45bc9f79c53f6cb18ec3a267d1fc3253faab695916e81,84c285315e109ca8716476b0f527873046b441d35e3fe963570e5f2019fe3530. C401M checkpoint/restore report here validate historical provenance only, no fresh weights restore; actual learning start is immutable CTRL fullstate9b19312da08d71513ad8fa6638c632401bec20e09399fdf4a9f6f6e2b2619c80 and policy addc8e7217008555c4b4391f93dd3e7a3083e7b23052ec6ddf9b928fbc9fff33 under m463_runs/m470_h4_m1_2r_control_v1, exact manifest and original generated/report/receipt pins checked by parent preflight. Owner shell exact clean tracked branch, safe fetch/ff-only pull, exact authorized HEAD, source blob checks, unique static approval and active marker, corrected log SHA and markers, immutable three inputs, unused output and g1_m463 resolution; invoke supervisor only, never --worker directly. Keep existing original PPO graph, original CTRL reward, support-conditioned broad curriculum, network, action/observation, physics, PD, DR, seed1, all native numerical semantics. No new treatment, weights-only fallback, fresh Adam, or legacy override. Actual typed payload/optimizer/normalizer/advancing RNG/DR and schema guards before first SGD, preserve strict byte/dtype/finite checks, no separate native diagnostic. Four chunks1310720/200 each, one epoch5242880 training/800 optimizer updates, one2000 diagnostic eval, total5244880 physical cap, train reset lanes24576/eval2, one final checkpoint edge local steps15728640 Adam2400 normalizer416808960, cumulative lineage416808960. Resource/attempt gates unchanged: exclusive namespace m463_runs/m470_h4_m12_ctrl_continue_v1, attempt/worker/dispatch receipts, 3600s watchdog, 16MiB bounded worker log, GPU sampled peak<95%12288MiB, 512MiB output and2GiB reserve. Strict final reader, preserve all partial outputs/logs; STOP on any invalidity including preflight, no second invocation even if no reservation created, no delete/rename output, no retry. Return launch log, worker.log, report.json, attempt.json, worker.started.json, dispatch.started.json, attempt_result.json and final manifest if created, retain binaries locally. Technical PASS only if producer0, strict report/receipt checks; no efficacy from reward/coverage alone. Separate H4-M12-3 DEV and independent holdout require separate GO; no new budget or promotion. Rules-only; SA zero runtime/physical/reset/optimizer/checkpoint saves; all other runtime/readiness/production/promotion and Branch B HOLD.
+
+H4M12_ACTIVE_GO: H4-M12-CTRL-RESET-EDGE-V1 m463_runs/m470_h4_m12_ctrl_continue_v1 de84848bef028c8c8d61700beded9a7c48a3d2d4e2bb33744d19b5907ae5e180 7f9abc070e38bc287ae1948a3f55ee625d457d0abed6fe99bebf5fdf2ed9c37a m463_runs/m470_h4m12_static_20261126_164832_fO6bjM.log 844be296368189a2d80844fd93aa6d43f1efa4447f4896644aaf50002e22cc60
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -2710,6 +2718,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-26)
+
+**H4-M12-2 ONE-USE CONDITIONAL PPO GO (v1.2.219):** Owner explicit bounded GO, accepted corrected static844be296 and unchanged executable source; one original CTRL true reset-edge continuation +5242880/800 updates/2000 eval, unused namespace, actual restore guards and all resource/STOP gates. No retry, no novel treatment or escalation, actual results pending; separate DEV/holdout/production/promotion/Branch B HOLD.
 
 **H4-M12-1 CORRECTED STATIC ACCEPTED / CONDITIONAL READINESS FOR SEPARATE OWNER PPO GO (v1.2.218):** exact log844be296, corrected template marker, frozen parent and budget fixture PASS; unchanged source, no further static or diagnostic selected, actual runtime restore pending. H4-M12-2 remains HELD pending separate explicit GO. All runtime/DEV/holdout/production/promotion/Branch B HOLD.
 
@@ -3499,6 +3509,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-26 | H4-M12-2 one-use PPO authorization | corrected static844be296, immutable CTRL parent, explicit Owner GO | CONDITIONAL GO one bounded continuation; actual execution pending | 1.2.219 |
+
 | 2026-11-26 | H4-M12-1 corrected static review | log844be296, source de84848b, generated7f9abc07, parent and budget fixture | STATIC ACCEPTED / conditional readiness for separate PPO GO; no runtime | 1.2.218 |
 
 | 2026-11-26 | H4-M12-1 owner static and pre-runtime typed template review | log019f5431, frozen budget/parent verified, template-only JAX scalar dtype fix | v1.2.216 STATIC PASS; corrected static PENDING, zero runtime | 1.2.217 |
@@ -3997,6 +4009,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.219 — 2026-11-26:** Owner-approved one-use Original CTRL true reset-edge bounded PPO continuation marker; unchanged tested executable source, frozen budgets and STOP gates, all other workstream execution HOLD.
 
 - **v1.2.218 — 2026-11-26:** Accept actual corrected static evidence; no executable change or extra diagnostic, conditional readiness for separate Owner bounded PPO GO; retain all runtime holds.
 
