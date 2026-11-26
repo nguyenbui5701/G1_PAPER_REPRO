@@ -4703,7 +4703,7 @@ def h4cc_tech_actual(args,r,monitor,persist,*,rss=False,diagnostic=False):
             'env':{k:v for k,v in os.environ.items() if k.startswith(('JAX_','XLA_','CUDA_','NVIDIA_'))}}
         def capture(st,lane,tick,expected):
             projected=st.replace(info={k:v for k,v in st.info.items() if not k.startswith('h4m6_')},
-                reward=jp.zeros_like(st.reward),metrics={k:v for k,v in st.metrics.items() if k!='reward/stand_still'})
+                reward=np.zeros_like(host(st.reward)),metrics={k:v for k,v in st.metrics.items() if k!='reward/stand_still'})
             return h4m6_diag_capture(r,cache,lane,tick,{'full':st,'projected':projected,
                 'physics':(st.data,st.info['h4cc_tech_raw'])},jax.tree_util.tree_flatten_with_path,host,expected)
     for fixture in ((tuple(H4M6_DIAG_SPEC['fixture']),) if diagnostic else H4CC_TECH_FIXTURES):
@@ -7464,6 +7464,8 @@ def h4m6_diag_snapshot(pairs,treedef,host,cap):
     structure=str(treedef).encode(); size=len(structure)
     h=hashlib.sha256(structure); result=[]; raw=[]
     for key,x in pairs:
+        if hasattr(x,'shape') and hasattr(x,'dtype'):
+            h4m6_eval_require(size+math.prod(x.shape)*np.dtype(x.dtype).itemsize<=cap,'DIAG_SNAPSHOT_CAP')
         a=np.asarray(host(x)); path=str(key); dtype=a.dtype.str; shape=list(a.shape)
         h4m6_eval_require(not a.dtype.hasobject and a.dtype.fields is None,'DIAG_LEAF_DTYPE')
         size+=a.nbytes+len(path.encode())+len(dtype)+len(str(a.shape))
@@ -7541,7 +7543,9 @@ def h4m6_diag_capture(r,cache,lane,tick,trees,flatten,host,expected):
         packed[name]={'aggregate':v['aggregate'],'treedef_id':tdefs[td],'leaves':leaves,'bytes':v['bytes']}
     if not cache:
         estimate=len(json.dumps(packed,separators=(',',':')))*36+len(json.dumps(r['leaf_schema']))+len(json.dumps(r['treedef_table']))
-        h4m6_eval_require(estimate<12*1024**2,'DIAG_REPORT_ESTIMATE')
+        if estimate>=12*1024**2:
+            del r['leaf_schema'][before[0]:];del r['treedef_table'][before[1]:]
+            h4m6_eval_require(False,'DIAG_REPORT_ESTIMATE')
     stop=False
     for prev in r['lanes']:
         if prev is lane:break
@@ -7611,7 +7615,11 @@ def h4m6_diag_report_replay(r):
         and r['post_immutability'] is True and r['passed'] is False
         and r['policy_sha256_before']==r['policy_sha256_after']
         and issha(r['policy_sha256_before']) and len(r['provenance']['diagnostic_archive_sha256'])==24
-        and r['further_training_authorized'] is False,'DIAG_FINAL_REPORT')
+        and r['further_training_authorized'] is False
+        and r['compiler']['jax']==r['compiler']['jaxlib']=='0.4.35'
+        and r['compiler']['device']=='cuda:0' and r['gpu']['total_mib']==12288
+        and 0<r['gpu']['peak_used_mib']<.95*12288 and r['gpu']['samples']>0
+        and not r['gpu']['sampler_errors'],'DIAG_FINAL_REPORT')
     schemas=r['leaf_schema']; tdefs=r['treedef_table']
     req(len({json.dumps(x,sort_keys=True) for x in schemas})==len(schemas)
         and len({x['text'] for x in tdefs})==len(tdefs),'DIAG_TABLE_UNIQUENESS')
@@ -7655,20 +7663,35 @@ def h4m6_diag_report_replay(r):
         req(e['same_arm']==same and set(e['views'])==set(('full','projected','physics') if same else ('projected','physics')),'DIAG_PAIR_VIEWS')
         aa=snapshots[a+':'+str(k)];bb=snapshots[b+':'+str(k)]
         used=0
-        for n,v in e['views'].items():
-            x,y=aa[n],bb[n]
-            count=int(x['treedef_id']!=y['treedef_id'])+int(len(x['leaves'])!=len(y['leaves']))
-            count+=sum(u!=w for u,w in zip(x['leaves'],y['leaves']))
+        for n in (('full','projected','physics') if same else ('projected','physics')):
+            v=e['views'][n];x,y=aa[n],bb[n];descriptors=[]
+            if x['treedef_id']!=y['treedef_id']:
+                u=tdefs[x['treedef_id']]['text'].encode();z=tdefs[y['treedef_id']]['text'].encode()
+                i=next((i for i,(c,d) in enumerate(zip(u,z)) if c!=d),min(len(u),len(z)))
+                descriptors.append(('TREEDEF',{'kind':'TREEDEF','byte_offset':i,'a_hex':u[i:i+16].hex(),'b_hex':z[i:i+16].hex()}))
+            if len(x['leaves'])!=len(y['leaves']):
+                descriptors.append(('LEAF_COUNT',{'kind':'LEAF_COUNT','a':len(x['leaves']),'b':len(y['leaves'])}))
+            for i,(u,z) in enumerate(zip(x['leaves'],y['leaves'])):
+                if u==z:continue
+                if u[0]!=z[0]:
+                    descriptors.append(('LEAF_SCHEMA',{'kind':'LEAF_SCHEMA','index':i,
+                        'a':dict(schemas[u[0]],sha256=u[1]),'b':dict(schemas[z[0]],sha256=z[1])}))
+                else:descriptors.append(('RAW',schemas[u[0]]))
+            count=len(descriptors)
             req(v['mismatches']==count and v['different']==bool(count)==(x['aggregate']!=y['aggregate'])
                 and v['truncated']==(count>len(v['witnesses']))
-                and len(v['witnesses'])<=count,'DIAG_PAIR_REPLAY')
-            for w in v['witnesses']:
-                if w['kind'] in ('RAW_BYTES','SIGNED_ZERO'):
-                    dt=np.dtype(w['dtype']);u=bytes.fromhex(w['a_hex']);z=bytes.fromhex(w['b_hex'])
-                    req(len(u)==len(z)==dt.itemsize and u!=z and 0<w['differing_bytes']
-                        and (w['kind']!='SIGNED_ZERO' or (dt.kind=='f' and np.frombuffer(u,dtype=dt)[0]==0
-                        and np.frombuffer(z,dtype=dt)[0]==0)),'DIAG_WITNESS_REPLAY')
-                else:req(w['kind'] in ('TREEDEF','LEAF_COUNT','LEAF_SCHEMA'),'DIAG_WITNESS_KIND')
+                and len(v['witnesses'])==min(count,H4M6_DIAG_SPEC['witness_cap']-used),'DIAG_PAIR_REPLAY')
+            for w,(kind,desc) in zip(v['witnesses'],descriptors):
+                if kind=='RAW':
+                    dt=np.dtype(desc['dtype']);u=bytes.fromhex(w['a_hex']);z=bytes.fromhex(w['b_hex']);offset=w['byte_offset']
+                    req(w['kind'] in ('RAW_BYTES','SIGNED_ZERO') and all(w[k]==desc[k] for k in ('path','dtype','shape'))
+                        and len(u)==len(z)==dt.itemsize and u!=z and type(offset) is int and 0<=offset<desc['nbytes']
+                        and sum(c!=d for c,d in zip(u,z))<=w['differing_bytes']<=desc['nbytes']
+                        and offset%dt.itemsize==next(i for i,(c,d) in enumerate(zip(u,z)) if c!=d)
+                        and w['element_index']==(list(map(int,np.unravel_index(offset//dt.itemsize,desc['shape']))) if desc['shape'] else [])
+                        and (w['kind']=='SIGNED_ZERO')==(dt.kind=='f' and np.frombuffer(u,dtype=dt)[0]==0
+                        and np.frombuffer(z,dtype=dt)[0]==0),'DIAG_WITNESS_REPLAY')
+                else:req(w==desc,'DIAG_WITNESS_KIND')
             used+=len(v['witnesses'])
         req(used<=H4M6_DIAG_SPEC['witness_cap'],'DIAG_WITNESS_CAP')
         if k==-1:
@@ -7713,7 +7736,7 @@ def h4m6_diag_dispatch(args):
         '--h4m6-phase','diag','--h4m6-diag-child','--output',str(path),
         '--checkpoint-c',str(args.checkpoint_c),'--h4-reward-report',str(args.h4_reward_report),
         '--h4cc-restore-report',str(args.h4cc_restore_report)]
-    total=stored=0;overflow=False;rc=None;error=None;proc=None;decision='STOP'
+    total=stored=0;overflow=False;rc=None;error=None;proc=None;decision='STOP';post_immutability=False
     def kill():
         if proc is not None:
             try:os.killpg(proc.pid,signal.SIGKILL)
@@ -7727,8 +7750,9 @@ def h4m6_diag_dispatch(args):
                 total+=len(data);chunk=data[:max(0,cap-stored)];f.write(chunk);stored+=len(chunk)
                 if total>cap and not overflow:overflow=True;kill()
             rc=proc.wait();f.flush();os.fsync(f.fileno())
-        req(rc==0 and not overflow,'DIAG_BOUNDED_PROCESS')
         req(h4m6_diag_authorization(root)==auth and h4m6_tech_inputs(args,auth,diagnostic=True)==provenance,'DIAG_PARENT_POST')
+        post_immutability=True
+        req(rc==0 and not overflow,'DIAG_BOUNDED_PROCESS')
         req(path.is_file() and not path.is_symlink() and 0<path.stat().st_size<=H4M6_DIAG_SPEC['report_cap'],'DIAG_REPORT')
         report=json.loads(path.read_bytes())
         req(report['authorization']==auth and report['provenance']==provenance
@@ -7741,7 +7765,7 @@ def h4m6_diag_dispatch(args):
         error=(type(exc).__name__+': '+str(exc))[:4096];kill()
         if proc is not None:rc=proc.wait()
     status={'decision':decision,'producer_rc':rc,'overflow':overflow,'total_bytes':total,
-        'stored_bytes':stored,'error':error,'authorization':auth}
+        'stored_bytes':stored,'error':error,'authorization':auth,'post_immutability':post_immutability}
     h4m6_write_bounded(path.parent/'collector.json',status,exclusive=True)
     print('BOUNDED_LOG_STATUS',json.dumps(status,sort_keys=True),flush=True)
     for p in sorted(path.parent.iterdir()):
