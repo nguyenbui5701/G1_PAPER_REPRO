@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.187  
+**Version:** 1.2.188  
 **Ngày cập nhật:** 2026-11-26 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -2109,6 +2109,14 @@ Marker above is static evidence only; no active M7 GO. H4-M7-4A CLOSED FULL STAT
 
 Owner explicit operational requirement: from now on give one self-contained copy/paste shell block for each authorized task, including repository cd, current branch and clean tracked-tree fail-closed guard, git fetch and git pull --ff-only origin experiment/b1-hardware-scaled, exact expected HEAD and source SHA checks, existing g1_m463 resolution, task-specific approved command, bounded log/exit status and artifact reporting. Use fail-closed sequencing (subshell/set -e or explicit guards) so a failed pull or mismatch never reaches execution; preserve C/D/E/REPO/PY and existing launcher environment, no bare python/system substitution, no force checkout/reset, no automatic runtime without separate GO. Do not split pull and run into separate copy/paste blocks unless Owner explicitly asks. This is a delivery-format and operational safety rule, not additional runtime authorization. Rules-only update.
 
+### H4-M7-4B — BOUNDED NATIVE SOLVER SNAPSHOT COLLECTION / ONE-USE OWNER GO (v1.2.188; 2026-11-26)
+
+Owner explicitly GO H4-M7-4B only. Remote preauthorization HEAD c26e46cc7309c087b085f694950a34ba71b432ae, Rules1.2.187 blob9fed6d539473549609a879c810e85cbf3745deee, AGENTS1025bb1bd35e6489d1f23e1422374f944bcaf1d8 and exact evaluator blob1f3c0b45392dec496c970771051bb0c1f44f5135 reviewed. Full Rules retrieved via Git blob; operative M7/EDIT-FIRST/current/ledger reviewed, not a fresh audit of every historical task. Actual Owner log m470_h4_m7_4a_full_static_20261126_111638_189447969.log retrieved; compile, legacy, local provenance, archive1360/184, mock24, CLI7 and zero imports/final sentinel agree with v1.2.187 accepted hash; local SHA and installed dependency bytes must be verified again by existing authorization/preflight, not by rerunning full static. Reviewed exact evaluator plan, authorization, archive inputs, replay, native capture, numerical screens, raw encoding, strict reader, reservation/partial ledger, GPU/storage/collector and CLI paths. No executable changes or additional full static run. Static marker unchanged; distinct active marker below, one fresh namespace only, no concurrent GO.
+
+H4M7_SNAPSHOT_ACTIVE_GO: H4-M7-4-SNAPSHOT-V1 cc79aa5cc829ac3d1f03865d57f0a92e4cc14b1d644133fc49e4d7409c2a310f 62fcc9c32f895419528ad9e4bfd6f42cbd892b68d7a4f75d06e18ea9a53962db 4ef7b0bf5961a7ff2dd025f48fb8fa0f75d213d852baba09f85a768b73af1650 b701a2b74cca3d44cc474fc324c8b765e8c071fcec741a245f75ab701ec587b0 329ff0564d47e05e2360fdf95350928895cf515e8cec6ca9aa2182133319258b 83d87cdd5279ab13acb06815083b72f02ecadcabc652cff35b24a82814beb9a5 1ccf579ea35d4518713b00ea20d77db8463bc469b7de903b8f10f457b3dc90b8 8ecdbd675fac2fc54764938590d6ed67aa390fd29fc63bcb6f6b5fd5283f38d2 1c144a88f4bf9f1de6d9926b60c75ea417b77931b53a427ca22b8eef11ffb12e m463_runs/m470_h4_m7_snapshot_v1/report.json
+
+One dispatch only, fixed output m463_runs/m470_h4_m7_snapshot_v1/report.json; no retry even on preflight failure, preserve all partial artifacts. Exact order CCRC7357L,CCRC7601R,CCRC7613L,REF7331L, original stand, DR OFF, historical kicks300/.50 and335/.35, cap1360 physical/actor calls,4 resets,184 rich checks ticks295..340,24 snapshots ticks335..340; separate template accounting. Existing native graph, frozen policies, archive rows and packed correspondence, complete native row mapping/raw-byte integrity, source/external/archives/checkpoint/static provenance and post-immutability unchanged. Native schema and exact replay may STOP, no tolerance relaxation; retain arithmetic/stationarity/boundary screen classification exactly as implemented, no causal/native derivative/efficacy claim. Raw512KiB per snapshot/12MiB total; report/log16MiB each; 2GiB+48MiB storage preflight; pinned CUDA/JAX0.4.35, 12288MiB GPU peak strictly below95%, no sampler errors. Existing g1_m463 environment and native NVCC-before-JAX gates; CLI --mode run --h4m7-snapshot --output absolute fixed report, no child or other flags. One self-contained fail-closed clean branch/fetch/pull --ff-only/exact HEAD/source/static pin check and dispatch; built-in bounded child collector, preserve and submit collector.json, report.json, snapshots.bin, probe.log, attempt/collector/dispatch/runtime/result markers and status/SHA even on STOP. Relock active marker after any result before another GO; no delete/reuse. No action intervention, reward/network/PD/physics/termination edits, optimizer, PPO, checkpoint saves, new efficacy evaluation, independent holdout/readiness/production/promotion or Branch B. H-R1..H-R5b unchanged, H-R5a/b interventions UNTESTED, H4-M6 CLOSED INCONCLUSIVE/HOLD historical323, positive4101, both NOT_REPRODUCED and STOP evidence preserved. Official H4 CTRL and all scientific gates unchanged. SA has not executed owner-local native runtime; zero new transitions/resets/inference in this review. Rollback by Rules-only removal of marker; never erase attempt evidence.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -2370,6 +2378,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-26)
+
+**H4-M7-4B ONE-USE NATIVE SNAPSHOT GO (v1.2.188):** exact approved source/static/spec/external/archives/policies; fixed four lanes, cap1360/4/184/24, native execution pending Owner, no automatic retry or causal/efficacy claim; all other runtime/PPO/Branch B/holdout/promotion HOLD. H4-M6 closed323.
 
 **H4-M7-4A CLOSED ACTUAL FULL STATIC PASS / H4-M7-4B NATIVE SNAPSHOT HOLD (v1.2.187):** actual log62fcc9c3..., exact evaluator/full compile/legacy/local provenance/1360 rows/184 rich/24 mocks/7 actual CLI/zero imports PASS. Static marker only, no active GO; native schema and replay untested. Owner requires single copy/paste sync+run block for each authorized task. H4-M6 closed323, Branch B HOLD.
 
@@ -3097,6 +3107,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-26 | H4-M7-4B bounded native snapshot authorization | Rules-only GO, approved frozen pins, fixed four lanes/1360/4/184/24, owner dispatch pending | ONE-USE GO; no executable changes/SA runtime/PPO, all other gates HOLD | 1.2.188 |
+
 | 2026-11-26 | H4-M7-4A actual owner full static review | log62fcc9c3..., exact evaluator/full compile/legacy/provenance/1360/184/24 mocks/7 CLI/zero runtime | FULL STATIC PASS; static marker only; H4-M7-4B HOLD pending separate GO; combined pull+run Owner rule | 1.2.187 |
 
 | 2026-11-26 | H4-M7-4A Owner static launcher review | actual125-byte log SHA40fcb9db... | shell blocked before Python; correct launcher only; full static PENDING; runtime HOLD | 1.2.186 |
@@ -3533,6 +3545,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.188 — 2026-11-26:** Authorize one bounded H4-M7-4B native snapshot attempt with unchanged approved evaluator and frozen pins; no executable edits or SA runtime; preserve all other HOLD gates.
 
 - **v1.2.187 — 2026-11-26:** Accept actual H4-M7-4A full static log and static-only marker, keep native HOLD; require single self-contained fail-closed Owner sync+run command for authorized tasks. No executable changes/runtime.
 
