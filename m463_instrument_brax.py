@@ -1490,6 +1490,13 @@ def make_h4m12_integrated_source(raw):
     """Same held core; distinct fail-closed entry, parent byte check, no loss edits."""
     base, original = make_h4m12_held_source(raw)
     patches = (
+        # Only the deserialization template gets JAX's scalar dtype. The
+        # upstream fresh Python env_steps=0 is not an ndarray until pmap.
+        ("    m470_template = {\n"
+         "        'training_state': training_state,\n",
+         "    m470_template = {\n"
+         "        'training_state': training_state.replace(\n"
+         "            env_steps=jnp.asarray(training_state.env_steps)),\n"),
         ("  raise RuntimeError('M470_H4M12_GENERATED_EXECUTION_HOLD')\n",
          "  from m463_push_ppo_train import h4m12_generated_guard\n"
          "  h4m12_generated_guard(h4x_audit_fn, __file__, environment, m470_resume_state_path)\n"),

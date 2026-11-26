@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.216  
+**Version:** 1.2.217  
 **Ngày cập nhật:** 2026-11-26 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -2437,6 +2437,12 @@ EDIT-FIRST: existing runner main receives distinct first-token --h4m12-continuat
 
 Same Owner full held task, no new experiment. Reviewed intermediate committed source54a188906c47dcb9f9213f91d3ac59ebf237011a and actual CTRL report bytes SHA2ab06f3cc92d546f49eb5b40551a1a8238398106afc547822d0ac2b73529a059 rehashed in host container; exact final parent policy/fullstate/manifest hashes, reset keys and epoch1 coverage fixture confirmed. Compared historical/current generator source: fullstate hook, H4 chunk hook, H4X patches text identical; make_patched_source differences isolated to optional CCRC additions (default False), actual generated-byte projection still required. Added focused host-only typed-tree 1 positive/5 negative and strict final report 1 positive/9 negative fixture using copied archived first epoch exposure only and synthetic operational rows/dummy bytes (not PPO samples/checkpoints), legacy AST comparison outside explicitly changed five old functions, actual CLI HOLD negative, final config/epoch/worker receipt/restore-key checks, byte-pinned deserialization and supervisor kill race handling. No native imports or calls, no new repo files or reward changes. Full exact owner static not executed by SA; runtime nested callback and worker not exercised end-to-end, fullstate binary not available to SA. The full source must pass actual static and review before any separate H4-M12-2 GO; no PASS claim until then. Frozen scope and all historical decisions preserved. No active marker, Branch B HOLD.
 
+### H4-M12-1 — Owner full static PASS on v1.2.216 / typed scalar template repair HELD (v1.2.217; 2026-11-26)
+
+Read complete Rules1.2.216 blobc0012c3a60b3e559170e48f858d56743b9ba7f88, AGENTS and exact base HEAD39b974095cb4542643849ee812d7727dba301410; runner4debab9555f779becc7e5dd71b1140054aa753da, instrumenter678f8a74210ebd66ea4ad0468200bc5417370476, exact native Brax train66ee2308cc015f51d6f3fc3d98fc1830b89cfe53 and existing fullstate/H4X hooks reviewed. Owner actual uploaded m470_h4m12_static_20261126_164434_Eawkoe.log 2681B, independently SHA256 019f5431c1acbc64e5239cf30dc6078929a26824055a8edb06d052495f5a4983. Exact HEAD/version, H4M12_FULL_STATIC_PASS and OWNER_FULL_STATIC_COMPLETE, source6c64a5e1ab6fb45b7fdb71ccebff369694fb35a74c15768dc033e65718855297, integrated generated9401dfbb15cbba1d989693ae61422c0cd5bd89e0ce53b3cfcc57046cd5cb9a55, core generated86f5f5b007604570e1800c184646ebd5455951b86d80383644374c35a6741cde, original Brax e20613d42bf0868a13003e0312998816cc8d3593bb5ccaf9f1d070fd09c44bd7; parent pins match frozen contract, typed1+/5-, final reader1+/9-, 25-event budget replay attempted=recorded exact5242880 training/800 optimizer/2000 eval/24576 training and2 eval reset lanes, actual physical/reset/optimizer/inference all0. Static accepted strictly for v1.2.216 tested bytes; fixture full_integration_complete=false is legacy core summary not runtime proof. Source/generated digests and local artifact bytes accepted from Owner verification, not independently reproduced by SA. No runtime authorization granted.
+
+Source review found a specific uncovered template dtype risk: pinned upstream TrainingState initializes env_steps=0 (Python scalar before jax.device_put_replicated). Original CTRL serialized fullstate uses _unpmap of the trained device counter. Current strict comparison np.asarray(jax.device_get(ref_leaf)) versus restored device-counter array can see host Python-int dtype (typically int64) versus JAX default int32 despite a valid checkpoint. Actual binary dtype not separately inspected by SA; no observed runtime failure claimed. Under existing held integration delegation EDIT-FIRST minimal repair only inside make_h4m12_integrated_source: replace m470_template training_state entry with training_state.replace(env_steps=jnp.asarray(training_state.env_steps)); original training_state unchanged, only template uses the original JAX dtype policy, no casting restored payload, no weakening strict dtype/shape/byte/finite checks, no reward/network/optimizer/physics changes. Reversible projection remains checked. Added AST check of exact generated template in existing h4m12_full_static and distinct H4M12_STATIC_TEMPLATE_COUNTER_JAX_DTYPE_PASS marker; host-only and no new diagnostic. No other runtime source changed. New source/generated hashes must be obtained by one corrected full static before any separate runtime GO, cannot reuse prior log to authorize changed bytes. No SA local full static or native restore execution; installed m462 warmstart module not independently retrievable from remote in this review, remains local pinned preflight. Rollback this narrow patch only (never revert parent artifacts). All frozen budget and recovery gates unchanged, no treatment, no extra physical transitions/resets/inference/eval/optimizer/checkpoint saves. H4-M12-1 static v1.2.216 ACCEPTED / corrected v1.2.217 static PENDING; all runtime, holdout, readiness, promotion, production and Branch B HOLD.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -2698,6 +2704,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-26)
+
+**H4-M12-1 OWNER FULL STATIC v1.2.216 PASS / TYPED TEMPLATE REPAIR HELD (v1.2.217):** log019f5431 accepted for tested source; source review identified Python scalar env_steps template vs trained JAX dtype risk. Narrow reversible template-only repair and AST regression; corrected exact static pending, all runtime/PPO/holdout/production/promotion/Branch B HOLD.
 
 **H4-M12-1 HELD SOURCE / OWNER SINGLE FULL STATIC PENDING (v1.2.216):** focused typed/report fixtures, legacy AST and CLI HOLD added; owner exact compile/generated/parent/fixture checks required, no runtime auth, no treatment; all PPO/holdout/promotion/production/Branch B HOLD.
 
@@ -3483,6 +3491,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-26 | H4-M12-1 owner static and pre-runtime typed template review | log019f5431, frozen budget/parent verified, template-only JAX scalar dtype fix | v1.2.216 STATIC PASS; corrected static PENDING, zero runtime | 1.2.217 |
+
 | 2026-11-26 | H4-M12-1 focused static hardening | archived first-epoch host fixture, typed/report negatives, legacy AST and CLI HOLD | SOURCE IMPLEMENTED / OWNER FULL STATIC PENDING | 1.2.216 |
 
 | 2026-11-26 | H4-M12-1 full held integration | exact v1.2.214 core, isolated dispatcher/typed restore/ledger/checkpoint/guards/final reader | SOURCE IMPLEMENTED / EXACT STATIC PENDING; all runtime HOLD | 1.2.215 |
@@ -3977,6 +3987,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.217 — 2026-11-26:** Accept actual static evidence for v1.2.216, repair pre-replication env_steps scalar template dtype risk without altering original PPO graph, require corrected exact static before runtime GO.
 
 - **v1.2.216 — 2026-11-26:** Strengthen continuation static fixtures and final-reader checks; one owner full static only, no runtime GO.
 

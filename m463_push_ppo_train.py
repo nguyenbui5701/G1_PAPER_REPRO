@@ -6940,6 +6940,18 @@ def h4m12_full_static(root,brax_train_path):
     core=h4m12_held_static(root,brax_train_path)
     raw=Path(brax_train_path).read_bytes()
     src,_=make_h4m12_integrated_source(raw)
+    # Static regression for the actual generated template, not a native restore.
+    import ast
+    module=ast.parse(src)
+    templates=[n.value for n in ast.walk(module) if isinstance(n,ast.Assign)
+        and len(n.targets)==1 and isinstance(n.targets[0],ast.Name)
+        and n.targets[0].id=='m470_template']
+    h4m12_require(len(templates)==1 and isinstance(templates[0],ast.Dict),'STATIC_TEMPLATE')
+    fields={k.value:v for k,v in zip(templates[0].keys,templates[0].values)}
+    expected=ast.parse('training_state.replace(env_steps=jnp.asarray(training_state.env_steps))',mode='eval').body
+    h4m12_require(ast.dump(fields['training_state'],include_attributes=False)==
+        ast.dump(expected,include_attributes=False),'STATIC_TEMPLATE_COUNTER')
+    print('H4M12_STATIC_TEMPLATE_COUNTER_JAX_DTYPE_PASS',flush=True)
     source=h4x_source_digest(root)
     generated=hashlib.sha256(src.encode('utf8')).hexdigest()
     marker='H4M12_ACTIVE_GO: '+H4M12_SPEC['id']+' '+str(H4M12_OUTPUT)+' '+source+' '+generated+' m463_runs/m470_h4m12_static_fixture.log '+'a'*64
