@@ -4716,7 +4716,9 @@ def h4cc_tech_actual(args,r,monitor,persist,*,rss=False,diagnostic=False,prefix_
         h4m6_eval_require(r['policy_sha256_before']==history['policy'],'PREFIX_POLICY')
         r['compiler']={'jax':jax.__version__,'jaxlib':jaxlib.__version__,'device':str(jax.devices()[0]),
             'platform_version':jax.devices()[0].client.platform_version,
-            'env':{k:v for k,v in os.environ.items() if k.startswith(('JAX_','XLA_','CUDA_','NVIDIA_'))}}
+            'env':{k:v for k,v in os.environ.items() if k.startswith(('JAX_','XLA_','CUDA_','NVIDIA_'))},
+            'config':{k:jax.config.values[k] for k in ('jax_enable_compilation_cache','jax_compilation_cache_dir',
+                'jax_enable_x64','jax_default_matmul_precision','jax_enable_pgle') if k in jax.config.values}}
         fixtures=(H4CC_TECH_FIXTURES[1],) if prefix_context=='C' else H4CC_TECH_FIXTURES[:2]
     else:fixtures=(tuple(H4M6_DIAG_SPEC['fixture']),) if diagnostic else H4CC_TECH_FIXTURES
     for fixture in fixtures:
@@ -7886,7 +7888,8 @@ def h4m6_prefix_ledger(r,history,*,partial=False):
     a=h4m6_technical_audit(r,partial=True,diagnostic=context=='C')
     req(r['actor_calls_attempted']==r['physical_transitions_attempted']
         and r['actor_calls_recorded']==r['physical_transitions_recorded']
-        and 0<=r['key_audits_recorded']<=r['key_audits_attempted']<=cap
+        and r['physical_transitions_attempted']<=r['key_audits_recorded']<=r['key_audits_attempted']<=cap
+        and r['key_audits_attempted']-r['physical_transitions_attempted']<=1
         and 0<=r['template_initializations_recorded']<=r['template_initializations_attempted']<=2
         and r['further_training_authorized'] is False,'PREFIX_CALL_LEDGER')
     for i,l in enumerate(r['lanes']):
@@ -7953,7 +7956,7 @@ def h4m6_prefix_snapshot_replay(endpoint,row,history):
             'treedef':meta['treedef']==history['B_treedefs'][v['treedef_id']]['text'],
             'leaves':meta['leaves']==leaves}
     if endpoint['classification']=='B':
-        req(all(all(x.values()) for x in correspondence.values()),'PREFIX_B_LEAF_CORRESPONDENCE')
+        req(all(all(correspondence[n].values()) for n in ('projected','physics')),'PREFIX_B_LEAF_CORRESPONDENCE')
     return out,correspondence
 
 
@@ -8030,6 +8033,11 @@ def h4m6_prefix_child(args,auth,provenance,history):
         req(cpath.is_file() and not cpath.is_symlink() and cpath.stat().st_size<=H4M6_PREFIX_SPEC['child_report_cap']
             and json.loads((root/'C/attempt_result.json').read_bytes())=={'authorization':auth,'status':'COMPLETE'},'PREFIX_C_REQUIRED')
         c=json.loads(cpath.read_bytes());h4m6_prefix_report_replay(c,history,auth,provenance,'C')
+        parent_report=json.loads((root/'report.json').read_bytes())
+        req(parent_report['authorization']==auth and len(parent_report['children'])==2
+            and parent_report['children'][0]['context']=='C' and parent_report['children'][0]['status']=='COMPLETE'
+            and parent_report['children'][0]['sha256']==sha256(cpath)
+            and parent_report['children'][1]['context']=='P' and parent_report['children'][1]['status']=='STARTED','PREFIX_C_PARENT_BINDING')
     r={'status':'M470_H4M6_PREFIX_IN_PROGRESS','context':context,'prefix_spec':H4M6_PREFIX_SPEC,
         'spec':t.H4M6_SPEC,'authorization':auth,'provenance':provenance,'source_commit':PIN,'lanes':[],
         'physical_transitions_attempted':0,'physical_transitions_recorded':0,
@@ -8141,6 +8149,7 @@ def h4m6_prefix_dispatch(args):
                     and json.loads((child.parent/'attempt_result.json').read_bytes())=={'authorization':auth,'status':'COMPLETE'},'PREFIX_CHILD_MARKERS')
                 h4m6_prefix_report_replay(report,history,auth,provenance,label)
                 entry.update(status='COMPLETE',sha256=sha256(child),bytes=child.stat().st_size,
+                    markers={n:sha256(child.parent/n) for n in ('attempt.json','parent.dispatch.json','dispatch.started.json','attempt_result.json')},
                     physical=report['physical_transitions_recorded'],resets=report['reset_lanes_recorded'],
                     actor_calls=report['actor_calls_recorded'],key_audits=report['key_audits_recorded'],
                     templates=report['template_initializations_recorded'])
@@ -8152,7 +8161,9 @@ def h4m6_prefix_dispatch(args):
         req(sum(x['endpoint']['bytes'] for x in reports.values())<=H4M6_PREFIX_SPEC['host_cap'],'PREFIX_HOST_CAP')
         r['comparison']=h4m6_prefix_compare(reports['C'],reports['P'],history)
         req(h4m6_prefix_authorization(root)==auth and h4m6_tech_inputs(args,auth,prefix=True)==provenance
-            and all(sha256(root/h4m6_prefix_path(e['context']))==e['sha256'] for e in r['children']),'PREFIX_FINAL_IMMUTABILITY')
+            and all(sha256(root/h4m6_prefix_path(e['context']))==e['sha256']
+                and all(sha256((root/h4m6_prefix_path(e['context'])).parent/n)==h for n,h in e['markers'].items())
+                for e in r['children']),'PREFIX_FINAL_IMMUTABILITY')
         r['post_immutability']=True;r['status']='M470_H4M6_PREFIX_COMPLETE';persist()
         h4m6_write_bounded(path.parent/'attempt_result.json',{'authorization':auth,'status':'COMPLETE'},exclusive=True)
         decision='PREFIX_DIAGNOSTIC_COMPLETE'
@@ -8163,6 +8174,7 @@ def h4m6_prefix_dispatch(args):
         r['status']='M470_H4M6_PREFIX_STOP';r['error']=error
         # Preserve available child partial evidence; missing report means unknown, never zero.
         for entry in r['children']:
+            if entry['status']!='COMPLETE':entry['status']='STOPPED_OR_INCOMPLETE'
             child=root/h4m6_prefix_path(entry['context'])
             if child.is_file() and not child.is_symlink() and 0<child.stat().st_size<=H4M6_PREFIX_SPEC['child_report_cap']:
                 entry['partial_sha256']=sha256(child)
