@@ -6404,6 +6404,8 @@ def h4m12_check_complete(out,r,auth):
     out=Path(out)
     h4m12_require(r['status']=='TECHNICAL_PASS' and r['authorization']==auth and
                   r['spec']==H4M12_SPEC and r['promotion_authorized'] is False,'FINAL_STATUS')
+    expected=dict(r['parent']['original_contract']['config'],num_timesteps=5242880,num_evals=2)
+    h4m12_require(r['hardware_scaled_config']==expected and r['reward']==r['parent']['original_contract']['reward'],'FINAL_CONFIG')
     b=H4M12Budget()
     rows=r['operational_rows']
     for row in rows:
@@ -6432,7 +6434,13 @@ def h4m12_check_complete(out,r,auth):
             (i==0 or p['key']==post[i-1]['key']),'FINAL_CARRY')
     resets=[x for x in rows if x['event'].endswith('reset_before')]
     h4m12_require(len(resets)==3 and all(x['dr_sha256']==H4M12_DR for x in resets)
-        and resets[1]['keys_sha256']==H4M12_RESET_SHA,'FINAL_DR')
+        and resets[1]['keys_sha256']==H4M12_RESET_SHA and resets[1]['local_key']==H4M12_LOCAL
+        and resets[1]['eval_key']==H4M12_EVAL,'FINAL_DR')
+    epoch=next(x for x in rows if x['event']=='epoch')
+    counter(epoch,0)
+    h4m12_require(epoch['key']==pre[0]['key'] and
+        [x['chunk'] for x in rows if x['event']=='chunk_ledger']==[1,2,3,4] and
+        next(x for x in rows if x['event']=='checkpoint')['step']==15728640,'FINAL_EVENT_DETAIL')
     for row in rows:
         if row['event'].endswith('reset_after'):
             h4m12_require(row['finite'] is True and row['environment_schema']==
@@ -6474,8 +6482,13 @@ def h4m12_read_final(root,expected_sha,auth):
     out=root/H4M12_OUTPUT
     h4x_file_pin(out/'report.json',expected_sha)
     r=json.loads((out/'report.json').read_bytes())
+    for name in ('dispatch.started.json','attempt.json','worker.started.json','attempt_result.json'):
+        h4m12_require((out/name).is_file() and not (out/name).is_symlink(),'FINAL_RECEIPT_PATH')
     h4m12_require(json.loads((out/'dispatch.started.json').read_bytes())==
         {'authorization':auth},'FINAL_DISPATCH')
+    worker=json.loads((out/'worker.started.json').read_bytes())
+    h4m12_require(set(worker)=={'authorization','pid'} and worker['authorization']==auth
+        and type(worker['pid']) is int and worker['pid']>0,'FINAL_WORKER')
     receipt=json.loads((out/'attempt.json').read_bytes())
     h4m12_require(set(receipt)=={'authorization','parent_pid'} and receipt['authorization']==auth
         and type(receipt['parent_pid']) is int and receipt['parent_pid']>0,'FINAL_RESERVATION')
@@ -6496,6 +6509,8 @@ def h4m12_worker(a,auth,root,out):
         {'authorization':auth,'parent_pid':os.getppid()},'WORKER_RESERVATION')
     h4x_write_json(out/'worker.started.json',{'authorization':auth,'pid':os.getpid()},exclusive=True)
     parent=h4m12_parent_preflight(root,require_unused=False)
+    for path,sha in ((a.checkpoint,SEED1_SHA),(a.restore_report,H3_CAUSAL_RESTORE_SHA),(a.reward_report,H4R_REWARD_SHA)):
+        h4x_file_pin(path,sha)
     a.h4_exploratory_reward_report=a.reward_report
     pins=h4x_bootstrap(a,h4m12=True)
     old=json.loads((root/H4M12_PARENT/'report.json').read_bytes())
@@ -6627,7 +6642,9 @@ def h4m12_worker(a,auth,root,out):
             payload=v['payload']; restored_ts=payload['training_state']
             file=root/H4M12_PARENT/H4M12_FULL
             h4x_file_pin(file,H4M12_PARENT_PINS[H4M12_FULL])
-            other=serialization.from_bytes(v['template'],file.read_bytes())
+            raw=file.read_bytes()
+            h4m12_require(hashlib.sha256(raw).hexdigest()==H4M12_PARENT_PINS[H4M12_FULL],'PARENT_FULL_BYTES')
+            other=serialization.from_bytes(v['template'],raw)
             h4m12_tree_equal(jax,np,payload,other,'PARENT_FULL')
             counters(restored_ts,0,False)
             local,env_keys,eval_key=(payload[k] for k in ('local_key','key_envs','eval_key'))
@@ -6638,7 +6655,9 @@ def h4m12_worker(a,auth,root,out):
             policy_template=(restored_ts.normalizer_params,restored_ts.params)
             p=root/H4M12_PARENT/H4M12_POLICY
             h4x_file_pin(p,H4M12_PARENT_PINS[H4M12_POLICY])
-            decoded=serialization.from_bytes(policy_template,p.read_bytes())
+            raw=p.read_bytes()
+            h4m12_require(hashlib.sha256(raw).hexdigest()==H4M12_PARENT_PINS[H4M12_POLICY],'PARENT_POLICY_BYTES')
+            decoded=serialization.from_bytes(policy_template,raw)
             h4m12_tree_equal(jax,np,policy_template,decoded,'PARENT_POLICY')
             row=dict(policy_exact=True,fullstate_exact=True,local_key=keylist(local),
                      eval_key=keylist(eval_key),reset_sha256=keyhash(env_keys))
@@ -6805,12 +6824,111 @@ def h4m12_main(argv):
         print('H4M12_TECHNICAL_PASS',sha,flush=True)
     except BaseException as exc:
         if child is not None and child.poll() is None:
-            os.killpg(child.pid,signal.SIGKILL)
+            try: os.killpg(child.pid,signal.SIGKILL)
+            except ProcessLookupError: pass
             child.wait()
         if not (out/'attempt_result.json').exists():
             h4x_write_json(out/'attempt_result.json',dict(status='STOP',authorization=auth,
                 producer_rc=rc,stored_log_bytes=total,error=repr(exc)[:2048]),exclusive=True)
         raise
+
+
+
+def h4m12_static_fixture(root,auth,src):
+    """Host-only positive/negative report and typed-tree fixtures; no native calls."""
+    import tempfile
+    from types import SimpleNamespace
+    import numpy as np
+    # A small duck-typed tree API tests the actual byte verifier without JAX.
+    mock=SimpleNamespace(device_get=lambda x:x,tree_util=SimpleNamespace(
+        tree_flatten=lambda x:(list(x),('tuple',len(x)))))
+    x=(np.asarray([0.,1.],np.float32),np.asarray([4],np.int32))
+    h4m12_require(h4m12_tree_equal(mock,np,x,copy.deepcopy(x),'FIXTURE')==2,'TYPED_FIXTURE')
+    def rejected(fn):
+        try: fn()
+        except (RuntimeError,KeyError,ValueError): return
+        raise RuntimeError('M470_H4M12_STATIC_NEGATIVE_ACCEPTED')
+    for y in ((np.asarray([-0.,1.],np.float32),x[1]),
+              (x[0].astype(np.float64),x[1]),(x[0].reshape(1,2),x[1]),
+              (np.asarray([0.,np.nan],np.float32),x[1]),(x[0],)):
+        rejected(lambda:h4m12_tree_equal(mock,np,x,y,'FIXTURE_NEGATIVE'))
+    old=json.loads((root/H4M12_PARENT/'report.json').read_bytes())
+    parent=h4m12_parent_preflight(root)
+    # Actual archived epoch exposure is reused ONLY as host fixture.
+    r=dict(status='TECHNICAL_PASS',authorization=auth,spec=H4M12_SPEC,parent=parent,
+        promotion_authorized=False,returned_policy_exact=True,
+        hardware_scaled_config=dict(old['hardware_scaled_config'],num_timesteps=5242880,num_evals=2),
+        reward=old['train_reward_config'],h4_chunks=copy.deepcopy(old['h4_chunks'][:4]),
+        h4_epochs=copy.deepcopy(old['h4_epochs'][:1]),
+        report_history=[dict(old['report_history'][1],additional_steps=15728640)],
+        gpu=dict(total_mib=12288,peak_used_mib=4903,samples=1,sampler_errors=[]),
+        artifacts={},operational_rows=[])
+    r['exposure']=h4m12_exposure_replay(r)
+    def counter(n):
+        return dict(steps=10485760+n*1310720,adam=1600+n*200,
+            normalizer=411566080+n*1310720,training_schema=parent['edge']['training_schema'])
+    # Synthetic operational row values, not measured RNG or checkpoint evidence.
+    b=H4M12Budget()
+    k=0
+    for event in h4m12_schedule():
+        row={}
+        if event.endswith('reset_before'):
+            row=dict(dr_sha256=H4M12_DR,keys_sha256=H4M12_RESET_SHA,
+                local_key=H4M12_LOCAL,eval_key=H4M12_EVAL)
+        elif event.endswith('reset_after'):
+            row=dict(finite=True,environment_schema=parent['edge']['environment_schema'])
+        elif event=='restore_payload':
+            row=dict(policy_exact=True,fullstate_exact=True,local_key=H4M12_LOCAL,
+                eval_key=H4M12_EVAL,reset_sha256=H4M12_RESET_SHA)
+        elif event=='initial': row=counter(0)
+        elif event=='epoch': row=dict(**counter(0),key=[[0,1]])
+        elif event=='chunk_before':
+            row=dict(**counter(k),key=[[k,k+1]],expected_key=[[k+1,k+2]])
+        elif event=='chunk_after':
+            row=dict(**counter(k+1),key=[[k+1,k+2]],finite=True)
+        elif event=='chunk_ledger':
+            k+=1;row=dict(chunk=k)
+        elif event=='eval_before':
+            row=dict(step=15728640,key=H4M12_EVAL,expected_key=[1,2])
+        elif event=='eval_after':
+            row=dict(step=15728640,key=[1,2],finite=True)
+        elif event=='checkpoint': row=dict(step=15728640)
+        elif event=='finish': row=counter(4)
+        b.advance(event);r['operational_rows'].append(dict(event=event,**row))
+    r['budget']=b.snapshot()
+    with tempfile.TemporaryDirectory(prefix='h4m12_static_') as tmp:
+        out=Path(tmp)
+        (out/'m463_brax_ppo_instrumented.py').write_text(src,encoding='utf8')
+        for name in (H4M12_NEW_POLICY,H4M12_NEW_FULL):
+            (out/name).write_bytes(b'HOST_FIXTURE_NOT_CHECKPOINT')
+            r['artifacts'][name]=digest(out/name)
+        meta=Path(H4M12_NEW_FULL).with_suffix('.json').name
+        (out/meta).write_text(json.dumps(h4m12_checkpoint_meta(auth,r['artifacts'][H4M12_NEW_FULL],
+            r['artifacts'][H4M12_NEW_POLICY])),encoding='utf8')
+        r['artifacts'][meta]=digest(out/meta)
+        h4m12_require(h4m12_check_complete(out,r,auth),'FINAL_FIXTURE')
+        for field in ('budget','config','restore','counter','carry','exposure','artifact','gpu','manifest'):
+            z=copy.deepcopy(r)
+            rows=z['operational_rows']
+            if field=='budget': z['budget']['recorded']['optimizer']-=1
+            elif field=='config': z['hardware_scaled_config']['learning_rate']*=2
+            elif field=='restore': next(x for x in rows if x['event']=='restore_payload')['policy_exact']=False
+            elif field=='counter': next(x for x in rows if x['event']=='chunk_after')['adam']+=1
+            elif field=='carry': next(x for x in rows if x['event']=='chunk_after')['key']=[[99,99]]
+            elif field=='exposure': z['h4_chunks'][0]['passed']=False
+            elif field=='artifact': z['artifacts'][H4M12_NEW_FULL]='0'*64
+            elif field=='gpu': z['gpu']['peak_used_mib']=12288
+            elif field=='manifest':
+                # A changed manifest with internally consistent file SHA must still fail.
+                q=out/meta;original=q.read_bytes()
+                m=json.loads(original);m['adam_count']=0;q.write_text(json.dumps(m),encoding='utf8')
+                z['artifacts'][meta]=digest(q)
+                rejected(lambda:h4m12_check_complete(out,z,auth))
+                q.write_bytes(original)
+                continue
+            rejected(lambda:h4m12_check_complete(out,z,auth))
+    return {'typed_negative':5,'final_reader_negative':9,'positive':2,
+            'fixture_only':True,'native_calls':0}
 
 
 def h4m12_full_static(root,brax_train_path):
@@ -6835,6 +6953,21 @@ def h4m12_full_static(root,brax_train_path):
     except RuntimeError as exc:
         h4m12_require('EXECUTION_HOLD_OR_CONFLICT' in str(exc),'STATIC_HOLD_REASON')
     else: raise RuntimeError('M470_H4M12_STATIC_AUTH_OPEN')
+    auth=h4m12_parse_marker(marker)
+    fixture=h4m12_static_fixture(root,auth,src)
+    # Check exactly the changed legacy functions against the accepted core revision.
+    import ast
+    old=ast.parse(subprocess.check_output(['git','show','b41d148ef6b5ca6e94a19cf2513dbde06dcf21d1:m463_push_ppo_train.py'],cwd=root))
+    new=ast.parse((root/'m463_push_ppo_train.py').read_bytes())
+    names=lambda t:{n.name:ast.dump(n,include_attributes=False) for n in t.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
+    left,right=names(old),names(new)
+    permitted={'main','h4_chunk_callback','h4r_bootstrap_pins','h4x_bootstrap','h4m12_parent_preflight'}
+    h4m12_require(all(right.get(k)==v for k,v in left.items() if k not in permitted),'LEGACY_AST')
+    proc=subprocess.run([sys.executable,'-B',str(root/'m463_push_ppo_train.py'),'--h4m12-continuation',
+        '--checkpoint','unused','--restore-report','unused','--reward-report','unused'],cwd=root,
+        capture_output=True,text=True,timeout=30)
+    h4m12_require(proc.returncode!=0 and 'M470_H4M12_EXECUTION_HOLD_OR_CONFLICT' in proc.stderr,'CLI_HOLD')
+    print('H4M12_STATIC_FIXTURES',json.dumps(fixture,sort_keys=True),flush=True)
     h4m12_require(not any(k in sys.modules for k in ('jax','mujoco','brax')),'STATIC_NATIVE_IMPORT_AFTER')
     h4m12_require(not (root/H4M12_OUTPUT).exists(),'STATIC_RESERVED')
     print('H4M12_SOURCE',source,flush=True)
