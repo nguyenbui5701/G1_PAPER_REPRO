@@ -7234,7 +7234,9 @@ def h4red_static_fixtures(root,parent,auth,src):
                     for lo,hi in ((0,32),(33,239),(240,308),(309,348),(349,639)):
                         q[field(f'age_{kind}_{lo}_{hi}')]=k if lo==240 else 0
             # Synthetic matched partition respecting actual template side caps.
-            a=min(matched,q[field('support_2_1')])
+            left_cap=q[field('support_2_1')]
+            right_cap=q[field('support_2_2')]
+            a=min(left_cap,max(matched-right_cap,matched//2))
             d=matched-a
             h4red_require(d<=q[field('support_2_2')],'FIXTURE_MATCHED')
             remain=q[field('gap_30_40')]
