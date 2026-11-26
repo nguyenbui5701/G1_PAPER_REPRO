@@ -7198,6 +7198,37 @@ def h4red_exposure_replay(r):
                 control_nominal=1145928)
 
 
+def h4red_reducer_fixture():
+    """Execute the exact generated reducer body against host arrays only."""
+    import numpy as np
+    from m463_instrument_brax import H4RED_METRICS_SOURCE
+    ns={}
+    exec(compile('def reduce(he,hr,ha,hc,extras,h4_count,coverage):\n'+
+                 H4RED_METRICS_SOURCE+'    return coverage\n','<RED reducer fixture>','exec'),ns)
+    a=lambda x:np.array(x,dtype=np.int32)
+    he=a([0,1,1,1,1,1,1,0]).astype(bool)
+    hr=a([0,0,0,1,1,1,1,0]).astype(bool)
+    ha=a([0,12,351,389,270,260,269,1])
+    hc=a([1,1,1,1,1,1,1,0])
+    extras=dict(h4_assigned=a([1,0,0,0,0,0,0,0]),h4_boundary=a([1,0,0,0,0,0,0,0]),
+        h4_target=a([343,12,343,381,270,260,269,12]),m463_repeat_gap=a([0,0,0,38,30,35,29,0]),
+        m463_support_side=a([3,3,3,1,2,1,2,3]),m463_direction=a([0,0,0,2,3,2,3,0]),
+        m463_repeat_side_matched=a([0,0,0,1,1,1,1,0]),h4_repeat_origin_motion=a([0]*8),
+        h4_motion=a([0,0,0,0,0,1,0,0]),h4_actor_motion=a([0,0,0,0,0,1,0,0]))
+    field=lambda k:'m463_h4_red_'+k+'_per_rollout'
+    def run(ex):
+        return ns['reduce'](he,hr,ha,hc,ex,lambda m:int(np.sum(m)),{})
+    expected=dict(bad=0,assigned=1,late_assigned=1,first=2,late_first=1,repeat=4,late_repeat=4,
+        matched_1=2,joint_1=1,gap_1=1,matched_2=2,joint_2=2,gap_2=1)
+    h4red_require(run(extras)=={field(k):v for k,v in expected.items()},'REDUCER_POSITIVE')
+    for k,i,v in (('h4_target',2,342),('m463_repeat_gap',3,39),('m463_support_side',3,2),
+                  ('h4_boundary',0,0),('h4_target',0,344)):
+        ex={key:x.copy() for key,x in extras.items()}
+        ex[k][i]=v
+        h4red_require(run(ex)[field('bad')]==1,'REDUCER_NEGATIVE_'+k)
+    return dict(positive=1,negative=5,native_calls=0)
+
+
 def h4red_static_fixtures(root,parent,auth,src):
     """Synthetic manipulation counters, actual archived M12 report only as template."""
     import tempfile
@@ -7339,6 +7370,7 @@ def h4red_full_static(root,brax_train_path,a):
         h4red_require('EXECUTION_HOLD_OR_CONFLICT' in str(exc),'STATIC_HOLD')
     else: raise RuntimeError('M470_H4RED_STATIC_AUTH_OPEN')
     fixture=h4red_static_fixtures(root,parent,auth,src)
+    fixture['reducer']=h4red_reducer_fixture()
     for flag,reason in (('--h4red-continuation','M470_H4RED_EXECUTION_HOLD_OR_CONFLICT'),
                         ('--h4m12-continuation','M470_H4M12_EXECUTION_HOLD_OR_CONFLICT')):
         proc=subprocess.run([sys.executable,'-B',str(root/'m463_push_ppo_train.py'),flag,
