@@ -1518,3 +1518,64 @@ def make_h4m12_integrated_source(raw):
         raise RuntimeError('M470_H4M12_INTEGRATION_PROJECTION')
     compile(s,'<H4-M12 integrated generated>','exec')
     return s,original
+
+# H4RED_GENERATOR_BEGIN
+# Read-only compact statistics from the very same PPO-consumed Transition.
+H4RED_METRICS_SOURCE = '''    red_first = he & (~hr)
+    red_repeat = he & hr
+    red_late = ha >= 240
+    red_assigned = extras['h4_assigned'] > 0
+    red_target = extras['h4_target']
+    red_gap = extras['m463_repeat_gap']
+    red_side = extras['m463_support_side']
+    red_direction = extras['m463_direction']
+    red_matched = extras['m463_repeat_side_matched'] > 0
+    red_left = (red_side == 1) & (red_direction == 2)
+    red_right = (red_side == 2) & (red_direction == 3)
+    red_invalid = (
+        (red_assigned & ((extras['h4_boundary'] == 0) | (ha != 0) |
+                         (hc != 1) | (red_target < 12) | (red_target > 343))) |
+        (he & ((hc != 1) | (ha < red_target) | (ha > red_target + 8) |
+               (red_side < 0) | (red_side > 3) |
+               (red_direction < 0) | (red_direction > 5))) |
+        (red_first & ((red_target < 12) | (red_target > 343) |
+                      (ha < 12) | (ha > 351))) |
+        (red_repeat & ((ha < 27) | (ha > 389) |
+                       (red_gap < 15) | (red_gap > 38))) |
+        (hr & (~he)) |
+        (red_matched & ((~red_repeat) | (~(red_left | red_right)))))
+    red_stand = (red_repeat & (hc == 1) & red_late & (ha <= 389) &
+                 (extras['h4_repeat_origin_motion'] == 0) &
+                 (extras['h4_motion'] == 0) & (extras['h4_actor_motion'] == 0))
+    for red_name, red_mask in (
+        ('bad', red_invalid), ('assigned', red_assigned),
+        ('late_assigned', red_assigned & (red_target >= 240)),
+        ('first', red_first), ('late_first', red_first & red_late),
+        ('repeat', red_repeat), ('late_repeat', red_repeat & red_late)):
+        coverage['m463_h4_red_'+red_name+'_per_rollout'] = h4_count(red_mask)
+    for red_s, red_match in ((1, red_left), (2, red_right)):
+        red_joint = red_stand & red_matched & red_match
+        for red_name, red_mask in (
+            ('matched', red_repeat & red_matched & red_match),
+            ('joint', red_joint),
+            ('gap', red_joint & (red_gap >= 30) & (red_gap <= 38))):
+            coverage['m463_h4_red_'+red_name+'_'+str(red_s)+'_per_rollout'] = h4_count(red_mask)
+'''
+
+
+def make_h4red_integrated_source(raw):
+    """Exact M12 generated source plus a distinct guard and metric reducer."""
+    base, original = make_h4m12_integrated_source(raw)
+    if sha256(base.encode('utf8')) != '7f9abc070e38bc287ae1948a3f55ee625d457d0abed6fe99bebf5fdf2ed9c37a':
+        raise RuntimeError('M470_H4RED_M12_GENERATOR_PIN')
+    guard = '  h4m12_generated_guard(h4x_audit_fn, __file__, environment, m470_resume_state_path)\n'
+    red_guard = '  h4m12_generated_guard(h4x_audit_fn, __file__, environment, m470_resume_state_path, red=True)\n'
+    anchor = '    metrics = {**metrics, **coverage, **m464_tail}\n'
+    source = h4c_once(base, guard, red_guard)
+    source = h4c_once(source, anchor, H4RED_METRICS_SOURCE + anchor)
+    back = h4c_once(h4c_once(source, H4RED_METRICS_SOURCE + anchor, anchor), red_guard, guard)
+    if back != base:
+        raise RuntimeError('M470_H4RED_GENERATOR_PROJECTION')
+    compile(source, '<H4RED generated>', 'exec')
+    return source, original
+# H4RED_GENERATOR_END
