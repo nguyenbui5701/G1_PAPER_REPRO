@@ -14753,8 +14753,9 @@ def h4m23_check_rich(p,row,m,np):
     phi=np.asarray(p['info_phase'],np.float32);x=(phi+np.float32(np.pi))/np.float32(2*np.pi)
     u=np.where(x<=.5,2*x,2*x-1);b=u**3+3*u*u*(1-u)
     rz=np.where(x<=.5,.15*b,.15*(1-b))
-    mask=(np.linalg.norm(p['phase_global_v'])>.1 or abs(float(p['phase_global_yaw']))>.1
-          or np.linalg.norm(p['command'])>.01)
+    mask=(np.linalg.norm(np.asarray(p['phase_global_v'],np.float32))>np.float32(.1)
+          or abs(np.float32(p['phase_global_yaw']))>np.float32(.1)
+          or np.linalg.norm(np.asarray(p['command'],np.float32))>np.float32(.01))
     fit=np.exp(-np.sum((np.asarray(p['phase_z'])-rz)**2)/.01)*mask
     h4m23_req(close(rz,p['phase_rz_derived']) and bool(p['phase_mask_derived'])==mask
         and close(fit,p['phase_fit_derived']) and close(fit,p['reward']['reward/feet_phase']),'PHASE_RECONSTRUCTION')
@@ -15229,8 +15230,11 @@ def h4m23_independent_fields(p,row,m,np):
     h4m23_req(mode==p['capture_mode'] and abs(cost-p['capture_cost'])<=2e-5
         and abs(np.linalg.norm(np.asarray(co['velocity'])[:2])-p['capture_speed'])<=2e-5,'CAPTURE_REPLAY')
     safe=True
-    for name in ('joint_margin_post','raw_ctrl_margin','force_margin_last_solve'):
-        safe=safe and all(v is None or v>=0 for v in p[name])
+    for values,ranges,limited in ((np.asarray(p['qpos_post'])[qa],np.asarray(f['jnt_range'])[ids],np.asarray(f['jnt_limited'])[ids]),
+        (p['raw_ctrl'],f['actuator_ctrlrange'],f['actuator_ctrllimited']),
+        (p['actuator_force'],f['actuator_forcerange'],f['actuator_forcelimited'])):
+        v=np.asarray(values,np.float32);r=np.asarray(ranges,np.float32)
+        safe=safe and bool(np.all((np.asarray(limited)==0)|((v>=r[:,0])&(v<=r[:,1]))))
     h4m23_req(safe==p['capture_safe'],'CAPTURE_SAFETY')
 
 
@@ -15274,34 +15278,25 @@ def h4m23_authorize(root):
     h4m23_req(auth['source']==source and auth['provenance']==h4m3_digest([pins,ext]),'AUTH_PROVENANCE')
     log=h4abs_pin(root/H4M23_STATIC,auth['static_sha'],H4M23_SPEC['log_cap'])
     lines=log.read_text('utf8').splitlines()
-    for line in ('H4M23_SOURCE '+source,'H4M23_PROVENANCE '+auth['provenance'],
-        'H4M23_EVALUATOR_SHA256 '+pins['source/m463_gate3_cp_eval.py'],
-        'H4M23_FULL_STATIC_PASS','STATIC_EXIT_CODE=0 TEE_EXIT_CODE=0'):
-        h4m23_req(lines.count(line)==1,'STATIC_RECEIPT')
-    for prefix in ('H4M23_SOURCE ','H4M23_PROVENANCE ','H4M23_EVALUATOR_SHA256 ','STATIC_EXIT_CODE='):
-        h4m23_req(sum(x.startswith(prefix) for x in lines)==1,'STATIC_RECEIPT_AMBIGUOUS')
-    # The distinct static stage must supply all categories of negative fixtures;
-    # no claim is made that such a receipt exists in this held revision.
-    evidence=[x.removeprefix('H4M23_STATIC_FIXTURES ') for x in lines if x.startswith('H4M23_STATIC_FIXTURES ')]
-    h4m23_req(len(evidence)==1,'STATIC_FIXTURE_RECEIPT')
-    fixture=json.loads(evidence[0])
-    categories={'projection','native_schema','packed_fields','manifest','fork','ledger','final_reader',
-        'partial_reader','authorization','reservation','watchdog_log','historical_provenance'}
-    h4m23_req(set(fixture)==categories|{'native_calls','optimizer_updates'}
-        and all(type(fixture[k]) is int and fixture[k]>0 for k in categories)
-        and fixture['native_calls']==fixture['optimizer_updates']==0,'STATIC_FIXTURE_CONTRACT')
-    heads=[x.split()[1] for x in lines if re.fullmatch(r'H4M23_STATIC_HEAD [0-9a-f]{40}',x)]
-    h4m23_req(len(heads)==1 and lines[-2:]==['H4M23_FULL_STATIC_PASS','STATIC_EXIT_CODE=0 TEE_EXIT_CODE=0']
-        and not any('STATIC_HOLD' in x for x in lines),'STATIC_HEAD_RECEIPT')
+    static_head=h4m23_static_receipt(lines,source,auth['provenance'],pins['source/m463_gate3_cp_eval.py'])
     def git(*argv):return subprocess.check_output(['git',*argv],cwd=root,text=True,timeout=30).strip()
+    parent=git('rev-parse','HEAD^')
     h4m23_req(git('branch','--show-current')==H4M23_BRANCH
         and git('status','--porcelain','--untracked-files=no')==''
-        and git('rev-parse','HEAD^')==heads[0] and git('diff','--name-only',heads[0],'HEAD')=='G1_RESEARCH_RULES.md',
-        'ROOT_ONLY_AUTH_CHILD')
-    prior=subprocess.check_output(['git','show',heads[0]+':G1_RESEARCH_RULES.md'],cwd=root,timeout=30).decode('utf8')
+        and git('diff','--name-only',parent,'HEAD')=='G1_RESEARCH_RULES.md','ROOT_ONLY_AUTH_CHILD')
+    h4m23_req(subprocess.run(['git','merge-base','--is-ancestor',static_head,parent],cwd=root,timeout=30).returncode==0
+        and set(git('diff','--name-only',static_head,parent).splitlines())<=H4M23_REVIEW_PATHS,
+        'STATIC_TO_RUNTIME_ANCESTRY')
+    prior=subprocess.check_output(['git','show',parent+':G1_RESEARCH_RULES.md'],cwd=root,timeout=30).decode('utf8')
+    approved=subprocess.check_output(['git','show',static_head+':G1_RESEARCH_RULES.md'],cwd=root,timeout=30).decode('utf8')
+    static_auth=h4m23_static_marker(approved)
+    h4m23_req(static_auth['blob']==h4m3_git_blob(root/'m463_gate3_cp_eval.py'),'STATIC_SOURCE_BLOB')
+    static_base=subprocess.check_output(['git','show',static_auth['base']+':G1_RESEARCH_RULES.md'],cwd=root,timeout=30).decode('utf8')
+    h4m23_req(prior==static_base and approved==h4m23_append_marker(static_base,static_auth['line'])
+        and git('rev-parse',static_head+'^')==static_auth['base']
+        and git('diff','--name-only',static_auth['base'],static_head)=='G1_RESEARCH_RULES.md','STATIC_MARKER_CLOSED')
     marker=next(l for l in rules.splitlines() if l.startswith('H4M23_RICH_ACTIVE_GO:'))
-    h4m23_req(not any(re.match(r'^[A-Z0-9_]+_GO:',l) for l in prior.splitlines())
-        and rules==prior+('' if prior.endswith('\n') else '\n')+marker+'\n','EXACT_ROOT_APPEND')
+    h4m23_req(rules==h4m23_append_marker(prior,marker),'EXACT_ROOT_APPEND')
     h4m3_no_runtime_imports()
     return auth,pins,ctrl,ext,lanes
 
@@ -15495,8 +15490,359 @@ def h4m23_dispatch(root,child=False):
 def h4m23_cli(argv):
     if argv==['plan']:
         print(json.dumps(H4M23_SPEC,sort_keys=True));return
+    if argv in (['static'],['static-child']):
+        return h4m23_static_dispatch(H4_EVAL_ROOT,child=argv==['static-child'])
     h4m23_req(argv in (['run'],['child']),'CLI')
     return h4m23_dispatch(H4_EVAL_ROOT,child=argv==['child'])
+
+
+# H4-M23-4 static-only preparation. No root marker is issued by this source.
+H4M23_STATIC_ID='H4-M23-4-STATIC-V1'
+H4M23_STATIC_CAP=1024**2
+H4M23_STATIC_SECONDS=900
+H4M23_STATIC_ATTEMPT=Path('m463_runs/m470_h4m23_rich_static_v1.attempt.json')
+H4M23_REVIEW_PATHS={'G1_RESEARCH_RULES.md'}|{'docs/research_rules/'+p for p in
+    ('CURRENT_STATE.md','ACTIVE_EXPERIMENT.md','TASK_LEDGER.md','CHANGELOG.md','EVIDENCE_INDEX.md')}
+# Counts are number of independently invoked positive/negative cases, not rows.
+H4M23_FIXTURE_COUNTS=dict(projection=3,native_schema=6,packed_fields=10,manifest=4,
+    fork=4,ledger=5,final_reader=4,partial_reader=4,authorization=7,reservation=3,
+    watchdog_log=3,historical_provenance=4,native_calls=0,optimizer_updates=0)
+
+def h4m23_append_marker(base,line):
+    return base+('' if base.endswith('\n') else '\n')+line+'\n'
+
+def h4m23_static_marker(rules):
+    import re
+    active=[l for l in rules.splitlines() if re.match(r'^[A-Z0-9_]+_GO:',l)]
+    h4m23_req(len(active)==1,'STATIC_HOLD_OR_CONFLICT')
+    a=active[0].split()
+    h4m23_req(len(a)==5 and a[:2]==['H4M23_RICH_STATIC_GO:',H4M23_STATIC_ID]
+        and all(re.fullmatch('[0-9a-f]{40}',a[i]) for i in (2,3))
+        and a[4]==str(H4M23_STATIC),'STATIC_MARKER')
+    return dict(id=a[1],base=a[2],blob=a[3],log=a[4],line=active[0])
+
+def h4m23_static_admit(root):
+    h4m3_no_runtime_imports()
+    rules=(root/'G1_RESEARCH_RULES.md').read_text('utf8');auth=h4m23_static_marker(rules)
+    def git(*argv):return subprocess.check_output(['git',*argv],cwd=root,text=True,timeout=30).strip()
+    head=git('rev-parse','HEAD')
+    h4m23_req(git('branch','--show-current')==H4M23_BRANCH and git('rev-parse','HEAD^')==auth['base']
+        and git('status','--porcelain','--untracked-files=no')==''
+        and git('diff','--name-only',auth['base'],head)=='G1_RESEARCH_RULES.md'
+        and h4m3_git_blob(root/'m463_gate3_cp_eval.py')==auth['blob'],'STATIC_SOURCE_ADMISSION')
+    prior=subprocess.check_output(['git','show',auth['base']+':G1_RESEARCH_RULES.md'],cwd=root,timeout=30).decode('utf8')
+    import re
+    h4m23_req(not any(re.match(r'^[A-Z0-9_]+_GO:',l) for l in prior.splitlines())
+        and rules==h4m23_append_marker(prior,auth['line']),'STATIC_EXACT_ROOT_APPEND')
+    return auth,head
+
+def h4m23_static_lines(head,source,provenance,evaluator):
+    return ['H4M23_STATIC_HEAD '+head,'H4M23_SOURCE '+source,'H4M23_PROVENANCE '+provenance,
+        'H4M23_EVALUATOR_SHA256 '+evaluator,'H4M23_STATIC_FIXTURES '+json.dumps(H4M23_FIXTURE_COUNTS,sort_keys=True,separators=(',',':')),
+        'H4M23_FULL_STATIC_PASS','STATIC_EXIT_CODE=0 TEE_EXIT_CODE=0']
+
+def h4m23_static_receipt(lines,source,provenance,evaluator):
+    import re
+    h4m23_req(len(lines)==7 and re.fullmatch(r'H4M23_STATIC_HEAD [0-9a-f]{40}',lines[0]) is not None,'STATIC_RECEIPT_SCHEMA')
+    head=lines[0].split()[1]
+    h4m23_req(lines==h4m23_static_lines(head,source,provenance,evaluator),'STATIC_RECEIPT_EXACT')
+    return head
+
+def h4m23_static_mock_manifest(ext):
+    import copy
+    m=copy.deepcopy(ext['model_manifest']);files=ext['g1_kinematics']
+    scene=files['mujoco_playground/_src/locomotion/g1/xmls/scene_mjx_feetonly_flat_terrain.xml']
+    xml=files['mujoco_playground/_src/locomotion/g1/xmls/g1_mjx_feetonly.xml']
+    m['geometry']=dict(legs={s:h4m4_leg_spec(s) for s in ('left','right')},
+        scene_path=scene['path'],scene_sha256=scene['sha256'],xml_path=xml['path'],xml_sha256=xml['sha256'],
+        xml_blob=xml['blob'])
+    return m
+
+def h4m23_static_mock_raw(m,t,phase,postphase,qvel,np):
+    """Synthetic host fixture, NOT a native step or archived rich trajectory."""
+    f=np.float32;z=lambda shape:np.zeros(shape,dtype=f)
+    r={k:z(shape) for k,shape in H4M23_FLOAT_SHAPES.items()}
+    r.update({k:np.zeros(shape,dtype=bool) for k,shape in H4M23_BOOL_SHAPES.items()})
+    pose=np.asarray(m['default_pose'],f);q=np.concatenate((np.asarray([0,0,.75,1,0,0,0],f),pose))
+    r.update(qpos_pre=q.copy(),qpos_post=q.copy(),qvel_pre=qvel.copy(),qvel_post=qvel.copy(),
+        target=pose.copy(),raw_ctrl=pose.copy(),actuator_length=pose.copy(),
+        time_pre=f((t-1)*.02),time_post=f(t*.02),phase_dt=np.asarray([.16],f),
+        info_phase=phase.copy(),post_phase=postphase.copy(),rng=np.asarray([1,2],np.uint32),
+        post_rng=np.asarray([1,2],np.uint32),pre_contact=np.ones(2,bool),post_contact=np.ones(2,bool),
+        reward_air_derived=np.full(2,.02,f),phase_z=np.full(2,.008,f),
+        lf_geom_pos=np.asarray([0,.1,.008],f),rf_geom_pos=np.asarray([0,-.1,.008],f),
+        lf_geom_mat=np.eye(3,dtype=f),rf_geom_mat=np.eye(3,dtype=f),
+        capture_valid=np.asarray(True),capture_mode=np.asarray(3,np.int32),
+        capture_rects=np.asarray([[0,.1,1,0,0,1,.09,.03],[0,-.1,1,0,0,1,.09,.03]],f),
+        feet_sensor_velocity=z(np.asarray(m['feet_sensor_addresses']).shape),
+        xipos=z((31,3)),ximat=np.tile(np.eye(3,dtype=f),(31,1,1)),cvel=z((31,6)),subtree_com=z((31,3)))
+    x=(phase+f(np.pi))/f(2*np.pi);u=np.where(x<=.5,2*x,2*x-1);bezier=u**3+3*u*u*(1-u)
+    r['phase_rz_derived']=np.asarray(np.where(x<=.5,.15*bezier,.15*(1-bezier)),f)
+    r['foot_site_xyz']=np.stack((r['lf_geom_pos'],r['rf_geom_pos']))
+    lf,rf=m['foot_geom_ids'];floor=m['floor_geom_id']
+    r.update(contact_geom=np.asarray([[floor,lf],[floor,rf],[lf,rf]],np.int32),
+        contact_pos=z((3,3)),contact_frame=np.tile(np.asarray([[0,0,1],[1,0,0],[0,1,0]],f),(3,1,1)),
+        contact_dist=np.asarray([0,0,.02],f),contact_includemargin=z((3,)),
+        contact_friction=np.ones((3,5),f),contact_dim=np.asarray([3,3,3],np.int32),
+        contact_address=np.asarray([0,4,-1],np.int32))
+    fields=m['fields'];bw=float(np.sum(fields['body_mass']))*abs(m['gravity'][2])
+    r['efc_force']=np.full(8,bw/8,f)
+    r['capture_loads']=np.full(2,float(np.sum(r['efc_force'][:4],dtype=np.float64))/bw,f)
+    ids=np.asarray(fields['actuator_trnid'])[:,0];safe=True
+    for vals,ranges,lim in ((pose,np.asarray(fields['jnt_range'])[ids],np.asarray(fields['jnt_limited'])[ids]),
+        (pose,fields['actuator_ctrlrange'],fields['actuator_ctrllimited']),
+        (r['actuator_force'],fields['actuator_forcerange'],fields['actuator_forcelimited'])):
+        ranges=np.asarray(ranges,f)
+        safe=safe and bool(np.all((np.asarray(lim)==0)|((vals>=ranges[:,0])&(vals<=ranges[:,1]))))
+    r['capture_safe']=np.asarray(safe);r['reward']={k:f(0) for k in m['reward_keys']}
+    row={k:0. for k in H4M3_COLUMNS}
+    row.update(h2a_state_finite=1.,h3_finite=1.,height=float(q[2]),lf_ground_contact=1.,rf_ground_contact=1.,
+        phase_left_post_rad=float(postphase[0]),phase_right_post_rad=float(postphase[1]),
+        foot_pair_present=1.,foot_pair_signed_dist_m=float(r['contact_dist'][2]))
+    for side in ('lf','rf'):
+        for axis,v in zip('xyz',r[side+'_geom_pos']):row[side+'_geom_'+axis+'_m']=float(v)
+        row[side+'_site_z_m']=float(r['phase_z'][0])
+    return r,[row[k] for k in H4M3_COLUMNS]
+
+def h4m23_static_mock_journal(m,auth,pins,np):
+    # Full-size synthetic schedule exercises real journal readers, not native physics.
+    phases=[np.asarray([0,np.pi],np.float32)]
+    for t in range(385):
+        phases.append(np.fmod(phases[-1]+np.float32(.16)+np.float32(np.pi),
+            np.float32(2*np.pi))-np.float32(np.pi))
+    lanes=[];rich={};kicks={}
+    for i,(seed,direction,end) in enumerate(H4M23_LANES):
+        q0=np.zeros(35,np.float32);q1=q0.copy();q1[0]=np.float32(.50)
+        q2=q1.copy();q2[0]+=np.float32(.35)
+        def kick(kind,t,before,after):
+            actual=(after[:2].astype(np.float64)-before[:2].astype(np.float64)).tolist()
+            meta=dict(exposed=True,step=t,heading_rad=0.,requested_world_dqvel_xy_mps=actual,
+                actual_world_dqvel_xy_mps=actual,actual_magnitude_mps=float(np.linalg.norm(actual)),
+                full_state_rng_fork_by_construction=True)
+            kicks[i,kind]=dict(meta=meta,audit=dict(tick=t,qvel_before=before.tolist(),qvel_after=after.tolist()),
+                base_digest='a'*64,restored_digest='a'*64,kicked_digest='b'*64)
+            return meta
+        first=kick('kick1',300,q0,q1);second=kick('kick2',335,q1,q2)
+        rows={}
+        for kind,start,stop,qv in (('nominal',1,299,q0),('first',300,334,q1),
+            ('single',335,385,q1),('double',335,end,q2)):
+            rows[kind]=[]
+            for t in range(start,stop+1):
+                if t>=295:
+                    raw,row=h4m23_static_mock_raw(m,t,phases[t-1],phases[t],qv,np)
+                    if kind=='double' and t==end and end<385:row[H4M3_COLUMNS.index('done')]=1.
+                    rich[i,kind,t]=h4m23_pack(raw,row,m,np)
+                else:row=[0.]*46
+                rows[kind].append(row)
+        lanes.append(dict(seed=seed,direction=direction,end=end,rows=rows,first=first,second=second))
+    entries=[dict(header=dict(authorization=auth,input_sha256=pins,spec=H4M23_SPEC,manifest=m))]
+    for key,row in h4m23_schedule(lanes):
+        i,k,t=key
+        if k in ('nominal','first','single','double'):payload=dict(row=row,rich=rich.get((i,k,t)))
+        elif k in ('kick1','kick2'):payload=kicks[i,k]
+        elif k=='fork':payload=dict(parent='a'*64,single='a'*64,double='a'*64)
+        elif k=='reset':payload=dict(seed=H4M23_LANES[i][0],actor_shape=[103],critic_shape=[216],done=False)
+        else:payload=dict(boundary=k)
+        entries.extend([dict(pending=key),dict(recorded=key,payload=payload)])
+    return lanes,entries
+
+def h4m23_static_fixture_run(root,pins,ext,lanes):
+    import copy,tempfile,time
+    import numpy as np
+    from unittest.mock import patch
+    h4m3_no_runtime_imports()
+    counts={k:0 for k in H4M23_FIXTURE_COUNTS}
+    def good(category,fn):
+        fn();counts[category]+=1
+    def bad(category,fn,label):
+        try:fn()
+        except RuntimeError as e:
+            h4m23_req(label in str(e),'FIXTURE_WRONG_FAILURE_'+category+'_'+str(e)[:100])
+        else:raise RuntimeError('M470_H4M23_FIXTURE_ACCEPTED_'+category+'_'+label)
+        counts[category]+=1
+    def changed(p,k,v):
+        q=copy.deepcopy(p);q[k]=v;return q
+    raw=(root/'m463_gate3_cp_eval.py').read_bytes();base=subprocess.check_output(
+        ['git','show',H4M23_BASE+':m463_gate3_cp_eval.py'],cwd=root,timeout=30)
+    good('projection',lambda:h4m23_req(h4m23_projection(raw)==base,'PROJECT_BYTES'))
+    good('projection',lambda:h4ffe2_dev_project(root))
+    bad('projection',lambda:h4m23_projection(raw.replace(b'def run(args):',b'def run_bad(args):',1)),'PROJECTION_ANCHOR')
+    m=h4m23_static_mock_manifest(ext)
+    good('manifest',lambda:h4m23_validate_manifest(m,ext,np))
+    bad('manifest',lambda:h4m23_validate_manifest(changed(m,'dt_s',.03),ext,np),'EXACT_ARCHIVED_MODEL_MANIFEST')
+    bad('manifest',lambda:h4m23_validate_manifest(changed(m,'reward_keys',[]),ext,np),'EXACT_ARCHIVED_MODEL_MANIFEST')
+    geo=copy.deepcopy(m['geometry']);geo['legs']['left']['halfsize'][0]=.5
+    bad('manifest',lambda:h4m23_validate_manifest(changed(m,'geometry',geo),ext,np),'LEG_halfsize')
+    ph=np.zeros(2,np.float32);post=np.full(2,.16,np.float32)
+    raw,row=h4m23_static_mock_raw(m,295,ph,post,np)
+    good('native_schema',lambda:h4m23_native_schema(raw,m,np))
+    for key,value,label in (('action',np.zeros(28,np.float32),'NATIVE_FLOAT_action'),
+        ('pre_air',np.zeros(2,np.float64),'NATIVE_FLOAT_pre_air'),
+        ('rng',np.zeros(2,np.int32),'NATIVE_RNG_rng'),('post_contact',np.zeros(2,np.int32),'NATIVE_BOOL_post_contact'),
+        ('reward',{},'NATIVE_REWARD_KEYS')):
+        bad('native_schema',lambda k=key,v=value:h4m23_native_schema(changed(raw,k,v),m,np),label)
+    packed=h4m23_pack(raw,row,m,np)
+    good('packed_fields',lambda:h4m23_check_rich(packed,row,m,np))
+    for key,value,label in (('lowest_corner_z',[1.,1.],'RECT_REPLAY'),
+        ('target_minus_post_joint',[1.]*29,'PACKED_SEMANTICS'),
+        ('capture_cost',.5,'CAPTURE_REPLAY'),('slot_inventory',[],'COMPLETE_RELEVANT_SLOTS'),
+        ('foot_pair_distance',None,'PAIR_DISTANCE'),('actual_touchdown',[True,True],'PACKED_SEMANTICS'),
+        ('phase_mask_derived',True,'PHASE_RECONSTRUCTION'),('post_air',[1.,1.],'AIR_RECONSTRUCTION'),
+        ('actor_action',[.25]*29,'ACTION_COMMAND_IDENTITY')):
+        bad('packed_fields',lambda k=key,v=value:h4m23_check_rich(changed(packed,k,v),row,m,np),label)
+    # Host provenance: exact historical archive, exact source pins, immutable decisions.
+    a=json.loads(((root/H4FFE2_DEV_OUTPUT).parent/'report.json').read_bytes())
+    good('historical_provenance',lambda:h4m23_req(h4m23_archive_lanes(a)==lanes,'ARCHIVE_LANES'))
+    good('historical_provenance',lambda:h4m23_req(pins['ffe2_dev/report.json']==H4M23_PINS['report.json']
+        and pins['m3/report.json']==H4M4_REPORT_SHA and pins['training/'+H4M12_POLICY]==H4M23_POLICY_SHA
+        and a['decision']['decision']=='NO_PROMOTE' and a['decision']['training_exposure']=='EXPOSURE_INCONCLUSIVE','HISTORY'))
+    bad('historical_provenance',lambda:h4m23_archive_lanes(changed(a,'frame_columns',[])),'GROUP_SCHEMA')
+    bad('historical_provenance',lambda:h4m23_archive_lanes(changed(a,'groups',a['groups'][:-1])),'GROUP_SCHEMA')
+    marker='H4M23_RICH_ACTIVE_GO: '+H4M23_SPEC['id']+' '+str(H4M23_OUTPUT)+' '+'a'*64+' '+'b'*64+' '+str(H4M23_STATIC)+' '+'c'*64
+    sm='H4M23_RICH_STATIC_GO: '+H4M23_STATIC_ID+' '+'a'*40+' '+'b'*40+' '+str(H4M23_STATIC)
+    good('authorization',lambda:h4m23_marker(marker))
+    good('authorization',lambda:h4m23_static_marker(sm))
+    bad('authorization',lambda:h4m23_marker(sm),'DISTINCT_MARKER')
+    bad('authorization',lambda:h4m23_static_marker(marker),'STATIC_MARKER')
+    bad('authorization',lambda:h4m23_static_marker(sm+'\n'+sm),'STATIC_HOLD_OR_CONFLICT')
+    lines=h4m23_static_lines('a'*40,'b'*64,'c'*64,'d'*64)
+    good('authorization',lambda:h4m23_static_receipt(lines,'b'*64,'c'*64,'d'*64))
+    bad('authorization',lambda:h4m23_static_receipt(lines[:-1],'b'*64,'c'*64,'d'*64),'STATIC_RECEIPT_SCHEMA')
+    auth=h4m23_marker(marker)
+    mock,entries=h4m23_static_mock_journal(m,auth,pins,np)
+    with tempfile.TemporaryDirectory(prefix='h4m23_host_fixture_',dir=root/'m463_runs') as td:
+        sandbox=Path(td);out=(sandbox/H4M23_OUTPUT).parent;out.parent.mkdir()
+        good('reservation',lambda:h4m6_reserve_tech(out/'report.json',auth))
+        bad('reservation',lambda:h4m6_reserve_tech(out/'report.json',auth),'TECH_RESERVATION')
+        good('reservation',lambda:h4m23_req(h4m23_json_file(out/'attempt.json',8192)==dict(authorization=auth,reserved=True),'RESERVATION_FIXTURE'))
+        def write(name,obj):(out/name).write_bytes(h4m23_bytes(obj))
+        write('parent.json',dict(authorization=auth,pid=11,deadline=1234.))
+        write('runtime.entered.json',dict(authorization=auth,pid=12,parent_pid=11))
+        (out/'runtime.log').write_bytes(b'synthetic host fixture\n')
+        journal=out/'journal.jsonl'
+        def store(xs):journal.write_bytes(b''.join(h4m23_bytes(e) for e in xs))
+        def read(complete=False):return h4m23_read_journal(journal,auth,pins,mock,complete=complete,ext=ext)
+        store(entries)
+        good('ledger',lambda:h4m23_req(read(True)['physical_recorded']==1295,'MOCK_LEDGER'))
+        good('fork',lambda:h4m23_req(read(True)['rich_recorded']==413,'MOCK_FORK'))
+        def index(key):return next(i for i,x in enumerate(entries) if x.get('recorded')==key)
+        def mutate(key,fn):
+            xs=list(entries);i=index(key);xs[i]=copy.deepcopy(xs[i]);fn(xs[i]['payload']);store(xs)
+        mutate([0,'fork',334],lambda p:p.update(single='c'*64))
+        bad('fork',lambda:read(),'FORK_DIGEST')
+        mutate([0,'double',335],lambda p:p['rich'].update(rng=[3,4]))
+        bad('fork',lambda:read(),'STATE_LINK_rng')
+        mutate([0,'kick2',335],lambda p:p.update(base_digest='c'*64,restored_digest='c'*64))
+        bad('fork',lambda:read(),'SIBLING_DIGEST')
+        store(entries[:2])
+        good('ledger',lambda:h4m23_req(read()['resets_attempted']==1 and read()['resets_recorded']==0,'PENDING_RESET'))
+        bad('ledger',lambda:read(True),'FINAL_LEDGER')
+        store(entries[:2]+[entries[1]])
+        bad('ledger',lambda:read(),'RECORD_ORDER')
+        store(entries+[entries[1]])
+        bad('ledger',lambda:read(),'EXTRA_EVENT')
+        store(entries);v=read(True)
+        gi=dict(total_mib=12288,used_mib=1000);g=dict(total_mib=12288,peak_used_mib=1000,samples=1,sampler_errors=[])
+        rep=dict(status='DIAGNOSTIC_COMPLETE',authorization=auth,input_sha256=pins,spec=H4M23_SPEC,
+            verification=v,gpu_initial=gi,gpu=g,brax=ext['brax'],optimizer_updates=0,promotion_authorized=False)
+        write('report.json',rep)
+        result=h4m23_check_final(sandbox,auth,pins,ext,mock,terminal=False);write('attempt_result.json',result)
+        good('final_reader',lambda:h4m23_check_final(sandbox,auth,pins,ext,mock))
+        write('report.json',changed(rep,'promotion_authorized',True))
+        bad('final_reader',lambda:h4m23_check_final(sandbox,auth,pins,ext,mock),'FINAL_REPORT')
+        write('report.json',rep);write('attempt_result.json',changed(result,'report_sha256','f'*64))
+        bad('final_reader',lambda:h4m23_check_final(sandbox,auth,pins,ext,mock),'FINAL_TERMINAL')
+        write('attempt_result.json',result);write('unexpected.json',{})
+        bad('final_reader',lambda:h4m23_check_final(sandbox,auth,pins,ext,mock),'FINAL_NAMESPACE')
+        (out/'unexpected.json').unlink();(out/'report.json').unlink();(out/'attempt_result.json').unlink()
+        store(entries[:2])
+        partial=h4m23_check_partial(sandbox,auth,pins,ext,mock,terminal=False)
+        stop=dict(authorization=auth,status='STOP',rc=1,error='synthetic fixture',partial=partial)
+        write('attempt_result.json',stop)
+        good('partial_reader',lambda:h4m23_check_partial(sandbox,auth,pins,ext,mock))
+        write('attempt_result.json',changed(stop,'status','COMPLETE'))
+        bad('partial_reader',lambda:h4m23_check_partial(sandbox,auth,pins,ext,mock),'PARTIAL_TERMINAL')
+        write('attempt_result.json',stop)
+        journal.write_bytes(journal.read_bytes()+b'{"pending":')
+        bad('partial_reader',lambda:h4m23_check_partial(sandbox,auth,pins,ext,mock),'READER_LINE')
+        store(entries[:2]);write('runtime.entered.json',dict(authorization=auth,pid=12,parent_pid=13))
+        bad('partial_reader',lambda:h4m23_check_partial(sandbox,auth,pins,ext,mock),'CHILD_RECEIPT')
+        good('watchdog_log',lambda:h4m23_log_receipt(out,True))
+        bad('watchdog_log',lambda:h4m23_read_journal(journal,auth,pins,mock,ext=ext,deadline=time.monotonic()-1),'READER_DEADLINE')
+        with patch.dict(H4M23_SPEC,{'log_cap':1}):
+            bad('watchdog_log',lambda:h4m23_log_receipt(out,True),'LOG_RECEIPT')
+    h4m3_no_runtime_imports()
+    h4m23_req(counts==H4M23_FIXTURE_COUNTS,'FIXTURE_COUNT')
+    return counts
+
+def h4m23_static_dispatch(root,child=False):
+    """One-use host-only launcher. No JAX, MJX, GPU or training calls."""
+    import selectors,signal,shutil,time
+    root=Path(root).resolve();auth,head=h4m23_static_admit(root)
+    log=root/H4M23_STATIC;attempt=root/H4M23_STATIC_ATTEMPT
+    if child:
+        p=h4m23_json_file(attempt,8192)
+        h4m23_req(p==dict(authorization=auth,head=head,pid=os.getppid()),'STATIC_PARENT')
+        h4m23_req(log.is_file() and not log.is_symlink() and log.stat().st_size==0,'STATIC_LOG_RESERVATION')
+        import importlib.abc
+        class DenyNative(importlib.abc.MetaPathFinder):
+            def find_spec(self,fullname,path=None,target=None):
+                if fullname.split('.')[0] in ('jax','jaxlib','brax','mujoco','mujoco_playground'):
+                    raise RuntimeError('M470_H4M23_STATIC_FORBIDDEN_IMPORT '+fullname)
+                return None
+        guard=DenyNative();sys.meta_path.insert(0,guard)
+        try:
+            compile((root/'m463_gate3_cp_eval.py').read_bytes(),'<held evaluator>','exec')
+            pins,ctrl,ext,lanes=h4m23_inputs(root)
+            source=h4red_eval_source(root);prov=h4m3_digest([pins,ext])
+            h4m23_static_fixture_run(root,pins,ext,lanes)
+            after=h4m23_inputs(root)
+            h4m23_req(after[0]==pins and after[2]==ext and after[3]==lanes
+                and h4red_eval_source(root)==source and h4m23_static_admit(root)==(auth,head),'STATIC_POST_PROVENANCE')
+            h4m3_no_runtime_imports()
+            print('\n'.join(h4m23_static_lines(head,source,prov,pins['source/m463_gate3_cp_eval.py'])[:-1]),flush=True)
+        finally:sys.meta_path.remove(guard)
+        return
+    h4m23_req(not (root/H4M23_OUTPUT).parent.exists() and not (root/H4M23_OUTPUT).parent.is_symlink()
+        and not attempt.exists() and not attempt.is_symlink() and not log.exists() and not log.is_symlink()
+        and log.parent.resolve()==log.parent.absolute()
+        and shutil.disk_usage(log.parent).free>=H4M23_SPEC['storage_reserve']+128*1024**2,'STATIC_UNUSED_STORAGE')
+    h4m6_write_bounded(attempt,dict(authorization=auth,head=head,pid=os.getpid()),exclusive=True,cap=8192)
+    proc=None;data=bytearray();deadline=time.monotonic()+H4M23_STATIC_SECONDS
+    with log.open('xb') as f:
+        try:
+            proc=subprocess.Popen([sys.executable,'-B','-u',str(root/'m463_gate3_cp_eval.py'),'--h4m23-rich','static-child'],
+                cwd=root,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,start_new_session=True)
+            with selectors.DefaultSelector() as sel:
+                sel.register(proc.stdout,selectors.EVENT_READ)
+                while True:
+                    remaining=deadline-time.monotonic()
+                    h4m23_req(remaining>0 and shutil.disk_usage(log.parent).free>=H4M23_SPEC['storage_reserve'],'STATIC_WATCHDOG_STORAGE')
+                    if not sel.select(min(1.,remaining)):continue
+                    buf=os.read(proc.stdout.fileno(),65536)
+                    if not buf:break
+                    data.extend(buf[:max(0,H4M23_STATIC_CAP-1024-len(data))])
+                    h4m23_req(len(data)<H4M23_STATIC_CAP-1024,'STATIC_LOG_CAP')
+            rc=proc.wait(timeout=max(.01,deadline-time.monotonic()))
+            h4m23_req(rc==0 and time.monotonic()<deadline,'STATIC_CHILD_EXIT')
+            lines=data.decode('utf8').splitlines()
+            h4m23_req(len(lines)==6 and all(h4m23_is_digest(lines[i].split()[-1]) for i in (1,2,3))
+                and lines[0]=='H4M23_STATIC_HEAD '+head,'STATIC_CHILD_RECEIPT')
+            expected=h4m23_static_lines(head,lines[1].split()[-1],lines[2].split()[-1],lines[3].split()[-1])
+            h4m23_req(lines==expected[:-1] and lines[3]=='H4M23_EVALUATOR_SHA256 '+sha256(root/'m463_gate3_cp_eval.py')
+                and h4m23_static_admit(root)==(auth,head),'STATIC_CHILD_SCHEMA')
+            f.write(('\n'.join(expected)+'\n').encode('utf8'));f.flush();os.fsync(f.fileno())
+        except BaseException as exc:
+            if proc is not None and proc.poll() is None:
+                try:os.killpg(proc.pid,signal.SIGKILL)
+                except ProcessLookupError:pass
+                try:proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:pass
+            f.write(bytes(data[:H4M23_STATIC_CAP-1024]))
+            f.write(('\nH4M23_STATIC_HOLD '+repr(exc)[:600]+'\n').encode('utf8')[:1024])
+            f.flush();os.fsync(f.fileno())
+            raise
+    print('H4M23_STATIC_RECEIPT_SHA256',sha256(log),flush=True)
 
 H4M23_PATCHES=[["def run(args):\n    abs_mode=","def run(args):\n    m23=bool(getattr(args,'h4m23_rich',False))\n    if m23:h4m23_enter(args)\n    abs_mode="],["    m12=bool(getattr(args,'h4m12_eval',False))\n    h4_mode=","    m12=bool(getattr(args,'h4m12_eval',False)) or m23\n    h4_mode="],["    if m12:\n        h4m12_enter(args,red=getattr(args,'h4red_eval',False))","    if m12 and not m23:\n        h4m12_enter(args,red=getattr(args,'h4red_eval',False))\n    elif m23:\n        pass  # separate held entry, never use historical DEV authorization"],["        h4m3_runtime_model_source(env,args.h3_session)\n    if m6:","        h4m3_runtime_model_source(env,args.h3_session)\n        if m23:\n            args.h4m23_manifest=h4m3_manifest(env,np)\n            args.h4m23_manifest['geometry']=h4m4_model_geometry(env,args.h4m23_manifest,np)\n            h4m23_runtime_manifest(args,env,np)\n            args.h4m23_journal.header(args.h4m23_manifest)\n    if m6:"],["                if placement_capture:\n                    pre_placement=h4m3_pre_capture(state)","                if placement_capture:\n                    pre_placement=(h4m23_pre_capture(state) if m23 else h4m3_pre_capture(state))"],["                    return next_state,diag,h4m3_post_capture(pre_placement,action,next_state,env)\n                return next_state,diag","                    return next_state,diag,(h4m23_post_capture(pre_placement,action,next_state,env,jnp)\n                        if m23 else h4m3_post_capture(pre_placement,action,next_state,env))\n                return next_state,diag"],["if placement or m6 else jax.jit(one_step))\n            if abs_mode:","if placement or m6 or m23 else jax.jit(one_step))\n            if m23:\n                h4m23_native_lane(args,lane_index,env,step_fn,jax,jnp,np)\n                continue\n            if abs_mode:"],["    if placement:\n        return\n    if h3_mode:\n        if m12:","    if placement or m23:\n        return\n    if h3_mode:\n        if m12:"],["def h4ffe2_dev_projection(raw):\n    begin=","def h4ffe2_dev_projection(raw):\n    if b'# H4M23_RICH_'+b'BEGIN\\n' in raw:raw=h4m23_projection(raw)\n    begin="],["def h4ffe2_dev_project(root):\n    import ast\n    raw=(root/'m463_gate3_cp_eval.py').read_bytes()","def h4ffe2_dev_project(root):\n    import ast\n    raw=(root/'m463_gate3_cp_eval.py').read_bytes()\n    if b'# H4M23_RICH_'+b'BEGIN\\n' in raw:raw=h4m23_projection(raw)"],["    if len(sys.argv)>1 and sys.argv[1]=='--h4absd':h4absd_cli(sys.argv[2:])\n    elif len(sys.argv)>1 and sys.argv[1]=='--h4abs':h4abs_cli(sys.argv[2:])\n    else:main()\n","    if len(sys.argv)>1 and sys.argv[1]=='--h4m23-rich':h4m23_cli(sys.argv[2:])\n    elif len(sys.argv)>1 and sys.argv[1]=='--h4absd':h4absd_cli(sys.argv[2:])\n    elif len(sys.argv)>1 and sys.argv[1]=='--h4abs':h4abs_cli(sys.argv[2:])\n    else:main()\n"]]
 # H4M23_RICH_END
