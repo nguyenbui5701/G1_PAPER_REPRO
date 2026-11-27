@@ -877,6 +877,29 @@ def ffe_core_fixtures(np):
 
 # H4FFE_CORE_END
 
+# H4FFE_ENV_WIRING_BEGIN
+# Only used by opt-in FFE; legacy branches remain byte-projected.
+FFE_ROW_INTS=('hard_draw','band_draw','cell_draw','due_draw','count','after_count','source_step','after_source_step',
+    'pre_coherent','post_coherent','geometry_valid','mode','gap','refresh',
+    'terminal','first','repeat','block','reason','bad','stratum','ordinary_event',
+    'tail_stratum','tick_stratum','tail_same','tick_same','joint_excess','ctrl_excess','force_excess','foot_foot')
+FFE_ROW_FLOATS=('cost','native')
+FFE_EXTRA_FIELDS=tuple('ffe_'+k for k in (
+    tuple('before_'+k for k in FFE_STATE_FIELDS)+
+    tuple('after_'+k for k in FFE_STATE_FIELDS)+FFE_ROW_INTS+FFE_ROW_FLOATS))
+FFE_CARRY_FIELDS=tuple('ffe_'+k for k in FFE_STATE_FIELDS)+('ffe_tail_stratum','ffe_tail_same')
+
+def ffe_env_init(xp):
+    row={'ffe_'+k:xp.asarray(0,xp.int32) for k in FFE_ROW_INTS}
+    row.update({'ffe_'+k:xp.asarray(0.,xp.float32) for k in FFE_ROW_FLOATS})
+    old=ffe_init(xp)
+    row.update({'ffe_'+k:v for k,v in old.items()})
+    for prefix in ('before_','after_'):
+        row.update({'ffe_'+prefix+k:v for k,v in old.items()})
+    return row
+
+# H4FFE_ENV_WIRING_END
+
 class CoverageJoystick(joystick.Joystick):
     """JAX-compatible source G1 subclass, independent of pinned checkout.
 
@@ -885,7 +908,7 @@ class CoverageJoystick(joystick.Joystick):
     boundary for re-sampling push targets and counters.  Tracking `age` also
     supports a direct/unwrapped one-env diagnostic.
     """
-    def __init__(self, *, stage: str, config, task='flat_terrain', h1_m1=False, h1_m2=False, h3_m1=False, h4_arm=None, h4cc_arm=None, h4m6_arm=None, h4m6_tech_capture=False, h4m8_common=False, h4red=False, r11=False, r12=False):
+    def __init__(self, *, stage: str, config, task='flat_terrain', h1_m1=False, h1_m2=False, h3_m1=False, h4_arm=None, h4cc_arm=None, h4m6_arm=None, h4m6_tech_capture=False, h4m8_common=False, h4red=False, r11=False, r12=False, ffe=False):
         if stage not in STAGES:
             raise ValueError('M463_BAD_STAGE')
         if bool(config.push_config.enable):
@@ -937,6 +960,12 @@ class CoverageJoystick(joystick.Joystick):
             raise ValueError('M470_R11_ENV_CONTRACT')
         if type(r12) is not bool or (r12 and (stage!='easy_repeat_support' or h4_arm!='control' or r11 or h4red or h1_m1 or h1_m2 or h3_m1 or h4cc_arm is not None or h4m6_arm is not None or h4m6_tech_capture or h4m8_common)):
             raise ValueError('M470_R12_ENV_CONTRACT')
+        if type(ffe) is not bool or (ffe and (stage!='easy_repeat_support' or
+                h4_arm!='control' or h4red or r11 or r12 or h1_m1 or h1_m2 or h3_m1 or
+                h4cc_arm is not None or h4m6_arm is not None or h4m6_tech_capture or h4m8_common or
+                len(config.reward_config.scales)!=24 or int(config.episode_length)!=1000)):
+            raise ValueError('M470_FFE_ENV_CONTRACT')
+        self._ffe = ffe
         self._r12 = r12
         self._r11 = r11
         self._h4red = h4red
@@ -1109,6 +1138,8 @@ class CoverageJoystick(joystick.Joystick):
             info.update(r11_init(jp))
         if self._r12:
             info.update(r12_init(jp))
+        if self._ffe:
+            info.update(ffe_env_init(jp))
         return state.replace(info=info)
 
     def step(self, state, action):
@@ -1179,6 +1210,36 @@ class CoverageJoystick(joystick.Joystick):
         # Giữ nguyên ý nghĩa phase-matching của stage cũ.
         matched = (phase_target == 0) | (phase_target == phase_actual)
 
+        if self._ffe:
+            if 'steps' not in info:
+                raise RuntimeError('M470_FFE_WRAPPED_CLOCK_REQUIRED')
+            ffe_old={k:info['ffe_'+k] for k in FFE_STATE_FIELDS}
+            # Fixed tags on the existing scheduler subkeys. Original split,
+            # original Bernoulli no-push draw and ordinary draws are unchanged.
+            ffe_hard=jax.random.bernoulli(jax.random.fold_in(k_start,18101),p=.125).astype(jp.int32)
+            ffe_band=jax.random.randint(jax.random.fold_in(k_time,18102),(),0,4,dtype=jp.int32)
+            ffe_cell=jax.random.randint(jax.random.fold_in(k_dir,18103),(),0,4,dtype=jp.int32)
+            ffe_due=40+160*ffe_band+jax.random.randint(jax.random.fold_in(k_time,18104),(),0,41,dtype=jp.int32)
+            ffe_gap=jax.random.randint(jax.random.fold_in(k_gap,18105),(),30,33,dtype=jp.int32)
+            ffe_cost,ffe_mode,ffe_geometry=r12_cost(jp,r11_sample(
+                jp,self.mjx_model,state.data,self._feet_geom_id,self._floor_geom_id))
+            ffe_coherent=(jp.all(pre_command==0)&
+                jp.all(state.obs['state'][9:12]==pre_command)&
+                jp.all(state.obs['privileged_state'][9:12]==pre_command)&(state.done==0))
+            ffe_prestate,ffe_pick=ffe_pre(jp,ffe_old,hard_draw=ffe_hard,
+                band_draw=ffe_band,cell_draw=ffe_cell,due_draw=ffe_due,
+                boundary=boundary,nominal=disabled,count=count,coherent=ffe_coherent,
+                source_step=pre_source_step,mode=ffe_mode,cost=ffe_cost,geometry_valid=ffe_geometry)
+            ffe_block=ffe_pick['block']&(~disabled)
+            # Legacy due is an episode-relative view of the frozen absolute
+            # opportunity. Keep true pending entries on expiry until native
+            # terminal or host reset. Do not invent an actual event or close.
+            ffe_phase=jp.where(ffe_old['k']==0,FFE_FIRST,ffe_old['phase'])
+            ffe_target=jp.where(ffe_phase==FFE_REPEAT,ffe_old['repeat_due'],ffe_prestate['due'])
+            ffe_target=jp.where(ffe_phase==FFE_CLOSED,2**30,age+ffe_target-ffe_old['k'])
+            next_step=jp.where(ffe_block,ffe_target,next_step).astype(jp.int32)
+            direction=jp.where(ffe_block,ffe_pick['direction'],direction).astype(jp.int32)
+
         # Chỉ áp dụng cho repeat-push sang trái/phải.
         # 1 = chỉ chân trái chống; 2 = chỉ chân phải chống.
         side_target = jp.where(
@@ -1206,6 +1267,8 @@ class CoverageJoystick(joystick.Joystick):
         if self._h4_arm == 'candidate':
             # Mature single can never repeat, including deadline fallback.
             event = event & ((h4_class != 2) | (count == 0))
+        if self._ffe:
+            event=jp.where(ffe_pick['block'],ffe_pick['first']|ffe_pick['repeat'],event)
         # Magnitude is sampled only logically at event time. JAX still computes
         # branches without Python dynamic condition (fully JIT-compatible).
         magnitude = jax.random.uniform(k_mag, (), minval=self._m463_min_mag,
@@ -1293,6 +1356,18 @@ class CoverageJoystick(joystick.Joystick):
             short_gap = jax.random.randint(jax.random.fold_in(k_gap, 45), (), 30, 33)
             gap = jp.where(mature, short_gap, gap)
             repeat_allowed = jp.where(mature, h4_class == 3, repeat_allowed)
+        if self._ffe:
+            ffe_post_coherent=(jp.all(out['command']==0)&
+                jp.all(after.obs['state'][9:12]==out['command'])&
+                jp.all(after.obs['privileged_state'][9:12]==out['command']))
+            ffe_new,ffe_result=ffe_post(jp,ffe_prestate,ffe_pick,gap=ffe_gap,
+                post_coherent=ffe_post_coherent,terminal=after.done>0,
+                refresh=pre_source_step>=500)
+            # Only an actual first with a coherent, live continuation assigns
+            # a hard repeat. A terminal first remains an actual first event.
+            gap=jp.where(ffe_block,ffe_gap,gap)
+            repeat_allowed=jp.where(ffe_block,
+                ffe_pick['first']&(ffe_new['phase']==FFE_REPEAT),repeat_allowed)
         new_next = jp.where(event & repeat_allowed, age + gap,
                             jp.where(event, jp.asarray(2**30, jp.int32), next_step))
         # If no repeat was sampled, do not allow a second event.
@@ -1513,4 +1588,33 @@ class CoverageJoystick(joystick.Joystick):
             extra,reward=r12_env_transition(jp,r12_old,r12_pre,r12_post,event=event,repeat=repeat,direction=direction,boundary=boundary,coherent=coherent,terminal=after.done>0,timeout=r12_timeout,nominal=disabled,native=after.reward,joint_excess=joint,ctrl_excess=ctrl,force_excess=force,foot_foot=foot_foot)
             out.update(extra)
             after=after.replace(reward=reward)
+        if self._ffe:
+            ffe_stratum=jp.where(disabled,0,jp.where(ffe_block,2,1))
+            ffe_tail_stratum=jp.where(event & (after.done==0),ffe_stratum,
+                jp.where(out['h4_tail_kind']>0,info['ffe_tail_stratum'],0))
+            ffe_tick_stratum=jp.where(out['h4_tick_kind']>0,info['ffe_tail_stratum'],0)
+            ffe_tick_same=(out['h4_tick_same']>0)&(info['ffe_tail_same']>0)&(
+                (ffe_tick_stratum!=2)|ffe_coherent)
+            ffe_tail_same=jp.where(event & (after.done==0),
+                (actor_motion==pre_motion)&((ffe_stratum!=2)|ffe_post_coherent),
+                (out['h4_tail_kind']>0)&ffe_tick_same)
+            joint,ctrl,force=r12_range_flags(jp,self.mjx_model,after.data)
+            foot=geoms_colliding(after.data,self._right_foot_geom_id,self._left_foot_geom_id)
+            ffe_row=dict(hard_draw=ffe_hard,band_draw=ffe_band,cell_draw=ffe_cell,
+                due_draw=ffe_due,count=count,after_count=new_count,source_step=pre_source_step,
+                after_source_step=out['step'],
+                pre_coherent=ffe_coherent,post_coherent=ffe_post_coherent,
+                geometry_valid=ffe_geometry,mode=ffe_mode,gap=ffe_gap,
+                refresh=pre_source_step>=500,terminal=after.done>0,
+                first=ffe_pick['first'],repeat=ffe_pick['repeat'],block=ffe_pick['block'],
+                reason=ffe_result['reason'],bad=ffe_result['bad']|injection_bad,
+                stratum=ffe_stratum,ordinary_event=event&(ffe_stratum==1),
+                tail_stratum=ffe_tail_stratum,tick_stratum=ffe_tick_stratum,
+                tail_same=ffe_tail_same,tick_same=ffe_tick_same,
+                joint_excess=joint,ctrl_excess=ctrl,force_excess=force,foot_foot=foot)
+            out.update({'ffe_'+k:jp.asarray(v,jp.int32) for k,v in ffe_row.items()})
+            for prefix,values in (('',ffe_new),('before_',ffe_old),('after_',ffe_new)):
+                out.update({'ffe_'+prefix+k:jp.asarray(v,jp.int32) for k,v in values.items()})
+            out.update(ffe_native=jp.asarray(after.reward,jp.float32),
+                       ffe_cost=jp.asarray(ffe_cost,jp.float32))
         return after.replace(info=out)

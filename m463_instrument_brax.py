@@ -1934,3 +1934,256 @@ def make_r12_integrated_source(raw):
     return s,original
 
 # H4R12_GENERATOR_END
+
+# H4FFE_GENERATOR_BEGIN
+# Kept separate from legacy generator paths. The FFE generated entry point
+# remains unconditionally HELD until the full supervisor/reader is wired.
+FFE_STATE=('k','hard','band','cell','due','phase','repeat_due','block')
+FFE_INTS=('hard_draw','band_draw','cell_draw','due_draw','count','after_count',
+    'source_step','after_source_step','pre_coherent','post_coherent','geometry_valid',
+    'mode','gap','refresh','terminal','first','repeat','block','reason','bad',
+    'stratum','ordinary_event','tail_stratum','tick_stratum','tail_same','tick_same',
+    'joint_excess','ctrl_excess','force_excess','foot_foot')
+FFE_FLOATS=('cost','native')
+FFE_FIELDS=tuple('ffe_'+k for k in tuple('before_'+k for k in FFE_STATE)+
+                 tuple('after_'+k for k in FFE_STATE)+FFE_INTS+FFE_FLOATS)
+FFE_CARRY=tuple('ffe_'+k for k in FFE_STATE)+('ffe_tail_stratum','ffe_tail_same',
+    'm463_push_count','step','h4_first_pending','h4_repeat_pending','h4_tail_kind')
+
+def ffe_batch_contract(xp,data,before,after,before_done,after_done,pre_fn,post_fn):
+    """Actual unscaled Transition replay, before normalizer/optimizer.
+    The exact fixed production shape is intentional; no silent broadcasting.
+    """
+    reward=data.reward;discount=data.discount;extras=data.extras['state_extras']
+    shape=(8192,32);i=xp.int32;f=xp.float32
+    if reward.shape!=shape or reward.dtype!=f or discount.shape!=shape or discount.dtype!=f:
+        raise RuntimeError('M470_FFE_BATCH_SCHEMA')
+    x=lambda k:extras['ffe_'+k]
+    z=lambda k:extras[k]
+    for k in FFE_FIELDS:
+        a=extras[k]
+        if a.shape!=shape or a.dtype!=(f if k in ('ffe_cost','ffe_native') else i):
+            raise RuntimeError('M470_FFE_ROW_SCHEMA '+k)
+    for k in FFE_CARRY:
+        for q in (before,after):
+            if q[k].shape!=(8192,) or q[k].dtype!=i:
+                raise RuntimeError('M470_FFE_CARRY_SCHEMA '+k)
+    for d in (before_done,after_done):
+        if d.shape!=(8192,) or d.dtype!=f:raise RuntimeError('M470_FFE_DONE_SCHEMA')
+    def prev(a,key):
+        return xp.concatenate((before[key][:,None],a[:,:-1]),axis=1)
+    bad=(x('bad')!=0)|(z('h4_bad')!=0)|(z('truncation')!=0)|(~xp.isfinite(reward))
+    binary=('hard_draw','pre_coherent','post_coherent','geometry_valid','refresh',
+        'terminal','first','repeat','block','bad','ordinary_event','tail_same',
+        'tick_same','joint_excess','ctrl_excess','force_excess','foot_foot')
+    for k in binary:bad=bad|((x(k)!=0)&(x(k)!=1))
+    for k in ('m463_event','m463_repeat','m463_no_push','h4_boundary','h4_refresh',
+        'h4_changed','h4_source_terminal','h4_assigned','h4_repeat_assigned',
+        'h4_first_pending','h4_repeat_pending','h4_first_due','h4_repeat_due',
+        'h4_first_closed','h4_repeat_closed','h4_event_terminal','h4_close_boundary'):
+        a=z(k)
+        if a.shape!=shape:raise RuntimeError('M470_FFE_LEGACY_SCHEMA '+k)
+        bad=bad|((a!=0)&(a!=1))
+    boundary=z('h4_boundary')==1;nominal=z('m463_no_push')==1
+    event=z('m463_event')==1;repeat=z('m463_repeat')==1;first=event&(~repeat)
+    terminal=x('terminal')==1
+    bad=bad|((discount!=0)&(discount!=1))|(terminal!=(discount==0))|(
+        terminal!=(z('h4_source_terminal')==1))|(repeat&(~event))|(event&nominal)
+    bad=bad|((z('h4_class')!=0)&(z('h4_class')!=1))|(nominal!=(z('h4_class')==0))
+    old={k:x('before_'+k) for k in FFE_STATE}
+    for k in FFE_STATE:
+        a=x('after_'+k)
+        bad=bad|(old[k]!=prev(a,'ffe_'+k))|(a[:,-1:]!=after['ffe_'+k][:,None])
+    bad=bad|(x('after_k')!=old['k']+1)|(old['k']<0)|(old['k']>=640)
+    # Every lane in the synchronized continuation has exactly the same
+    # absolute action index, including native terminal/reset boundaries.
+    bad=bad|(old['k']!=before['ffe_k'][0]+xp.arange(32,dtype=i)[None,:])
+    bad=bad|((before['ffe_k'][0]%32)!=0)
+    prior_done=xp.concatenate((before_done[:,None],terminal[:,:-1]),axis=1)
+    bad=bad|((prior_done!=0)&(prior_done!=1))|(boundary!=((old['k']==0)|(prior_done==1)))
+    bad=bad|(after_done[:,None]!=terminal[:,-1:])
+    count=x('count')
+    bad=bad|(count!=xp.where(boundary,0,prev(x('after_count'),'m463_push_count')))
+    bad=bad|(count<0)|(count>2)|(event&(count>=2))|(repeat&(count!=1))
+    expected_count=xp.where(event,xp.where(first&(z('h4_repeat_assigned')==1),1,2),count)
+    bad=bad|(x('after_count')!=expected_count)|(x('after_count')[:,-1:]!=after['m463_push_count'][:,None])
+    clock=x('source_step');refresh=clock>=500
+    bad=bad|(clock<0)|(clock>500)|(clock!=prev(x('after_source_step'),'step'))
+    bad=bad|(x('after_source_step')!=xp.where(terminal|refresh,0,clock+1))
+    bad=bad|(x('after_source_step')[:,-1:]!=after['step'][:,None])
+    bad=bad|(refresh!=(x('refresh')==1))|(refresh!=(z('h4_refresh')==1))
+    # Source obs is generated before the source command-refresh assignment.
+    # Only compare post coherence to next_observation on nonterminal rows;
+    # native AutoReset replaces terminal data/obs.
+    ao=data.observation['state'];co=data.observation['privileged_state']
+    na=data.next_observation['state'];nc=data.next_observation['privileged_state']
+    for a in (ao,co,na,nc):
+        if a.ndim!=3 or a.shape[:2]!=shape or a.shape[2]<12:
+            raise RuntimeError('M470_FFE_OBS_SCHEMA')
+    zero=xp.all(ao[:,:,9:12]==0,axis=-1)&xp.all(co[:,:,9:12]==0,axis=-1)
+    coherent=(z('h4_motion')==0)&zero
+    bad=bad|(coherent!=(x('pre_coherent')==1))
+    next_zero=xp.all(na[:,:,9:12]==0,axis=-1)&xp.all(nc[:,:,9:12]==0,axis=-1)
+    bad=bad|((~terminal)&(~refresh)&(((z('h4_motion')==0)&next_zero)!=(x('post_coherent')==1)))
+    pre,pick=pre_fn(xp,old,hard_draw=x('hard_draw'),band_draw=x('band_draw'),
+        cell_draw=x('cell_draw'),due_draw=x('due_draw'),boundary=boundary,
+        nominal=nominal,count=count,coherent=coherent,source_step=clock,
+        mode=x('mode'),cost=x('cost'),geometry_valid=x('geometry_valid')==1)
+    nxt,res=post_fn(xp,pre,pick,gap=x('gap'),post_coherent=x('post_coherent')==1,
+        terminal=terminal,refresh=refresh)
+    for k in FFE_STATE:bad=bad|(nxt[k]!=x('after_'+k))
+    for k in ('first','repeat','block'):bad=bad|(pick[k]!=(x(k)==1))
+    bad=bad|res['bad']|(res['reason']!=x('reason'))
+    block=pick['block'];hard_event=pick['first']|pick['repeat']
+    bad=bad|(block&(event!=hard_event))|(block&(repeat!=pick['repeat']))
+    bad=bad|(hard_event&(z('m463_direction')!=pick['direction']))
+    mag=z('m463_magnitude')
+    measured=xp.sqrt(z('h4_actual_dx')**2+z('h4_actual_dy')**2)
+    bad=bad|(~xp.isfinite(mag))|(~xp.isfinite(measured))|(xp.abs(measured-mag)>3e-6)
+    bad=bad|xp.where(event,(mag<.2)|(mag>.6),mag!=0)
+    bad=bad|(~xp.isfinite(x('cost')))|(x('cost')<0)|(x('cost')>1)|(x('mode')<0)|(x('mode')>3)
+    bad=bad|(x('gap')<30)|(x('gap')>32)|(x('band_draw')<0)|(x('band_draw')>3)|(x('cell_draw')<0)|(x('cell_draw')>3)
+    bad=bad|(x('due_draw')<40+160*x('band_draw'))|(x('due_draw')>80+160*x('band_draw'))
+    stratum=xp.where(nominal,0,xp.where(block,2,1))
+    bad=bad|(x('stratum')!=stratum)|(x('ordinary_event')!=(event&(stratum==1)))
+    # Legacy event and pending conservation, without claiming hard events
+    # are untouched ordinary broad. Preserve original class-1 counters.
+    fp=xp.where(boundary,~nominal,prev(z('h4_first_pending'),'h4_first_pending')>0)
+    rp=(~boundary)&(prev(z('h4_repeat_pending'),'h4_repeat_pending')>0)
+    ra=z('h4_repeat_assigned')==1
+    bad=bad|(first&(~fp))|(repeat&(~rp))|(ra&(~first))|(
+        block&(ra!=(pick['first']&(nxt['phase']==2))))
+    for k,v in (
+        ('h4_assigned',boundary&(~nominal)),('h4_first_due',fp&(z('h4_age')==z('h4_target'))),
+        ('h4_repeat_due',rp&(z('h4_age')==z('h4_target'))),
+        ('h4_first_pending',fp&(~first)&(~terminal)),
+        ('h4_repeat_pending',((rp&(~repeat))|ra)&(~terminal)),
+        ('h4_first_closed',fp&terminal&(~first)),
+        ('h4_repeat_closed',terminal&((rp&(~repeat))|ra)),
+        ('h4_event_terminal',event&terminal),('h4_close_boundary',xp.zeros(shape,dtype=i))):
+        bad=bad|(z(k)!=v)
+    for k in ('h4_first_pending','h4_repeat_pending','h4_tail_kind'):
+        bad=bad|(z(k)[:,-1:]!=after[k][:,None])
+    prior_tail=prev(x('tail_stratum'),'ffe_tail_stratum')
+    prior_same=prev(x('tail_same'),'ffe_tail_same')>0
+    tick=xp.where(z('h4_tick_kind')>0,prior_tail,0)
+    tick_same=(z('h4_tick_same')>0)&prior_same&((tick!=2)|coherent)
+    tail=xp.where(event&(~terminal),stratum,xp.where(z('h4_tail_kind')>0,prior_tail,0))
+    tail_same=xp.where(event&(~terminal),(z('h4_actor_motion')==z('h4_motion'))&(
+        (stratum!=2)|(x('post_coherent')==1)),(z('h4_tail_kind')>0)&tick_same)
+    bad=bad|(x('tick_stratum')!=tick)|(x('tick_same')!=tick_same)|(x('tail_stratum')!=tail)|(x('tail_same')!=tail_same)
+    for k in ('tail_stratum','tail_same'):bad=bad|(x(k)[:,-1:]!=after['ffe_'+k][:,None])
+    bad=bad|(~xp.isfinite(x('native')))|(reward!=x('native'))|(xp.signbit(reward)!=xp.signbit(x('native')))
+    return bad
+
+def ffe_reduce(xp,extras,bad,valid):
+    x=lambda k:extras['ffe_'+k];z=lambda k:extras[k]
+    count=lambda a:xp.sum(a.astype(xp.float32))
+    out=dict(bad_rows=count(bad),collected=xp.asarray(1.,xp.float32),
+        batch_rejected=(~valid).astype(xp.float32),batch_committed=valid.astype(xp.float32))
+    hard=x('after_hard')==1;initial=x('before_k')==0
+    old_first=(x('before_phase')==1)|initial
+    old_repeat=x('before_phase')==2
+    first=x('first')==1;repeat=x('repeat')==1
+    closed=x('after_phase')==3
+    assigned=hard&initial
+    first_due=hard&old_first&(x('before_k')==x('after_due'))
+    first_miss=hard&old_first&closed&(~first)
+    repeat_assigned=first&(x('after_phase')==2)
+    repeat_due=hard&old_repeat&(x('before_k')==x('before_repeat_due'))
+    repeat_miss=hard&old_repeat&closed&(~repeat)
+    for cell in range(4):
+        c=hard&(x('after_cell')==cell)
+        for k,m in (('assigned',assigned),('first_due',first_due),('first',first),
+                ('first_miss',first_miss),('repeat_assigned',repeat_assigned),
+                ('repeat_due',repeat_due),('repeat',repeat),('repeat_miss',repeat_miss),
+                ('first_terminal',first&(x('terminal')==1)),
+                ('repeat_terminal',repeat&(x('terminal')==1))):
+            out[f'cell_{cell}_{k}']=count(c&m)
+        for reason in range(1,7):
+            out[f'cell_{cell}_reason_{reason}']=count(c&(x('reason')==reason))
+        for band in range(4):
+            out[f'cell_{cell}_band_{band}_assigned']=count(c&assigned&(x('after_band')==band))
+    for motion in range(6):
+        out[f'ordinary_motion_{motion}']=count((x('ordinary_event')==1)&(z('h4_motion')==motion))
+    for n in range(3):
+        m=x('stratum')==n;t=x('tick_stratum')==n
+        out[f'stratum_{n}_steps']=count(m)
+        out[f'stratum_{n}_events']=count(m&(z('m463_event')==1))
+        out[f'stratum_{n}_first']=count(m&(z('m463_event')==1)&(z('m463_repeat')==0))
+        out[f'stratum_{n}_repeat']=count(m&(z('m463_repeat')==1))
+        out[f'stratum_{n}_terminal']=count(m&(x('terminal')==1))
+        for k in ('joint_excess','ctrl_excess','force_excess','foot_foot'):
+            out[f'stratum_{n}_{k}']=count(m&(x(k)==1))
+            out[f'tail_{n}_{k}']=count(t&(z('h4_tick_kind')>0)&(x(k)==1))
+        for kind in (1,2):
+            for age in (1,10,25,50,100,250):
+                w=t&(z('h4_tick_kind')==kind)&(z('h4_tick_age')==age)
+                out[f'tail_{n}_{kind}_{age}_executed']=count(w)
+                out[f'tail_{n}_{kind}_{age}_survived']=count(w&(z('h4_tick_survived')==1))
+                out[f'tail_{n}_{kind}_{age}_same']=count(w&(x('tick_same')==1))
+    return {'ffe_'+k:v for k,v in out.items()}
+
+FFE_GUARD="""    from m463_coverage_env import ffe_pre,ffe_post
+    from m463_instrument_brax import ffe_batch_contract,ffe_reduce
+    ffe_extra=data.extras['state_extras']
+    ffe_bad=ffe_batch_contract(jnp,data,ffe_before,state.info,ffe_before_done,state.done,ffe_pre,ffe_post)
+    ffe_valid=~jnp.any(ffe_bad)
+    for ffe_leaf in jax.tree_util.tree_leaves((data,training_state,state)):
+      ffe_valid=ffe_valid & jnp.all(jnp.isfinite(ffe_leaf))
+    ffe_valid=jax.lax.pmin(ffe_valid.astype(jnp.int32),_PMAP_AXIS_NAME)==1
+    def ffe_update(_):
+      norm=running_statistics.update(training_state.normalizer_params,
+          _remove_pixels(data.observation),pmap_axis_name=_PMAP_AXIS_NAME)
+      (opt,par,_),met=jax.lax.scan(
+          functools.partial(sgd_step,data=data,normalizer_params=norm),
+          (training_state.optimizer_state,training_state.params,key_sgd),(),
+          length=num_updates_per_batch)
+      return opt,par,norm,met
+    def ffe_reject(_):
+      meta=jax.eval_shape(ffe_update,None)[3]
+      met=jax.tree_util.tree_map(lambda x:jnp.zeros(x.shape,x.dtype),meta)
+      return training_state.optimizer_state,training_state.params,training_state.normalizer_params,met
+    optimizer_state,params,normalizer_params,metrics=jax.lax.cond(ffe_valid,ffe_update,ffe_reject,None)
+"""
+
+def make_ffe_held_source(raw):
+    base,original=make_h4m12_integrated_source(raw)
+    if sha256(base.encode('utf8'))!='7f9abc070e38bc287ae1948a3f55ee625d457d0abed6fe99bebf5fdf2ed9c37a':
+        raise RuntimeError('M470_FFE_M12_GENERATOR_PIN')
+    fmt=lambda fields:"extra_fields=('truncation', "+', '.join(repr(k) for k in fields)+'),'
+    fields=EXT_FIELDS+H4_EXT_FIELDS
+    guard="  from m463_push_ppo_train import h4m12_generated_guard\n  h4m12_generated_guard(h4x_audit_fn, __file__, environment, m470_resume_state_path)\n"
+    hold="  raise RuntimeError('M470_FFE_GENERATED_EXECUTION_HOLD')\n"
+    chunk=H4M8_CHUNK_HELD.replace('h4m8_','ffe_').replace('h8_','ffe_')
+    host="      h4x_audit_fn('chunk_after', index=idx+1, carry=carry, metrics=metrics)\n"
+    anchor='    metrics = {**metrics, **coverage, **m464_tail}\n'
+    patches=((guard,hold),
+        ('    h4x_audit_fn: Optional[Callable[..., None]] = None,\n','    ffe_abort_fn=None,\n    h4x_audit_fn: Optional[Callable[..., None]] = None,\n'),
+        (fmt(fields),fmt(fields+FFE_FIELDS)),
+        ('    training_state, state, key = carry\n',"    training_state, state, key = carry\n    from m463_instrument_brax import FFE_CARRY\n    ffe_before={k:state.info[k] for k in FFE_CARRY}\n    ffe_before_done=state.done\n"),
+        (H4M8_UPDATE_BLOCK.replace('data=learning_data','data=data'),FFE_GUARD),
+        ('        env_steps=training_state.env_steps + env_step_per_training_step,\n','        env_steps=jax.lax.cond(ffe_valid,lambda _:training_state.env_steps+env_step_per_training_step,lambda _:training_state.env_steps,None),\n'),
+        (anchor,"    coverage.update(ffe_reduce(jnp,ffe_extra,ffe_bad,ffe_valid))\n"+anchor),
+        (H4M8_CHUNK_OLD,chunk),
+        (host,"      if float(metrics['ffe_chunk_failed']) != 0.:\n        if ffe_abort_fn is not None:\n          ffe_abort_fn(idx+1,carry,metrics)\n        raise RuntimeError('M470_FFE_PRE_SGD_OR_FINITE_STOP')\n"+host))
+    s=base
+    for a,b in patches:s=h4c_once(s,a,b)
+    back=s
+    for a,b in reversed(patches):back=h4c_once(back,b,a)
+    if back!=base or s.count(hold)!=1:raise RuntimeError('M470_FFE_GENERATOR_REVERSE')
+    compile(s,'<FFE held generated>','exec')
+    return s,original
+
+
+def make_ffe_integrated_source(raw):
+    base,original=make_ffe_held_source(raw)
+    hold="  raise RuntimeError('M470_FFE_GENERATED_EXECUTION_HOLD')\n"
+    guard="  from m463_push_ppo_train import h4m12_generated_guard\n  h4m12_generated_guard(h4x_audit_fn, __file__, environment, m470_resume_state_path, ffe=True)\n  if not callable(ffe_abort_fn):\n    raise RuntimeError('M470_FFE_ABORT_CALLBACK')\n"
+    s=h4c_once(base,hold,guard)
+    if h4c_once(s,guard,hold)!=base:
+        raise RuntimeError('M470_FFE_GENERATOR_INTEGRATION_PROJECTION')
+    compile(s,'<FFE integrated generated>','exec')
+    return s,original
+
+# H4FFE_GENERATOR_END

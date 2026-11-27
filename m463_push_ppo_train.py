@@ -1092,19 +1092,21 @@ def h4r_audit_callback(api,args,report,persist,gpu_check):
     return callback
 
 
-def h4r_bootstrap_pins(args,*,h4cc=False,h4m6=None,h4m12=False,red=False,r11=False,r12=False):
+def h4r_bootstrap_pins(args,*,h4cc=False,h4m6=None,h4m12=False,red=False,r11=False,r12=False,ffe=False):
     from importlib.machinery import PathFinder
     root=Path(__file__).resolve().parent
     compat=root.parent/'G1_M4_0_G1_PPO_ONE_UPDATE_SMOKE_V1'
     paths={}
     local_pins=dict(H4R_LOCAL_SHA)
-    h4r12_mode(red,r11,r12)
-    h4m12_require(not (red or r11 or r12) or h4m12,'CONTINUATION_BOOTSTRAP_MODE')
+    h4ffe_mode(red,r11,r12,ffe)
+    h4m12_require(not (red or r11 or r12 or ffe) or h4m12,'CONTINUATION_BOOTSTRAP_MODE')
     if h4m12:
         h4m12_require(not h4cc and h4m6 is None,'BOOTSTRAP_CONFLICT')
         env_file=root/'m463_coverage_env.py'
         from m463_instrument_brax import h4c_git_blob
-        if r12:
+        if ffe:
+            h4ffe_project_env(root)
+        elif r12:
             h4red_project_env(h4r11_project_env(h4r12_project_env(env_file.read_bytes())))
         elif r11:
             h4red_project_env(h4r11_project_env(env_file.read_bytes()))
@@ -2385,11 +2387,11 @@ def h4x_generated_guard(audit,generated_file):
     h4x_write_json(out/'dispatch.started.json',{'authorization':auth},exclusive=True)
 
 
-def h4x_bootstrap(args,*,h4cc=False,h4m6=None,h4m12=False,red=False,r11=False,r12=False):
+def h4x_bootstrap(args,*,h4cc=False,h4m6=None,h4m12=False,red=False,r11=False,r12=False,ffe=False):
     from types import SimpleNamespace
     proxy=SimpleNamespace(checkpoint=args.checkpoint,restore_report=args.restore_report,
                           h4_readiness_reward_report=args.h4_exploratory_reward_report)
-    pins=h4r_bootstrap_pins(proxy,h4cc=h4cc,h4m6=h4m6, h4m12=h4m12,red=red,r11=r11,r12=r12)
+    pins=h4r_bootstrap_pins(proxy,h4cc=h4cc,h4m6=h4m6, h4m12=h4m12,red=red,r11=r11,r12=r12,ffe=ffe)
     # Exact launcher overlay resolution before JAX is imported.
     from importlib import metadata
     from importlib.machinery import PathFinder
@@ -5932,6 +5934,10 @@ def h4m8_integration_static(root,brax_train_path):
 
 
 def main():
+    if sys.argv[1:2]==['--h4ffe-continuation']:
+        return h4m12_main(sys.argv[2:],ffe=True)
+    if sys.argv[1:2]==['--h4ffe-static']:
+        return h4ffe_static_main(sys.argv[2:])
     if sys.argv[1:2]==['--h4r12-continuation']:
         return h4m12_main(sys.argv[2:],r12=True)
     if sys.argv[1:2]==['--h4r12-static']:
@@ -6361,11 +6367,11 @@ def h4m12_auth(root):
     return auth
 
 
-def h4m12_generated_guard(audit, generated_file, environment, resume, *,red=False,r11=False,r12=False):
+def h4m12_generated_guard(audit, generated_file, environment, resume, *,red=False,r11=False,r12=False,ffe=False):
     root=Path(__file__).resolve().parent
-    h4r12_mode(red,r11,r12)
-    auth=(h4r12_auth if r12 else h4r11_auth if r11 else h4red_auth if red else h4m12_auth)(root)
-    out=root/(H4R12_OUTPUT if r12 else H4R11_OUTPUT if r11 else H4RED_OUTPUT if red else H4M12_OUTPUT)
+    h4ffe_mode(red,r11,r12,ffe)
+    auth=(h4ffe_auth if ffe else h4r12_auth if r12 else h4r11_auth if r11 else h4red_auth if red else h4m12_auth)(root)
+    out=root/(H4FFE_OUTPUT if ffe else H4R12_OUTPUT if r12 else H4R11_OUTPUT if r11 else H4RED_OUTPUT if red else H4M12_OUTPUT)
     generated=Path(generated_file)
     h4m12_require(callable(audit) and getattr(audit,'h4m12_auth',None)==auth and
         generated.resolve()==out/'m463_brax_ppo_instrumented.py' and
@@ -6378,6 +6384,7 @@ def h4m12_generated_guard(audit, generated_file, environment, resume, *,red=Fals
         getattr(environment,'_h4red',False) is red and
         getattr(environment,'_r11',False) is r11 and
         getattr(environment,'_r12',False) is r12 and
+        getattr(environment,'_ffe',False) is ffe and
         all(getattr(environment,k,None) is None for k in ('_h4cc_arm','_h4m6_arm')) and
         not getattr(environment,'_h4m6_tech_capture',False) and
         not getattr(environment,'_h4m8_common',False),'ENVIRONMENT_ARM')
@@ -6424,11 +6431,11 @@ def h4m12_exposure_replay(r):
     return dict(counts=counts,pending=ep['pending_at_reset'],audit=audit,coverage=legacy)
 
 
-def h4m12_check_complete(out,r,auth,*,red=False,r11=False,r12=False):
+def h4m12_check_complete(out,r,auth,*,red=False,r11=False,r12=False,ffe=False):
     """Strict host replay and byte checks, not a claim of recovery efficacy."""
     out=Path(out)
     h4m12_require(r['status']=='TECHNICAL_PASS' and r['authorization']==auth and
-                  r['spec']==(H4R12_SPEC if r12 else H4R11_SPEC if r11 else H4RED_SPEC if red else H4M12_SPEC) and r['promotion_authorized'] is False,'FINAL_STATUS')
+                  r['spec']==(H4FFE_SPEC if ffe else H4R12_SPEC if r12 else H4R11_SPEC if r11 else H4RED_SPEC if red else H4M12_SPEC) and r['promotion_authorized'] is False,'FINAL_STATUS')
     expected=dict(r['parent']['original_contract']['config'],num_timesteps=5242880,num_evals=2)
     h4m12_require(r['hardware_scaled_config']==expected and r['reward']==r['parent']['original_contract']['reward'],'FINAL_CONFIG')
     b=H4M12Budget()
@@ -6481,6 +6488,8 @@ def h4m12_check_complete(out,r,auth,*,red=False,r11=False,r12=False):
         h4m12_require(h4r11_exposure_replay(r)==r['r11_exposure'],'R11_FINAL_EXPOSURE')
     if r12:
         h4m12_require(h4r12_exposure_replay(r)==r['r12_exposure'],'R12_FINAL_EXPOSURE')
+    if ffe:
+        h4m12_require(h4ffe_exposure_replay(r)==r['ffe_exposure'],'FFE_FINAL_EXPOSURE')
     gpu=r['gpu']
     h4m12_require(gpu['total_mib']==12288 and 0<gpu['peak_used_mib']<.95*12288
         and not gpu['sampler_errors'] and gpu['samples']>0 and r['returned_policy_exact'] is True,
@@ -6491,15 +6500,15 @@ def h4m12_check_complete(out,r,auth,*,red=False,r11=False,r12=False):
     for name,sha in files.items():
         h4x_file_pin(out/name,sha)
     meta=json.loads((out/Path(H4M12_NEW_FULL).with_suffix('.json')).read_bytes())
-    h4m12_require(meta==h4m12_checkpoint_meta(auth,files[H4M12_NEW_FULL],files[H4M12_NEW_POLICY],red=red,r11=r11,r12=r12),
+    h4m12_require(meta==h4m12_checkpoint_meta(auth,files[H4M12_NEW_FULL],files[H4M12_NEW_POLICY],red=red,r11=r11,r12=r12,ffe=ffe),
                   'FINAL_MANIFEST')
     h4x_file_pin(out/'m463_brax_ppo_instrumented.py',auth['generated_sha256'])
     h4x_storage(out)
     return True
 
 
-def h4m12_checkpoint_meta(auth,full_sha,policy_sha,*,red=False,r11=False,r12=False):
-    return dict(format=(H4R12_SPEC['id'] if r12 else H4R11_SPEC['id'] if r11 else H4RED_SPEC['id'] if red else 'H4-M12-CTRL-RESET-EDGE-V1'),authorization=auth,
+def h4m12_checkpoint_meta(auth,full_sha,policy_sha,*,red=False,r11=False,r12=False,ffe=False):
+    return dict(format=(H4FFE_SPEC['id'] if ffe else H4R12_SPEC['id'] if r12 else H4R11_SPEC['id'] if r11 else H4RED_SPEC['id'] if red else 'H4-M12-CTRL-RESET-EDGE-V1'),authorization=auth,
         cumulative_steps=15728640,adam_count=2400,normalizer_count=416808960,
         fullstate_sha256=full_sha,policy_sha256=policy_sha,
         parent_resume_sha256=H4M12_PARENT_PINS[H4M12_FULL],
@@ -6508,9 +6517,9 @@ def h4m12_checkpoint_meta(auth,full_sha,policy_sha,*,red=False,r11=False,r12=Fal
         promotion_authorized=False)
 
 
-def h4m12_read_final(root,expected_sha,auth,*,red=False,r11=False,r12=False):
+def h4m12_read_final(root,expected_sha,auth,*,red=False,r11=False,r12=False,ffe=False):
     root=Path(root).resolve()
-    out=root/(H4R12_OUTPUT if r12 else H4R11_OUTPUT if r11 else H4RED_OUTPUT if red else H4M12_OUTPUT)
+    out=root/(H4FFE_OUTPUT if ffe else H4R12_OUTPUT if r12 else H4R11_OUTPUT if r11 else H4RED_OUTPUT if red else H4M12_OUTPUT)
     h4x_file_pin(out/'report.json',expected_sha)
     r=json.loads((out/'report.json').read_bytes())
     for name in ('dispatch.started.json','attempt.json','worker.started.json','attempt_result.json'):
@@ -6526,13 +6535,13 @@ def h4m12_read_final(root,expected_sha,auth,*,red=False,r11=False,r12=False):
     result=json.loads((out/'attempt_result.json').read_bytes())
     h4m12_require(result=={'status':'COMPLETE','authorization':auth,
                           'report_sha256':expected_sha,'producer_rc':0},'FINAL_RECEIPT')
-    parent_check=h4r12_parent_preflight if r12 else h4r11_parent_preflight if r11 else h4red_parent_preflight if red else h4m12_parent_preflight
+    parent_check=h4ffe_parent_preflight if ffe else h4r12_parent_preflight if r12 else h4r11_parent_preflight if r11 else h4red_parent_preflight if red else h4m12_parent_preflight
     h4m12_require(parent_check(root,require_unused=False)==r['parent'],'FINAL_PARENT')
-    h4m12_check_complete(out,r,auth,red=red,r11=r11,r12=r12)
+    h4m12_check_complete(out,r,auth,red=red,r11=r11,r12=r12,ffe=ffe)
     return r
 
 
-def h4m12_worker(a,auth,root,out,*,red=False,r11=False,r12=False):
+def h4m12_worker(a,auth,root,out,*,red=False,r11=False,r12=False,ffe=False):
     """One authorized worker only; no generic longtrain or warmstart fallback."""
     import inspect
     import importlib.util
@@ -6540,14 +6549,14 @@ def h4m12_worker(a,auth,root,out,*,red=False,r11=False,r12=False):
     h4m12_require(json.loads((out/'attempt.json').read_bytes())==
         {'authorization':auth,'parent_pid':os.getppid()},'WORKER_RESERVATION')
     h4x_write_json(out/'worker.started.json',{'authorization':auth,'pid':os.getpid()},exclusive=True)
-    h4r12_mode(red,r11,r12)
-    parent_check=h4r12_parent_preflight if r12 else h4r11_parent_preflight if r11 else h4red_parent_preflight if red else h4m12_parent_preflight
-    authorize=h4r12_auth if r12 else h4r11_auth if r11 else h4red_auth if red else h4m12_auth
+    h4ffe_mode(red,r11,r12,ffe)
+    parent_check=h4ffe_parent_preflight if ffe else h4r12_parent_preflight if r12 else h4r11_parent_preflight if r11 else h4red_parent_preflight if red else h4m12_parent_preflight
+    authorize=h4ffe_auth if ffe else h4r12_auth if r12 else h4r11_auth if r11 else h4red_auth if red else h4m12_auth
     parent=parent_check(root,require_unused=False)
     for path,sha in ((a.checkpoint,SEED1_SHA),(a.restore_report,H3_CAUSAL_RESTORE_SHA),(a.reward_report,H4R_REWARD_SHA)):
         h4x_file_pin(path,sha)
     a.h4_exploratory_reward_report=a.reward_report
-    pins=h4x_bootstrap(a,h4m12=True,red=red,r11=r11,r12=r12)
+    pins=h4x_bootstrap(a,h4m12=True,red=red,r11=r11,r12=r12,ffe=ffe)
     old=json.loads((root/H4M12_PARENT/'report.json').read_bytes())
     for name,sha in old['h4_common_contract']['source_digests'].items():
         if name not in ('m463_coverage_env.py','m463_instrument_brax.py','m463_push_ppo_train.py'):
@@ -6576,7 +6585,7 @@ def h4m12_worker(a,auth,root,out,*,red=False,r11=False,r12=False):
     train_cfg.push_config.enable=False
     h4m12_require(train_cfg.to_dict()['reward_config']==old['train_reward_config']
         ==json.loads(a.reward_report.read_bytes())['train_reward_config'],'REWARD')
-    env=CoverageJoystick(config=train_cfg,stage='easy_repeat_support',h4_arm='control',h4red=red,r11=r11,r12=r12)
+    env=CoverageJoystick(config=train_cfg,stage='easy_repeat_support',h4_arm='control',h4red=red,r11=r11,r12=r12,ffe=ffe)
     ev=api['locomotion'].load(api['env_name'],config=source_cfg)
     h4m12_require(env.action_size==29 and float(env.dt)==.02,'ENV')
     scaled=api['scaled']
@@ -6594,7 +6603,9 @@ def h4m12_worker(a,auth,root,out,*,red=False,r11=False,r12=False):
         from m463_instrument_brax import make_r11_integrated_source
     if r12:
         from m463_instrument_brax import make_r12_integrated_source
-    build=make_r12_integrated_source if r12 else make_r11_integrated_source if r11 else make_h4red_integrated_source if red else make_h4m12_integrated_source
+    if ffe:
+        from m463_instrument_brax import make_ffe_integrated_source
+    build=make_ffe_integrated_source if ffe else make_r12_integrated_source if r12 else make_r11_integrated_source if r11 else make_h4red_integrated_source if red else make_h4m12_integrated_source
     source,_=build(Path(inspect.getfile(api['ppo'].train)).read_bytes())
     raw=source.encode('utf8')
     h4m12_require(hashlib.sha256(raw).hexdigest()==auth['generated_sha256'],'GENERATED_SHA')
@@ -6606,7 +6617,7 @@ def h4m12_worker(a,auth,root,out,*,red=False,r11=False,r12=False):
     mod=importlib.util.module_from_spec(modspec)
     modspec.loader.exec_module(mod)
     budget=H4M12Budget()
-    r=dict(status='RUNNING',authorization=auth,spec=(H4R12_SPEC if r12 else H4R11_SPEC if r11 else H4RED_SPEC if red else H4M12_SPEC),parent=parent,
+    r=dict(status='RUNNING',authorization=auth,spec=(H4FFE_SPEC if ffe else H4R12_SPEC if r12 else H4R11_SPEC if r11 else H4RED_SPEC if red else H4M12_SPEC),parent=parent,
         operational_rows=[],budget=budget.snapshot(),report_history=[],artifacts={},
         promotion_authorized=False,hardware_scaled_config=expected,
         reward=old['train_reward_config'],dependencies=deps)
@@ -6621,6 +6632,8 @@ def h4m12_worker(a,auth,root,out,*,red=False,r11=False,r12=False):
         chunk_fn=h4r11_chunk_guard(chunk_fn,r,persist,jax,np)
     if r12:
         chunk_fn=h4r12_chunk_guard(chunk_fn,r,persist,jax,np)
+    if ffe:
+        chunk_fn=h4ffe_chunk_guard(chunk_fn,r,persist,jax,np)
     restored_ts=last_reset=last_carry=model_ref=axes_ref=None
     local=eval_key=env_keys=epoch_keys=next_chunk_key=None
     policy_template=None
@@ -6651,7 +6664,7 @@ def h4m12_worker(a,auth,root,out,*,red=False,r11=False,r12=False):
         if replicated: h4m12_require(schema==parent['edge']['training_schema'],'TRAIN_SCHEMA')
         return dict(steps=int(step.item()),adam=int(adam.item()),normalizer=count.item(),training_schema=schema)
     def envcheck(state,reset=False):
-        projected=h4r12_project_state(state,jax,np,reset=reset) if r12 else h4r11_project_state(state,jax,np,reset=reset) if r11 else state
+        projected=h4ffe_project_state(state,jax,np,reset=reset) if ffe else h4r12_project_state(state,jax,np,reset=reset) if r12 else h4r11_project_state(state,jax,np,reset=reset) if r11 else state
         h4m12_require(arr(state.done).shape==(1,8192) and
             h4x_tree_schema(jax,np,projected)==parent['edge']['environment_schema'],'ENV_SCHEMA')
     def finite_flag(value):
@@ -6687,6 +6700,12 @@ def h4m12_worker(a,auth,root,out,*,red=False,r11=False,r12=False):
             finite_flag(v['finite'])
             last_reset=v['env_state']; envcheck(last_reset,reset=True)
             row=dict(finite=True,environment_schema=parent['edge']['environment_schema'])
+            if ffe:
+                if event=='reset_after':
+                    h4m12_require(len(r['ffe_chunks'])==4,'FFE_FINAL_RESET_CHUNKS')
+                    row['ffe_host_reset_closed']=r['ffe_chunks'][-1]['after']
+                else:
+                    row['ffe_host_reset_closed']=h4ffe_empty_pending()
             if r12:
                 if event=='reset_after':
                     h4m12_require(len(r['r12_chunks'])==4,'R12_FINAL_RESET_CHUNKS')
@@ -6733,6 +6752,8 @@ def h4m12_worker(a,auth,root,out,*,red=False,r11=False,r12=False):
             if n==0: same(carry[2],epoch_keys,'FIRST_CHUNK')
             else: h4m12_require(carry is last_carry,'CHUNK_CARRY')
             envcheck(carry[1])
+            if ffe:
+                h4ffe_clock(carry[1],jax,np,n*160)
             k=carry[2][0]
             for _ in range(5): k=jax.random.split(k,3)[2]
             next_chunk_key=k[None,:]
@@ -6744,6 +6765,8 @@ def h4m12_worker(a,auth,root,out,*,red=False,r11=False,r12=False):
                 and arr(v['metrics']['h4x_finite']).item()==1.,'CHUNK_FINITE')
             same(carry[2],next_chunk_key,'NEXT_CHUNK')
             envcheck(carry[1]);last_carry=carry
+            if ffe:
+                h4ffe_clock(carry[1],jax,np,(n+1)*160)
             row=dict(**counters(carry[0],n+1),key=keylist(carry[2]),finite=True)
         elif event=='chunk_ledger':
             h4m12_require(v['index']==n+1 and len(r['h4_chunks'])==n+1 and
@@ -6781,6 +6804,8 @@ def h4m12_worker(a,auth,root,out,*,red=False,r11=False,r12=False):
             r['r11_exposure']=h4r11_exposure_replay(r)
         if r12:
             r['r12_exposure']=h4r12_exposure_replay(r)
+        if ffe:
+            r['ffe_exposure']=h4ffe_exposure_replay(r)
         persist()
     def save_policy(step,make_policy,params):
         nonlocal pending_policy
@@ -6804,7 +6829,7 @@ def h4m12_worker(a,auth,root,out,*,red=False,r11=False,r12=False):
             persist()
         name=Path(H4M12_NEW_FULL).with_suffix('.json').name
         h4x_write_json(out/name,h4m12_checkpoint_meta(auth,r['artifacts'][H4M12_NEW_FULL],
-                       r['artifacts'][H4M12_NEW_POLICY],red=red,r11=r11,r12=r12),exclusive=True)
+                       r['artifacts'][H4M12_NEW_POLICY],red=red,r11=r11,r12=r12,ffe=ffe),exclusive=True)
         r['artifacts'][name]=digest(out/name)
         record('checkpoint',dict(step=step))
     def r11_abort(index,carry,metrics):
@@ -6817,6 +6842,11 @@ def h4m12_worker(a,auth,root,out,*,red=False,r11=False,r12=False):
         persist()
     if r12:
         cfg['r12_abort_fn']=r12_abort
+    def ffe_abort(index,carry,metrics):
+        r['ffe_abort']=h4ffe_abort_record(index,carry,metrics,jax,np)
+        persist()
+    if ffe:
+        cfg['ffe_abort_fn']=ffe_abort
     persist()
     try:
         with monitor:
@@ -6831,11 +6861,11 @@ def h4m12_worker(a,auth,root,out,*,red=False,r11=False,r12=False):
             safe()
         r['gpu']=monitor.snapshot()
         h4m12_require(parent_check(root,require_unused=False)==parent
-            and h4x_bootstrap(a,h4m12=True,red=red,r11=r11,r12=r12)==pins and h4c_dependency_pins(api)==deps
+            and h4x_bootstrap(a,h4m12=True,red=red,r11=r11,r12=r12,ffe=ffe)==pins and h4c_dependency_pins(api)==deps
             and h4c_git_blob(wrapper.read_bytes())=='2c09c8268a29d14c832dd07050575e4541ee98af'
             and authorize(root)==auth,'FINAL_IMMUTABILITY')
         r.update(status='TECHNICAL_PASS',returned_policy_exact=True)
-        h4m12_check_complete(out,r,auth,red=red,r11=r11,r12=r12)
+        h4m12_check_complete(out,r,auth,red=red,r11=r11,r12=r12,ffe=ffe)
         persist()
     except BaseException as exc:
         r.update(status='STOP',error=repr(exc)[:2048])
@@ -6843,11 +6873,11 @@ def h4m12_worker(a,auth,root,out,*,red=False,r11=False,r12=False):
         raise
 
 
-def h4m12_main(argv,*,red=False,r11=False,r12=False):
+def h4m12_main(argv,*,red=False,r11=False,r12=False,ffe=False):
     import subprocess
     import selectors
     import signal
-    p=argparse.ArgumentParser(description=('R12 isolated continuation' if r12 else 'R11 isolated continuation' if r11 else 'H4RED isolated continuation' if red else 'H4-M12 isolated original CTRL continuation'))
+    p=argparse.ArgumentParser(description=('FFE isolated continuation' if ffe else 'R12 isolated continuation' if r12 else 'R11 isolated continuation' if r11 else 'H4RED isolated continuation' if red else 'H4-M12 isolated original CTRL continuation'))
     p.add_argument('--checkpoint',type=Path,required=True)
     p.add_argument('--restore-report',type=Path,required=True)
     p.add_argument('--reward-report',type=Path,required=True)
@@ -6855,13 +6885,13 @@ def h4m12_main(argv,*,red=False,r11=False,r12=False):
     a=p.parse_args(argv)
     root=Path(__file__).resolve().parent
     h4m12_require(Path.cwd().resolve()==root,'WORKDIR')
-    h4r12_mode(red,r11,r12)
-    authorize=h4r12_auth if r12 else h4r11_auth if r11 else h4red_auth if red else h4m12_auth
-    parent_check=h4r12_parent_preflight if r12 else h4r11_parent_preflight if r11 else h4red_parent_preflight if red else h4m12_parent_preflight
+    h4ffe_mode(red,r11,r12,ffe)
+    authorize=h4ffe_auth if ffe else h4r12_auth if r12 else h4r11_auth if r11 else h4red_auth if red else h4m12_auth
+    parent_check=h4ffe_parent_preflight if ffe else h4r12_parent_preflight if r12 else h4r11_parent_preflight if r11 else h4red_parent_preflight if red else h4m12_parent_preflight
     auth=authorize(root)
-    out=root/(H4R12_OUTPUT if r12 else H4R11_OUTPUT if r11 else H4RED_OUTPUT if red else H4M12_OUTPUT)
+    out=root/(H4FFE_OUTPUT if ffe else H4R12_OUTPUT if r12 else H4R11_OUTPUT if r11 else H4RED_OUTPUT if red else H4M12_OUTPUT)
     if a.worker:
-        return h4m12_worker(a,auth,root,out,red=red,r11=r11,r12=r12)
+        return h4m12_worker(a,auth,root,out,red=red,r11=r11,r12=r12,ffe=ffe)
     parent_check(root)
     h4x_file_pin(a.checkpoint,SEED1_SHA)
     h4x_file_pin(a.restore_report,H3_CAUSAL_RESTORE_SHA)
@@ -6873,7 +6903,7 @@ def h4m12_main(argv,*,red=False,r11=False,r12=False):
     child=None; rc=None; total=0
     try:
         child=subprocess.Popen([sys.executable,'-u',str(Path(__file__).resolve()),
-            ('--h4r12-continuation' if r12 else '--h4r11-continuation' if r11 else '--h4red-continuation' if red else '--h4m12-continuation'),*argv,'--worker'],stdout=subprocess.PIPE,
+            ('--h4ffe-continuation' if ffe else '--h4r12-continuation' if r12 else '--h4r11-continuation' if r11 else '--h4red-continuation' if red else '--h4m12-continuation'),*argv,'--worker'],stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,start_new_session=True)
         deadline=time.monotonic()+H4M12_WATCHDOG_SECONDS
         with selectors.DefaultSelector() as sel, (out/'worker.log').open('xb') as log:
@@ -6889,13 +6919,15 @@ def h4m12_main(argv,*,red=False,r11=False,r12=False):
         h4m12_require(rc==0,'PRODUCER_RC')
         report=out/'report.json'
         r=json.loads(report.read_bytes())
-        h4m12_check_complete(out,r,auth,red=red,r11=r11,r12=r12)
+        h4m12_check_complete(out,r,auth,red=red,r11=r11,r12=r12,ffe=ffe)
         h4m12_require(parent_check(root,require_unused=False)==r['parent'] and authorize(root)==auth,'SUPERVISOR_IMMUTABILITY')
         sha=digest(report)
         h4x_write_json(out/'attempt_result.json',dict(status='COMPLETE',authorization=auth,
                        report_sha256=sha,producer_rc=0),exclusive=True)
-        h4m12_read_final(root,sha,auth,red=red,r11=r11,r12=r12)
-        if r12:
+        h4m12_read_final(root,sha,auth,red=red,r11=r11,r12=r12,ffe=ffe)
+        if ffe:
+            print('H4FFE_TECHNICAL_PASS',sha,r['ffe_exposure']['decision'],flush=True)
+        elif r12:
             print('H4R12_TECHNICAL_PASS',sha,r['r12_exposure']['decision'],flush=True)
         elif r11:
             print('H4R11_TECHNICAL_PASS',sha,r['r11_exposure']['decision'],flush=True)
@@ -6911,6 +6943,14 @@ def h4m12_main(argv,*,red=False,r11=False,r12=False):
         if not (out/'attempt_result.json').exists():
             h4x_write_json(out/'attempt_result.json',dict(status='STOP',authorization=auth,
                 producer_rc=rc,stored_log_bytes=total,error=repr(exc)[:2048]),exclusive=True)
+        if ffe and (out/'report.json').is_file():
+            # No promotion/technical acceptance from a partial. Preserve the
+            # original error and report independently if partial validation fails.
+            try:
+                part=h4ffe_read_partial(out,auth)
+                print('H4FFE_PARTIAL_READER_PASS',json.dumps(part,sort_keys=True),flush=True)
+            except Exception as failure:
+                print('H4FFE_PARTIAL_READER_STOP',repr(failure)[:1024],flush=True)
         raise
 
 
@@ -8212,4 +8252,638 @@ def h4r12_static_main(argv):
     print('H4R12_FULL_STATIC_PASS',flush=True)
 
 # H4R12_TRAINER_END
+
+# H4FFE_TRAINER_BEGIN
+H4FFE_TRAIN_PATCHES="[[\"h4r_bootstrap_pins\",\"r12=False):\",\"r12=False,ffe=False):\"],[\"h4x_bootstrap\",\"r12=False):\",\"r12=False,ffe=False):\"],[\"h4m12_generated_guard\",\"r12=False):\",\"r12=False,ffe=False):\"],[\"h4m12_check_complete\",\"r12=False):\",\"r12=False,ffe=False):\"],[\"h4m12_checkpoint_meta\",\"r12=False):\",\"r12=False,ffe=False):\"],[\"h4m12_read_final\",\"r12=False):\",\"r12=False,ffe=False):\"],[\"h4m12_worker\",\"r12=False):\",\"r12=False,ffe=False):\"],[\"h4m12_main\",\"r12=False):\",\"r12=False,ffe=False):\"],[\"main\",\"def main():\\n\",\"def main():\\n    if sys.argv[1:2]==['--h4ffe-continuation']:\\n        return h4m12_main(sys.argv[2:],ffe=True)\\n    if sys.argv[1:2]==['--h4ffe-static']:\\n        return h4ffe_static_main(sys.argv[2:])\\n\"],[\"h4r_bootstrap_pins\",\"h4r12_mode(red,r11,r12)\",\"h4ffe_mode(red,r11,r12,ffe)\"],[\"h4m12_generated_guard\",\"h4r12_mode(red,r11,r12)\",\"h4ffe_mode(red,r11,r12,ffe)\"],[\"h4m12_worker\",\"h4r12_mode(red,r11,r12)\",\"h4ffe_mode(red,r11,r12,ffe)\"],[\"h4m12_main\",\"h4r12_mode(red,r11,r12)\",\"h4ffe_mode(red,r11,r12,ffe)\"],[\"h4r_bootstrap_pins\",\"not (red or r11 or r12) or h4m12\",\"not (red or r11 or r12 or ffe) or h4m12\"],[\"h4r_bootstrap_pins\",\"        if r12:\\n            h4red_project_env\",\"        if ffe:\\n            h4ffe_project_env(root)\\n        elif r12:\\n            h4red_project_env\"],[\"h4x_bootstrap\",\"h4m12=h4m12,red=red,r11=r11,r12=r12)\",\"h4m12=h4m12,red=red,r11=r11,r12=r12,ffe=ffe)\"],[\"h4m12_generated_guard\",\"out=root/(H4R12_OUTPUT if r12 else\",\"out=root/(H4FFE_OUTPUT if ffe else H4R12_OUTPUT if r12 else\"],[\"h4m12_read_final\",\"out=root/(H4R12_OUTPUT if r12 else\",\"out=root/(H4FFE_OUTPUT if ffe else H4R12_OUTPUT if r12 else\"],[\"h4m12_main\",\"out=root/(H4R12_OUTPUT if r12 else\",\"out=root/(H4FFE_OUTPUT if ffe else H4R12_OUTPUT if r12 else\"],[\"h4m12_generated_guard\",\"auth=(h4r12_auth if r12 else\",\"auth=(h4ffe_auth if ffe else h4r12_auth if r12 else\"],[\"h4m12_generated_guard\",\"        getattr(environment,'_r12',False) is r12 and\",\"        getattr(environment,'_r12',False) is r12 and\\n        getattr(environment,'_ffe',False) is ffe and\"],[\"h4m12_worker\",\"parent_check=h4r12_parent_preflight if r12 else\",\"parent_check=h4ffe_parent_preflight if ffe else h4r12_parent_preflight if r12 else\"],[\"h4m12_main\",\"parent_check=h4r12_parent_preflight if r12 else\",\"parent_check=h4ffe_parent_preflight if ffe else h4r12_parent_preflight if r12 else\"],[\"h4m12_read_final\",\"parent_check=h4r12_parent_preflight if r12 else\",\"parent_check=h4ffe_parent_preflight if ffe else h4r12_parent_preflight if r12 else\"],[\"h4m12_worker\",\"authorize=h4r12_auth if r12 else\",\"authorize=h4ffe_auth if ffe else h4r12_auth if r12 else\"],[\"h4m12_main\",\"authorize=h4r12_auth if r12 else\",\"authorize=h4ffe_auth if ffe else h4r12_auth if r12 else\"],[\"h4m12_check_complete\",\"(H4R12_SPEC if r12 else\",\"(H4FFE_SPEC if ffe else H4R12_SPEC if r12 else\"],[\"h4m12_worker\",\"(H4R12_SPEC if r12 else\",\"(H4FFE_SPEC if ffe else H4R12_SPEC if r12 else\"],[\"h4m12_check_complete\",\"    if r12:\\n        h4m12_require(h4r12_exposure_replay(r)==r['r12_exposure'],'R12_FINAL_EXPOSURE')\",\"    if r12:\\n        h4m12_require(h4r12_exposure_replay(r)==r['r12_exposure'],'R12_FINAL_EXPOSURE')\\n    if ffe:\\n        h4m12_require(h4ffe_exposure_replay(r)==r['ffe_exposure'],'FFE_FINAL_EXPOSURE')\"],[\"h4m12_check_complete\",\"red=red,r11=r11,r12=r12),\\n                  'FINAL_MANIFEST')\",\"red=red,r11=r11,r12=r12,ffe=ffe),\\n                  'FINAL_MANIFEST')\"],[\"h4m12_checkpoint_meta\",\"format=(H4R12_SPEC['id'] if r12 else\",\"format=(H4FFE_SPEC['id'] if ffe else H4R12_SPEC['id'] if r12 else\"],[\"h4m12_read_final\",\"h4m12_check_complete(out,r,auth,red=red,r11=r11,r12=r12)\",\"h4m12_check_complete(out,r,auth,red=red,r11=r11,r12=r12,ffe=ffe)\"],[\"h4m12_worker\",\"h4m12_check_complete(out,r,auth,red=red,r11=r11,r12=r12)\",\"h4m12_check_complete(out,r,auth,red=red,r11=r11,r12=r12,ffe=ffe)\"],[\"h4m12_main\",\"h4m12_check_complete(out,r,auth,red=red,r11=r11,r12=r12)\",\"h4m12_check_complete(out,r,auth,red=red,r11=r11,r12=r12,ffe=ffe)\"],[\"h4m12_worker\",\"pins=h4x_bootstrap(a,h4m12=True,red=red,r11=r11,r12=r12)\",\"pins=h4x_bootstrap(a,h4m12=True,red=red,r11=r11,r12=r12,ffe=ffe)\"],[\"h4m12_worker\",\"h4_arm='control',h4red=red,r11=r11,r12=r12)\",\"h4_arm='control',h4red=red,r11=r11,r12=r12,ffe=ffe)\"],[\"h4m12_worker\",\"    build=make_r12_integrated_source if r12 else\",\"    if ffe:\\n        from m463_instrument_brax import make_ffe_integrated_source\\n    build=make_ffe_integrated_source if ffe else make_r12_integrated_source if r12 else\"],[\"h4m12_worker\",\"    if r12:\\n        chunk_fn=h4r12_chunk_guard(chunk_fn,r,persist,jax,np)\\n\",\"    if r12:\\n        chunk_fn=h4r12_chunk_guard(chunk_fn,r,persist,jax,np)\\n    if ffe:\\n        chunk_fn=h4ffe_chunk_guard(chunk_fn,r,persist,jax,np)\\n\"],[\"h4m12_worker\",\"projected=h4r12_project_state(state,jax,np,reset=reset) if r12 else\",\"projected=h4ffe_project_state(state,jax,np,reset=reset) if ffe else h4r12_project_state(state,jax,np,reset=reset) if r12 else\"],[\"h4m12_worker\",\"            if r12:\\n                if event=='reset_after':\",\"            if ffe:\\n                if event=='reset_after':\\n                    h4m12_require(len(r['ffe_chunks'])==4,'FFE_FINAL_RESET_CHUNKS')\\n                    row['ffe_host_reset_closed']=r['ffe_chunks'][-1]['after']\\n                else:\\n                    row['ffe_host_reset_closed']=h4ffe_empty_pending()\\n            if r12:\\n                if event=='reset_after':\"],[\"h4m12_worker\",\"            envcheck(carry[1])\\n            k=carry[2][0]\",\"            envcheck(carry[1])\\n            if ffe:\\n                h4ffe_clock(carry[1],jax,np,n*160)\\n            k=carry[2][0]\"],[\"h4m12_worker\",\"            envcheck(carry[1]);last_carry=carry\",\"            envcheck(carry[1]);last_carry=carry\\n            if ffe:\\n                h4ffe_clock(carry[1],jax,np,(n+1)*160)\"],[\"h4m12_worker\",\"        if r12:\\n            r['r12_exposure']=h4r12_exposure_replay(r)\\n        persist()\",\"        if r12:\\n            r['r12_exposure']=h4r12_exposure_replay(r)\\n        if ffe:\\n            r['ffe_exposure']=h4ffe_exposure_replay(r)\\n        persist()\"],[\"h4m12_worker\",\"r['artifacts'][H4M12_NEW_POLICY],red=red,r11=r11,r12=r12),exclusive=True)\",\"r['artifacts'][H4M12_NEW_POLICY],red=red,r11=r11,r12=r12,ffe=ffe),exclusive=True)\"],[\"h4m12_worker\",\"    if r12:\\n        cfg['r12_abort_fn']=r12_abort\\n\",\"    if r12:\\n        cfg['r12_abort_fn']=r12_abort\\n    def ffe_abort(index,carry,metrics):\\n        r['ffe_abort']=h4ffe_abort_record(index,carry,metrics,jax,np)\\n        persist()\\n    if ffe:\\n        cfg['ffe_abort_fn']=ffe_abort\\n\"],[\"h4m12_worker\",\"and h4x_bootstrap(a,h4m12=True,red=red,r11=r11,r12=r12)==pins\",\"and h4x_bootstrap(a,h4m12=True,red=red,r11=r11,r12=r12,ffe=ffe)==pins\"],[\"h4m12_main\",\"description=('R12 isolated continuation' if r12 else\",\"description=('FFE isolated continuation' if ffe else 'R12 isolated continuation' if r12 else\"],[\"h4m12_main\",\"h4m12_worker(a,auth,root,out,red=red,r11=r11,r12=r12)\",\"h4m12_worker(a,auth,root,out,red=red,r11=r11,r12=r12,ffe=ffe)\"],[\"h4m12_main\",\"('--h4r12-continuation' if r12 else\",\"('--h4ffe-continuation' if ffe else '--h4r12-continuation' if r12 else\"],[\"h4m12_main\",\"h4m12_read_final(root,sha,auth,red=red,r11=r11,r12=r12)\",\"h4m12_read_final(root,sha,auth,red=red,r11=r11,r12=r12,ffe=ffe)\"],[\"h4m12_main\",\"        if r12:\\n            print('H4R12_TECHNICAL_PASS'\",\"        if ffe:\\n            print('H4FFE_TECHNICAL_PASS',sha,r['ffe_exposure']['decision'],flush=True)\\n        elif r12:\\n            print('H4R12_TECHNICAL_PASS'\"],[\"h4m12_main\",\"        if not (out/'attempt_result.json').exists():\\n            h4x_write_json(out/'attempt_result.json',dict(status='STOP',authorization=auth,\\n                producer_rc=rc,stored_log_bytes=total,error=repr(exc)[:2048]),exclusive=True)\\n        raise\",\"        if not (out/'attempt_result.json').exists():\\n            h4x_write_json(out/'attempt_result.json',dict(status='STOP',authorization=auth,\\n                producer_rc=rc,stored_log_bytes=total,error=repr(exc)[:2048]),exclusive=True)\\n        if ffe and (out/'report.json').is_file():\\n            # No promotion/technical acceptance from a partial. Preserve the\\n            # original error and report independently if partial validation fails.\\n            try:\\n                part=h4ffe_read_partial(out,auth)\\n                print('H4FFE_PARTIAL_READER_PASS',json.dumps(part,sort_keys=True),flush=True)\\n            except Exception as failure:\\n                print('H4FFE_PARTIAL_READER_STOP',repr(failure)[:1024],flush=True)\\n        raise\"]]"
+
+H4FFE_BASE_HEAD='cd19af630290958d08dbe1189c85e24aebb48c25'
+H4FFE_BASE_BLOBS={
+    'm463_coverage_env.py':'9b729487388dc3c8a1cb7fe719135401563007db',
+    'm463_instrument_brax.py':'967d9d35c15b178b8ec5abc67b1cfe78f4ab293e',
+    'm463_push_ppo_train.py':'918372c3d0b35fb92fdaa4abfca1e54ed3850765'}
+H4FFE_ENV_BLOB='86919b3edc2594dbdb29dbaf49d3071737d92ed4'
+H4FFE_INST_BLOB='abc017e9daa0c3c82a8ae46e2e477a950cc875f7'
+H4FFE_OUTPUT=Path('m463_runs/m470_h4_m18_ffe_v1')
+H4FFE_SPEC=dict(H4M12_SPEC,id='H4-M18-FFE-V1')
+H4FFE_CORE_LOG=Path('m463_runs/m470_h4ffe_core_static_20261127_141940_OvHkWF.log')
+H4FFE_CORE_SHA='a1d0ebfbe1e40b5028eb61bb4853eff95971089176e9a525d84f203daeb5fbd4'
+H4FFE_BROAD=[1569,1577,1700,1620,1679]
+
+def h4ffe_mode(red,r11,r12,ffe):
+    h4r12_mode(red,r11,r12)
+    h4m12_require(type(ffe) is bool and not (ffe and (red or r11 or r12)),'FFE_MODE')
+
+def h4ffe_strip(raw,label):
+    a=b'\n# H4FFE_'+label.encode()+b'_BEGIN\n'
+    b=b'# H4FFE_'+label.encode()+b'_END\n'
+    h4m12_require(raw.count(a)==raw.count(b)==1,'FFE_BLOCK_'+label)
+    i=raw.index(a);j=raw.index(b,i)+len(b)
+    return raw[:i]+raw[j:]
+
+def h4ffe_core_scope(root):
+    raw=(Path(root)/'m463_coverage_env.py').read_bytes()
+    a=b'# H4FFE_CORE_BEGIN\n';b=b'# H4FFE_CORE_END\n'
+    h4m12_require(raw.count(a)==raw.count(b)==1,'FFE_CORE_BLOCK')
+    i=raw.index(a);j=raw.index(b,i)+len(b);core=raw[i:j]
+    h4m12_require(hashlib.sha256(core).hexdigest()=='a75d3c52d08ee77ed3af4cae49bdb98bea741f6d50f763caf7829a18c91ffb65','FFE_CORE_SHA')
+    scope={};exec(compile(core,'<FFE accepted core>','exec'),scope)
+    return scope
+
+def h4ffe_project_env(root):
+    import subprocess
+    from m463_instrument_brax import h4c_git_blob
+    root=Path(root);raw=(root/'m463_coverage_env.py').read_bytes()
+    h4m12_require(h4c_git_blob(raw)==H4FFE_ENV_BLOB,'FFE_ENV_PIN')
+    old=subprocess.check_output(['git','show',H4FFE_BASE_HEAD+':m463_coverage_env.py'],cwd=root)
+    h4m12_require(h4c_git_blob(old)==H4FFE_BASE_BLOBS['m463_coverage_env.py'],'FFE_ENV_BASE')
+    r12=h4ffe_strip(old,'CORE')
+    earlier=h4red_project_env(h4r11_project_env(h4r12_project_env(r12)))
+    h4m12_env_projection(subprocess.check_output(['git','show',H4M12_HISTORICAL_HEAD+':m463_coverage_env.py'],cwd=root),earlier)
+    return old
+
+def h4ffe_project_sources(root):
+    import subprocess,re,tempfile,ast
+    from m463_instrument_brax import h4c_git_blob
+    root=Path(root)
+    def old(name):
+        raw=subprocess.check_output(['git','show',H4FFE_BASE_HEAD+':'+name],cwd=root)
+        if name in H4FFE_BASE_BLOBS:
+            h4m12_require(h4c_git_blob(raw)==H4FFE_BASE_BLOBS[name],'FFE_BASE_'+name)
+        return raw
+    for name in (*H4FFE_BASE_BLOBS,'m463_gate3_cp_eval.py','train.py','paper_config.py'):
+        raw=(root/name).read_bytes()
+        compile(raw,name,'exec')
+        h4m12_require(raw==subprocess.check_output(['git','show','HEAD:'+name],cwd=root),'FFE_TRACKED_'+name)
+        if name not in H4FFE_BASE_BLOBS:
+            h4m12_require(raw==old(name),'FFE_UNCHANGED_'+name)
+    e=(root/'m463_coverage_env.py').read_bytes();base=h4ffe_project_env(root)
+    # Independently reverse the exact tracked diff on temporary bytes, never
+    # modifying the checkout or pinned dependencies.
+    patch=subprocess.check_output(['git','diff','--binary','--no-ext-diff',
+        H4FFE_BASE_HEAD,'HEAD','--','m463_coverage_env.py'],cwd=root)
+    with tempfile.TemporaryDirectory(prefix='h4ffe_reverse_') as d:
+        p=Path(d)/'m463_coverage_env.py';p.write_bytes(e)
+        subprocess.run(['git','apply','--reverse','--binary','--whitespace=nowarn','-'],
+            cwd=d,input=patch,check=True,capture_output=True)
+        h4m12_require(p.read_bytes()==base,'FFE_ENV_REVERSE_BYTES')
+    before=ast.parse(base);after=ast.parse(e)
+    def klass(t):
+        return next(x for x in t.body if isinstance(x,ast.ClassDef) and x.name=='CoverageJoystick')
+    a={x.name:ast.dump(x) for x in klass(before).body if isinstance(x,ast.FunctionDef)}
+    b={x.name:ast.dump(x) for x in klass(after).body if isinstance(x,ast.FunctionDef)}
+    h4m12_require(set(a)==set(b) and {k for k in a if a[k]!=b[k]}=={'__init__','reset','step'},'FFE_ENV_METHOD_SCOPE')
+    g=(root/'m463_instrument_brax.py').read_bytes()
+    h4m12_require(h4c_git_blob(g)==H4FFE_INST_BLOB and h4ffe_strip(g,'GENERATOR')==old('m463_instrument_brax.py'),'FFE_GENERATOR_REVERSE')
+    t=h4ffe_strip((root/'m463_push_ppo_train.py').read_bytes(),'TRAINER').decode('utf8')
+    for fn,a,b in reversed(json.loads(H4FFE_TRAIN_PATCHES)):
+        m=list(re.finditer(r'(?m)^def '+re.escape(fn)+r'\(',t))
+        h4m12_require(len(m)==1,'FFE_FUNCTION_'+fn)
+        i=m[0].start();n=re.search(r'\n(?:def |class )',t[i+1:])
+        j=i+1+n.start() if n else len(t)
+        t=t[:i]+h4red_once(t[i:j],b,a)+t[j:]
+    h4m12_require(t.encode('utf8')==old('m463_push_ppo_train.py'),'FFE_TRAINER_REVERSE')
+    for name,sha in (('m462_ppo_warmstart_run.py',H4R_LOCAL_SHA['m462_ppo_warmstart_run']),
+                     ('m462_typed_orbax_stage.py',H4R_LOCAL_SHA['m462_typed_orbax_stage']),
+                     ('paper_config_preflight.json',H4R_CONFIG_SHA)):
+        h4x_file_pin(root/name,sha)
+    h4ffe_core_scope(root)
+    return True
+
+def h4ffe_parent_preflight(root,*,require_unused=True):
+    root=Path(root).resolve()
+    p=h4red_parent_preflight(root,require_unused=False)
+    raw=(root/H4M12_OUTPUT/'report.json').read_bytes()
+    h4m12_require(hashlib.sha256(raw).hexdigest()==H4RED_M12_REPORT,'FFE_M12_SHA')
+    counts=json.loads(raw)['exposure']['counts']
+    h4m12_require([counts[f'm463_h4_broad_motion_{i}_per_rollout'] for i in range(1,6)]==H4FFE_BROAD
+        and counts['m463_h4_class_0_steps_per_rollout']==1145928,'FFE_M12_COUNTS')
+    if require_unused:
+        q=root/H4FFE_OUTPUT
+        h4m12_require(not q.exists() and not q.is_symlink(),'FFE_OUTPUT_USED')
+    return dict(p,ffe_floors=dict(archived_broad=list(H4FFE_BROAD),
+        minimum_broad=[(4*x+4)//5 for x in H4FFE_BROAD],nominal=916743))
+
+def h4ffe_parse_marker(rules):
+    import re
+    active=[x for x in rules.splitlines() if re.match(r'^[A-Z0-9_]+_GO:',x)]
+    h4m12_require(len(active)==1,'FFE_EXECUTION_HOLD_OR_CONFLICT')
+    m=re.fullmatch(r'H4FFE_ACTIVE_GO: H4-M18-FFE-V1 m463_runs/m470_h4_m18_ffe_v1 '
+        r'([0-9a-f]{64}) ([0-9a-f]{64}) (m463_runs/m470_h4ffe_static_[A-Za-z0-9_]+\.log) ([0-9a-f]{64})',active[0])
+    h4m12_require(m is not None,'FFE_AUTH_SCHEMA')
+    a,b,c,d=m.groups()
+    return dict(id=H4FFE_SPEC['id'],output=str(H4FFE_OUTPUT),source_sha256=a,
+        generated_sha256=b,static_path=c,static_sha256=d)
+
+def h4ffe_auth(root):
+    root=Path(root).resolve()
+    h4m12_require(not any((H4_EXECUTION_AUTHORIZED,H4R_EXECUTION_AUTHORIZED,
+        H4C_EXECUTION_AUTHORIZED,H4CC_EXECUTION_AUTHORIZED,H4M8_EXECUTION_AUTHORIZED)),'FFE_LEGACY_HOLD')
+    a=h4ffe_parse_marker((root/'G1_RESEARCH_RULES.md').read_text('utf8'))
+    h4m12_require(h4x_source_digest(root)==a['source_sha256'],'FFE_SOURCE')
+    h4x_file_pin(root/H4FFE_CORE_LOG,H4FFE_CORE_SHA)
+    log=root/a['static_path'];h4x_file_pin(log,a['static_sha256'])
+    h4m12_require(log.stat().st_size<=H4FFE_SPEC['external_log_reserve'],'FFE_STATIC_SIZE')
+    lines=log.read_text('utf8').splitlines()
+    h4m12_require(lines[-2:]==['H4FFE_FULL_STATIC_PASS','STATIC_EXIT_CODE=0 TEE_EXIT_CODE=0']
+        and lines.count('H4FFE_FULL_STATIC_PASS')==1
+        and lines.count('H4FFE_SOURCE '+a['source_sha256'])==1
+        and lines.count('H4FFE_GENERATED '+a['generated_sha256'])==1,'FFE_STATIC_RECEIPT')
+    return a
+
+def h4ffe_project_state(state,jax,np,*,reset=False):
+    from m463_coverage_env import ffe_env_init
+    schema=ffe_env_init(np);info=dict(state.info)
+    h4m12_require({k for k in info if k.startswith('ffe_')}==set(schema),'FFE_INFO_SCHEMA')
+    for k,v in schema.items():
+        x=info.pop(k)
+        h4m12_require(x.shape==(1,8192)+v.shape and np.dtype(x.dtype)==v.dtype,'FFE_INFO_LEAF_'+k)
+        if reset:
+            a=np.asarray(jax.device_get(x))
+            h4m12_require(np.isfinite(a).all() and np.all(a==v),'FFE_RESET_'+k)
+    return state.replace(info=info)
+
+def h4ffe_clock(state,jax,np,k):
+    a=np.asarray(jax.device_get(state.info['ffe_k']))
+    h4m12_require(a.shape==(1,8192) and a.dtype==np.int32 and np.all(a==k),'FFE_HOST_CLOCK')
+
+def h4ffe_empty_pending():
+    return dict(clock=0,first=[0]*4,repeat=[0]*4,
+        hard_tail=[[0,0] for _ in range(4)],ordinary_tail=[0,0])
+
+def h4ffe_pending(state,jax,np,k):
+    h4ffe_clock(state,jax,np,k)
+    def v(name,allowed):
+        a=np.asarray(jax.device_get(state.info[name]))
+        h4m12_require(a.shape==(1,8192) and a.dtype==np.int32 and np.isin(a,allowed).all(),'FFE_PENDING_'+name)
+        return a
+    hard=v('ffe_hard',(0,1))==1;phase=v('ffe_phase',(0,1,2,3))
+    cell=v('ffe_cell',range(4));kind=v('h4_tail_kind',(0,1,2))
+    stratum=v('ffe_tail_stratum',(0,1,2));same=v('ffe_tail_same',(0,1))
+    h4m12_require(np.all((kind>0)==(stratum>0)) and not np.any((same>0)&(kind==0))
+        and not np.any((stratum==2)&(~hard)),'FFE_PENDING_TAIL')
+    count=lambda m:int(np.count_nonzero(m))
+    return dict(clock=k,first=[count(hard&(phase==1)&(cell==j)) for j in range(4)],
+        repeat=[count(hard&(phase==2)&(cell==j)) for j in range(4)],
+        hard_tail=[[count((stratum==2)&(cell==j)&(kind==q)) for q in (1,2)] for j in range(4)],
+        ordinary_tail=[count((stratum==1)&(kind==q)) for q in (1,2)])
+
+def h4ffe_pending_schema(p,k):
+    h4m12_require(type(p) is dict and set(p)==set(h4ffe_empty_pending()) and
+        type(p['clock']) is int and p['clock']==k,'FFE_PENDING_KEYS')
+    for key,n in (('first',4),('repeat',4),('ordinary_tail',2)):
+        h4m12_require(type(p[key]) is list and len(p[key])==n,'FFE_PENDING_LIST')
+    h4m12_require(type(p['hard_tail']) is list and len(p['hard_tail'])==4 and
+        all(type(r) is list and len(r)==2 for r in p['hard_tail']),'FFE_PENDING_HARD_TAIL')
+    values=p['first']+p['repeat']+p['ordinary_tail']+[x for r in p['hard_tail'] for x in r]
+    h4m12_require(all(type(x) is int and 0<=x<=8192 for x in values) and
+        sum(p['first']+p['repeat'])<=8192 and sum(p['ordinary_tail'])+sum(map(sum,p['hard_tail']))<=8192,'FFE_PENDING_RANGE')
+
+def h4ffe_metric_keys():
+    keys={'bad_rows','collected','batch_rejected','batch_committed'}
+    for j in range(4):
+        keys.update(f'cell_{j}_{k}' for k in ('assigned','first_due','first','first_miss',
+            'repeat_assigned','repeat_due','repeat','repeat_miss','first_terminal','repeat_terminal'))
+        keys.update(f'cell_{j}_reason_{k}' for k in range(1,7))
+        keys.update(f'cell_{j}_band_{k}_assigned' for k in range(4))
+    keys.update(f'ordinary_motion_{j}' for j in range(6))
+    for j in range(3):
+        keys.update(f'stratum_{j}_{k}' for k in ('steps','events','first','repeat','terminal','joint_excess','ctrl_excess','force_excess','foot_foot'))
+        keys.update(f'tail_{j}_{k}' for k in ('joint_excess','ctrl_excess','force_excess','foot_foot'))
+        keys.update(f'tail_{j}_{q}_{w}_{k}' for q in (1,2) for w in (1,10,25,50,100,250)
+            for k in ('executed','survived','same'))
+    return keys
+
+def h4ffe_check_chunk(c,before,after,legacy,index):
+    h4m12_require(type(index) is int and 1<=index<=4,'FFE_CHUNK_INDEX')
+    h4ffe_pending_schema(before,(index-1)*160);h4ffe_pending_schema(after,index*160)
+    h4m12_require(set(c)==h4ffe_metric_keys() and all(type(x) is int and 0<=x<=1310720 for x in c.values()),'FFE_METRIC_SCHEMA')
+    h4m12_require(c['collected']==c['batch_committed']==5 and c['batch_rejected']==c['bad_rows']==0,'FFE_BATCH')
+    if index==1:h4m12_require(before==h4ffe_empty_pending(),'FFE_INITIAL_PENDING')
+    def l(k):return legacy['m463_h4_'+k+'_per_rollout']
+    for j in range(4):
+        x=lambda k:c[f'cell_{j}_{k}']
+        h4m12_require((index==1 or x('assigned')==0) and
+            before['first'][j]+x('assigned')==x('first')+x('first_miss')+after['first'][j] and
+            before['repeat'][j]+x('repeat_assigned')==x('repeat')+x('repeat_miss')+after['repeat'][j] and
+            x('first')<=x('first_due')<=before['first'][j]+x('assigned') and
+            x('repeat')<=x('repeat_due')<=before['repeat'][j]+x('repeat_assigned') and
+            x('repeat_assigned')<=x('first') and x('first_terminal')<=x('first')-x('repeat_assigned') and
+            x('repeat_terminal')<=x('repeat'),'FFE_CELL_LEDGER')
+        h4m12_require(sum(x('band_'+str(b)+'_assigned') for b in range(4))==x('assigned'),'FFE_BAND_ASSIGN_PARTITION')
+        h4m12_require(sum(x('reason_'+str(r)) for r in range(1,7))==
+            x('first_miss')+x('repeat_miss')+x('first')-x('repeat_assigned') and x('reason_6')==0,'FFE_REASON_LEDGER')
+    if index==4:h4m12_require(not any(after['first']+after['repeat']),'FFE_UNCLOSED_SLOT')
+    first=sum(c[f'cell_{j}_first'] for j in range(4));repeat=sum(c[f'cell_{j}_repeat'] for j in range(4))
+    hard=first+repeat;ordinary=c['stratum_1_events'];nominal=c['stratum_0_steps']
+    h4m12_require(sum(c[f'stratum_{j}_steps'] for j in range(3))==1310720 and nominal==l('class_0_steps') and
+        c['stratum_0_events']==0 and c['stratum_2_events']==hard and hard+ordinary==l('broad_events') and
+        first<=l('first_events') and repeat<=l('repeat_events') and sum(c[f'ordinary_motion_{j}'] for j in range(6))==ordinary,'FFE_LEGACY_PARTITION')
+    h4m12_require(c['stratum_2_first']==first and c['stratum_2_repeat']==repeat and
+        sum(c[f'stratum_{j}_first'] for j in range(3))==l('first_events') and
+        sum(c[f'stratum_{j}_repeat'] for j in range(3))==l('repeat_events') and
+        sum(c[f'stratum_{j}_terminal'] for j in range(3))==l('source_terminal'),'FFE_EVENT_PARTITION')
+    for j in range(6):
+        h4m12_require(c[f'ordinary_motion_{j}']+(hard if j==0 else 0)==l(f'broad_motion_{j}'),'FFE_ORDINARY_MOTION')
+    for j in range(3):
+        steps=c[f'stratum_{j}_steps']
+        h4m12_require(c[f'stratum_{j}_first']+c[f'stratum_{j}_repeat']==c[f'stratum_{j}_events'],'FFE_STRATUM_EVENTS')
+        h4m12_require(all(c[f'stratum_{j}_{k}']<=steps for k in ('events','terminal','joint_excess','ctrl_excess','force_excess','foot_foot')),'FFE_STRATUM_BOUNDS')
+        for q in (1,2):
+            for w in (1,10,25,50,100,250):
+                x=lambda k:c[f'tail_{j}_{q}_{w}_{k}']
+                h4m12_require(x('survived')<=x('executed') and x('same')<=x('executed') and
+                    (j!=0 or x('executed')==0),'FFE_TAIL_BOUNDS')
+    for q in (1,2):
+        for w in H4_SPEC['tail_windows']:
+            for name in ('executed','survived','same'):
+                total=sum(c[f'tail_{j}_{q}_{w}_{name}'] for j in range(3))
+                old=l(f'tail_{q}_{w}_'+('same_command' if name=='same' else name))
+                h4m12_require(total<=old if name=='same' else total==old,'FFE_LEGACY_TAIL')
+    return True
+
+def h4ffe_chunk_guard(callback,r,persist,jax,np):
+    r['ffe_chunks']=[]
+    def checked(index,state,env_state,metrics):
+        c={}
+        for k,v in metrics.items():
+            if not k.startswith('ffe_'):continue
+            a=np.asarray(jax.device_get(v))
+            h4m12_require(a.shape==() and np.isfinite(a) and float(a)==int(a),'FFE_CHUNK_METRIC')
+            c[k[4:]]=int(a)
+        h4m12_require(c.pop('chunk_failed')==0,'FFE_CHUNK_FAILED')
+        rows=r['ffe_chunks'];h4m12_require(index==len(rows)+1 and index<=4,'FFE_CHUNK_ORDER')
+        before=rows[-1]['after'] if rows else h4ffe_empty_pending()
+        after=h4ffe_pending(env_state,jax,np,index*160)
+        row=dict(index=index,before=before,after=after,metrics=c,passed=False)
+        rows.append(row);persist()
+        callback(index,state,env_state,metrics)
+        h4ffe_check_chunk(c,before,after,r['h4_chunks'][-1]['counts'],index)
+        row['passed']=True;persist()
+    return checked
+
+def h4ffe_abort_record(index,carry,metrics,jax,np):
+    out={}
+    for k,v in metrics.items():
+        if k.startswith('ffe_') or k=='h4x_finite':
+            a=np.asarray(jax.device_get(v))
+            h4m12_require(a.shape==(),'FFE_ABORT_METRIC')
+            out[k]=float(a) if np.isfinite(a) else 'NONFINITE'
+    clock=np.asarray(jax.device_get(carry[1].info['ffe_k']))
+    h4m12_require(clock.shape==(1,8192) and np.all(clock==clock[0,0]),'FFE_ABORT_CLOCK')
+    return dict(index=index,metrics=out,clock=int(clock[0,0]),complete=False)
+
+def h4ffe_exposure_replay(r):
+    h4m12_require('ffe_abort' not in r and len(r['ffe_chunks'])==len(r['h4_chunks'])==4
+        and len(r['h4_epochs'])==len(r['report_history'])==1,'FFE_EPOCH')
+    before=h4ffe_empty_pending()
+    for i,row in enumerate(r['ffe_chunks'],1):
+        h4m12_require(set(row)=={'index','before','after','metrics','passed'} and
+            row['index']==i and row['before']==before and row['passed'] is True,'FFE_ROW')
+        h4ffe_check_chunk(row['metrics'],before,row['after'],r['h4_chunks'][i-1]['counts'],i)
+        before=row['after']
+    rows=r['ffe_chunks']
+    for b,row in enumerate(rows):
+        for j in range(4):
+            x=lambda k:row['metrics'][f'cell_{j}_{k}']
+            assigned=lambda q:rows[0]['metrics'][f'cell_{j}_band_{q}_assigned']
+            h4m12_require(x('first_due')==assigned(b) and x('first')+x('first_miss')==assigned(b) and
+                x('repeat')+x('repeat_miss')==x('repeat_assigned') and row['after']['repeat'][j]==0 and
+                row['after']['first'][j]==sum(assigned(q) for q in range(b+1,4)),'FFE_BAND_CONSERVATION')
+    totals={k:sum(x['metrics'][k] for x in rows) for k in h4ffe_metric_keys()}
+    cells=[[x['metrics'][f'cell_{j}_repeat'] for j in range(4)] for x in rows]
+    broad=[totals[f'ordinary_motion_{j}'] for j in range(1,6)]
+    nominal=totals['stratum_0_steps']
+    h4m12_require(r['parent']['ffe_floors']==dict(archived_broad=H4FFE_BROAD,
+        minimum_broad=[(4*x+4)//5 for x in H4FFE_BROAD],nominal=916743),'FFE_PARENT_FLOORS')
+    h4m12_require(nominal==r['h4_epochs'][0]['counts']['m463_h4_class_0_steps_per_rollout'] and
+        sum(before['ordinary_tail'])+sum(map(sum,before['hard_tail']))==r['h4_epochs'][0]['pending_at_reset']['tail_pending'],'FFE_EPOCH_CENSOR')
+    hist=r['report_history'][0]['metrics']
+    h4m12_require(hist['training/ffe_chunk_failed']==0 and all(hist['training/ffe_'+k]*4==v for k,v in totals.items()),'FFE_EPOCH_METRICS')
+    resets=[x for x in r['operational_rows'] if x['event'].endswith('reset_after')]
+    h4m12_require(len(resets)==3 and [x['ffe_host_reset_closed'] for x in resets]==
+        [h4ffe_empty_pending(),h4ffe_empty_pending(),before],'FFE_HOST_CENSOR')
+    gate=h4ffe_core_scope(Path(__file__).resolve().parent)['ffe_exposure_gate'](cells,nominal,broad,H4FFE_BROAD)
+    return dict(gate,totals=totals,chunk_cell=cells,ordinary_broad=broad,nominal=nominal,
+        pending_at_host_reset=before,promotion_authorized=False)
+
+def h4ffe_read_partial(out,auth):
+    out=Path(out);p=out/'report.json'
+    h4m12_require(p.is_file() and not p.is_symlink() and p.stat().st_size<=H4FFE_SPEC['output_cap'],'FFE_PARTIAL_PATH')
+    r=json.loads(p.read_bytes())
+    h4m12_require(r['status'] in ('RUNNING','STOP') and r['authorization']==auth and r['spec']==H4FFE_SPEC and
+        r['promotion_authorized'] is False,'FFE_PARTIAL_STATUS')
+    for n in ('attempt.json','worker.started.json','attempt_result.json'):
+        h4m12_require((out/n).is_file() and not (out/n).is_symlink(),'FFE_PARTIAL_SYMLINK')
+    attempt=json.loads((out/'attempt.json').read_bytes())
+    worker=json.loads((out/'worker.started.json').read_bytes())
+    result=json.loads((out/'attempt_result.json').read_bytes())
+    h4m12_require(set(attempt)=={'authorization','parent_pid'} and attempt['authorization']==auth and
+        type(attempt['parent_pid']) is int and attempt['parent_pid']>0 and set(worker)=={'authorization','pid'} and
+        worker['authorization']==auth and type(worker['pid']) is int and worker['pid']>0 and
+        result['status']=='STOP' and result['authorization']==auth,'FFE_PARTIAL_RECEIPTS')
+    if (out/'dispatch.started.json').exists():
+        h4m12_require(not (out/'dispatch.started.json').is_symlink() and
+            json.loads((out/'dispatch.started.json').read_bytes())=={'authorization':auth},'FFE_PARTIAL_DISPATCH')
+    else:h4m12_require(not r['operational_rows'],'FFE_PARTIAL_UNDISPATCHED_ROWS')
+    ledger=H4M12Budget()
+    for row in r['operational_rows']:ledger.advance(row['event'])
+    h4m12_require(ledger.snapshot()==r['budget'] and not ledger.complete,'FFE_PARTIAL_LEDGER')
+    h4m12_require(r['parent']==h4ffe_parent_preflight(out.parent.parent,require_unused=False),'FFE_PARTIAL_PARENT')
+    h4x_file_pin(out/'m463_brax_ppo_instrumented.py',auth['generated_sha256'])
+    for name,sha in r['artifacts'].items():
+        h4m12_require(name in (H4M12_NEW_POLICY,H4M12_NEW_FULL,Path(H4M12_NEW_FULL).with_suffix('.json').name),'FFE_PARTIAL_ARTIFACT')
+        h4x_file_pin(out/name,sha)
+    before=h4ffe_empty_pending();completed=0;rows=r.get('ffe_chunks',[])
+    h4m12_require(len(rows)<=4,'FFE_PARTIAL_CHUNKS')
+    for i,row in enumerate(rows,1):
+        h4m12_require(row['index']==i and row['before']==before,'FFE_PARTIAL_ROW')
+        if row['passed'] is not True:
+            h4m12_require(i==len(rows),'FFE_PARTIAL_ORDER');break
+        h4m12_require(r['h4_chunks'][i-1]['passed'] is True,'FFE_PARTIAL_LEGACY')
+        h4ffe_check_chunk(row['metrics'],before,row['after'],r['h4_chunks'][i-1]['counts'],i)
+        before=row['after'];completed+=1
+    h4m12_require(ledger.recorded['training']<=completed*1310720 and completed*1310720<=ledger.attempted['training'],'FFE_PARTIAL_CHARGE')
+    abort=r.get('ffe_abort')
+    if abort is not None:
+        m=abort['metrics'];col=m['ffe_collected'];comm=m['ffe_batch_committed'];rej=m['ffe_batch_rejected']
+        h4m12_require(abort['complete'] is False and abort['index']==completed+1 and
+            all(type(x) in (int,float) and x==int(x) and 0<=x<=5 for x in (col,comm,rej)) and
+            col==comm+rej and rej<=1 and abort['clock']==160*completed+32*col and
+            m['ffe_chunk_failed']==1,'FFE_PARTIAL_ABORT')
+    return dict(sha256=digest(p),status='STOP_PARTIAL',completed_chunks=completed,
+        budget=ledger.snapshot(),abort=abort,promotion_authorized=False)
+
+
+def h4ffe_batch_fixture(root):
+    """Exact new row checker with synthetic pre/post adapter rows; no native."""
+    import numpy as np
+    from types import SimpleNamespace
+    import m463_instrument_brax as inst
+    ns=h4ffe_core_scope(root)
+    raw=(root/'m463_coverage_env.py').read_text('utf8')
+    a=raw.index('# H4FFE_ENV_WIRING_BEGIN\n');b=raw.index('# H4FFE_ENV_WIRING_END\n',a)
+    exec(compile(raw[a:b],'<FFE wiring schema>','exec'),ns)
+    h4m12_require(ns['FFE_EXTRA_FIELDS']==inst.FFE_FIELDS,'FFE_EXTRA_IDENTITY')
+    f=np.float32;i=np.int32;N=8192;shape=(N,32)
+    full=lambda x,dtype=i:np.full(N,x,dtype)
+    hard=np.where((np.arange(N)<4096)|(np.arange(N)>=7168),1,0).astype(i)
+    nominal=np.arange(N)>=7168
+    cell=(np.arange(N)%4).astype(i);mode=np.where(cell<2,cell+1,3).astype(i)
+    band=full(0);due=full(40);gap=full(30);cost=full(.5,f);yes=full(True,bool)
+    old={k:full(v) for k,v in ns['ffe_init'](np).items()}
+    count=full(0);source=full(0);age=full(0);fp=full(0);rp=full(0)
+    kind=full(0);tail_age=full(0);tail_stratum=full(0);tail_same=full(0)
+    ordinary_next=full(12)
+    def carry():
+        return {**{'ffe_'+k:v.copy() for k,v in old.items()},
+            'ffe_tail_stratum':tail_stratum.copy(),'ffe_tail_same':tail_same.copy(),
+            'm463_push_count':count.copy(),'step':source.copy(),
+            'h4_first_pending':fp.copy(),'h4_repeat_pending':rp.copy(),
+            'h4_tail_kind':kind.copy()}
+    neg=0;rows=[];total_repeat=np.zeros(4,i);total_first=0;total_miss=0
+    before=carry()
+    for k in range(96):
+        boundary=full(k in (0,11),bool);terminal=full(k==10,bool);refresh=source>=500
+        count0=np.where(boundary,0,count).astype(i);age=np.where(boundary,0,age).astype(i)
+        ordinary_next=np.where(boundary,12,ordinary_next).astype(i)
+        pre,pick=ns['ffe_pre'](np,old,hard_draw=hard,band_draw=band,cell_draw=cell,
+            due_draw=due,boundary=boundary,nominal=nominal,count=count0,
+            coherent=yes,source_step=source,mode=mode,cost=cost,geometry_valid=yes)
+        nxt,result=ns['ffe_post'](np,pre,pick,gap=gap,post_coherent=yes,
+            terminal=terminal,refresh=refresh)
+        ordinary=(~pick['block'])&(~nominal)&(age==ordinary_next)&(count0<2)
+        event=pick['first']|pick['repeat']|ordinary
+        repeat=event&(count0>0);first=event&(~repeat)
+        ra=first&np.where(pick['block'],nxt['phase']==2,True)
+        block=pick['block']&(~nominal)
+        phase=np.where(old['k']==0,1,old['phase'])
+        target=np.where(phase==2,old['repeat_due'],pre['due'])
+        target=np.where(phase==3,2**30,age+target-old['k'])
+        target=np.where(block,target,ordinary_next).astype(i)
+        direction=np.where(block,pick['direction'],2).astype(i)
+        fprev=np.where(boundary,~nominal,fp>0);rprev=(~boundary)&(rp>0)
+        newfp=(fprev&(~first)&(~terminal)).astype(i)
+        newrp=(((rprev&(~repeat))|ra)&(~terminal)).astype(i)
+        count1=np.where(event,np.where(ra,1,2),count0).astype(i)
+        source1=np.where(terminal|refresh,0,source+1).astype(i)
+        stratum=np.where(nominal,0,np.where(block,2,1)).astype(i)
+        tick=(kind>0)&(~boundary)&(~event)
+        tick_kind=np.where(tick,kind,0).astype(i)
+        tick_age=np.where(tick,tail_age+1,0).astype(i)
+        tick_same=tick&(tail_same>0)
+        newkind=np.where(event&(~terminal),np.where(repeat,2,1),
+            np.where(tick&(~terminal)&(tick_age<250),kind,0)).astype(i)
+        newtail=np.where(event&(~terminal),stratum,np.where(newkind>0,tail_stratum,0)).astype(i)
+        newsame=np.where(event&(~terminal),True,(newkind>0)&tick_same).astype(i)
+        row=dict(hard_draw=hard,band_draw=band,cell_draw=cell,due_draw=due,
+            count=count0,after_count=count1,source_step=source,after_source_step=source1,
+            pre_coherent=yes,post_coherent=yes,geometry_valid=yes,mode=mode,gap=gap,
+            refresh=refresh,terminal=terminal,first=pick['first'],repeat=pick['repeat'],
+            block=pick['block'],reason=result['reason'],bad=result['bad'],stratum=stratum,
+            ordinary_event=ordinary,tail_stratum=newtail,tick_stratum=np.where(tick,tail_stratum,0),
+            tail_same=newsame,tick_same=tick_same,joint_excess=full(0),ctrl_excess=full(0),
+            force_excess=full(0),foot_foot=full(0))
+        x={'ffe_'+n:np.asarray(v,i) for n,v in row.items()}
+        for p,values in (('before_',old),('after_',nxt)):
+            x.update({'ffe_'+p+n:np.asarray(v,i) for n,v in values.items()})
+        x.update(ffe_native=full(-0.,f),ffe_cost=cost.copy())
+        mag=np.where(event,f(.4),f(0)).astype(f)
+        legacy=dict(m463_event=event,m463_repeat=repeat,m463_no_push=nominal,
+            h4_boundary=boundary,h4_refresh=refresh,h4_changed=full(0),
+            h4_source_terminal=terminal,h4_assigned=boundary&(~nominal),
+            h4_repeat_assigned=ra,h4_first_pending=newfp,h4_repeat_pending=newrp,
+            h4_first_due=fprev&(age==target),h4_repeat_due=rprev&(age==target),
+            h4_first_closed=fprev&terminal&(~first),
+            h4_repeat_closed=terminal&((rprev&(~repeat))|ra),
+            h4_event_terminal=event&terminal,h4_close_boundary=full(0),
+            h4_bad=full(0),truncation=full(0),h4_class=(~nominal),
+            h4_motion=full(0),h4_actor_motion=full(0),h4_age=age,h4_target=target,
+            m463_direction=direction,h4_tick_kind=tick_kind,h4_tick_age=tick_age,
+            h4_tick_same=tick_same,h4_tick_survived=tick&(~terminal),h4_tail_kind=newkind)
+        x.update({n:np.asarray(v,i) for n,v in legacy.items()})
+        x.update(m463_magnitude=mag,h4_actual_dx=mag.copy(),h4_actual_dy=full(0.,f))
+        h4m12_require(set(inst.FFE_FIELDS)<=set(x),'FFE_FIXTURE_FIELDS')
+        rows.append(x)
+        ordinary_next=np.where(ordinary,np.where(first,age+30,2**30),ordinary_next).astype(i)
+        old=nxt;count=count1;source=source1;fp=newfp;rp=newrp;kind=newkind
+        tail_stratum=newtail;tail_same=newsame
+        tail_age=np.where(tick&(kind>0),tick_age,0).astype(i);age=age+1
+        if (k+1)%32:continue
+        extras={n:np.stack([r[n] for r in rows],axis=1) for n in rows[0]}
+        obs=dict(state=np.zeros((*shape,12),f),privileged_state=np.zeros((*shape,12),f))
+        data=SimpleNamespace(reward=extras['ffe_native'].copy(),discount=(1-extras['ffe_terminal']).astype(f),
+            extras={'state_extras':extras},observation=obs,next_observation=obs)
+        after=carry()
+        def guard():
+            return inst.ffe_batch_contract(np,data,before,after,full(0.,f),full(0.,f),ns['ffe_pre'],ns['ffe_post'])
+        bad=guard();h4m12_require(not bad.any(),'FFE_ADAPTER_TRANSITION '+str(np.argwhere(bad)[:5]))
+        met=inst.ffe_reduce(np,extras,bad,np.bool_(True))
+        h4m12_require(set(met)=={'ffe_'+x for x in h4ffe_metric_keys()} and met['ffe_batch_committed']==1,'FFE_REDUCER_KEYS')
+        total_repeat+=np.array([met[f'ffe_cell_{j}_repeat'] for j in range(4)],i)
+        total_first+=sum(int(met[f'ffe_cell_{j}_first']) for j in range(4))
+        total_miss+=sum(int(met[f'ffe_cell_{j}_first_miss']) for j in range(4))
+        if k==95:
+            for n,index,value in (
+                ('ffe_cost',(0,6),f(.49)),('ffe_mode',(0,6),3),
+                ('ffe_geometry_valid',(0,6),0),('ffe_after_k',(0,6),99),
+                ('ffe_source_step',(0,6),99),('m463_direction',(0,6),3),
+                ('h4_repeat_pending',(0,5),0),('ffe_native',(0,6),f(0.)),
+                ('h4_bad',(0,6),1),('truncation',(0,6),1),
+                ('ffe_pre_coherent',(0,6),0),('ffe_tick_stratum',(0,7),1)):
+                oldvalue=extras[n][index].copy();extras[n][index]=value
+                mask=guard();h4m12_require(mask.any(),'FFE_NEGATIVE '+n)
+                rejected=inst.ffe_reduce(np,extras,mask,np.bool_(False))
+                h4m12_require(rejected['ffe_batch_rejected']==1 and rejected['ffe_batch_committed']==0,'FFE_NEGATIVE_REDUCE')
+                extras[n][index]=oldvalue;neg+=1
+            data.reward[0,6]=f(0.)
+            h4m12_require(guard().any(),'FFE_SIGNED_ZERO');neg+=1
+            data.reward[0,6]=f(-0.)
+            h4m12_require(not guard().any(),'FFE_RESTORED_FIXTURE')
+        before=after;rows=[]
+    h4m12_require(total_repeat.tolist()==[1024]*4 and total_first==4096 and total_miss==1024,'FFE_ADAPTER_COUNTS')
+    return dict(positive_batches=3,negative_rows=neg,synthetic_rows=3*8192*32,
+        four_cell_repeats=total_repeat.tolist(),native_calls=0,optimizer_updates=0)
+
+def h4ffe_reader_fixture(root,parent,auth,src):
+    """Mock complete/partial reports from immutable M12, not FFE results."""
+    import tempfile
+    r=copy.deepcopy(json.loads((root/H4M12_OUTPUT/'report.json').read_bytes()))
+    r.update(authorization=auth,spec=H4FFE_SPEC,parent=parent)
+    before=h4ffe_empty_pending();rows=[]
+    for i,old in enumerate(r['h4_chunks'],1):
+        l=lambda k:old['counts']['m463_h4_'+k+'_per_rollout']
+        c={k:0 for k in h4ffe_metric_keys()};c.update(collected=5,batch_committed=5)
+        c['stratum_0_steps']=l('class_0_steps');c['stratum_1_steps']=1310720-c['stratum_0_steps']
+        c['stratum_1_events']=l('broad_events')
+        c['stratum_1_first']=l('first_events');c['stratum_1_repeat']=l('repeat_events')
+        c['stratum_1_terminal']=l('source_terminal')
+        for j in range(6):c[f'ordinary_motion_{j}']=l(f'broad_motion_{j}')
+        for q in (1,2):
+            for w in H4_SPEC['tail_windows']:
+                for n in ('executed','survived','same'):
+                    c[f'tail_1_{q}_{w}_{n}']=l(f'tail_{q}_{w}_'+('same_command' if n=='same' else n))
+        after=h4ffe_empty_pending();after['clock']=160*i
+        if i==4:after['ordinary_tail']=[r['h4_epochs'][0]['pending_at_reset']['tail_pending'],0]
+        rows.append(dict(index=i,before=before,after=after,metrics=c,passed=True));before=after
+    r['ffe_chunks']=rows;hist=r['report_history'][0]['metrics']
+    hist.update({'training/ffe_'+k:sum(x['metrics'][k] for x in rows)/4 for k in h4ffe_metric_keys()})
+    hist['training/ffe_chunk_failed']=0.
+    for x in r['operational_rows']:
+        if x['event'].endswith('reset_after'):
+            x['ffe_host_reset_closed']=before if x['event']=='reset_after' else h4ffe_empty_pending()
+    r['ffe_exposure']=h4ffe_exposure_replay(r)
+    h4m12_require(r['ffe_exposure']['decision']=='EXPOSURE_INCONCLUSIVE','FFE_READER_ZERO')
+    def reject(fn):
+        try:fn()
+        except (RuntimeError,KeyError,ValueError,TypeError):return
+        raise RuntimeError('M470_FFE_READER_NEGATIVE_ACCEPTED')
+    with tempfile.TemporaryDirectory(prefix='h4ffe_static_fixture_',dir=root/'m463_runs') as tmp:
+        out=Path(tmp)
+        (out/'m463_brax_ppo_instrumented.py').write_text(src,encoding='utf8')
+        r['artifacts']={}
+        for name in (H4M12_NEW_POLICY,H4M12_NEW_FULL):
+            (out/name).write_bytes(b'HOST_FIXTURE_NOT_CHECKPOINT')
+            r['artifacts'][name]=digest(out/name)
+        meta=Path(H4M12_NEW_FULL).with_suffix('.json').name
+        (out/meta).write_text(json.dumps(h4m12_checkpoint_meta(auth,r['artifacts'][H4M12_NEW_FULL],
+            r['artifacts'][H4M12_NEW_POLICY],ffe=True)),encoding='utf8')
+        r['artifacts'][meta]=digest(out/meta)
+        h4m12_require(h4m12_check_complete(out,r,auth,ffe=True),'FFE_READER_POSITIVE')
+        for tag in ('abort','clock','cell','partition','tail','epoch','censor','exposure','budget','gpu'):
+            z=copy.deepcopy(r)
+            if tag=='abort':z['ffe_abort']={}
+            elif tag=='clock':z['ffe_chunks'][0]['after']['clock']=159
+            elif tag=='cell':z['ffe_chunks'][0]['metrics']['cell_0_repeat']=1
+            elif tag=='partition':z['ffe_chunks'][0]['metrics']['ordinary_motion_1']+=1
+            elif tag=='tail':z['ffe_chunks'][0]['metrics']['tail_1_1_10_survived']+=1
+            elif tag=='epoch':z['report_history'][0]['metrics']['training/ffe_collected']=4.
+            elif tag=='censor':next(x for x in z['operational_rows'] if x['event']=='reset_after')['ffe_host_reset_closed']=h4ffe_empty_pending()
+            elif tag=='exposure':z['ffe_exposure']['decision']='EXPOSURE_PASS'
+            elif tag=='budget':z['budget']['recorded']['optimizer']-=1
+            elif tag=='gpu':z['gpu']['peak_used_mib']=12288
+            reject(lambda:h4m12_check_complete(out,z,auth,ffe=True))
+        z=copy.deepcopy(r);z.update(status='STOP',artifacts={})
+        n=next(i for i,x in enumerate(z['operational_rows']) if x['event']=='chunk_ledger')+1
+        z['operational_rows']=z['operational_rows'][:n];ledger=H4M12Budget()
+        for x in z['operational_rows']:ledger.advance(x['event'])
+        z['budget']=ledger.snapshot();z['ffe_chunks']=z['ffe_chunks'][:1];z['h4_chunks']=z['h4_chunks'][:1]
+        for name,value in (('attempt.json',dict(authorization=auth,parent_pid=1)),
+            ('worker.started.json',dict(authorization=auth,pid=2)),
+            ('dispatch.started.json',dict(authorization=auth)),
+            ('attempt_result.json',dict(status='STOP',authorization=auth,producer_rc=1,stored_log_bytes=0,error='FIXTURE'))):
+            (out/name).write_text(json.dumps(value),encoding='utf8')
+        p=out/'report.json';p.write_text(json.dumps(z),encoding='utf8')
+        h4m12_require(h4ffe_read_partial(out,auth)['completed_chunks']==1,'FFE_PARTIAL_POSITIVE')
+        for tag in ('budget','auth','clock'):
+            bad=copy.deepcopy(z)
+            if tag=='budget':bad['budget']['recorded']['optimizer']+=1
+            elif tag=='auth':bad['authorization']={}
+            else:bad['ffe_chunks'][0]['after']['clock']=0
+            p.write_text(json.dumps(bad),encoding='utf8')
+            reject(lambda:h4ffe_read_partial(out,auth))
+    return dict(positive=2,negative=13,native_calls=0,fixture_only=True)
+
+def h4ffe_static_main(argv):
+    import subprocess
+    from importlib import metadata
+    from importlib.machinery import PathFinder
+    from m463_instrument_brax import make_ffe_held_source,make_ffe_integrated_source,h4c_git_blob
+    p=argparse.ArgumentParser(description='FFE exact full held static; no native imports')
+    p.add_argument('--checkpoint',type=Path,required=True)
+    p.add_argument('--restore-report',type=Path,required=True)
+    p.add_argument('--reward-report',type=Path,required=True)
+    a=p.parse_args(argv);root=Path(__file__).resolve().parent
+    h4m12_require(Path.cwd().resolve()==root,'FFE_STATIC_WORKDIR')
+    no_native=lambda:not any(k.split('.')[0] in ('jax','jaxlib','mujoco','brax','mujoco_playground') for k in sys.modules)
+    h4m12_require(no_native(),'FFE_STATIC_NATIVE')
+    h4x_file_pin(root/H4FFE_CORE_LOG,H4FFE_CORE_SHA)
+    h4ffe_project_sources(root);print('H4FFE_REVERSE_SOURCE_PASS',flush=True)
+    parent=h4ffe_parent_preflight(root)
+    a.h4_exploratory_reward_report=a.reward_report
+    h4x_bootstrap(a,h4m12=True,ffe=True)
+    for pkg,relative,expected in (
+        ('mujoco_playground','_src/wrapper.py','62e2823b80b692befe29e4640d0b7a816e52271c'),
+        ('brax','envs/wrappers/training.py','2c09c8268a29d14c832dd07050575e4541ee98af'),
+        ('mujoco_playground','_src/locomotion/g1/joystick.py','561a18948e3467ab924468eaf362150dadb9d4a6')):
+        spec=PathFinder.find_spec(pkg)
+        h4m12_require(spec is not None and spec.submodule_search_locations is not None,'FFE_DEPENDENCY')
+        q=Path(next(iter(spec.submodule_search_locations)))/relative
+        raw=q.read_bytes()
+        h4m12_require(h4c_git_blob(raw)==expected,'FFE_DEPENDENCY_PIN')
+        compile(raw,str(q),'exec')
+        print('H4FFE_DEPENDENCY_PIN',str(q),expected,flush=True)
+    raw=Path(metadata.distribution('brax').locate_file('brax/training/agents/ppo/train.py')).read_bytes()
+    held,original=make_ffe_held_source(raw);src,original2=make_ffe_integrated_source(raw)
+    h4m12_require(original==original2=='e20613d42bf0868a13003e0312998816cc8d3593bb5ccaf9f1d070fd09c44bd7','FFE_BRAX')
+    h4m12_require(held.count('M470_FFE_GENERATED_EXECUTION_HOLD')==1 and
+        src.count('h4m12_generated_guard(h4x_audit_fn, __file__, environment, m470_resume_state_path, ffe=True)')==1 and
+        src.count('jax.lax.cond(ffe_valid,ffe_update,ffe_reject,None)')==1 and
+        src.count('return training_state.optimizer_state,training_state.params,training_state.normalizer_params,met')==1 and
+        src.index('ffe_bad=ffe_batch_contract')<src.index('def ffe_update(_):')<src.index('jax.lax.cond(ffe_valid,ffe_update,ffe_reject,None)'),
+        'FFE_GENERATED_GUARD')
+    source=h4x_source_digest(root);generated=hashlib.sha256(src.encode('utf8')).hexdigest()
+    marker='H4FFE_ACTIVE_GO: '+H4FFE_SPEC['id']+' '+str(H4FFE_OUTPUT)+' '+source+' '+generated+' m463_runs/m470_h4ffe_static_fixture.log '+'a'*64
+    auth=h4ffe_parse_marker(marker)
+    for bad in ('',marker+'\n'+marker,marker+'\nH4M12_ACTIVE_GO: bad',marker[:-1],marker.replace(str(H4FFE_OUTPUT),str(H4M12_OUTPUT))):
+        try:h4ffe_parse_marker(bad)
+        except RuntimeError:pass
+        else:raise RuntimeError('M470_FFE_MARKER_NEGATIVE')
+    try:h4ffe_auth(root)
+    except RuntimeError as exc:h4m12_require('FFE_EXECUTION_HOLD_OR_CONFLICT' in str(exc),'FFE_STATIC_HOLD')
+    else:raise RuntimeError('M470_FFE_AUTH_OPEN')
+    print('H4FFE_BATCH_FIXTURES',json.dumps(h4ffe_batch_fixture(root),sort_keys=True),flush=True)
+    print('H4FFE_READER_FIXTURES',json.dumps(h4ffe_reader_fixture(root,parent,auth,src),sort_keys=True),flush=True)
+    for worker in ([],['--worker']):
+        proc=subprocess.run([sys.executable,'-B',str(root/'m463_push_ppo_train.py'),'--h4ffe-continuation',
+            '--checkpoint','unused','--restore-report','unused','--reward-report','unused',*worker],
+            cwd=root,capture_output=True,text=True,timeout=30)
+        h4m12_require(proc.returncode!=0 and 'FFE_EXECUTION_HOLD_OR_CONFLICT' in proc.stderr,'FFE_CLI_HOLD')
+    h4m12_require(no_native() and not (root/H4FFE_OUTPUT).exists() and not (root/H4FFE_OUTPUT).is_symlink(),'FFE_STATIC_NATIVE_OR_RESERVED')
+    print('H4FFE_SOURCE',source,flush=True)
+    print('H4FFE_GENERATED',generated,flush=True)
+    print('H4FFE_MATCHED_CONTROL',json.dumps(parent['ffe_floors'],sort_keys=True),flush=True)
+    print('H4FFE_STATIC_ZERO physical_transitions=0 resets=0 optimizer_updates=0 native_inference=0',flush=True)
+    print('H4FFE_FULL_STATIC_PASS',flush=True)
+
+# H4FFE_TRAINER_END
 if __name__=='__main__': main()
