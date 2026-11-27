@@ -2845,6 +2845,7 @@ def run(args):
         if m23:
             args.h4m23_manifest=h4m3_manifest(env,np)
             args.h4m23_manifest['geometry']=h4m4_model_geometry(env,args.h4m23_manifest,np)
+            h4m23_runtime_manifest(args,env,np)
             args.h4m23_journal.header(args.h4m23_manifest)
     if m6:
         session=args.h3_session
@@ -14651,6 +14652,19 @@ def h4m23_inputs(root):
             a['second_push_magnitude_mps'],a['dt_s'],a['max_steps'])==(300,.50,335,.35,.02,1000),'PROTOCOL')
     pins.update({'ffe2_dev/'+k:v for k,v in H4M23_PINS.items()})
     pins['ffe2_dev/runtime.log']=H4M23_LOG_SHA
+    # Separate new provenance from the historical digest above.
+    more=h4m4_external_sources(root)
+    h4m23_req(more['nvcc_compat']==ext['nvcc_compat'] and more['mjx']==ext['mjx'],'EXTERNAL_IDENTITY')
+    from paper_config import REPO
+    gait=Path(REPO).resolve()/'mujoco_playground/_src/gait.py'
+    h4m23_req(gait.is_file() and not gait.is_symlink() and h4m3_git_blob(gait)=='c54d046f6406115a65a3fd08b7db744691e73a7d','GAIT_PIN')
+    m3=h4abs_pin(root/H4M3_OUTPUT,H4M4_REPORT_SHA,H4M3_REPORT_CAP)
+    m3r=json.loads(m3.read_bytes())
+    h4m23_req(m3r['status']=='M470_H4M3_TECHNICAL_REPLAY_COMPLETED'
+        and m3r['attempted']==m3r['recorded']==2136 and m3r['rich_recorded']==666,'M3_MANIFEST_ARCHIVE')
+    pins['m3/report.json']=H4M4_REPORT_SHA
+    ext=dict(more,gait={'path':str(gait),'sha256':sha256(gait)},model_manifest=m3r['manifest'],
+        brax=a['brax_source_verification'])
     return pins,ctrl,ext,h4m23_archive_lanes(a)
 
 def h4m23_archive_lanes(a):
@@ -14701,7 +14715,8 @@ def h4m23_post_capture(pre,action,next_state,env,jnp):
         actor_action=action,sent_action=action,post_air=info['feet_air_time'],
         post_contact=c,post_phase=info['phase'],post_command=info['command'],
         first_contact_derived=fc,reward_air_derived=air,per_foot_air_derived=per,
-        phase_z=z,phase_rz_derived=rz,phase_global_v=v,phase_global_yaw=w,
+        phase_z=z,foot_site_xyz=d.site_xpos[env._feet_site_id],post_last_act=info['last_act'],
+        post_last_last_act=info['last_last_act'],phase_rz_derived=rz,phase_global_v=v,phase_global_yaw=w,
         phase_mask_derived=mask,phase_fit_derived=phase,capture_loads=sample[0],
         capture_rects=sample[1],capture_xi=sample[2],capture_speed=sample[3],
         capture_safe=sample[4],capture_valid=valid,capture_cost=cost,capture_mode=mode)
@@ -14710,6 +14725,7 @@ def h4m23_bytes(obj):
     return (json.dumps(obj,allow_nan=False,sort_keys=True,separators=(',',':'))+'\n').encode('utf8')
 
 def h4m23_check_rich(p,row,m,np):
+    h4m23_independent_fields(p,row,m,np)
     def arr(k,shape):
         a=np.asarray(p[k])
         h4m23_req(a.shape==shape and a.dtype.kind in 'bfiu' and np.isfinite(a).all(),'FIELD_'+k)
@@ -14792,6 +14808,7 @@ def h4m23_check_rich(p,row,m,np):
     h4m23_req(len(h4m23_bytes(p))<=H4M23_SPEC['record_cap']+1,'RECORD_CAP')
 
 def h4m23_pack(raw,row,m,np):
+    h4m23_native_schema(raw,m,np)
     p=h4m3_pack_capture(raw,row,m,np)
     h4m23_req(p['com']['available'] is True and p['contact']['available'] is True,'REQUIRED_COM_CONTACT')
     for s in p['contact']['slots']:
@@ -14799,14 +14816,22 @@ def h4m23_pack(raw,row,m,np):
         s['efc_slice']=np.asarray(raw['efc_force'])[a:a+width]
         w=np.asarray(s['wrench_contact_frame']);R=np.asarray(s['frame'])
         s['world_force_on_geom2']=R.T@w[:3];s['world_torque_on_geom2']=R.T@w[3:]
-    p['native_dtype']={k:str(np.asarray(raw[k]).dtype) for k in
-        ('rng','action','pre_air','post_air','pre_contact','post_contact','info_phase','phase_dt')}
+    p['native_dtype']={k:str(np.asarray(v).dtype) for k,v in raw.items() if k!='reward'}
+    p['native_reward_dtype']={k:str(np.asarray(v).dtype) for k,v in raw['reward'].items()}
+    lf,rf=m['foot_geom_ids'];floor=m['floor_geom_id'];relevant=({lf,floor},{rf,floor},{lf,rf})
+    # Relevant slot inventory includes inactive slots; no full efc buffer retained.
+    p['slot_inventory']=[dict(slot=i,geom=[int(x) for x in g],
+        address=int(raw['contact_address'][i]),dim=int(raw['contact_dim'][i]),
+        dist=float(raw['contact_dist'][i]),margin=float(raw['contact_includemargin'][i]))
+        for i,g in enumerate(raw['contact_geom']) if set(map(int,g)) in relevant]
+    p['contact_slot_count']=len(raw['contact_geom']);p['efc_count']=len(raw['efc_force'])
     p['foot_pair_distance']=row[H4M3_COLUMNS.index('foot_pair_signed_dist_m')] if row[H4M3_COLUMNS.index('foot_pair_present')] else None
     corners=np.asarray([[x,y,z] for x in (-1,1) for y in (-1,1) for z in (-1,1)])
     p['lowest_corner_z']=[float(np.min(np.asarray(p[s+'_geom_pos'])[2]+
         (corners*np.asarray(m['geometry']['legs'][side]['halfsize']))@np.asarray(p[s+'_geom_mat'])[2]))
         for s,side in (('lf','left'),('rf','right'))]
     p['target_minus_last_solve_joint']=np.asarray(p['derived_effective_ctrl'])-np.asarray(p['actuator_length'])
+    p['actual_touchdown']=(~np.asarray(raw['pre_contact'],bool))&np.asarray(raw['post_contact'],bool)
     p['gait_operand_semantics']='native_operands_derived_first_contact_not_direct_measurement'
     p['capture_semantics']='R11_R12_last_forward_solve_descriptive_only'
     p=json.loads(json.dumps(p,allow_nan=False,separators=(',',':'),default=lambda a:np.asarray(a).tolist()))
@@ -14879,9 +14904,10 @@ class H4M23Journal:
         h4m23_check_event(key,self.plan[self.n][1],p,self.manifest,np)
         self.append(dict(recorded=key,payload=p));self.pending=None;self.n+=1
 
-def h4m23_read_journal(path,auth,pins,lanes,*,complete=False):
+def h4m23_read_journal(path,auth,pins,lanes,*,complete=False,ext=None,deadline=None):
     """Candidate strict prefix/final journal reader, not a supervisor receipt reader."""
     import numpy as np
+    import time
     p=Path(path)
     h4m23_req(p.is_file() and not p.is_symlink() and p.resolve()==p.absolute()
         and 0<p.stat().st_size<=H4M23_SPEC['report_cap'],'READER_PATH')
@@ -14899,7 +14925,10 @@ def h4m23_read_journal(path,auth,pins,lanes,*,complete=False):
         h=head['header'];m=h['manifest']
         h4m23_req(set(h)=={'authorization','input_sha256','spec','manifest'} and h['authorization']==auth
             and h['input_sha256']==pins and h['spec']==H4M23_SPEC,'HEADER_PIN')
+        h4m23_req(ext is not None,'MANIFEST_PIN_REQUIRED')
+        h4m23_validate_manifest(m,ext,np)
         while True:
+            h4m23_req(deadline is None or time.monotonic()<deadline,'READER_DEADLINE')
             b=f.readline(1024**2+1)
             if not b:break
             obj=parse(b);h4m23_req(n<len(plan),'EXTRA_EVENT');key,expected=plan[n]
@@ -14923,8 +14952,13 @@ def h4m23_read_journal(path,auth,pins,lanes,*,complete=False):
     h4m23_req(physical<=1308 and rich<=426 and resets<=3 and suffixes<=6 and kicks<=6,'READER_BUDGET')
     if complete:h4m23_req(n==len(plan) and pending is None and
         (physical,rich,resets,suffixes,kicks)==(1295,413,3,6,6),'FINAL_LEDGER')
+    pk=None if pending is None else pending[1]
     return dict(events_recorded=n,pending=pending,physical_recorded=physical,rich_recorded=rich,
-        resets_recorded=resets,suffixes_recorded=suffixes,kicks_recorded=kicks,
+        physical_attempted=physical+int(pk in ('nominal','first','single','double')),
+        rich_attempted=rich+int(pk in ('nominal','first','single','double') and pending[2]>=295),
+        resets_recorded=resets,resets_attempted=resets+int(pk=='reset'),
+        suffixes_recorded=suffixes,suffixes_attempted=sum(k[1].startswith('begin_') for k,_ in plan[:n])+int(pk in ('begin_single','begin_double')),
+        kicks_recorded=kicks,kicks_attempted=kicks+int(pk in ('kick1','kick2')),
         journal_sha256=sha256(p),complete=complete)
 
 def h4m23_native_lane(args,i,env,step_fn,jax,jnp,np):
@@ -14964,7 +14998,205 @@ def h4m23_enter(args):
     raise RuntimeError('M470_H4M23_HELD_NO_STATIC_OR_NATIVE_AUTHORIZATION')
 
 
-H4M23_PATCHES=[["def run(args):\n    abs_mode=","def run(args):\n    m23=bool(getattr(args,'h4m23_rich',False))\n    if m23:h4m23_enter(args)\n    abs_mode="],["    m12=bool(getattr(args,'h4m12_eval',False))\n    h4_mode=","    m12=bool(getattr(args,'h4m12_eval',False)) or m23\n    h4_mode="],["    if m12:\n        h4m12_enter(args,red=getattr(args,'h4red_eval',False))","    if m12 and not m23:\n        h4m12_enter(args,red=getattr(args,'h4red_eval',False))\n    elif m23:\n        pass  # separate held entry, never use historical DEV authorization"],["        h4m3_runtime_model_source(env,args.h3_session)\n    if m6:","        h4m3_runtime_model_source(env,args.h3_session)\n        if m23:\n            args.h4m23_manifest=h4m3_manifest(env,np)\n            args.h4m23_manifest['geometry']=h4m4_model_geometry(env,args.h4m23_manifest,np)\n            args.h4m23_journal.header(args.h4m23_manifest)\n    if m6:"],["                if placement_capture:\n                    pre_placement=h4m3_pre_capture(state)","                if placement_capture:\n                    pre_placement=(h4m23_pre_capture(state) if m23 else h4m3_pre_capture(state))"],["                    return next_state,diag,h4m3_post_capture(pre_placement,action,next_state,env)\n                return next_state,diag","                    return next_state,diag,(h4m23_post_capture(pre_placement,action,next_state,env,jnp)\n                        if m23 else h4m3_post_capture(pre_placement,action,next_state,env))\n                return next_state,diag"],["if placement or m6 else jax.jit(one_step))\n            if abs_mode:","if placement or m6 or m23 else jax.jit(one_step))\n            if m23:\n                h4m23_native_lane(args,lane_index,env,step_fn,jax,jnp,np)\n                continue\n            if abs_mode:"],["    if placement:\n        return\n    if h3_mode:\n        if m12:","    if placement or m23:\n        return\n    if h3_mode:\n        if m12:"],["def h4ffe2_dev_projection(raw):\n    begin=","def h4ffe2_dev_projection(raw):\n    if b'# H4M23_RICH_'+b'BEGIN\\n' in raw:raw=h4m23_projection(raw)\n    begin="],["def h4ffe2_dev_project(root):\n    import ast\n    raw=(root/'m463_gate3_cp_eval.py').read_bytes()","def h4ffe2_dev_project(root):\n    import ast\n    raw=(root/'m463_gate3_cp_eval.py').read_bytes()\n    if b'# H4M23_RICH_'+b'BEGIN\\n' in raw:raw=h4m23_projection(raw)"]]
+
+# H4-M23-3B source-level independent validation.
+H4M23_REWARDS=tuple(('tracking_lin_vel tracking_ang_vel lin_vel_z ang_vel_xy orientation base_height '
+    'torques action_rate energy dof_acc feet_slip feet_clearance feet_height feet_air_time feet_phase '
+    'alive termination stand_still collision contact_force joint_deviation_hip joint_deviation_knee '
+    'dof_pos_limits pose').split())
+H4M23_FLOAT_SHAPES=dict(actor_input=(103,),critic_input=(216,),command=(3,),info_phase=(2,),
+    time_pre=(),time_post=(),qpos_pre=(36,),qpos_post=(36,),qvel_pre=(35,),qvel_post=(35,),
+    action=(29,),target=(29,),raw_ctrl=(29,),actuator_force=(29,),actuator_length=(29,),
+    actuator_velocity=(29,),qfrc_actuator=(35,),lf_geom_pos=(3,),rf_geom_pos=(3,),
+    lf_geom_mat=(3,3),rf_geom_mat=(3,3),phase_dt=(1,),pre_air=(2,),post_air=(2,),
+    last_act=(29,),last_last_act=(29,),actor_action=(29,),sent_action=(29,),
+    post_phase=(2,),post_command=(3,),reward_air_derived=(2,),per_foot_air_derived=(2,),
+    phase_z=(2,),foot_site_xyz=(2,3),post_last_act=(29,),post_last_last_act=(29,),
+    phase_rz_derived=(2,),phase_global_v=(2,),phase_global_yaw=(),phase_fit_derived=(),
+    capture_loads=(2,),capture_rects=(2,8),capture_xi=(2,),capture_speed=(),capture_cost=())
+H4M23_BOOL_SHAPES=dict(pre_contact=(2,),post_contact=(2,),first_contact_derived=(2,),
+    phase_mask_derived=(),capture_safe=(),capture_valid=())
+H4M23_RAW_EXTRA=('xipos','ximat','cvel','subtree_com','contact_geom','contact_pos','contact_frame',
+    'contact_dist','contact_includemargin','contact_friction','contact_dim','contact_address','efc_force')
+H4M23_PACK_DERIVED=('derived_effective_ctrl','effective_ctrl_semantics','joint_margin_post',
+    'raw_ctrl_margin','force_margin_last_solve','joint_actuation_margin_last_solve',
+    'target_minus_post_joint','actor_phase_features','previous_action','inference_key','sample_stage',
+    'com','contact','native_dtype','native_reward_dtype','slot_inventory','contact_slot_count','efc_count',
+    'foot_pair_distance','lowest_corner_z','target_minus_last_solve_joint','actual_touchdown',
+    'gait_operand_semantics','capture_semantics')
+
+def h4m23_validate_manifest(m,ext,np):
+    original=ext['model_manifest']
+    h4m23_req(set(m)==set(original)|{'geometry'} and {k:v for k,v in m.items() if k!='geometry'}==original,
+        'EXACT_ARCHIVED_MODEL_MANIFEST')
+    h4m23_req(m['reward_keys']==sorted('reward/'+k for k in H4M23_REWARDS)
+        and m['qpos_addresses']==list(range(7,36)) and m['qvel_addresses']==list(range(6,35))
+        and m['root_body_id']==1 and m['pyramidal'] is True and m['integrator']==0
+        and m['dt_s']==.02 and m['sim_dt_s']==.002 and m['substeps']==10,'MODEL_CONTRACT')
+    f=m['fields'];mass=np.asarray(f['body_mass'])
+    h4m23_req(mass.shape==(31,) and mass[0]==0 and (mass[1:]>0).all()
+        and np.array_equal(f['body_rootid'][1:],[1]*30)
+        and np.array_equal(np.asarray(f['actuator_trnid'])[:,0],np.arange(1,30))
+        and np.isclose(mass.sum(),f['body_subtreemass'][1]),'MODEL_MAPPING')
+    geo=m['geometry'];files=ext['g1_kinematics']
+    h4m23_req(set(geo)=={'legs','scene_path','scene_sha256','xml_path','xml_sha256','xml_blob'}
+        and set(geo['legs'])=={'left','right'},'GEOMETRY_SCHEMA')
+    for k,filename in (('scene','scene_mjx_feetonly_flat_terrain.xml'),('xml','g1_mjx_feetonly.xml')):
+        pin=files['mujoco_playground/_src/locomotion/g1/xmls/'+filename]
+        h4m23_req(geo[k+'_path']==pin['path'] and geo[k+'_sha256']==pin['sha256'],'GEOMETRY_PIN')
+    h4m23_req(geo['xml_blob']=='4a7c00cdc92e245914d39b86b69b9329a26c35f5','XML_BLOB')
+    for side in ('left','right'):
+        leg=geo['legs'][side];spec=h4m4_leg_spec(side)
+        h4m23_req(set(leg)==set(spec),'LEG_KEYS')
+        for k,v in spec.items():h4m23_req(np.allclose(leg[k],v,rtol=0,atol=1e-8),'LEG_'+k)
+
+def h4m23_runtime_manifest(args,env,np):
+    from mujoco_playground._src import gait
+    ext=args.h4m12_external;pin=ext['gait']
+    h4m23_req(str(Path(inspect.getfile(gait)).resolve())==pin['path']
+        and sha256(pin['path'])==pin['sha256'],'RUNTIME_GAIT')
+    h4m23_validate_manifest(args.h4m23_manifest,ext,np)
+    h4m23_req(np.array_equal(env._feet_geom_id,args.h4m23_manifest['foot_geom_ids'])
+        and float(env._config.reward_config.max_foot_height)==.15
+        and float(env._config.reward_config.scales.feet_air_time)==2.
+        and float(env._config.reward_config.scales.feet_phase)==1.,'NATIVE_GAIT_CONFIG')
+
+def h4m23_native_schema(raw,m,np):
+    shapes=dict(H4M23_FLOAT_SHAPES,feet_sensor_velocity=np.asarray(m['feet_sensor_addresses']).shape,
+        xipos=(31,3),ximat=(31,3,3),cvel=(31,6),subtree_com=(31,3))
+    n=len(raw['contact_geom'])
+    shapes.update(contact_pos=(n,3),contact_frame=(n,3,3),contact_dist=(n,),
+        contact_includemargin=(n,),contact_friction=(n,5),efc_force=(len(raw['efc_force']),))
+    ints=dict(contact_geom=(n,2),contact_dim=(n,),contact_address=(n,),capture_mode=())
+    h4m23_req(set(raw)==set(shapes)|set(ints)|set(H4M23_BOOL_SHAPES)|{'rng','reward'},'NATIVE_KEYS')
+    for k,shape in shapes.items():
+        x=np.asarray(raw[k])
+        h4m23_req(x.shape==shape and x.dtype==np.float32,'NATIVE_FLOAT_'+k)
+        if not k.startswith('contact_'):h4m23_req(np.isfinite(x).all(),'NATIVE_FINITE_'+k)
+    for k,shape in ints.items():
+        x=np.asarray(raw[k]);h4m23_req(x.shape==shape and x.dtype.kind in 'iu','NATIVE_INT_'+k)
+    for k,shape in H4M23_BOOL_SHAPES.items():
+        x=np.asarray(raw[k]);h4m23_req(x.shape==shape and x.dtype==np.bool_,'NATIVE_BOOL_'+k)
+    h4m23_req(np.asarray(raw['rng']).shape==(2,) and np.asarray(raw['rng']).dtype==np.uint32,'NATIVE_RNG')
+    h4m23_req(set(raw['reward'])==set(m['reward_keys']),'NATIVE_REWARD_KEYS')
+    for k,v in raw['reward'].items():
+        x=np.asarray(v);h4m23_req(x.shape==() and x.dtype==np.float32 and np.isfinite(x),'NATIVE_REWARD_'+k)
+
+def h4m23_capture_host(xi,rects,loads,np):
+    # Independent distance to a loaded rectangle/union hull; descriptive only.
+    loaded=np.asarray(loads)>=np.float32(.05);mode=int(loaded[0])+2*int(loaded[1])
+    if not mode:return mode,1.
+    points=[]
+    for r,use in zip(rects,loaded):
+        if use:
+            axes=r[2:6].reshape(2,2)
+            points.extend(r[:2]+(np.asarray([sx,sy])*r[6:])@axes for sx in (-1,1) for sy in (-1,1))
+    pts=sorted(set(map(tuple,points)))
+    def cross(a,b,c):return (b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0])
+    def half(seq):
+        h=[]
+        for p in seq:
+            while len(h)>=2 and cross(h[-2],h[-1],p)<=0:h.pop()
+            h.append(p)
+        return h
+    hull=half(pts)[:-1]+half(reversed(pts))[:-1]
+    h4m23_req(len(hull)>=3,'CAPTURE_HULL')
+    distances=[];inside=True
+    for a,b in zip(hull,hull[1:]+hull[:1]):
+        a,b=np.asarray(a),np.asarray(b);e=b-a;q=xi-a
+        inside=inside and (e[0]*q[1]-e[1]*q[0]>=-1e-6)
+        distances.append(float(np.linalg.norm(q-np.clip(np.dot(q,e)/np.dot(e,e),0.,1.)*e)))
+    d=0. if inside else min(distances)
+    return mode,d*d/(d*d+.01)
+
+def h4m23_independent_fields(p,row,m,np):
+    floats=dict(H4M23_FLOAT_SHAPES,feet_sensor_velocity=np.asarray(m['feet_sensor_addresses']).shape)
+    core=set(floats)|set(H4M23_BOOL_SHAPES)|{'rng','capture_mode','reward'}
+    h4m23_req(set(p)==core|set(H4M23_PACK_DERIVED),'PACKED_KEYS')
+    dt=p['native_dtype']
+    h4m23_req(set(dt)==(core-{'reward'})|set(H4M23_RAW_EXTRA),'DTYPE_KEYS')
+    for k,shape in floats.items():
+        x=np.asarray(p[k]);h4m23_req(x.shape==shape and x.dtype.kind=='f'
+            and np.isfinite(x).all() and dt[k]=='float32'
+            and np.array_equal(x,x.astype(np.float32).astype(x.dtype)),'PACKED_FLOAT_'+k)
+    for k,shape in H4M23_BOOL_SHAPES.items():
+        x=np.asarray(p[k]);h4m23_req(x.shape==shape and x.dtype==np.bool_ and dt[k]=='bool','PACKED_BOOL_'+k)
+    h4m23_req(dt['rng']=='uint32' and len(p['rng'])==2 and all(type(x) is int and 0<=x<2**32 for x in p['rng'])
+        and dt['capture_mode'] in ('int32','int64') and type(p['capture_mode']) is int,'PACKED_INTEGER')
+    for k in H4M23_RAW_EXTRA:
+        h4m23_req(dt[k] in (('int32','int64') if k in ('contact_geom','contact_dim','contact_address') else ('float32',)),
+            'RAW_DTYPE_'+k)
+    h4m23_req(p['native_reward_dtype']=={k:'float32' for k in m['reward_keys']}
+        and all(type(x) is float and math.isfinite(x) and float(np.float32(x))==x for x in p['reward'].values()),'REWARD_DTYPE')
+    close=lambda a,b:np.allclose(a,b,rtol=0,atol=2e-6)
+    f=m['fields'];ids=np.asarray(f['actuator_trnid'])[:,0];qa=m['qpos_addresses'];va=m['qvel_addresses']
+    for name,vals,ranges,limited in (
+        ('joint_margin_post',np.asarray(p['qpos_post'])[qa],np.asarray(f['jnt_range'])[ids],np.asarray(f['jnt_limited'])[ids]),
+        ('raw_ctrl_margin',p['raw_ctrl'],f['actuator_ctrlrange'],f['actuator_ctrllimited']),
+        ('force_margin_last_solve',p['actuator_force'],f['actuator_forcerange'],f['actuator_forcelimited']),
+        ('joint_actuation_margin_last_solve',np.asarray(p['qfrc_actuator'])[va],np.asarray(f['jnt_actfrcrange'])[ids],np.asarray(f['jnt_actfrclimited'])[ids])):
+        r=np.asarray(ranges);v=np.asarray(vals);margin=np.minimum(v-r[:,0],r[:,1]-v)
+        h4m23_req(len(p[name])==29 and all((type(a) is float and abs(a-b)<=2e-6) if use else a is None
+            for a,b,use in zip(p[name],margin,limited)),'MARGIN_REPLAY_'+name)
+    h4m23_req(close(np.asarray(p['target'])-np.asarray(p['qpos_post'])[qa],p['target_minus_post_joint'])
+        and p['inference_key']==[0,0] and p['sample_stage']==m['stage']
+        and p['effective_ctrl_semantics']=='offline_source_clamp_not_direct_measurement'
+        and p['gait_operand_semantics']=='native_operands_derived_first_contact_not_direct_measurement'
+        and p['capture_semantics']=='R11_R12_last_forward_solve_descriptive_only'
+        and np.array_equal(p['previous_action'],p['actor_input'][70:99])
+        and np.array_equal(p['actor_phase_features'],p['actor_input'][99:103])
+        and np.array_equal(p['post_last_act'],p['sent_action'])
+        and np.array_equal(p['post_last_last_act'],p['last_act'])
+        and np.array_equal(np.asarray(p['foot_site_xyz'])[:,2],p['phase_z'])
+        and np.array_equal(p['actual_touchdown'],(~np.asarray(p['pre_contact'],bool))&np.asarray(p['post_contact'],bool)),
+        'PACKED_SEMANTICS')
+    phase=np.asarray(p['info_phase'],np.float32);pd=np.asarray(p['phase_dt'],np.float32)
+    h4m23_req(close(np.fmod(phase+pd+np.float32(np.pi),np.float32(2*np.pi))-np.float32(np.pi),p['post_phase']),
+        'PHASE_ADVANCE')
+    ix={k:i for i,k in enumerate(H4M3_COLUMNS)}
+    h4m23_req(p['foot_pair_distance']==(row[ix['foot_pair_signed_dist_m']] if row[ix['foot_pair_present']] else None),
+        'PAIR_DISTANCE')
+    rects=[];zmin=[]
+    for side,s in (('left','lf'),('right','rf')):
+        pos=np.asarray(p[s+'_geom_pos']);R=np.asarray(p[s+'_geom_mat']);half=np.asarray(m['geometry']['legs'][side]['halfsize'])
+        h4m23_req(close(R.T@R,np.eye(3)) and np.linalg.det(R)>0
+            and close(pos,[row[ix[s+'_geom_'+ax+'_m']] for ax in 'xyz']),'FOOT_GEOMETRY')
+        a=R[:2,0];h4m23_req(np.linalg.norm(a)>1e-6,'FOOT_AXIS');a=a/np.linalg.norm(a)
+        axes=np.stack((a,[-a[1],a[0]]))
+        rects.append(np.concatenate((pos[:2],axes.reshape(4),np.abs(axes@R[:2,:])@half)))
+        zmin.append(pos[2]-np.abs(R[2])@half)
+    h4m23_req(close(zmin,p['lowest_corner_z']) and close(rects,p['capture_rects']),'RECT_REPLAY')
+    co=p['com'];ct=p['contact']
+    h4m23_req(set(co)=={'available','position','velocity','angular_momentum','body_xipos','body_ximat','body_cvel','subtree_com'}
+        and set(ct)=={'available','slots','normal_load_N','normal_load_bodyweight','stage'}
+        and close(co['position'],co['subtree_com']),'COM_CONTACT_KEYS')
+    n=p['contact_slot_count'];ne=p['efc_count'];lf,rf=m['foot_geom_ids'];floor=m['floor_geom_id']
+    h4m23_req(type(n) is int and n>=0 and type(ne) is int and ne>=0,'SLOT_COUNT')
+    active=[];prev=-1
+    for s in p['slot_inventory']:
+        h4m23_req(set(s)=={'slot','geom','address','dim','dist','margin'} and type(s['slot']) is int
+            and prev<s['slot']<n and set(s['geom']) in ({lf,floor},{rf,floor},{lf,rf})
+            and type(s['address']) is int and type(s['dim']) is int
+            and math.isfinite(s['dist']) and math.isfinite(s['margin']),'SLOT_INVENTORY')
+        prev=s['slot']
+        if s['address']>=0 and s['dist']<=s['margin']:active.append(s)
+    h4m23_req(len(active)==len(ct['slots']),'ACTIVE_SLOT_COUNT')
+    for a,s in zip(active,ct['slots']):
+        h4m23_req(set(s)==set(a)|{'pos','frame','friction','wrench_contact_frame','efc_slice','world_force_on_geom2','world_torque_on_geom2'}
+            and all(s[k]==v for k,v in a.items()),'ACTIVE_SLOT_ID')
+        d=s['dim'];width=2*(d-1) if m['pyramidal'] and d>1 else d;R=np.asarray(s['frame'])
+        h4m23_req(s['address']+width<=ne and len(s['efc_slice'])==width
+            and R.shape==(3,3) and close(R@R.T,np.eye(3))
+            and np.asarray(s['pos']).shape==(3,) and np.isfinite(s['pos']).all(),'ACTIVE_SLOT_GEOMETRY')
+    mode,cost=h4m23_capture_host(np.asarray(p['capture_xi']),np.asarray(rects),p['capture_loads'],np)
+    h4m23_req(mode==p['capture_mode'] and abs(cost-p['capture_cost'])<=2e-5
+        and abs(np.linalg.norm(np.asarray(co['velocity'])[:2])-p['capture_speed'])<=2e-5,'CAPTURE_REPLAY')
+    safe=True
+    for name in ('joint_margin_post','raw_ctrl_margin','force_margin_last_solve'):
+        safe=safe and all(v is None or v>=0 for v in p[name])
+    h4m23_req(safe==p['capture_safe'],'CAPTURE_SAFETY')
+
+H4M23_PATCHES=[["def run(args):\n    abs_mode=","def run(args):\n    m23=bool(getattr(args,'h4m23_rich',False))\n    if m23:h4m23_enter(args)\n    abs_mode="],["    m12=bool(getattr(args,'h4m12_eval',False))\n    h4_mode=","    m12=bool(getattr(args,'h4m12_eval',False)) or m23\n    h4_mode="],["    if m12:\n        h4m12_enter(args,red=getattr(args,'h4red_eval',False))","    if m12 and not m23:\n        h4m12_enter(args,red=getattr(args,'h4red_eval',False))\n    elif m23:\n        pass  # separate held entry, never use historical DEV authorization"],["        h4m3_runtime_model_source(env,args.h3_session)\n    if m6:","        h4m3_runtime_model_source(env,args.h3_session)\n        if m23:\n            args.h4m23_manifest=h4m3_manifest(env,np)\n            args.h4m23_manifest['geometry']=h4m4_model_geometry(env,args.h4m23_manifest,np)\n            h4m23_runtime_manifest(args,env,np)\n            args.h4m23_journal.header(args.h4m23_manifest)\n    if m6:"],["                if placement_capture:\n                    pre_placement=h4m3_pre_capture(state)","                if placement_capture:\n                    pre_placement=(h4m23_pre_capture(state) if m23 else h4m3_pre_capture(state))"],["                    return next_state,diag,h4m3_post_capture(pre_placement,action,next_state,env)\n                return next_state,diag","                    return next_state,diag,(h4m23_post_capture(pre_placement,action,next_state,env,jnp)\n                        if m23 else h4m3_post_capture(pre_placement,action,next_state,env))\n                return next_state,diag"],["if placement or m6 else jax.jit(one_step))\n            if abs_mode:","if placement or m6 or m23 else jax.jit(one_step))\n            if m23:\n                h4m23_native_lane(args,lane_index,env,step_fn,jax,jnp,np)\n                continue\n            if abs_mode:"],["    if placement:\n        return\n    if h3_mode:\n        if m12:","    if placement or m23:\n        return\n    if h3_mode:\n        if m12:"],["def h4ffe2_dev_projection(raw):\n    begin=","def h4ffe2_dev_projection(raw):\n    if b'# H4M23_RICH_'+b'BEGIN\\n' in raw:raw=h4m23_projection(raw)\n    begin="],["def h4ffe2_dev_project(root):\n    import ast\n    raw=(root/'m463_gate3_cp_eval.py').read_bytes()","def h4ffe2_dev_project(root):\n    import ast\n    raw=(root/'m463_gate3_cp_eval.py').read_bytes()\n    if b'# H4M23_RICH_'+b'BEGIN\\n' in raw:raw=h4m23_projection(raw)"]]
 # H4M23_RICH_END
 if __name__=='__main__':
     if len(sys.argv)>1 and sys.argv[1]=='--h4absd':h4absd_cli(sys.argv[2:])
