@@ -27,4 +27,6 @@ Historical complete ledger: [v1.2.294 L5191–5841](https://github.com/nguyenbui
 
 | H4-M21-3 / H4-M21-FFE2-DEV-V1 | Owner distinct existing checkpoint bounded runtime GO | ISSUED subject to separate root-only marker child / receipt pending | Reviewed 05b28eafd18204d41045289ffc9eb6a328527396; static 9c2af046fd1132d672e1b4d745454b238ee0270514b45388e7b82e1f1fd3524b; limitations Owner accepted; no PPO/retry/holdout/promotion |
 
+| Owner sequential failure-case discussion / Case 2.1 | Offline discussion and note | HELD / case2.1 pending Owner agreement / no execution | Base 843d8ba840d2ea061f081325b5da0772ea005cdc; prior H4-M21-3 consumed; all cases before PPO/reward selection; root unchanged |
+
 Append one row per task with exact evidence/commit, decision, limitations and next scope. Do not rewrite previous entries or imply authorization.

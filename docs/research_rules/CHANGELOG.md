@@ -54,3 +54,6 @@ Candidate evaluator routing and historical training-provenance projection, held 
 
 ## 2026-11-27 — H4-M21-3 one-use bounded evaluation GO (governance v2.0.0 unchanged)
 **H4-M21-3 / H4-M21-FFE2-DEV-V1 — Owner distinct ONE-USE BOUNDED RUNTIME GO; effective only at separate exact root-only marker child; Owner receipt pending.** H4-M21-2 CLOSED/CONSUMED/scoped FULL HOST-STATIC PASS. H4-M20-3 CLOSED/CONSUMED/TECHNICAL_PASS/EXPOSURE_INCONCLUSIVE/NO_PROMOTE immutable. Branch A ACTIVE/B HOLD. Exact receipt accepted, Owner accepts limitations; source/provenance/launcher pins and frozen gates unchanged. Root-only child required; no new empirical evidence.
+
+## 2026-11-27 — Sequential failure-case discussion (governance v2.0.0 unchanged)
+Owner requires all cases reviewed before PPO/reward selection. Case2.1 provisional revised hypotheses documented, numerical choices HELD. Prior H4-M21-3 consumed; no executable/root/archive changes, no new runtime authorization or empirical result.

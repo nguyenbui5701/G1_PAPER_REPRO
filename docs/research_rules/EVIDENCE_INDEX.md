@@ -368,3 +368,6 @@ Each link includes the section until the next heading; ranges are retrieval aids
 
 ## H4-M21-3 existing checkpoint bounded runtime authorization
 - [Owner reviewed base](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/05b28eafd18204d41045289ffc9eb6a328527396); exact static 783B SHA256 9c2af046fd1132d672e1b4d745454b238ee0270514b45388e7b82e1f1fd3524b; exact marker, source/provenance/launcher and receipt scope in ACTIVE_EXPERIMENT latest section. Owner accepted limitations; runtime requires separate root-only child; no new evidence until execution.
+
+## Owner sequential failure-case discussion — Case 2.1
+- [Reviewed base](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/843d8ba840d2ea061f081325b5da0772ea005cdc); prior report SHA256 3ecbf7363566f89f037097599be748fe6e302e54cd7e4c339ea9175c3adabc3d; [original reward names](https://github.com/nguyenbui5701/G1_PAPER_REPRO/blob/843d8ba840d2ea061f081325b5da0772ea005cdc/m463_coverage_env.py#L141-L145); latest ACTIVE_EXPERIMENT contains provisional discussion, limitations and HOLD.
