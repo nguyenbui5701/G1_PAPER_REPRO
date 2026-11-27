@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.266  
+**Version:** 1.2.267  
 **Ngày cập nhật:** 2026-11-27 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -3407,6 +3407,16 @@ SA accepted actual Owner m463_runs/m470_h4r11_dev_static_20261127_104759_4985921
 
 NEXT H4-M15-4 distinct one-use controlled DEV execution only upon explicit Owner GO. Freeze exactly the accepted source/provenance/launcher/receipt above; bind sole H4R11_EVAL_ACTIVE_GO to H4-M15-R11-DEV-V1 m463_runs/m470_h4_m15_3_dev_v1/report.json; use existing frozen bounded launcher, no direct producer launch, fixed exclusive m463_runs/m470_h4r11_dev_runtime_v1.log and native attempt namespace; 5400s watchdog, 16MiB log, 128MiB report, 2GiB reserve plus headroom, GPU peak<95%12288MiB and strict clean final/partial readers. Candidate R11 only 12 groups/60 logical/max44808 physical/12 resets; archived Official CTRL primary and M12 descriptive secondary, original +2/8 survival and recovery5 plus unchanged nominal/moving/safety criteria. No retry, no comparator rerun, no PPO, no standalone diagnostic, no holdout/promotion; preserve STOP evidence. Branch A active, B HOLD.
 
+### H4-M15-4 — R11-NSTR-V1 controlled recovery DEV evaluation / distinct one-use native GO (v1.2.267; 2026-11-27)
+
+Owner explicit GO received. SA re-read exact Rules1.2.266 at verified HEADd9963eadee689a48149909d14322684a99bce5f4, Rules blob0240979c014b816abe5427cfa30888aefcdbf64d, evaluator blob12ad4860b4fa55a8c612ba163c933bfb02d0ba3c, independently rehashed actual 1221-byte accepted Owner receipt m463_runs/m470_h4r11_dev_static_20261127_104759_498592197.log SHA256 db15ba012d9a9dc21de55b410f6a193921ff46ac7296e81c4d18c5f36ada5766; exact source e9e24a50c78419b90fc88d5d9fb7226d0f9be5bacfbfcacccadf798db8edaf79, provenance ece0cdc8892dd8d558bd8efe90a1c7bac278066eb40fd328ce2cf75d61c233c6, launcher 3d62f42159400f421e9eee337d296a1cbe5507bdfe7e94ad6755eeff9da5a3f8, all frozen fixtures and zero-runtime footer match accepted v1.2.266. Frozen H4R11_DEV_OWNER_LAUNCHER block byte-identical to v1.2.265; reviewed actual evaluator marker/auth parser and launcher. No executable source or new files, no repeated static, no native execution by SA. Full static accepted; native validity/scientific efficacy UNTESTED. Local dependency, source bundle, archive and binary checkpoint bytes remain subject to actual preflight/strict reader; SA did not independently re-execute them.
+
+H4R11_EVAL_ACTIVE_GO: H4-M15-R11-DEV-V1 m463_runs/m470_h4_m15_3_dev_v1/report.json e9e24a50c78419b90fc88d5d9fb7226d0f9be5bacfbfcacccadf798db8edaf79 ece0cdc8892dd8d558bd8efe90a1c7bac278066eb40fd328ce2cf75d61c233c6 m463_runs/m470_h4r11_dev_static_20261127_104759_498592197.log db15ba012d9a9dc21de55b410f6a193921ff46ac7296e81c4d18c5f36ada5766
+
+Authorize exactly one Owner invocation of unchanged H4R11_DEV_OWNER_LAUNCHER block via pinned g1_m463 -B -u -, extracted by exact begin/end sentinels and SHA256 verified against accepted launcher. Clean tracked branch, ff-only exact authorized HEAD, unique marker, frozen four executable SHA256 and exact static receipt; check CUDA/highest/no preallocation, unused fixed outer log m463_runs/m470_h4r11_dev_runtime_v1.log and unused native output m463_runs/m470_h4_m15_3_dev_v1, no direct producer invocation. Existing launcher exclusive log claim is one-use reservation even if native attempt directory never created; preserve both on STOP, never remove/rename for reuse, no retry. Shared child watchdog5400s, log cap16MiB, report cap128MiB, free disk>=2GiB+2*128MiB+16MiB, sampled GPU peak<95%12288MiB and zero sampler errors; strict partial/final reader and exact artifact receipts unchanged. Host preflight/cleanup/hash outside child watchdog may add time; partial reader counts persisted rows only. No other GPU training/compute workload concurrently; desktop graphics processes are not automatically evidence of training. No external launcher modification or new diagnostic.
+
+Only R11 policy04828deeca93428ac795906d7e9baf366caf916c02948973daa92e98f8b22481 from exact accepted report88af0258 and fullstate e6472ce1 at15728640 steps. Frozen 12 groups,60 logical trajectories,max44808 physical transitions,12 group resets; seeds7331/7357/7601/7613, stand/forward_fast/turn_left, left/right, first push300/.50 and second335/.35, horizon1000, deterministic, DR/source push OFF. Existing h4_shared_frozen_loader/h3_group/h3_decide/native graph unchanged. Immutable archived Official CTRL DEV32bf04d6 primary, M12 DEV eb44c364 descriptive secondary, no rerun. Frozen +2/8 each standing double survival and recovery5 vs CTRL6/8, original nominal/moving/safety gates unchanged. Zero PPO/optimizer, no standalone diagnostic, no scientific threshold edits, no holdout/promotion or further training authorization. Owner returns actual bounded status, runtime log, report/partial and attempt/dispatch/result receipts plus hashes. COMPLETE is technical completion, not automatic scientific GO. Close sole marker upon SA review of attempt. Branch A active, B HOLD.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -3668,6 +3678,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-26)
+
+**H4-M15-4 R11 DISTINCT ONE-USE CONTROLLED DEV GO / OWNER EXECUTION PENDING (v1.2.267):** accepted receipt db15ba01, source e9e24a50, provenance ece0cdc8, launcher3d62f421 unchanged; sole R11 DEV marker, frozen 12/60/max44808/12 budget, CTRL/M12 immutable. No executable edit or native execution by SA. No retry/PPO/diagnostic/holdout/promotion, B HOLD.
 
 **H4-M15-3A R11 OWNER FULL STATIC ACCEPTED / DISTINCT CONTROLLED DEV GO PENDING (v1.2.266):** receipt db15ba01, source e9e24a50, provenance ece0cdc8, launcher3d62f421, six independent remote hash matches, all fixtures and zero runtime/footer PASS. Native/efficacy UNTESTED. Next only H4-M15-4 distinct one-use candidate-only evaluation on explicit Owner GO, frozen 12/60/44808/12; no active marker, Branch B HOLD.
 
@@ -4553,6 +4565,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-27 | H4-M15-4 R11 one-use controlled DEV authorization | exact static db15ba01 / source e9e24a50 / provenance ece0cdc8 / launcher3d62f421 | ONE-USE GO / Owner execution pending | 1.2.267 |
+
 | 2026-11-27 | H4-M15-3A R11 Owner full static acceptance | receipt db15ba01, source e9e24a50, provenance ece0cdc8, launcher3d62f421, exact fixtures | FULL STATIC ACCEPTED / distinct DEV GO pending | 1.2.266 |
 
 | 2026-11-27 | H4-M15-3 R11 held controlled DEV integration | exact training pins, shared evaluator, historical reverse projection, bounded launcher | HELD SOURCE CANDIDATE / full static pending | 1.2.265 |
@@ -5147,6 +5161,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.267 — 2026-11-27:** Owner explicit one-use R11 controlled DEV GO; bind exact accepted static/source/provenance and unchanged bounded launcher to exclusive namespace, frozen 12/60/44808/12; no executable edit, no retry/PPO/diagnostic/holdout/promotion, Branch B HOLD.
 
 - **v1.2.266 — 2026-11-27:** Accept exact Owner R11 DEV full static receipt, verify six remote hashes and frozen launcher, no executable change/active marker/runtime. Next distinct one-use R11 controlled DEV only on explicit Owner GO. Branch B HOLD.
 
