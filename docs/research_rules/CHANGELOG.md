@@ -69,3 +69,6 @@ Existing turning DEV and pinned DR/reward/observation source reviewed. Provision
 
 ## 2026-11-27 — Sequential failure-case discussion Case 2.5 (governance v2.0.0 unchanged)
 Prior forward-fast DEV and pinned native gait, linear tracking and observation source reviewed. Axis-selective tracking, safe touchdown, targeted phase and separate delay/estimator hypotheses HELD. Case2.4 open questions retained; no executable/root/archive changes or new empirical results.
+
+## 2026-11-27 — Sequential failure-case discussion Case 2.6 (governance v2.0.0 unchanged)
+Native actuator/reward semantics and historical H4-M3/M9 evidence reviewed; provisional feasibility, motor, action and exploration hypotheses HELD. All six cases documented, unresolved questions retained; Owner review and offline synthesis pending. No executable/root/archive changes or new empirical results.
