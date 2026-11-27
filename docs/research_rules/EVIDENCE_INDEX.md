@@ -356,3 +356,6 @@ Each link includes the section until the next heading; ranges are retrieval aids
 
 ## H4-M20-3 closure and H4-M21-1 held GO
 - [Root-only closure](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/6f802ffc3bc1135822034d0085751b3c8b378ff5); [frozen training authorization](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/8cd304731cd35cd631cc994f424006a0d0e1d3ed). Exact 8 uploaded hashes, remaining local pins, receipt limitations and H4-M21-1 scope in ACTIVE_EXPERIMENT latest section; frozen scientific gates unchanged.
+
+## H4-M21-1 held integration source
+- [Source/launcher commit](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/5f8ae89b5fa48b2f919810916603a297b99790b1), [evaluator](https://github.com/nguyenbui5701/G1_PAPER_REPRO/blob/5f8ae89b5fa48b2f919810916603a297b99790b1/m463_gate3_cp_eval.py). Exact reverse anchors, fixed report/log paths, static plan and limitations in ACTIVE_EXPERIMENT latest receipt. Historical FFE-V1 DEV report a651439c256c6508d46fccea4be82f00d267921fc1e238fd5b27427f8e240dd9, [L3980–3989](https://github.com/nguyenbui5701/G1_PAPER_REPRO/blob/a2a1056075f4a41e9f05115b30e2a50144b34154/G1_RESEARCH_RULES.md#L3980-L3989); no comparator rerun.
