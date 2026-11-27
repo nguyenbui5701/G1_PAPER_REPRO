@@ -66,3 +66,6 @@ Pinned native collision/geometry/reward and historical H1-M2/R12 evidence review
 
 ## 2026-11-27 — Sequential failure-case discussion Case 2.4 (governance v2.0.0 unchanged)
 Existing turning DEV and pinned DR/reward/observation source reviewed. Provisional targeted yaw curriculum, friction-only robustness, conditional tracking and torque-rate hypotheses HELD; Case2.3 open questions retained. No executable/root/archive changes or new empirical results.
+
+## 2026-11-27 — Sequential failure-case discussion Case 2.5 (governance v2.0.0 unchanged)
+Prior forward-fast DEV and pinned native gait, linear tracking and observation source reviewed. Axis-selective tracking, safe touchdown, targeted phase and separate delay/estimator hypotheses HELD. Case2.4 open questions retained; no executable/root/archive changes or new empirical results.

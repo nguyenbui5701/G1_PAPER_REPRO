@@ -35,4 +35,6 @@ Historical complete ledger: [v1.2.294 L5191–5841](https://github.com/nguyenbui
 
 | Owner sequential failure-case discussion / Case 2.4 | Offline source and historical evidence review | HELD / notes recorded / pending Owner agreement | Base f62dfe21722f347bb57fbcaeb4af8e7a25ff32c1; native friction DR and yaw/observation audit; next Case2.5; no execution |
 
+| Owner sequential failure-case discussion / Case 2.5 | Offline source and historical evidence review | HELD / notes recorded / pending Owner agreement | Base 4a98c7fa85d9203da87a93a9a0919b6408ca79d1; gait/linear tracking/observation audit; next Case2.6; no execution |
+
 Append one row per task with exact evidence/commit, decision, limitations and next scope. Do not rewrite previous entries or imply authorization.
