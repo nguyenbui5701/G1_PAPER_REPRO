@@ -10991,7 +10991,7 @@ def ssrpc_parse_marker(rules):
         (arm=='cand' and ctrl_report!='-' and ctrl_terminal!='-'),'SSRPC_CTRL_RECEIPT_BINDING')
     return dict(id=ssrpc_spec(arm)['id'],arm=arm,output=SSRPC_ARM_OUTPUT[arm],
                 source_sha256=source,generated_sha256=generated,
-                static_path=SSRPC_STATIC_PREFIX+arm+'_static_v1.json',
+                static_path=SSRPC_STATIC_OUTPUT+'/report.json',
                 static_sha256=static_sha,source_head=source_head,
                 ctrl_report_sha256=ctrl_report,ctrl_terminal_sha256=ctrl_terminal)
 
@@ -11012,16 +11012,9 @@ def ssrpc_validate_auth_evidence(root,auth):
     h4m12_require(subprocess.run(['git','merge-base','--is-ancestor',auth['source_head'],'HEAD'],cwd=root).returncode==0
         and subprocess.run(['git','diff','--quiet',auth['source_head'],'HEAD','--',*names],cwd=root).returncode==0,
         'SSRPC_SOURCE_ANCESTRY')
-    # Draft full-static receipt schema: fixture manifest/count pins and
-    # exclusive static supervisor still require separate held completion.
-    p=root/auth['static_path'];h4x_file_pin(p,auth['static_sha256'])
-    h4m12_require(p.stat().st_size<=65536,'SSRPC_STATIC_CAP')
-    r=ssrpc_read_json(p,65536)
-    expected=dict(status='FULL_STATIC_COMPLETE',arm=arm,source_head=auth['source_head'],
-        source_sha256=auth['source_sha256'],generated_sha256=auth['generated_sha256'],
-        physical_transitions=0,optimizer_updates=0,resets=0,native_inference=0)
-    h4m12_require(type(r) is dict and r==expected and
-        all(type(r[k]) is type(expected[k]) for k in expected),'SSRPC_STATIC_RECEIPT_DRAFT')
+    r=ssrpc_read_static(root,auth['static_sha256'])
+    h4m12_require(r['source_head']==auth['source_head'] and r['source_sha256']==auth['source_sha256']
+        and r['generated_sha256'][arm]==auth['generated_sha256'],'SSRPC_STATIC_BINDING')
     return auth
 
 def ssrpc_auth(root,arm):
@@ -12262,5 +12255,245 @@ def ssrpc_marker_fixture():
         ssrpc_expect_reject(lambda:ssrpc_parse_marker(value),'runtime_marker')
     return dict(positive=2,negative=6)
 # SSRPC_5A_FIXTURES_END
+
+# SSRPC_5A_STATIC_SUPERVISOR_BEGIN
+SSRPC_STATIC_OUTPUT='m463_runs/m470_h4_m28_ssrpc_static_v1'
+SSRPC_STATIC_ID='H4-M28-SSRPC-FULL-STATIC-V1'
+SSRPC_STATIC_LOG_CAP=16*1024**2
+SSRPC_STATIC_WATCHDOG=1800
+SSRPC_STATIC_REPORT_CAP=65536
+
+def ssrpc_static_manifest():
+    # Exact section counts and expected synthetic results, not native evidence.
+    return dict(core={'cases':542},
+        batch_ctrl=dict(positive_batches=5,negative_rows=20,rejected_lane_credit=1,
+            positive_joint=1,negative_joint=5,synthetic_rows=5*8192*32,repeat=2048,low_repeat=0,useful50=0),
+        batch_cand=dict(positive_batches=5,negative_rows=20,rejected_lane_credit=1,
+            positive_joint=1,negative_joint=5,synthetic_rows=5*8192*32,repeat=4096,low_repeat=2048,useful50=2048),
+        report_ctrl=dict(final_positive=1,final_negative=10,pending_positive=1,commit_positive=2,pending_negative=2),
+        report_cand=dict(final_positive=1,final_negative=10,pending_positive=1,commit_positive=2,pending_negative=2),
+        receipts=dict(json_positive=1,json_negative=6,terminal_positive=1,terminal_negative=7),
+        marker=dict(positive=2,negative=6),
+        typed=dict(positive=2,negative=5,native_calls=0,typed_mock_only=True),
+        generator=dict(arms=2,invalid_arm_rejected=1,held_runtime_rejected=2))
+
+def ssrpc_static_parse_marker(rules):
+    import re
+    lines=[v for v in rules.splitlines() if re.match(r'^[A-Z0-9_]+_GO:',v)]
+    h4m12_require(len(lines)==1,'SSRPC_STATIC_MARKER_COUNT')
+    m=re.fullmatch(r'H4SSRPC_STATIC_GO: '+SSRPC_STATIC_ID+r' ([0-9a-f]{40})',lines[0])
+    h4m12_require(m is not None,'SSRPC_STATIC_MARKER')
+    return dict(id=SSRPC_STATIC_ID,source_head=m.group(1),output=SSRPC_STATIC_OUTPUT)
+
+def ssrpc_static_auth(root):
+    import subprocess
+    root=Path(root).resolve()
+    git=lambda *args:subprocess.check_output(['git',*args],cwd=root)
+    rules=(root/'G1_RESEARCH_RULES.md').read_bytes()
+    auth=ssrpc_static_parse_marker(rules.decode('utf8'))
+    h4m12_require(git('symbolic-ref','--short','HEAD').strip()==b'experiment/b1-hardware-scaled'
+        and not git('status','--porcelain','--untracked-files=no'),'SSRPC_STATIC_TRACKED')
+    parents=git('rev-list','--parents','-n','1','HEAD').split()
+    h4m12_require(len(parents)==2 and parents[1].decode()==auth['source_head'],'SSRPC_STATIC_PARENT')
+    h4m12_require(git('diff','--name-only','HEAD^','HEAD').splitlines()==[b'G1_RESEARCH_RULES.md'],
+                  'SSRPC_STATIC_ROOT_ONLY')
+    prior=git('show','HEAD^:G1_RESEARCH_RULES.md')
+    h4m12_require(hashlib.sha1(b'blob '+str(len(prior)).encode()+b'\0'+prior).hexdigest()==
+                  'e09c35a82f06a97fe5406ba36bb3fd9664913583','SSRPC_STATIC_CLOSED_ROOT')
+    added=[v for v in rules.splitlines(keepends=True) if v.startswith(b'H4SSRPC_STATIC_GO: ')]
+    h4m12_require(len(added)==1 and rules.replace(added[0],b'',1)==prior and
+        rules==git('show','HEAD:G1_RESEARCH_RULES.md'),'SSRPC_STATIC_EXACT_ADDITION')
+    return auth
+
+def ssrpc_static_no_native():
+    return not any(k.split('.')[0] in ('jax','jaxlib','mujoco','brax','mujoco_playground','torch','tensorflow')
+                   for k in sys.modules)
+
+def ssrpc_static_write(path,value):
+    raw=(json.dumps(value,sort_keys=True,allow_nan=False,indent=2)+'\n').encode()
+    h4m12_require(len(raw)<=SSRPC_STATIC_REPORT_CAP,'SSRPC_STATIC_WRITE_CAP')
+    with path.open('xb') as f:
+        f.write(raw);f.flush();os.fsync(f.fileno())
+
+def ssrpc_static_preflight(root,args):
+    import subprocess
+    from importlib import metadata
+    from importlib.machinery import PathFinder
+    from m463_instrument_brax import h4c_git_blob
+    h4m12_require(ssrpc_static_no_native(),'SSRPC_STATIC_NATIVE_IMPORT')
+    h4m12_require(ssrpc_source_projection(root),'SSRPC_STATIC_PROJECTION')
+    parent=ssrpc_parent_preflight(root)
+    args.h4_exploratory_reward_report=args.reward_report
+    ssrpc_bootstrap(args,h4m12=True,ffe=True)
+    for pkg,relative,expected in (
+        ('mujoco_playground','_src/wrapper.py','62e2823b80b692befe29e4640d0b7a816e52271c'),
+        ('brax','envs/wrappers/training.py','2c09c8268a29d14c832dd07050575e4541ee98af'),
+        ('mujoco_playground','_src/locomotion/g1/joystick.py','561a18948e3467ab924468eaf362150dadb9d4a6')):
+        spec=PathFinder.find_spec(pkg)
+        h4m12_require(spec is not None and spec.submodule_search_locations is not None,'SSRPC_STATIC_DEPENDENCY')
+        q=Path(next(iter(spec.submodule_search_locations)))/relative
+        raw=q.read_bytes()
+        h4m12_require(h4c_git_blob(raw)==expected,'SSRPC_STATIC_DEPENDENCY_PIN')
+        compile(raw,str(q),'exec')
+    raw=Path(metadata.distribution('brax').locate_file('brax/training/agents/ppo/train.py')).read_bytes()
+    h4m12_require(hashlib.sha256(raw).hexdigest()=='e20613d42bf0868a13003e0312998816cc8d3593bb5ccaf9f1d070fd09c44bd7',
+                  'SSRPC_STATIC_BRAX')
+    for name in ('m463_coverage_env.py','m463_instrument_brax.py','m463_push_ppo_train.py'):
+        p=root/name;body=p.read_bytes()
+        h4m12_require(body==subprocess.check_output(['git','show','HEAD:'+name],cwd=root),'SSRPC_STATIC_SOURCE_TRACKED')
+        compile(body,name,'exec')
+    h4m12_require(all(not (root/p).exists() and not (root/p).is_symlink()
+        for p in SSRPC_ARM_OUTPUT.values()),'SSRPC_STATIC_RUNTIME_NAMESPACE_USED')
+    h4m12_require(ssrpc_static_no_native(),'SSRPC_STATIC_NATIVE_AFTER_PREFLIGHT')
+    return parent,raw
+
+def ssrpc_static_expected_report(auth,source,generated,fixtures):
+    return dict(status='FULL_STATIC_COMPLETE',authorization=auth,source_head=auth['source_head'],
+        source_sha256=source,generated_sha256=generated,fixtures=fixtures,
+        resource=ssrpc_lane_resource_bound(),physical_transitions=0,optimizer_updates=0,
+        resets=0,native_inference=0,native_imports=0,promotion_authorized=False)
+
+def ssrpc_static_report_check(r,auth,source):
+    import re
+    h4m12_require(type(r) is dict and type(r.get('generated_sha256')) is dict,'SSRPC_STATIC_REPORT_SCHEMA')
+    g=r['generated_sha256']
+    h4m12_require(set(g)=={'ctrl','cand'} and all(type(x) is str and re.fullmatch('[0-9a-f]{64}',x)
+        for x in g.values()) and g['ctrl']!=g['cand'],'SSRPC_STATIC_GENERATED')
+    expected=ssrpc_static_expected_report(auth,source,g,ssrpc_static_manifest())
+    # Canonical JSON comparison distinguishes bool from int recursively.
+    h4m12_require(json.dumps(r,sort_keys=True,allow_nan=False)==json.dumps(expected,sort_keys=True,allow_nan=False),
+                  'SSRPC_STATIC_MANIFEST')
+    return r
+
+def ssrpc_read_static(root,expected_sha,*,terminal_required=True):
+    import subprocess
+    root=Path(root).resolve();out=root/SSRPC_STATIC_OUTPUT
+    h4m12_require(out.is_dir() and not out.is_symlink() and not out.parent.is_symlink(),
+                  'SSRPC_STATIC_OUTPUT_PATH')
+    failure=out/'supervisor.failed.json'
+    h4m12_require(not failure.exists() and not failure.is_symlink(),'SSRPC_STATIC_FAILED')
+    attempt=ssrpc_read_json(out/'attempt.json',SSRPC_STATIC_REPORT_CAP)
+    auth=attempt['authorization']
+    h4m12_require(type(auth) is dict and set(auth)=={'id','source_head','output'} and
+        ssrpc_static_parse_marker('H4SSRPC_STATIC_GO: '+auth['id']+' '+auth['source_head'])==auth,
+        'SSRPC_STATIC_AUTH_SCHEMA')
+    h4m12_require(set(attempt)=={'authorization','parent_pid'} and type(attempt['parent_pid']) is int
+        and attempt['parent_pid']>0,'SSRPC_STATIC_ATTEMPT')
+    worker=ssrpc_read_json(out/'worker.started.json',SSRPC_STATIC_REPORT_CAP)
+    h4m12_require(set(worker)=={'authorization','pid','parent_pid'} and worker['authorization']==auth and
+        type(worker['pid']) is int and worker['pid']>0 and type(worker['parent_pid']) is int
+        and worker['parent_pid']==attempt['parent_pid'],'SSRPC_STATIC_WORKER')
+    p=out/'report.json';h4x_file_pin(p,expected_sha)
+    source=h4x_source_digest(root)
+    names=(*H4_FILES,'m463_gate3_cp_eval.py','paper_config_preflight.json')
+    h4m12_require(subprocess.run(['git','merge-base','--is-ancestor',auth['source_head'],'HEAD'],cwd=root).returncode==0
+        and subprocess.run(['git','diff','--quiet',auth['source_head'],'HEAD','--',*names],cwd=root).returncode==0,
+        'SSRPC_STATIC_SOURCE_ANCESTRY')
+    r=ssrpc_static_report_check(ssrpc_read_json(p,SSRPC_STATIC_REPORT_CAP),auth,source)
+    if terminal_required:
+        log=out/'worker.log'
+        h4m12_require(log.is_file() and not log.is_symlink() and 0<log.stat().st_size<=SSRPC_STATIC_LOG_CAP,
+                      'SSRPC_STATIC_LOG')
+        result=ssrpc_read_json(out/'attempt_result.json',SSRPC_STATIC_REPORT_CAP)
+        expected=dict(status='COMPLETE',authorization=auth,report_sha256=expected_sha,
+                      producer_rc=0,worker_log_sha256=digest(log),stored_log_bytes=log.stat().st_size)
+        h4m12_require(json.dumps(result,sort_keys=True)==json.dumps(expected,sort_keys=True),'SSRPC_STATIC_RESULT')
+        terminal=ssrpc_read_json(out/'supervisor.terminal.json',SSRPC_STATIC_REPORT_CAP)
+        h4m12_require(json.dumps(terminal,sort_keys=True)==json.dumps(dict(expected,reader_rc=0),sort_keys=True),
+                      'SSRPC_STATIC_TERMINAL')
+    return r
+
+def ssrpc_static_worker(root,args,auth,out):
+    from m463_instrument_brax import make_ssrpc_held_source,make_ssrpc_integrated_source
+    h4m12_require(ssrpc_static_auth(root)==auth and ssrpc_static_no_native(),'SSRPC_STATIC_WORKER_AUTH')
+    attempt=ssrpc_read_json(out/'attempt.json',SSRPC_STATIC_REPORT_CAP)
+    h4m12_require(attempt==dict(authorization=auth,parent_pid=os.getppid()),'SSRPC_STATIC_RESERVED')
+    ssrpc_static_write(out/'worker.started.json',dict(authorization=auth,pid=os.getpid(),parent_pid=os.getppid()))
+    parent,raw=ssrpc_static_preflight(root,args)
+    src={};generated={}
+    for arm in ('ctrl','cand'):
+        held,original=make_ssrpc_held_source(raw,arm)
+        source,original2=make_ssrpc_integrated_source(raw,arm)
+        h4m12_require(original==original2=='e20613d42bf0868a13003e0312998816cc8d3593bb5ccaf9f1d070fd09c44bd7'
+            and held.count('M470_SSRPC_GENERATED_EXECUTION_HOLD')==1
+            and source.count('ssrpc_generated_guard(')==1,'SSRPC_STATIC_GENERATOR_IDENTITY')
+        compile(held,'<SSRPC held '+arm+'>','exec');compile(source,'<SSRPC integrated '+arm+'>','exec')
+        src[arm]=source;generated[arm]=hashlib.sha256(source.encode('utf8')).hexdigest()
+        ssrpc_expect_reject(lambda:ssrpc_auth(root,arm),'runtime_held_'+arm)
+    ssrpc_expect_reject(lambda:make_ssrpc_integrated_source(raw,'invalid'),'generator_invalid_arm')
+    fixtures=dict(core=ssrpc_core_fixture(root),batch_ctrl=ssrpc_batch_fixture(root,'ctrl'),
+        batch_cand=ssrpc_batch_fixture(root,'cand'),
+        report_ctrl=ssrpc_report_fixture(root,parent,dict(arm='ctrl',generated_sha256=generated['ctrl']),src['ctrl']),
+        report_cand=ssrpc_report_fixture(root,parent,dict(arm='cand',generated_sha256=generated['cand']),src['cand']),
+        receipts=ssrpc_static_receipt_fixture(root),marker=ssrpc_marker_fixture(),
+        typed=h4ffe2_typed_fixture(root),generator=dict(arms=2,invalid_arm_rejected=1,held_runtime_rejected=2))
+    h4m12_require(ssrpc_static_no_native() and ssrpc_static_auth(root)==auth and
+        all(not (root/p).exists() and not (root/p).is_symlink() for p in SSRPC_ARM_OUTPUT.values()),
+        'SSRPC_STATIC_FINAL_HOLD')
+    source=h4x_source_digest(root)
+    r=ssrpc_static_expected_report(auth,source,generated,fixtures)
+    ssrpc_static_report_check(r,auth,source)
+    ssrpc_static_write(out/'report.json',r)
+    print('H4SSRPC_FULL_STATIC_PASS',digest(out/'report.json'),flush=True)
+
+def ssrpc_static_main(argv):
+    import subprocess,selectors,signal,shutil
+    p=argparse.ArgumentParser(description='SSRPC distinct one-use paired host-static verification')
+    p.add_argument('--checkpoint',type=Path,required=True)
+    p.add_argument('--restore-report',type=Path,required=True)
+    p.add_argument('--reward-report',type=Path,required=True)
+    p.add_argument('--worker',action='store_true')
+    args=p.parse_args(argv);root=Path(__file__).resolve().parent
+    h4m12_require(Path.cwd().resolve()==root and ssrpc_static_no_native(),'SSRPC_STATIC_WORKDIR')
+    auth=ssrpc_static_auth(root);out=root/SSRPC_STATIC_OUTPUT
+    if args.worker:return ssrpc_static_worker(root,args,auth,out)
+    h4m12_require(not out.exists() and not out.is_symlink() and out.parent.is_dir()
+        and not out.parent.is_symlink(),'SSRPC_STATIC_OUTPUT_USED')
+    h4m12_require(shutil.disk_usage(out.parent).free>=2*1024**3+512*1024**2,'SSRPC_STATIC_DISK')
+    # Verify pinned inputs and launcher before irrevocable reservation.
+    args.h4_exploratory_reward_report=args.reward_report
+    ssrpc_bootstrap(args,h4m12=True,ffe=True)
+    ssrpc_parent_preflight(root)
+    out.mkdir(exist_ok=False)
+    ssrpc_static_write(out/'attempt.json',dict(authorization=auth,parent_pid=os.getpid()))
+    child=None;rc=None;total=0
+    try:
+        child=subprocess.Popen([sys.executable,'-B','-u',str(Path(__file__).resolve()),
+            '--h4ssrpc-full-static',*argv,'--worker'],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,
+            start_new_session=True)
+        deadline=time.monotonic()+SSRPC_STATIC_WATCHDOG
+        with selectors.DefaultSelector() as sel,(out/'worker.log').open('xb') as log:
+            sel.register(child.stdout,selectors.EVENT_READ)
+            while True:
+                h4m12_require(time.monotonic()<deadline,'SSRPC_STATIC_WATCHDOG')
+                if not sel.select(timeout=1):continue
+                data=os.read(child.stdout.fileno(),65536)
+                if not data:break
+                h4m12_require(total+len(data)<=SSRPC_STATIC_LOG_CAP,'SSRPC_STATIC_LOG_CAP')
+                log.write(data);log.flush();total+=len(data)
+        rc=child.wait(timeout=max(1,deadline-time.monotonic()))
+        h4m12_require(rc==0 and ssrpc_static_auth(root)==auth,'SSRPC_STATIC_PRODUCER')
+        sha=digest(out/'report.json');ssrpc_read_static(root,sha,terminal_required=False)
+        result=dict(status='COMPLETE',authorization=auth,report_sha256=sha,producer_rc=0,
+            worker_log_sha256=digest(out/'worker.log'),stored_log_bytes=total)
+        ssrpc_static_write(out/'attempt_result.json',result)
+        ssrpc_static_write(out/'supervisor.terminal.json',dict(result,reader_rc=0))
+        ssrpc_read_static(root,sha)
+        print('H4SSRPC_STATIC_SUPERVISOR_COMPLETE',sha,flush=True)
+    except BaseException as exc:
+        if child is not None and child.poll() is None:
+            try:os.killpg(child.pid,signal.SIGKILL)
+            except ProcessLookupError:pass
+            child.wait()
+        failure=dict(status='STOP',authorization=auth,producer_rc=rc,stored_log_bytes=total,error=repr(exc)[:2048])
+        ssrpc_static_write(out/'supervisor.failed.json',failure)
+        if not (out/'attempt_result.json').exists():
+            ssrpc_static_write(out/'attempt_result.json',failure)
+        raise
+
+if __name__=='__main__' and sys.argv[1:2]==['--h4ssrpc-full-static']:
+    ssrpc_static_main(sys.argv[2:])
+    sys.exit(0)
+# SSRPC_5A_STATIC_SUPERVISOR_END
 # H4SSRPC_HELD_TRAINER_END
 if __name__=='__main__': main()
