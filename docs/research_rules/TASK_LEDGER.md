@@ -47,4 +47,6 @@ Historical complete ledger: [v1.2.294 L5191–5841](https://github.com/nguyenbui
 
 | H4-M23-2 | Owner-approved offline rich telemetry inventory and prospective minimal paired design | OFFLINE DESIGN COMPLETE / CONDITIONAL DIAGNOSTIC HELD / PPO DESIGN HOLD | Base fb8b50b5403b6413e49246a6c9b7f5a55b150c88; eight exact hashes; FFE2-only max1308 physical/3 resets/426 rich; H4-M23-3 held integration separate GO |
 
+| H4-M23-3 | Owner explicit held integration scope; five exact DEV hashes | EDIT-FIRST / HELD | Base 3758f03eaf3e2dfdaf4c57831e849f393778fd8b; no execution or static authorization |
+
 Append one row per task with exact evidence/commit, decision, limitations and next scope. Do not rewrite previous entries or imply authorization.

@@ -84,3 +84,6 @@ Five reports rehashed, matched CTRL/FFE1/FFE2 raw trajectories and pinned gait f
 
 ## 2026-11-27 — H4-M23-2 minimal telemetry offline design (governance v2.0.0 unchanged)
 Exact M3/M4/M5 and five CTRL/FFE reports rehashed; actual historical gait metrics and previous adverse/unsupported probes reviewed. FFE2-only 3-lane paired rich design held with strict projection and budget; no intervention or execution. PPO design HOLD.
+
+## 2026-11-27 — H4-M23-3 EDIT-FIRST held integration scope
+Owner scope and five artifact hashes recorded, no runtime authorization. Source candidate completion to be recorded separately.
