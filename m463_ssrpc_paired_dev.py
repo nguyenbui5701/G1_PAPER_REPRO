@@ -3,13 +3,21 @@
 
 The historical evaluator is part of the training source digest. Keep it and
 the trainer byte-identical; do not monkeypatch historical provenance readers.
-This module has NO static/native launcher. Direct invocation always HOLDs.
-The functions below are source preparation, not executed fixture evidence.
+Static/native supervisor entry requires distinct root-only Owner markers.
+No fixtures or native execution were performed during held preparation.
 """
 from __future__ import annotations
 
 import hashlib
 import json
+import os
+import re
+import shutil
+import signal
+import selectors
+import sys
+import time
+import types
 import subprocess
 from pathlib import Path
 
@@ -81,8 +89,13 @@ SPEC = dict(groups=24, logical=120, physical=89616, resets=24,
 REPORT_CAP = 128*1024**2  # each historical single-policy report cap
 LOG_CAP = 16*1024**2
 RESERVE = 2*1024**3
-# Proposed watchdogs/aggregate accounting need review before native integration.
-EXECUTION_AUTHORIZED = False
+PAIR_STORAGE_CAP = 512*1024**2
+STATIC_STORAGE_CAP = 32*1024**2
+WATCHDOG = 3600
+STATIC_WATCHDOG = 3600
+ROOT_RULES = 'G1_RESEARCH_RULES.md'
+STATIC_MARKER = 'H4SSRPC_PAIR_STATIC_GO:'
+NATIVE_MARKER = 'H4SSRPC_PAIR_ACTIVE_GO:'
 
 
 def require(ok, label):
@@ -129,6 +142,7 @@ def prepare_inputs(root):
             and Path(t.__file__).resolve()==root/'m463_push_ppo_train.py', 'MODULE_ORIGINS')
     e.h4m3_no_runtime_imports()
     pins['historical_bootstrap'] = t.ssrpc_bootstrap_identity(root)
+    require(root==e.H4_EVAL_ROOT, 'EVALUATOR_ROOT')
     reports = {}
     for arm in ARMS:
         out = TRAIN[arm]
@@ -270,8 +284,9 @@ def decide_pair(archive, secondary, ctrl, cand):
 # fresh static receipt, exact source and local provenance before reservation.
 RECEIPT_CAP = 65536
 PAIR_REPORT_CAP = 16*1024**2
-AUTH_KEYS = {'id','source_blob','source_sha256','provenance_sha256',
-             'static_sha256','authorization_head'}
+AUTH_KEYS = {'id','phase','source_head','source_blob','source_sha256','provenance_sha256',
+             'static_sha256','static_terminal_sha256','authorization_head'}
+STATIC_KEYS = {'id','phase','source_head','source_blob','source_sha256','authorization_head'}
 
 
 def read_bounded(root, rel, cap, trainer):
@@ -282,20 +297,19 @@ def read_bounded(root, rel, cap, trainer):
 
 
 def check_auth_identity(auth, pins, external):
-    import re
     import m463_gate3_cp_eval as e
-    require(type(auth) is dict and set(auth)==AUTH_KEYS and auth['id']==ID
+    require(type(auth) is dict and set(auth)==AUTH_KEYS and auth['id']==ID and auth['phase']=='native'
             and all(type(v) is str for v in auth.values()), 'AUTH_SCHEMA')
     require(all(re.fullmatch('[0-9a-f]{64}',auth[k]) for k in
-                ('source_sha256','provenance_sha256','static_sha256'))
+                ('source_sha256','provenance_sha256','static_sha256','static_terminal_sha256'))
             and all(re.fullmatch('[0-9a-f]{40}',auth[k]) for k in
-                ('source_blob','authorization_head')), 'AUTH_DIGESTS')
+                ('source_head','source_blob','authorization_head')), 'AUTH_DIGESTS')
     require(auth['source_sha256']==pins['source/'+Path(__file__).name]
             and auth['source_blob']==blob(Path(__file__).read_bytes())
             and auth['provenance_sha256']==e.h4m3_digest([pins,external]), 'AUTH_BINDING')
 
 
-def read_arm(root, arm, auth, pins, external, archive, *, complete):
+def read_arm(root, arm, auth, pins, external, archive, *, complete, terminal_required=True):
     """Held strict final/partial receipt reader; no native execution."""
     import m463_gate3_cp_eval as e
     import m463_push_ppo_train as t
@@ -311,6 +325,10 @@ def read_arm(root, arm, auth, pins, external, archive, *, complete):
             and all(attempt[k]==v for k,v in identity.items())
             and attempt['reserved'] is True and type(attempt['parent_pid']) is int
             and attempt['parent_pid']>0,'ATTEMPT')
+    worker=read_bounded(root,base/'worker.started.json',RECEIPT_CAP,t)
+    require(set(worker)==set(identity)|{'pid','parent_pid'} and all(worker[k]==v for k,v in identity.items())
+            and type(worker['pid']) is int and worker['pid']>0 and worker['pid']!=attempt['parent_pid']
+            and worker['parent_pid']==attempt['parent_pid'], 'WORKER')
     report=read_bounded(root,base/'report.json',REPORT_CAP,t)
     require(report['authorization']==auth and report['spec']==arm_spec(arm)
             and report['input_sha256']==pins
@@ -329,8 +347,12 @@ def read_arm(root, arm, auth, pins, external, archive, *, complete):
     if complete:
         require(report['status']=='COMPLETE' and not failure_path.exists()
                 and not failure_path.is_symlink(), 'COMPLETE_STATUS')
-        _, ledger=compatibility_view(e,arm,report)
-        require(report['ledger']==ledger and all(archive[k]==report[k] for k in e.H4M12_PROTOCOL),
+        view, ledger=compatibility_view(e,arm,report)
+        require(report['ledger']==ledger and all(archive[k]==report[k] for k in e.H4M12_PROTOCOL)
+                and report['decision']==e.h4m12_decide(archive,view)
+                and report['brax_source_verification']==archive['brax_source_verification']
+                and report['mjx_sources']==external['mjx']
+                and set(report['playground_runtime'])=={'joystick','mjx_env'},
                 'COMPLETE_REPLAY')
         gpu=report['gpu']
         require(gpu['total_mib']==12288 and 0<gpu['peak_used_mib']<.95*12288
@@ -338,11 +360,14 @@ def read_arm(root, arm, auth, pins, external, archive, *, complete):
                 'GPU')
         digest=e.sha256(out/'report.json')
         expected=dict(identity,status='COMPLETE',report_sha256=digest,producer_rc=0)
-        require(read_bounded(root,base/'attempt_result.json',RECEIPT_CAP,t)==expected,'RESULT')
+        require(exact_json(read_bounded(root,base/'attempt_result.json',RECEIPT_CAP,t),expected),'RESULT')
         require(log.absolute()==log.resolve() and log.is_file() and not log.is_symlink()
                 and log.stat().st_size<=LOG_CAP,'LOG')
         expected=dict(expected,reader_rc=0,worker_log_sha256=e.sha256(log),stored_log_bytes=log.stat().st_size)
-        require(read_bounded(root,base/'supervisor.terminal.json',RECEIPT_CAP,t)==expected,'TERMINAL')
+        if terminal_required:
+            require(exact_json(read_bounded(root,base/'supervisor.terminal.json',RECEIPT_CAP,t),expected),'TERMINAL')
+        else:
+            require(unused(terminal_path),'PRETERMINAL')
     else:
         require(report['status'] in ('IN_PROGRESS','STOP') and not terminal_path.exists()
                 and not terminal_path.is_symlink(), 'PARTIAL_STATUS')
@@ -374,6 +399,16 @@ def read_pair(root, auth, pins, archive, secondary, external):
     require(read_bounded(root,PAIR/'report.json',PAIR_REPORT_CAP,t)==expected,'PAIR_FINAL_REPLAY')
     require(not (root/PAIR/'supervisor.failed.json').exists()
             and not (root/PAIR/'supervisor.failed.json').is_symlink(), 'PAIR_FAILURE')
+    pair_attempt=read_bounded(root,PAIR/'attempt.json',RECEIPT_CAP,t)
+    require(set(pair_attempt)=={'authorization','reserved','parent_pid'} and pair_attempt['authorization']==auth
+            and pair_attempt['reserved'] is True and type(pair_attempt['parent_pid']) is int
+            and pair_attempt['parent_pid']>0,'PAIR_ATTEMPT')
+    for arm in ARMS:
+        require(read_bounded(root,PAIR/arm/'attempt.json',RECEIPT_CAP,t)['parent_pid']==pair_attempt['parent_pid'], 'PAIR_PARENT')
+    terminal=dict(authorization=auth,status='COMPLETE',report_sha256=e.sha256(root/PAIR/'report.json'),
+                  producer_rc=0,reader_rc=0,arm_terminal_sha256=expected['arm_terminal_sha256'])
+    require(exact_json(read_bounded(root,PAIR/'attempt_result.json',RECEIPT_CAP,t),{k:v for k,v in terminal.items() if k!='reader_rc'}), 'PAIR_RESULT')
+    require(exact_json(read_bounded(root,PAIR/'supervisor.terminal.json',RECEIPT_CAP,t),terminal),'PAIR_TERMINAL')
     return expected
 
 
@@ -398,9 +433,462 @@ def gate_fixture_cases():
     ]
 
 
-def held():
-    raise SystemExit('H4SSRPC_PAIRED_DEV_HELD: no static or native authorization/launcher')
+
+def exact_json(a,b):
+    return json.dumps(a,sort_keys=True,allow_nan=False)==json.dumps(b,sort_keys=True,allow_nan=False)
+
+
+def unused(path):
+    return not path.exists() and not path.is_symlink()
+
+
+def parse_marker(raw):
+    """Exact single active marker; the HEAD itself is derived from Git."""
+    lines=[v for v in raw.decode('utf8').splitlines() if re.match(r'^[A-Z0-9_]+_GO:',v)]
+    require(len(lines)==1,'MARKER_COUNT')
+    m=re.fullmatch(r'H4SSRPC_PAIR_(STATIC|ACTIVE)_GO: ([0-9a-f]{40}) ([0-9a-f]{40}) ([0-9a-f]{64})(?: ([0-9a-f]{64}) ([0-9a-f]{64}) ([0-9a-f]{64}))?',lines[0])
+    require(m is not None,'MARKER_SCHEMA')
+    phase,head,source_blob,source_sha,prov,static_sha,terminal_sha=m.groups()
+    require((phase=='STATIC' and prov is None) or (phase=='ACTIVE' and prov is not None),'MARKER_PHASE')
+    a=dict(id=ID,phase='static' if phase=='STATIC' else 'native',source_head=head,
+           source_blob=source_blob,source_sha256=source_sha)
+    if phase=='ACTIVE':
+        a.update(provenance_sha256=prov,static_sha256=static_sha,static_terminal_sha256=terminal_sha)
+    return a
+
+
+def authorization(root,phase,*,historical=None):
+    head=historical or git(root,'rev-parse','HEAD').decode().strip()
+    raw=git(root,'show',head+':'+ROOT_RULES)
+    auth=dict(parse_marker(raw),authorization_head=head)
+    require(auth['phase']==phase and set(auth)==(STATIC_KEYS if phase=='static' else AUTH_KEYS),'AUTH_PHASE')
+    prior=auth['source_head']
+    require(git(root,'rev-list','--parents','-n','1',head).split()==[head.encode(),prior.encode()]
+            and git(root,'diff','--name-only',prior,head).splitlines()==[ROOT_RULES.encode()], 'ROOT_ONLY')
+    old=git(root,'show',prior+':'+ROOT_RULES)
+    marker=[v for v in raw.splitlines(keepends=True) if re.match(rb'^[A-Z0-9_]+_GO:',v)]
+    require(blob(old)==CLOSED_ROOT and len(marker)==1 and raw.replace(marker[0],b'',1)==old,'ROOT_EXACT')
+    name=Path(__file__).name
+    current=(root/name).read_bytes()
+    require(blob(current)==auth['source_blob'] and hashlib.sha256(current).hexdigest()==auth['source_sha256']
+            and current==git(root,'show',head+':'+name)
+            and current==git(root,'show','HEAD:'+name),'SOURCE_AUTH')
+    require(subprocess.run(['git','merge-base','--is-ancestor',head,'HEAD'],cwd=root,
+                           timeout=30).returncode==0,'AUTH_ANCESTRY')
+    if historical is None:
+        require((root/ROOT_RULES).read_bytes()==raw
+                and git(root,'branch','--show-current').decode().strip()==BRANCH
+                and not git(root,'status','--porcelain','--untracked-files=no').strip(),'AUTH_LIVE')
+    return auth
+
+
+def json_bytes(value):
+    return (json.dumps(value,sort_keys=True,separators=(',',':'),allow_nan=False)+'\n').encode('utf8')
+
+
+def phase_dir(phase):
+    require(phase in ('static','native'),'PHASE')
+    return STATIC if phase=='static' else PAIR
+
+
+def storage(root, phase, extra=0, initial=False):
+    require(type(extra) is int and extra>=0,'STORAGE_EXTRA')
+    directory=root/phase_dir(phase)
+    outer=root/(STATIC_OUTER if phase=='static' else OUTER)
+    cap=STATIC_STORAGE_CAP if phase=='static' else PAIR_STORAGE_CAP
+    parent=directory.parent
+    require(parent.is_dir() and parent.absolute()==parent.resolve(),'STORAGE_PARENT')
+    total=0
+    if not initial:
+        require(directory.is_dir() and directory.absolute()==directory.resolve(),'STORAGE_ROOT')
+        for p in directory.rglob('*'):
+            require(not p.is_symlink(),'STORAGE_SYMLINK')
+            if p.is_dir():continue
+            require(p.is_file(),'STORAGE_FILE')
+            total+=p.stat().st_size
+        if outer.exists():
+            require(outer.is_file() and not outer.is_symlink() and outer.stat().st_size<=RECEIPT_CAP,'OUTER_CAP')
+            total+=outer.stat().st_size
+    require(total+extra<=cap and shutil.disk_usage(parent).free>=RESERVE+(cap if initial else extra),'STORAGE_BOUND')
+
+
+def write_json(root,phase,path,value,*,exclusive=True,cap=RECEIPT_CAP):
+    path=Path(path)
+    raw=json_bytes(value)
+    require(path.absolute()==path.resolve() and path.parent.is_dir() and
+            path.is_relative_to(root/phase_dir(phase)) and 0<len(raw)<=cap,'WRITE_PATH_CAP')
+    storage(root,phase,len(raw))
+    if exclusive:
+        target=path
+    else:
+        require(path.is_file() and not path.is_symlink(),'WRITE_BASE')
+        target=path.with_suffix(path.suffix+'.tmp')
+    with target.open('xb') as f:
+        f.write(raw);f.flush();os.fsync(f.fileno())
+    if not exclusive:os.replace(target,path)
+
+
+def report_view(session,arm):
+    return dict(session,groups=[dict(g,policy=LABELS[arm]) for g in session['groups']])
+
+
+def isolated_graph(e, *, enter, live_auth, train_dir, writer):
+    """Reuse original code objects; only private routing/receipt globals differ."""
+    ns=dict(e.run.__globals__)
+    original=e.run.__globals__
+    require(original is e.h3_group.__globals__,'GRAPH_GLOBALS')
+    def clone(fn):
+        copy=types.FunctionType(fn.__code__,ns,fn.__name__,fn.__defaults__,fn.__closure__)
+        copy.__kwdefaults__=fn.__kwdefaults__
+        return copy
+    ns.update(h4m12_enter=enter,h4m12_eval_auth=live_auth,
+              h4r11_dev_train_dir=train_dir,h4m12_write=writer,H4M12_POLICY=POLICY)
+    ns['h3_group']=clone(e.h3_group)
+    run=clone(e.run)
+    allowed={'h4m12_enter','h4m12_eval_auth','h4r11_dev_train_dir','h4m12_write','H4M12_POLICY','h3_group'}
+    require(set(ns)==set(original) and all(ns[k] is original[k] for k in original if k not in allowed)
+            and run.__code__ is e.run.__code__ and ns['h3_group'].__code__ is e.h3_group.__code__
+            and ns['h3_decide'] is e.h3_decide and ns['h4_shared_frozen_loader'] is e.h4_shared_frozen_loader,
+            'GRAPH_IDENTITY')
+    return run
+
+
+def native_worker(root,auth,arm,pins,archive,external):
+    import m463_gate3_cp_eval as e
+    import m463_push_ppo_train as t
+    from m462_ppo_warmstart_run import GPUMonitor,sample_gpu
+    base=root/PAIR/arm
+    identity=dict(authorization=auth,arm=arm)
+    session={k:SPEC[k] for k in e.H4M12_PROTOCOL if k in SPEC}
+    session.update(status='IN_PROGRESS',authorization=auth,spec=arm_spec(arm),
+        source_commit=e.PIN,brax_train_sha256=e.TRAIN_SHA,
+        evaluator_sha256=pins['source/m463_gate3_cp_eval.py'],
+        wrapper_sha256=pins['source/'+Path(__file__).name],input_sha256=pins,
+        expected_logical_trajectories=60,max_physical_transitions=44808,
+        physical_transitions_attempted=0,physical_transitions_recorded=0,
+        logical_trajectories_completed=0,reset_lanes_attempted=0,reset_lanes_recorded=0,
+        frame_columns=None,groups=[],promotion_authorized=False,further_training_authorized=False,
+        holdout_authorized=False,training_performed=False)
+    args=types.SimpleNamespace(h4m12_eval=True,h4red_eval=False,h2a=False,h2b=False,
+        output=base/'report.json',seeds=list(SPEC['seeds']),profiles=list(SPEC['profiles']),
+        directions=list(SPEC['directions']),push_step=300,push_magnitude=.50,
+        second_push_step=335,second_push_magnitude=.35,max_steps=1000,max_cases=60,
+        h3_session=session)
+    def persist(path,obj,initial=False):
+        require(path==args.output and obj is session,'WORKER_WRITE_ROUTE')
+        write_json(root,'native',path,report_view(obj,arm),exclusive=initial,cap=REPORT_CAP)
+    def live_auth(where,*,red=False):
+        require(Path(where)==root and red is False and authorization(root,'native')==auth,'LIVE_AUTH')
+        return auth
+    def train_dir(red):
+        require(red is False,'POLICY_ROUTE')
+        pinned_file(root,TRAIN[arm]/POLICY,PINS[arm][POLICY],t)
+        return TRAIN[arm]
+    def enter(a,*,red=False):
+        require(a is args and live_auth(root,red=red)==auth and not session['groups']
+                and all(session[k]==0 for k in ('physical_transitions_attempted','physical_transitions_recorded',
+                    'logical_trajectories_completed','reset_lanes_attempted','reset_lanes_recorded'))
+                and exact_json(read_bounded(root,PAIR/arm/'report.json',REPORT_CAP,t),report_view(session,arm))
+                and unused(base/'dispatch.started.json'),'ENTRY')
+        e.h4m3_no_runtime_imports()
+        a.h4m12_archive=archive;a.h4m12_external=external
+        write_json(root,'native',base/'dispatch.started.json',identity)
+    monitor=None
+    try:
+        e.h4m3_no_runtime_imports()
+        g=sample_gpu()
+        require(g['total_mib']==12288 and 0<=g['used_mib']<.95*12288,'GPU_INITIAL')
+        session['gpu_initial']=g
+        persist(args.output,session,initial=True)
+        run=isolated_graph(e,enter=enter,live_auth=live_auth,train_dir=train_dir,writer=persist)
+        monitor=GPUMonitor();args.h3_monitor=monitor
+        with monitor:run(args)
+        session['gpu']=e.h3_gpu_check(monitor)
+        session['ledger']=e.h4m12_ledger(session)
+        require(session['decision']==e.h4m12_decide(archive,session),'NATIVE_DECISION_REPLAY')
+        require(all(archive[k]==session[k] for k in e.H4M12_PROTOCOL),'NATIVE_PROTOCOL')
+        session['status']='COMPLETE'
+        persist(args.output,session)
+        result=dict(identity,status='COMPLETE',report_sha256=e.sha256(args.output),producer_rc=0)
+        write_json(root,'native',base/'attempt_result.json',result)
+    except BaseException as exc:
+        session['status']='STOP';session['error']=repr(exc)[:4096]
+        if monitor is not None:session['gpu']=monitor.snapshot()
+        try:
+            if not unused(args.output):
+                session['partial_ledger']=e.h4m12_ledger(session,partial=True)
+                persist(args.output,session)
+            write_json(root,'native',base/'attempt_result.json',dict(identity,status='STOP'))
+        except BaseException as err:
+            print('H4SSRPC_PAIR_PARTIAL_WRITE_FAILED',repr(err),flush=True)
+        raise
+
+
+def fixture_ids():
+    return tuple('gate/'+row[0] for row in gate_fixture_cases())+(
+        'marker/static','marker/native','marker/none','marker/duplicate','marker/foreign',
+        'marker/static_extra','marker/native_missing','marker/bad_hex','marker/bad_spacing',
+        'identity/json_bool','identity/json_order','identity/nonfinite','identity/duplicate_json',
+        'identity/source_graph','identity/frozen_source','identity/historical_inputs','identity/archives',
+        'protocol/budget','protocol/seed_order','protocol/arm_namespace','protocol/arm_policy',
+        'gate/invalid_primary','gate/invalid_nominal','gate/invalid_moving','gate/invalid_official',
+        'resource/atomic_bound','resource/static_bound','resource/log_bound','resource/disk_reserve',
+        'supervisor/ctrl_technical_stop','supervisor/ctrl_scientific_no_go','supervisor/cand_complete',
+        'supervisor/receipt_binding','supervisor/exclusive_path','supervisor/worker_parent',
+    )
+
+
+def expect_reject(fn):
+    try:fn()
+    except (RuntimeError,ValueError,TypeError,KeyError,FileExistsError):return True
+    raise RuntimeError('FIXTURE_EXPECTED_REJECTION')
+
+
+def next_arm(completed, technical_ok):
+    require(tuple(completed) in ((),('ctrl',),('ctrl','cand')) and type(technical_ok) is bool,'SEQUENCE')
+    if not technical_ok or len(completed)==2:return None
+    return ARMS[len(completed)]
+
+
+def static_fixtures(root,pins,archive,secondary,external):
+    """Execute only under future static GO. No graph call, JAX/MJX imports or PPO."""
+    import m463_gate3_cp_eval as e
+    import m463_push_ppo_train as t
+    results=[]
+    def case(name,ok):
+        require(ok is True,'FIXTURE_'+name);results.append(name)
+    for name,official,metrics,expected in gate_fixture_cases():
+        case('gate/'+name,paired_gate(official,metrics)['decision']==expected)
+    a='a'*40;b='b'*40;c='c'*64;d='d'*64
+    st=(STATIC_MARKER+' '+a+' '+b+' '+c+'\n').encode()
+    nt=(NATIVE_MARKER+' '+a+' '+b+' '+c+' '+d+' '+d+' '+d+'\n').encode()
+    case('marker/static',parse_marker(st)['phase']=='static')
+    case('marker/native',parse_marker(nt)['static_terminal_sha256']==d)
+    for name,raw in [('none',b''),('duplicate',st+nt),('foreign',b'OTHER_ACTIVE_GO: x\n'),
+        ('static_extra',st.rstrip()+b' '+d.encode()+b' '+d.encode()+b' '+d.encode()),
+        ('native_missing',nt.rsplit(b' ',1)[0]),('bad_hex',st.replace(b'a'*40,b'g'*40)),
+        ('bad_spacing',st.replace(b': ',b':  '))]:
+        case('marker/'+name,expect_reject(lambda:parse_marker(raw)))
+    case('identity/json_bool',not exact_json({'x':True},{'x':1}))
+    case('identity/json_order',exact_json({'x':1,'y':2},{'y':2,'x':1}))
+    case('identity/nonfinite',expect_reject(lambda:json_bytes({'x':float('nan')})))
+    def no_dup(pairs):
+        out={}
+        for key,val in pairs:
+            require(key not in out,'DUPLICATE');out[key]=val
+        return out
+    case('identity/duplicate_json',expect_reject(lambda:json.loads('{"x":1,"x":2}',object_pairs_hook=no_dup)))
+    before=dict(e.run.__globals__)
+    dummy=lambda *args,**kw:None
+    graph=isolated_graph(e,enter=dummy,live_auth=dummy,train_dir=dummy,writer=dummy)
+    case('identity/source_graph',graph.__code__ is e.run.__code__ and all(e.run.__globals__[k] is v for k,v in before.items())
+         and graph.__globals__['h3_group'].__code__ is e.h3_group.__code__)
+    case('identity/frozen_source',all(blob((root/k).read_bytes())==v for k,v in FROZEN.items()))
+    case('identity/historical_inputs',all(pins[a+'/'+k]==v for a in ARMS for k,v in PINS[a].items()))
+    case('identity/archives',pins['archive/report.json']==OFFICIAL and pins['secondary/report.json']==M12
+         and archive['status']=='M470_H4_EVAL_COMPLETED' and secondary['status']=='M470_H4M12_DEV_COMPLETE')
+    case('protocol/budget',SPEC['physical']==2*12*3734 and SPEC['logical']==2*12*5 and SPEC['resets']==24 and SPEC['optimizer_updates']==0)
+    case('protocol/seed_order',tuple(SPEC['seeds'])==e.H3_EVAL_SEEDS and tuple(SPEC['profiles'])==e.H3_EVAL_PROFILES)
+    case('protocol/arm_namespace',arm_spec('ctrl')['output']!=arm_spec('cand')['output'] and STATIC!=PAIR)
+    case('protocol/arm_policy',PINS['ctrl'][POLICY]!=PINS['cand'][POLICY] and arm_spec('ctrl')['policy']!=arm_spec('cand')['policy'])
+    import copy
+    official,metrics=gate_fixture_cases()[0][1:3]
+    for label,modify in [('invalid_primary',lambda q:q['primary_stand_double']['survival'].update(CAND=9)),
+        ('invalid_nominal',lambda q:q['nominal_survivors'].update(CTRL=True)),
+        ('invalid_moving',lambda q:q['moving_double_recovery5']['turn_left'].update(CAND=-1))]:
+        q=copy.deepcopy(metrics);modify(q)
+        case('gate/'+label,expect_reject(lambda:paired_gate(official,q)))
+    case('gate/invalid_official',expect_reject(lambda:paired_gate('PASS',metrics)))
+    case('resource/atomic_bound',3*REPORT_CAP+2*LOG_CAP+2*PAIR_REPORT_CAP+32*RECEIPT_CAP<=PAIR_STORAGE_CAP)
+    case('resource/static_bound',LOG_CAP+8*RECEIPT_CAP<STATIC_STORAGE_CAP)
+    case('resource/log_bound',LOG_CAP==16*1024**2 and WATCHDOG==3600)
+    case('resource/disk_reserve',RESERVE==2*1024**3 and shutil.disk_usage(root/PAIR.parent).free>=RESERVE)
+    case('supervisor/ctrl_technical_stop',next_arm(('ctrl',),False) is None)
+    case('supervisor/ctrl_scientific_no_go',next_arm(('ctrl',),True)=='cand')
+    case('supervisor/cand_complete',next_arm(ARMS,True) is None)
+    case('supervisor/receipt_binding',not exact_json({'producer_rc':0},{'producer_rc':False}))
+    case('supervisor/exclusive_path',unused(root/PAIR) and unused(root/OUTER))
+    case('supervisor/worker_parent',expect_reject(lambda:next_arm(('cand',),True)))
+    require(tuple(results)==fixture_ids(),'FIXTURE_MANIFEST')
+    e.h4m3_no_runtime_imports()
+    return results
+
+
+def static_worker(root,auth,pins,archive,secondary,external):
+    import m463_gate3_cp_eval as e
+    names=static_fixtures(root,pins,archive,secondary,external)
+    value=dict(authorization=auth,status='FULL_HOST_STATIC_PASS',fixtures=names,count=len(names),
+        pins=pins,external=external,provenance_sha256=e.h4m3_digest([pins,external]),
+        native_execution=0,optimizer_updates=0,promotion_authorized=False)
+    write_json(root,'static',root/STATIC/'report.json',value)
+    digest=e.sha256(root/STATIC/'report.json')
+    write_json(root,'static',root/STATIC/'attempt_result.json',dict(authorization=auth,status='COMPLETE',report_sha256=digest,producer_rc=0))
+    print('H4SSRPC_PAIR_FULL_STATIC_PASS '+digest,flush=True)
+
+
+def read_static(root,pins,external,*,expected=None,terminal_required=True):
+    import m463_gate3_cp_eval as e
+    import m463_push_ppo_train as t
+    out=root/STATIC
+    require(unused(out/'supervisor.failed.json'),'STATIC_FAILED')
+    report=read_bounded(root,STATIC/'report.json',RECEIPT_CAP,t)
+    auth=report['authorization']
+    require(auth==authorization(root,'static',historical=auth['authorization_head']),'STATIC_AUTH')
+    value=dict(authorization=auth,status='FULL_HOST_STATIC_PASS',fixtures=list(fixture_ids()),count=len(fixture_ids()),
+        pins=pins,external=external,provenance_sha256=e.h4m3_digest([pins,external]),
+        native_execution=0,optimizer_updates=0,promotion_authorized=False)
+    require(exact_json(value,report),'STATIC_REPORT')
+    attempt=read_bounded(root,STATIC/'attempt.json',RECEIPT_CAP,t)
+    worker=read_bounded(root,STATIC/'worker.started.json',RECEIPT_CAP,t)
+    require(set(attempt)=={'authorization','reserved','parent_pid'} and attempt['authorization']==auth
+        and attempt['reserved'] is True and type(attempt['parent_pid']) is int and attempt['parent_pid']>0
+        and set(worker)=={'authorization','pid','parent_pid'} and worker['authorization']==auth
+        and type(worker['pid']) is int and worker['pid']>0 and worker['pid']!=attempt['parent_pid']
+        and worker['parent_pid']==attempt['parent_pid'],'STATIC_WORKER')
+    digest=e.sha256(out/'report.json')
+    result=dict(authorization=auth,status='COMPLETE',report_sha256=digest,producer_rc=0)
+    require(exact_json(read_bounded(root,STATIC/'attempt_result.json',RECEIPT_CAP,t),result),'STATIC_RESULT')
+    log=out/'worker.log'
+    require(log.absolute()==log.resolve() and log.is_file() and 0<log.stat().st_size<=LOG_CAP
+        and log.read_bytes().splitlines().count(('H4SSRPC_PAIR_FULL_STATIC_PASS '+digest).encode())==1,'STATIC_LOG')
+    terminal=dict(result,reader_rc=0,worker_log_sha256=e.sha256(log),stored_log_bytes=log.stat().st_size)
+    if terminal_required:
+        require(exact_json(read_bounded(root,STATIC/'supervisor.terminal.json',RECEIPT_CAP,t),terminal),'STATIC_TERMINAL')
+    if expected is not None:
+        require(digest==expected['static_sha256'] and e.sha256(out/'supervisor.terminal.json')==expected['static_terminal_sha256']
+                and report['provenance_sha256']==expected['provenance_sha256']
+                and auth['source_blob']==expected['source_blob'] and auth['source_sha256']==expected['source_sha256'],'STATIC_NATIVE_BINDING')
+    return terminal
+
+
+def worker_entry(root,phase,arm):
+    import m463_push_ppo_train as t
+    auth=authorization(root,phase)
+    base=phase_dir(phase)/(arm if phase=='native' else '')
+    require((phase=='native' and arm in ARMS) or (phase=='static' and arm=='static'),'WORKER_PHASE')
+    identity=dict(authorization=auth,**({'arm':arm} if phase=='native' else {}))
+    receipt=read_bounded(root,base/'attempt.json',RECEIPT_CAP,t)
+    require(exact_json(receipt,dict(identity,reserved=True,parent_pid=os.getppid()))
+        and unused(root/base/'worker.started.json'),'WORKER_ADMISSION')
+    if phase=='native':
+        pair=read_bounded(root,PAIR/'attempt.json',RECEIPT_CAP,t)
+        require(exact_json(pair,dict(authorization=auth,reserved=True,parent_pid=os.getppid())),'WORKER_PAIR')
+    write_json(root,phase,root/base/'worker.started.json',dict(identity,pid=os.getpid(),parent_pid=os.getppid()))
+    pins,archive,secondary,external=prepare_inputs(root)
+    if phase=='static':
+        static_worker(root,auth,pins,archive,secondary,external)
+    else:
+        check_auth_identity(auth,pins,external)
+        read_static(root,pins,external,expected=auth)
+        if arm=='cand':read_arm(root,'ctrl',auth,pins,external,archive,complete=True)
+        native_worker(root,auth,arm,pins,archive,external)
+
+
+def bounded_child(root,phase,arm,base):
+    """Fresh process, bounded pipe, monotonic watchdog; kill own process group only."""
+    log=base/'worker.log'
+    deadline=time.monotonic()+(STATIC_WATCHDOG if phase=='static' else WATCHDOG)
+    with log.open('xb') as stream:
+        proc=subprocess.Popen([sys.executable,'-B',str(Path(__file__).resolve()),'_worker',phase,arm],
+            cwd=root,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,start_new_session=True)
+        count=0
+        try:
+            with selectors.DefaultSelector() as sel:
+                sel.register(proc.stdout,selectors.EVENT_READ)
+                while sel.get_map():
+                    require(time.monotonic()<deadline,'WATCHDOG')
+                    storage(root,phase)
+                    for key,_ in sel.select(timeout=.25):
+                        chunk=os.read(key.fd,65536)
+                        if not chunk:sel.unregister(key.fileobj);continue
+                        require(count+len(chunk)<=LOG_CAP,'LOG_CAP')
+                        storage(root,phase,len(chunk))
+                        stream.write(chunk);stream.flush();count+=len(chunk)
+                rc=proc.wait(timeout=max(.001,deadline-time.monotonic()))
+                os.fsync(stream.fileno())
+                require(rc==0,'WORKER_EXIT_'+str(rc))
+        except BaseException:
+            try:os.killpg(proc.pid,signal.SIGKILL)
+            except ProcessLookupError:pass
+            proc.wait(timeout=10)
+            raise
+        finally:proc.stdout.close()
+
+
+def supervisor(root,phase):
+    import m463_gate3_cp_eval as e
+    import m463_push_ppo_train as t
+    auth=authorization(root,phase)
+    base=root/phase_dir(phase)
+    outer=root/(STATIC_OUTER if phase=='static' else OUTER)
+    require(unused(base) and unused(outer),'ONE_USE')
+    storage(root,phase,initial=True)
+    # Reserve outer before host replay; no retry even if later admission fails.
+    with outer.open('xb') as f:
+        f.write(('AUTHORIZATION_HEAD='+auth['authorization_head']+'\nSTATUS=INVOKED\n').encode())
+        f.flush();os.fsync(f.fileno())
+        try:
+            base.mkdir(exist_ok=False)
+            write_json(root,phase,base/'attempt.json',dict(authorization=auth,reserved=True,parent_pid=os.getpid()))
+            pins,archive,secondary,external=prepare_inputs(root)
+            if phase=='static':
+                bounded_child(root,phase,'static',base)
+                # Independent host admission and strict result reader, no second fixture execution.
+                p,_,_,x=prepare_inputs(root)
+                require(exact_json([pins,external],[p,x]),'STATIC_POST_INPUTS')
+                terminal=read_static(root,pins,external,terminal_required=False)
+                write_json(root,phase,base/'supervisor.terminal.json',terminal)
+                read_static(root,pins,external)
+            else:
+                check_auth_identity(auth,pins,external)
+                read_static(root,pins,external,expected=auth)
+                completed=[]
+                for arm in ARMS:
+                    require(next_arm(completed,True)==arm and authorization(root,'native')==auth,'ARM_ORDER')
+                    out=base/arm;out.mkdir(exist_ok=False)
+                    write_json(root,phase,out/'attempt.json',dict(authorization=auth,arm=arm,reserved=True,parent_pid=os.getpid()))
+                    bounded_child(root,phase,arm,out)
+                    p,_,_,x=prepare_inputs(root)
+                    require(exact_json([pins,external],[p,x]),'POST_INPUTS')
+                    read_arm(root,arm,auth,pins,external,archive,complete=True,terminal_required=False)
+                    result=read_bounded(root,PAIR/arm/'attempt_result.json',RECEIPT_CAP,t)
+                    log=out/'worker.log'
+                    terminal=dict(result,reader_rc=0,worker_log_sha256=e.sha256(log),stored_log_bytes=log.stat().st_size)
+                    write_json(root,phase,out/'supervisor.terminal.json',terminal)
+                    read_arm(root,arm,auth,pins,external,archive,complete=True)
+                    completed.append(arm)
+                c,_=read_arm(root,'ctrl',auth,pins,external,archive,complete=True)
+                a,_=read_arm(root,'cand',auth,pins,external,archive,complete=True)
+                expected=dict(authorization=auth,status='COMPLETE',
+                    arm_report_sha256={arm:e.sha256(root/PAIR/arm/'report.json') for arm in ARMS},
+                    arm_terminal_sha256={arm:e.sha256(root/PAIR/arm/'supervisor.terminal.json') for arm in ARMS},
+                    result=decide_pair(archive,secondary,c,a))
+                write_json(root,phase,base/'report.json',expected,cap=PAIR_REPORT_CAP)
+                terminal=dict(authorization=auth,status='COMPLETE',report_sha256=e.sha256(base/'report.json'),
+                    producer_rc=0,reader_rc=0,arm_terminal_sha256=expected['arm_terminal_sha256'])
+                write_json(root,phase,base/'attempt_result.json',{k:v for k,v in terminal.items() if k!='reader_rc'})
+                write_json(root,phase,base/'supervisor.terminal.json',terminal)
+                read_pair(root,auth,pins,archive,secondary,external)
+            f.write(b'EXIT_CODE=0\n');f.flush();os.fsync(f.fileno())
+        except BaseException as exc:
+            # Never erase partial evidence or re-dispatch either arm.
+            try:
+                write_json(root,phase,base/'supervisor.failed.json',
+                    dict(authorization=auth,status='STOP',error=repr(exc)[:4096]))
+            except BaseException as err:print('PAIR_FAILURE_RECEIPT_ERROR',repr(err),flush=True)
+            f.write(b'EXIT_CODE=1\n');f.flush();os.fsync(f.fileno())
+            raise
+
+
+def main():
+    root=Path(__file__).resolve().parent
+    if sys.argv[1:] in (['static'],['native']):
+        supervisor(root,sys.argv[1])
+    elif len(sys.argv)==4 and sys.argv[1]=='_worker':
+        worker_entry(root,sys.argv[2],sys.argv[3])
+    else:
+        raise SystemExit('H4SSRPC_PAIR_HELD: distinct Owner marker required')
 
 
 if __name__=='__main__':
-    held()
+    main()
