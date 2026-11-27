@@ -416,3 +416,6 @@ Each link includes the section until the next heading; ranges are retrieval aids
 
 ## H4-M23-4 held freeze receipt
 - [EDIT-FIRST](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/565475f081b11f215ebf821cdf81735ff3224ed5), [frozen source](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/61794fc3f7c6876d747cf40ea458ead3e537590f), evaluator blob a65d2a1731b63b250f57836d011ecee7a5cda998. Five actual uploaded SHA256 matches; exact planned counts and receipt contract in ACTIVE_EXPERIMENT, no static or native result.
+
+## H4-M23-5 admission blocker
+- [Rules base](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/b34b49a4441b321eed274cbc9c88dcfca180044d), [frozen evaluator](https://github.com/nguyenbui5701/G1_PAPER_REPRO/blob/61794fc3f7c6876d747cf40ea458ead3e537590f/m463_gate3_cp_eval.py), [root at review base](https://github.com/nguyenbui5701/G1_PAPER_REPRO/blob/b34b49a4441b321eed274cbc9c88dcfca180044d/G1_RESEARCH_RULES.md). One historical consumed marker actually present; correction and STOP in ACTIVE_EXPERIMENT. Five exact historical files rehashed. No new empirical results.

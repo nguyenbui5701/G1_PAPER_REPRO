@@ -102,3 +102,6 @@ Source-only fixture and bounded static preparation, no authorization or executio
 
 ## 2026-11-27 — H4-M23-4 held static source freeze
 Frozen source 61794fc3f7c6876d747cf40ea458ead3e537590f; 73 planned fixture cases, bounded one-use host-static supervisor and exact seven-line receipt. No compile/fixture/native/PPO execution; separate static GO required.
+
+## 2026-11-27 — H4-M23-5 admission review and correction
+Exact frozen evaluator and historical hashes matched. Complete root blob reveals one consumed H4-M21-3 runtime marker, not zero as previously reported. STOP before issuing new static marker; separate explicit root-only closure approval required. No executable/root change or execution.
