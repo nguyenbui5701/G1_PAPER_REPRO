@@ -1232,7 +1232,9 @@ class CoverageJoystick(joystick.Joystick):
             ffe_coherent=(jp.all(pre_command==0)&
                 jp.all(state.obs['state'][9:12]==pre_command)&
                 jp.all(state.obs['privileged_state'][9:12]==pre_command)&(state.done==0))
-            ffe_pre_fn=ffe2_pre if self._ffe2 else ffe_pre
+            # SSRPC_DISPATCH_PRE_BEGIN
+            ffe_pre_fn=(ssrpc_pre_cand if self.ssrpc_arm=='cand' else ssrpc_pre_ctrl) if isinstance(self,SSRPCCoverageJoystick) else (ffe2_pre if self._ffe2 else ffe_pre)
+            # SSRPC_DISPATCH_PRE_END
             ffe_prestate,ffe_pick=ffe_pre_fn(jp,ffe_old,hard_draw=ffe_hard,
                 band_draw=ffe_band,cell_draw=ffe_cell,due_draw=ffe_due,
                 boundary=boundary,nominal=disabled,count=count,coherent=ffe_coherent,
@@ -1367,13 +1369,17 @@ class CoverageJoystick(joystick.Joystick):
             ffe_post_coherent=(jp.all(out['command']==0)&
                 jp.all(after.obs['state'][9:12]==out['command'])&
                 jp.all(after.obs['privileged_state'][9:12]==out['command']))
-            ffe_post_fn=ffe2_post if self._ffe2 else ffe_post
+            # SSRPC_DISPATCH_POST_BEGIN
+            ffe_post_fn=ssrpc_post if isinstance(self,SSRPCCoverageJoystick) else (ffe2_post if self._ffe2 else ffe_post)
+            # SSRPC_DISPATCH_POST_END
             ffe_new,ffe_result=ffe_post_fn(jp,ffe_prestate,ffe_pick,gap=ffe_gap,
                 post_coherent=ffe_post_coherent,terminal=after.done>0,
                 refresh=pre_source_step>=500)
             # Only an actual first with a coherent, live continuation assigns
             # a hard repeat. A terminal first remains an actual first event.
-            gap=jp.where(ffe_block,30 if self._ffe2 else ffe_gap,gap)
+            # SSRPC_DISPATCH_GAP_BEGIN
+            gap=jp.where(ffe_block,35 if isinstance(self,SSRPCCoverageJoystick) else (30 if self._ffe2 else ffe_gap),gap)
+            # SSRPC_DISPATCH_GAP_END
             repeat_allowed=jp.where(ffe_block,
                 ffe_pick['first']&(ffe_new['phase']==FFE_REPEAT),repeat_allowed)
         new_next = jp.where(event & repeat_allowed, age + gap,
@@ -1628,7 +1634,10 @@ class CoverageJoystick(joystick.Joystick):
             if self._ffe2:
                 shadow=info['ffe2_shadow_gap']
                 shadow_next=jp.where(ffe_pick['first'],ffe_gap,shadow).astype(jp.int32)
-                labels=ffe2_risk_labels(jp,ffe_old,ffe_prestate,ffe_pick,ffe_new,ffe_result,
+                # SSRPC_DISPATCH_LABEL_BEGIN
+                label_fn=(ssrpc_labels_cand if self.ssrpc_arm=='cand' else ssrpc_labels_ctrl) if isinstance(self,SSRPCCoverageJoystick) else ffe2_risk_labels
+                labels=label_fn(jp,ffe_old,ffe_prestate,ffe_pick,ffe_new,ffe_result,
+                # SSRPC_DISPATCH_LABEL_END
                     boundary=boundary,nominal=disabled,count=count,coherent=ffe_coherent,
                     source_step=pre_source_step,mode=ffe_mode,cost=ffe_cost,geometry_valid=ffe_geometry,
                     shadow_gap=shadow,terminal=after.done>0,refresh=pre_source_step>=500,
@@ -1797,3 +1806,166 @@ def ffe2_env_init(xp):
         'ffe2_shadow_gap','ffe2_shadow_before','ffe2_shadow_after')})
     return row
 # H4FFE2_ENV_SCHEMA_END
+
+# H4SSRPC_HELD_ENV_BEGIN
+# Fixed-gap derivation of FFE2; original functions are retained.
+def ssrpc_pre(xp,old,*,inclusive,hard_draw,band_draw,cell_draw,due_draw,boundary,nominal,
+            count,coherent,source_step,mode,cost,geometry_valid):
+    """Pure pre-injection candidate decision; no RNG/physics/reward calls.
+
+    Caller must use independent fold_in subkeys and preserve original draws.
+    coherent means exact zero native/actor/critic command and live prestate.
+    mode is actual r12_cost loaded support: 0/1/2/3, not binary contact.
+    All input shapes/dtypes and actual transition conservation need a separate
+    batch guard. This function alone is NOT a production scheduler.
+    """
+    i=xp.int32
+    k=old['k'];initial=k==0
+    hard=xp.where(initial,hard_draw,old['hard']).astype(i)
+    band=xp.where(initial,band_draw,old['band']).astype(i)
+    cell=xp.where(initial,cell_draw,old['cell']).astype(i)
+    due=xp.where(initial,due_draw,old['due']).astype(i)
+    phase=xp.where(initial,FFE_FIRST,old['phase']).astype(i)
+    repeat_due=old['repeat_due']
+    target_mode=xp.where(cell<2,cell+1,3).astype(i)
+    direction=(2+cell%2).astype(i)
+    # Hard assignment remains fixed; original broad can return only at a
+    # natural boundary strictly after closure of this opportunity.
+    block=(hard>0)&xp.where(initial,True,xp.where(
+        boundary&(phase==FFE_CLOSED),False,old['block']>0))
+    active=block&(phase!=FFE_CLOSED)
+    first=active&(phase==FFE_FIRST)
+    wait=active&(phase==FFE_REPEAT)
+    at_due=k>=due
+    geometry_ok=geometry_valid&xp.isfinite(cost)&(cost>=0)&(cost<=1)&(mode>=0)&(mode<=3)
+    assignment_ok=((hard==0)|(hard==1))&(band>=0)&(band<4)&(cell>=0)&(cell<4)&(
+        due>=40+160*band)&(due<=80+160*band)
+    bad=(k<0)|(k>=640)|(~assignment_ok)|(
+        active&(~geometry_ok)&((first&at_due)|wait))
+    # Reset before T retains slot; reset at/after T or during repeat closes.
+    boundary_miss=active&boundary&((first&at_due)|wait)
+    nominal_miss=active&nominal&((first&at_due)|wait)
+    coherence_miss=wait&(~coherent | (source_step>=500))
+    first_end=112+160*band
+    repeat_end=repeat_due
+    expired=(first&(k>first_end))|(wait&(k>repeat_end))
+    eligible=active&(~boundary)&(~nominal)&coherent&geometry_ok&(source_step<=459)&(~bad)
+    first_event=first&at_due&(k<=first_end)&eligible&(count==0)&(mode>0)
+    # Repeat clock source limit is the command refresh boundary, not the
+    # first-event <=459 guard; at most 40 ticks after the first event.
+    repeat_event=wait&(k==repeat_due)&(~boundary)&(~nominal)&(
+        coherent)&(source_step<500)&geometry_ok&(~bad)&(count==1)&(
+        mode==target_mode)&(inclusive | (cost>=xp.asarray(.5,xp.float32)))
+    reason=xp.where(bad,FFE_MISS_INVALID,xp.where(boundary_miss,FFE_MISS_BOUNDARY,
+        xp.where(nominal_miss,FFE_MISS_NOMINAL,xp.where(coherence_miss,FFE_MISS_COHERENCE,
+        xp.where(expired,FFE_MISS_EXPIRED,0))))).astype(i)
+    first_event=first_event&(reason==0)
+    repeat_event=repeat_event&(reason==0)
+    # On the final allowed tick, a miss closes immediately, not a tick late.
+    deadline_miss=(first&(k==first_end)&(~first_event))|(wait&(k==repeat_end)&(~repeat_event))
+    reason=xp.where((reason==0)&deadline_miss,FFE_MISS_EXPIRED,reason).astype(i)
+    phase=xp.where((reason>0)|repeat_event,FFE_CLOSED,phase).astype(i)
+    state=dict(k=k,hard=hard,band=band,cell=cell,due=due,phase=phase,
+               repeat_due=repeat_due,block=block.astype(i))
+    return state,dict(first=first_event,repeat=repeat_event,direction=direction,
+                      block=block,bad=bad,reason=reason,target_mode=target_mode)
+
+def ssrpc_post(xp,state,pre,*,gap,post_coherent,terminal,refresh):
+    """Advance once per actual action; preserve actual event even if terminal."""
+    i=xp.int32
+    k=state['k'];first=pre['first'];repeat=pre['repeat']
+    first_or_wait=first|(state['phase']==FFE_REPEAT)
+    gap_bad=first&((gap<30)|(gap>32))
+    closure=first_or_wait&(terminal|refresh|(~post_coherent))
+    # A terminal first event still counts but never opens a repeat.
+    reason=xp.where(gap_bad,FFE_MISS_INVALID,xp.where(closure,
+        xp.where(terminal,FFE_MISS_TERMINAL,FFE_MISS_COHERENCE),pre['reason'])).astype(i)
+    phase=xp.where(closure|gap_bad|repeat,FFE_CLOSED,
+        xp.where(first,FFE_REPEAT,state['phase'])).astype(i)
+    # If a hard slot is due but terminal occurred on its non-event row, close.
+    due_terminal=(state['hard']>0)&(phase==FFE_FIRST)&(k>=state['due'])&terminal
+    reason=xp.where(due_terminal,FFE_MISS_TERMINAL,reason).astype(i)
+    phase=xp.where(due_terminal,FFE_CLOSED,phase).astype(i)
+    out=dict(state,k=(k+1).astype(i),phase=phase,
+             repeat_due=xp.where(first,k+35,state['repeat_due']).astype(i))
+    return out,dict(reason=reason,bad=pre['bad']|gap_bad)
+
+def ssrpc_risk_labels(xp,old,pre,pick,nxt,result,*,inclusive,boundary,nominal,count,
+                     coherent,source_step,mode,cost,geometry_valid,
+                     shadow_gap,terminal,refresh,post_coherent):
+    """Passive labels on an actual pre/post transition; shadow_gap is the
+    sampled V1 gap latched at the actual first event (not current RNG draw).
+    No state mutation, no policy feedback and no extra native calls.
+    """
+    k=old['k']; initial=k==0
+    phase=xp.where(initial,FFE_FIRST,old['phase'])
+    active=pick['block']&(phase!=FFE_CLOSED)
+    first=active&(phase==FFE_FIRST)
+    wait=active&(phase==FFE_REPEAT)
+    due=pre['due']; first_end=112+160*pre['band']
+    actual_gap=k-(old['repeat_due']-35)
+    first_risk=first&(k>=due)&(k<=first_end)
+    repeat_risk=wait&(actual_gap==35)
+    geometry=geometry_valid&xp.isfinite(cost)&(cost>=0)&(cost<=1)&(mode>=0)&(mode<=3)
+    def bits(predicates):
+        out=xp.zeros_like(k,dtype=xp.int32)
+        for index,passed in enumerate(predicates):
+            out=out|((~passed).astype(xp.int32)<<index)
+        return out
+    common=(~boundary,~nominal,coherent)
+    first_bits=bits(common+(source_step<=459,geometry,count==0,mode>0))
+    repeat_bits=bits(common+(source_step<500,geometry,count==1,
+                              mode==pick['target_mode'],inclusive | (cost>=xp.asarray(.5,xp.float32))))
+    first_event=pick['first']; repeat_event=pick['repeat']
+    first_eligible=first_risk&(first_bits==0)&(~pick['bad'])
+    repeat_eligible=repeat_risk&(repeat_bits==0)&(~pick['bad'])
+    closed=nxt['phase']==FFE_CLOSED
+    first_shadow=first_risk&(k<=due+8)
+    repeat_shadow=repeat_risk&(actual_gap>=shadow_gap)&(actual_gap<=shadow_gap+8)
+    return dict(
+        assigned=(pre['hard']==1)&initial,
+        first_due=first&(k==due),first_risk=first_risk,
+        first_eligible=first_eligible,first_event=first_event,
+        first_terminal=first_event&terminal,
+        first_miss=first&closed&(~first_event),
+        repeat_opened=first_event&(nxt['phase']==FFE_REPEAT),
+        repeat_wait=wait,repeat_risk=repeat_risk,
+        repeat_eligible=repeat_eligible,repeat_event=repeat_event,
+        repeat_miss=wait&closed&(~repeat_event),
+        repeat_terminal=repeat_event&terminal,
+        first_mask=xp.where(first_risk,first_bits,-1),
+        repeat_mask=xp.where(repeat_risk,repeat_bits,-1),
+        first_shadow=first_shadow,first_extended=first_risk&(~first_shadow),
+        repeat_shadow=repeat_shadow,repeat_extended=repeat_risk&(~repeat_shadow),
+        gap=xp.where(repeat_risk,actual_gap,-1),
+        mode_cost=xp.where(repeat_risk&geometry,
+            2*mode+(cost>=xp.asarray(.5,xp.float32)).astype(xp.int32),-1),
+        pre_reason=pick['reason'],post_reason=result['reason'],
+        terminal=terminal,refresh=refresh,post_coherent=post_coherent,
+        bad=result['bad']|(first_event!=first_eligible)|(repeat_event!=repeat_eligible)|
+            (wait&((shadow_gap<30)|(shadow_gap>32))))
+
+def ssrpc_pre_ctrl(xp,old,**kw):
+    return ssrpc_pre(xp,old,inclusive=False,**kw)
+
+def ssrpc_pre_cand(xp,old,**kw):
+    return ssrpc_pre(xp,old,inclusive=True,**kw)
+
+def ssrpc_labels_ctrl(xp,old,pre,pick,nxt,result,**kw):
+    return ssrpc_risk_labels(xp,old,pre,pick,nxt,result,inclusive=False,**kw)
+
+def ssrpc_labels_cand(xp,old,pre,pick,nxt,result,**kw):
+    return ssrpc_risk_labels(xp,old,pre,pick,nxt,result,inclusive=True,**kw)
+
+class SSRPCCoverageJoystick(CoverageJoystick):
+    """Opt-in matched arm; historical FFE authorizations do not apply."""
+    def __init__(self, *, arm, config):
+        if type(arm) is not str or arm not in ('ctrl','cand'):
+            raise ValueError('SSRPC_ARM')
+        self.__ssrpc_arm=arm
+        super().__init__(stage='easy_repeat_support',config=config,h4_arm='control',ffe2=True)
+
+    @property
+    def ssrpc_arm(self):
+        return self.__ssrpc_arm
+# H4SSRPC_HELD_ENV_END
