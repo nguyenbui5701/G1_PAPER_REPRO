@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.288  
+**Version:** 1.2.289  
 **Ngày cập nhật:** 2026-11-27 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -3771,7 +3771,7 @@ Under v1.2.286 pre-reservation STOP counted as an attempt; close old H4FFE activ
 
 Owner's subsequent explicit request to provide one corrected training command without GPU occupancy blocking is accepted as a new conditional one-use runtime GO for the same frozen FFE supervisor. Prior authorization remains historical/closed; no prior supervisor dispatch established from supplied shell STOP, and no local namespace inspection by SA. Authorization is conditional on local exclusive output absent (including symlinks), exact clean branch/HEAD, unchanged pinned executable blobs and all original static/core/checkpoint hashes before invocation. No deletion or rearming if any output exists. Remote source blob pins match v1.2.286; local artifact bytes must be verified by Owner shell/supervisor. This is Rules-only; no native execution or static repetition by SA.
 
-H4FFE_ACTIVE_GO: H4-M18-FFE-V1 m463_runs/m470_h4_m18_ffe_v1 ac4f395c615ce9abe9fa7a769aac0289fe17050cf69898cc68aa2eb7632e6fad 7b256192b6e067032136fd44e18c4877f7db8a625c47910572c2076871ccc12f m463_runs/m470_h4ffe_static_20261127_143456_UPB9bF.log aec8185d6215761d116ffbd25efe50ee2cc40b0ff9a3aa56f117b8034c0ccdab
+> CLOSED CONSUMED AUTHORIZATION (v1.2.289; Owner runtime receipts): H4FFE_ACTIVE_GO: H4-M18-FFE-V1 m463_runs/m470_h4_m18_ffe_v1 ac4f395c615ce9abe9fa7a769aac0289fe17050cf69898cc68aa2eb7632e6fad 7b256192b6e067032136fd44e18c4877f7db8a625c47910572c2076871ccc12f m463_runs/m470_h4ffe_static_20261127_143456_UPB9bF.log aec8185d6215761d116ffbd25efe50ee2cc40b0ff9a3aa56f117b8034c0ccdab
 
 Use the exact H4-M18-2 supervisor invocation and all frozen scientific/resource/report criteria. Apply v1.2.287 operational override: no GPU process occupancy queries/gates and no interactive prompts; preserve CUDA, runtime sampled VRAM/sampler, watchdog, storage and strict readers. Exactly one invocation, no retry, no --worker direct, no threshold changes, no additional runs, no promotion. Branch A ACTIVE, Branch B HOLD.
 
@@ -4036,6 +4036,9 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-27)
+
+**H4-M18-2C — Owner FFE-V1 training receipt review (v1.2.289; 2026-11-27)**: independently SHA256-rehashed all seven uploaded files: report4f22d82ef8c1849f01521976262761c808cdc8d78609574bda38e5dfb32fb535, attempt007ba1fe83f740d306780df7be235c8e525b0cc8d6b9294ef9ca3f128a3d3187, result a229e37960a1ecba8262848c639171cdb8673be3447ff35cf563fa32ff967ac1, worker log1260b68cce1b637a5ab9997cae5f5dbe273d3897494c9acfbb2e97c37cf0d284, worker.started f474d0763ba7ab4d6f6bc1e3667fc925b155d57477af86ac939f189332bb6517, dispatch.started 7d8d6afe78be31699cb089b0f1e8fdb7906bce3257e0155457e17c10bffce085, manifest fc263ae085aaf19e346a0f58b1ca4cd94fa9030fb624e8e1f2ae462af56ad358. All authorization fields equal frozen marker; COMPLETE producer_rc0 and report TECHNICAL_PASS; terminal supervisor exit/footer and independent strict reader output not supplied, so full technical receipt acceptance conditional on those, not grounds for retry. Generated and checkpoint binaries retained locally; hashes reported only. 5242880 training/800 Adam/2000 diagnostic/20 rollouts/4 chunks, 24576/2 reset lanes, normalizer416808960, exact 24 reward config, 4 finite chunks, 20 collected/committed and zero rejected/bad, clock0/160/320/480/640; legacy66/66 and coverage24/24. GPU301 samples/9042MiB of12288/no errors, five JAX cast warnings no reported finite failure. Material gate independently FAIL: chunks [5,5,1,2]/[0,4,1,0]/[4,3,0,0]/[1,3,1,0], half [5,9,2,2]/[5,6,1,0], total30; both-loaded cells fail both halves. Nominal1143208 >=916743, ordinary1390/1370/1504/1449/1443 all pass frozen floors, every chunk >=1. Hard assignments1022/first144/repeat30; single-loaded 25/77 first, both-loaded5/67; reason codes from env86919b3e: nominal210, expired780, terminal2, remaining codes0; aggregate closure reasons do not identify which eligibility predicate caused expiry. Ordinary8650 events and hard174, 8824 total; hard repeats 13/5/7/5, ordinary events8055/317/160/118, front-loading persists in ordinary. Diagnostic reward10.63378/avg length468/termination-100 on 2 eval lanes not controlled efficacy. Final policy2a5e91d3dd91d064b73e5b43c70770cbfead978505bf1b2d65f2f34e0e5a6b3c, fullstate d593274db57df624bd6d687f8682670d1e3e0193a64c4f2e8809663a9c6667ed, manifest resume forbidden/promotion false. Close one-use marker as consumed, EXPOSURE_INCONCLUSIVE immutable, NO_PROMOTE, scientific efficacy UNTESTED. Recommend offline decision review of eligibility bottleneck and decision value of existing policy controlled DEV (separate explicit GO only, no exposure waiver); no new PPO, retry, threshold relaxation, standalone diagnostic, combined reward, holdout, promotion or executable change. Branch A ACTIVE/B HOLD.
+
 
 **H4-M18-2B CORRECTED CONDITIONAL ONE-USE GO (v1.2.288):** Owner requests corrected training command after shell STOP. Unique new active FFE marker, conditional on unused local output and exact frozen provenance; no GPU occupancy or interactive gate. Existing supervisor only, 5242880 training/800 optimizer/2000 diagnostic eval, runtime limits unchanged. No native execution by SA; technical/exposure/efficacy UNTESTED, no promotion, Branch B HOLD.
 
@@ -4965,6 +4968,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-27 | H4-M18-2C FFE runtime review | Seven SHA exact; report technical PASS, supervisor footer missing; hard30, half-cell FAIL, nominal/ordinary PASS | GO consumed / EXPOSURE_INCONCLUSIVE / NO_PROMOTE / no runtime | 1.2.289 |
+
 | 2026-11-27 | H4-M18-2B corrected FFE launch | Owner requested one corrected command; remote executable pins unchanged; local namespace/provenance pending preflight | CONDITIONAL ONE-USE GO / no GPU occupancy or interactive gate / no promotion | 1.2.288 |
 
 | 2026-11-27 | H4-M18-2A Owner shell correction | Chrome PID798707 C+G 163MiB; lowercase unused blocked; no supervisor dispatch established | RULES-ONLY / remove GPU occupancy and interactive prompt gates / old GO closed / new explicit GO required | 1.2.287 |
@@ -5603,6 +5608,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.289 — 2026-11-27:** Record FFE runtime receipt review and consume one-use authorization; technical report PASS with terminal receipt limitation, material exposure INCONCLUSIVE immutable, no promotion or new runtime; Rules only, Branch B HOLD.
 
 - **v1.2.288 — 2026-11-27:** New conditional one-use FFE authorization after Owner's corrected launch request, preserving historical closure of old GO and all frozen science/resource/reader gates; no GPU occupancy or interactive prompt, no executable edits or native calls. Branch B HOLD.
 
