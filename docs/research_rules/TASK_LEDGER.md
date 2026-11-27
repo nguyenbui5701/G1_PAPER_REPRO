@@ -80,3 +80,6 @@ Append one row per task with exact evidence/commit, decision, limitations and ne
 | H4-M24-2 receipt review | Owner log 656B and attempt 425B, independent rehash; 95/95; remote evaluator SHA256 verified | CONSUMED / SCOPED HOST-STATIC PASS / NATIVE HOLD | e8c831c5042e021e9662cc544f940aa540403271; outer-console/local provenance/native unverified; explicit closure and native GO required |
 
 | H4-M24-3 | Owner explicit static closure and distinct native GO, accepted limitations | EDIT-FIRST / ONE-USE NATIVE AUTHORIZATION PREPARED | ada258dee2de6722b2bbcc94139f89e79c5cbb92; effective only exact native marker child, 3 lanes, max1308/426, zero optimizer; receipt pending |
+
+
+| H4-M24-3 receipt review | 5/5 uploaded SHA256 exact; native manifest quaternion failure before journal header; source-level representation mismatch and offline arithmetic | CLOSED/CONSUMED / TECH STOP / SCIENCE NOT EVALUATED / NATIVE HOLD | 30eb954b80ef3489c04e8518fc3106c7465622de; journal and outer console Owner-reported; proposed H4-M25-1 held only; explicit closure/scope required; no source or execution |

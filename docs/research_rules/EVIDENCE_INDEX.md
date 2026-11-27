@@ -446,3 +446,7 @@ Each link includes the section until the next heading; ranges are retrieval aids
 
 ## H4-M24-3 native issuance
 - [Reviewed base](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/ada258dee2de6722b2bbcc94139f89e79c5cbb92), [static child](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/e8c831c5042e021e9662cc544f940aa540403271), frozen evaluator 05ada48c07940c8f1aa6d4402cf95a2f2aa78d8d. See ACTIVE_EXPERIMENT for exact marker, scope and accepted limits; no native result yet.
+
+
+## H4-M24-3 reviewed native STOP
+- [Exact native authorization](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/30eb954b80ef3489c04e8518fc3106c7465622de), [producer](https://github.com/nguyenbui5701/G1_PAPER_REPRO/blob/30eb954b80ef3489c04e8518fc3106c7465622de/m463_gate3_cp_eval.py#L6245-L6259), [consumer](https://github.com/nguyenbui5701/G1_PAPER_REPRO/blob/30eb954b80ef3489c04e8518fc3106c7465622de/m463_gate3_cp_eval.py#L15247-L15285), [mock](https://github.com/nguyenbui5701/G1_PAPER_REPRO/blob/30eb954b80ef3489c04e8518fc3106c7465622de/m463_gate3_cp_eval.py#L15745-L15753). Five exact uploaded hashes/bytes in ACTIVE_EXPERIMENT; no independent journal or outer-console file. No scientific evaluation.
