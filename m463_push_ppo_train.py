@@ -12353,6 +12353,27 @@ def ssrpc_cross_chunk_fixture():
         changed=b.copy();setrow(changed,**{key:value})
         ssrpc_expect_reject(lambda:ssrpc_replay_lane_chunks(np,encode([a,changed]),'cand',complete=False),'cross_'+key)
     return dict(positive=3,negative=5)
+
+def ssrpc_static_lifecycle_fixture(root,auth):
+    import tempfile
+    h4m12_require(ssrpc_static_verify_authorization_commit(root,auth) is None,
+                  'SSRPC_STATIC_HISTORY_POSITIVE')
+    ssrpc_expect_reject(lambda:ssrpc_static_verify_authorization_commit(root,
+        dict(auth,source_head=auth['authorization_head'])),'static_history_parent')
+    ssrpc_expect_reject(lambda:ssrpc_static_verify_authorization_commit(root,
+        dict(auth,authorization_head=auth['source_head'])),'static_history_head')
+    with tempfile.TemporaryDirectory(prefix='ssrpc_exclusive_',dir=root/'m463_runs') as tmp:
+        p=Path(tmp)/'attempt';p.mkdir(exist_ok=False)
+        f=p/'attempt.json';ssrpc_static_write(f,dict(fixture=True))
+        h4m12_require(ssrpc_read_json(f,SSRPC_STATIC_REPORT_CAP)=={'fixture':True},
+                      'SSRPC_EXCLUSIVE_POSITIVE')
+        try:ssrpc_static_write(f,dict(fixture=False))
+        except FileExistsError:pass
+        else:raise RuntimeError('SSRPC_EXCLUSIVE_REWRITE')
+        try:p.mkdir(exist_ok=False)
+        except FileExistsError:pass
+        else:raise RuntimeError('SSRPC_EXCLUSIVE_REUSE')
+    return dict(history_positive=1,history_negative=2,exclusive_positive=1,exclusive_negative=2)
 # SSRPC_5A_FIXTURES_END
 
 # SSRPC_5A_STATIC_SUPERVISOR_BEGIN
@@ -12374,6 +12395,7 @@ def ssrpc_static_manifest():
         receipts=dict(json_positive=1,json_negative=6,terminal_positive=1,terminal_negative=7),
         marker=dict(positive=2,negative=6,static_positive=1,static_negative=4),
         cross_chunk=dict(positive=3,negative=5),
+        lifecycle=dict(history_positive=1,history_negative=2,exclusive_positive=1,exclusive_negative=2),
         contracts=dict(static_schema_positive=1,static_schema_negative=9,control_positive=1,
             control_negative=5,abort_positive=2,abort_negative=6),
         typed=dict(positive=2,negative=5,native_calls=0,typed_mock_only=True),
@@ -12570,7 +12592,8 @@ def ssrpc_read_static(root,expected_sha,*,terminal_required=True):
         h4m12_require(log.read_bytes().splitlines().count(token)==1,'SSRPC_STATIC_LOG_TOKEN')
         result=ssrpc_read_json(out/'attempt_result.json',SSRPC_STATIC_REPORT_CAP)
         expected=dict(status='COMPLETE',authorization=auth,report_sha256=expected_sha,
-                      producer_rc=0,worker_log_sha256=digest(log),stored_log_bytes=log.stat().st_size)
+                      producer_rc=0,worker_pid=worker['pid'],parent_pid=attempt['parent_pid'],
+                      worker_log_sha256=digest(log),stored_log_bytes=log.stat().st_size)
         h4m12_require(json.dumps(result,sort_keys=True)==json.dumps(expected,sort_keys=True),'SSRPC_STATIC_RESULT')
         terminal=ssrpc_read_json(out/'supervisor.terminal.json',SSRPC_STATIC_REPORT_CAP)
         h4m12_require(json.dumps(terminal,sort_keys=True)==json.dumps(dict(expected,reader_rc=0),sort_keys=True),
@@ -12605,6 +12628,7 @@ def ssrpc_static_worker(root,args,auth,out):
         report_cand=ssrpc_report_fixture(root,parent,dict(arm='cand',generated_sha256=generated['cand']),src['cand']),
         receipts=ssrpc_static_receipt_fixture(root),marker=ssrpc_marker_fixture(),contracts=ssrpc_contract_fixture(),
         typed=h4ffe2_typed_fixture(root),cross_chunk=ssrpc_cross_chunk_fixture(),
+        lifecycle=ssrpc_static_lifecycle_fixture(root,auth),
         generator=dict(arms=2,invalid_arm_rejected=1,held_runtime_rejected=2))
     h4m12_require(ssrpc_static_no_native() and ssrpc_static_auth(root)==auth and
         all(not (root/p).exists() and not (root/p).is_symlink() for p in SSRPC_ARM_OUTPUT.values()),
@@ -12656,8 +12680,10 @@ def ssrpc_static_main(argv):
         rc=child.wait(timeout=max(1,deadline-time.monotonic()))
         h4m12_require(rc==0 and ssrpc_static_auth(root)==auth,'SSRPC_STATIC_PRODUCER')
         sha=digest(out/'report.json');ssrpc_read_static(root,sha,terminal_required=False)
+        worker=ssrpc_read_json(out/'worker.started.json',SSRPC_STATIC_REPORT_CAP)
+        h4m12_require(worker['pid']==child.pid and worker['parent_pid']==os.getpid(),'SSRPC_STATIC_ACTUAL_PID')
         result=dict(status='COMPLETE',authorization=auth,report_sha256=sha,producer_rc=0,
-            worker_log_sha256=digest(out/'worker.log'),stored_log_bytes=total)
+            worker_pid=child.pid,parent_pid=os.getpid(),worker_log_sha256=digest(out/'worker.log'),stored_log_bytes=total)
         ssrpc_static_write(out/'attempt_result.json',result)
         ssrpc_static_write(out/'supervisor.terminal.json',dict(result,reader_rc=0))
         ssrpc_read_static(root,sha)
