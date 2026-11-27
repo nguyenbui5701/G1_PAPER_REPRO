@@ -63,3 +63,6 @@ Offline pre-push contact counts and pinned native Joystick source reviewed; prov
 
 ## 2026-11-27 — Sequential failure-case discussion Case 2.3 (governance v2.0.0 unchanged)
 Pinned native collision/geometry/reward and historical H1-M2/R12 evidence reviewed. Provisional placement/path, perturbation and safety hypotheses HELD; Case2.2 open questions retained. No executable/root/archive change, runtime or new empirical evidence.
+
+## 2026-11-27 — Sequential failure-case discussion Case 2.4 (governance v2.0.0 unchanged)
+Existing turning DEV and pinned DR/reward/observation source reviewed. Provisional targeted yaw curriculum, friction-only robustness, conditional tracking and torque-rate hypotheses HELD; Case2.3 open questions retained. No executable/root/archive changes or new empirical results.
