@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.269  
+**Version:** 1.2.270  
 **Ngày cập nhật:** 2026-11-27 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -3443,6 +3443,14 @@ Matched prospective research matrix: archived M12 (original reward/original expo
 
 EDIT-FIRST next held R12 integration upon explicit Owner GO: minimal existing m463_coverage_env.py r11_sample/rect/distance reuse and new isolated R12 latch/scalar cost after original super.step and before AutoReset; new opt-in state/metrics only, R11 and legacy paths byte projection unchanged. Existing m463_instrument_brax.py M12/R11 generator actual Transition consumed reward reducer/invalid batch guard with signed ledger; no new math in PPO loss/GAE or optimizer, no extra rollout, preserve exact original native reward config, inactive branches bit-identical. Existing m463_push_ppo_train.py parent/worker/typed restore/guard/supervisor/readers and historical source projections, unique new held namespace and exact provenance; no new repo file, no evaluator change yet. Need actual source compile, exact projections and generated source, fixed float32 geometry, active window boundary/repeat/command/terminal/no-load fixtures, signed desired/delivered/consumed/invalid batch tests, archive pins/reader/CLI HOLD. If integration cannot retain strict safety/provenance, STOP, no weakened guard. Rollback via reviewed revert only. SA this turn Rules-only, host algebra illustrative, zero native/simulation/inference/reset/optimizer/PPO. H4-M16-0 design COMPLETE / R12 prospective held implementation pending separate GO, all runtime HOLD, Branch B HOLD.
 
+### H4-M16-1 — R12-DCR-V1 partial held host core / full integration BLOCKED (v1.2.270; 2026-11-27)
+
+Owner explicitly authorized held integration only. SA verified branch HEAD25fdc31aa416547f41440f0f21b925ad2020d828, retrieved complete Rules1.2.269 blob2f6556e39c517bf3233a672c1cdd432b265441af and reviewed frozen R12 design, AGENTS, existing r11_sample/rect/distance/transition and M12/R11 trainer/generator integration entry points. No active machine-readable GO. Existing h4r11_project_sources requires exact reverse projection of environment, generator and trainer; adding only reward helpers to the repository would invalidate historical source verification. No weakening of old checks authorized.
+
+Actual SA offline NumPy float32 draft core outside repository: fixed 8 corners/28 pairs supporting edges, cost and loaded modes, stable bounded cost arithmetic, causal age1..100 latch, repeat/terminal/boundary/timeout/coherence closure, signed desired and delivered deltas. Host fixtures executed: 1000 randomized two-rectangle hulls versus independent float64 monotone-chain reference (max abs difference7.815747182782218e-08m; illustrative acceptance1e-4m), midpoint, 7 edge cases incl duplicate/rotated/near-coincident/invalid degenerate hull, 4 load modes, 100 recovery ticks, 6 closure cases, 1 invalid metadata and 1 physical unsafe-but-valid case, 4 inactive native bitwise cases and 4 delivery rounding cases PASS. Draft core SHA25664bf379a3ae4737684c6fc5900a6eac1b72c5df7f6ff198d74a8747b664544d7; fixture SHA256d824bfb176802bd6fb146f1eafca8b5447809e7d7e59cda5d4b1850067bdd6cb. These are external host drafts, not integrated repo code, actual native flags/contact schema/JAX graph/Transition reward/PPO consumption/optimizer freeze untested. Geometry tolerance is frozen design; host reference comparison is not native acceptance.
+
+STOP at incomplete integration: existing r11_sample must be reused in actual environment before AutoReset, causal flags and recovery telemetry wired, actual-consumed signed pre-SGD contract plus material exposure/host-reset conservation implemented, R12 distinct typed-restore/namespace/authorization/parent-child guards/readers and exact reverse projections across all three existing files completed and tested. No executable source changes committed, no standalone native diagnostic, no full static receipt or command claimed, zero physical transitions/resets/inference/optimizer/PPO. Rules-only record preserves every frozen v1.2.269 control, thresholds, 24 native reward terms, original CTRL curriculum, R11 OFF and future training budget not allocated. Failure-focused curriculum remains held. No retry of closed historical treatments, holdout or promotion. NEXT complete H4-M16-1 held integration under existing Owner scope; only then supply actual full static command; separate explicit runtime GO required. Branch A active, Branch B HOLD.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -3704,6 +3712,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-26)
+
+**H4-M16-1 R12 PARTIAL HOST CORE PASS / FULL HELD INTEGRATION BLOCKED (v1.2.270):** exact frozen design verified, external draft NumPy float32 hull/latch/delivery fixtures passed, actual PPO-consumed ledger/native wiring/projections/guards/readers incomplete. No executable edits or full static receipt, no native authorization, zero native work. Preserve all R12 constraints; Branch B HOLD.
 
 **H4-M16-0 FAILURE-FOCUSED RECOVERY PPO DIRECTION / R12-DCR-V1 PROSPECTIVE DESIGN COMPLETE (v1.2.269):** Owner approves reward + targeted exposure + safety research; first R12 dense standing recovery cost only, original M12 curriculum and fullstate/budget preserved, R11 OFF. Failure-focused actual joint-state curriculum held for separate design after R12; no blanket training/stacking. Host illustrative geometry/dose checks PASS, no native or executable edits. NEXT held R12 integration on explicit GO; all runtime HOLD, B HOLD.
 
@@ -4595,6 +4605,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-27 | H4-M16-1 partial held host core | 1000 reference hulls / 7 edge cases / latch and delivered delta host fixtures; repo executable unchanged | HOST DRAFT PASS / FULL INTEGRATION BLOCKED / zero native | 1.2.270 |
+
 | 2026-11-27 | H4-M16-0 failure-focused PPO direction and R12-DCR-V1 design | accepted M12/RED/R11 evidence, bounded dense cost and exposure ledger, separate targeted curriculum roadmap | DESIGN COMPLETE / HELD implementation pending / all runtime HOLD | 1.2.269 |
 
 | 2026-11-27 | H4-M15-4A R11 controlled DEV acceptance | report db59428a / 39747 physical / 5/8 survival and recovery5 / 29 hard failures | TECHNICAL COMPLETE / SCIENTIFIC NO_GO / GO consumed | 1.2.268 |
@@ -5195,6 +5207,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.270 — 2026-11-27:** Record actual R12 partial offline core fixture results and incomplete source integration blocker; no executable changes, no full static receipt or native GO, all frozen controls retained. Branch B HOLD.
 
 - **v1.2.269 — 2026-11-27:** Owner approves Failure-Focused Recovery PPO direction; amend reward-only strategic scope for future separately approved exposure design, select R12 dense standing cost first, preserve matched M12 controls and safety gates, no native GO or executable edits. Branch B HOLD.
 
