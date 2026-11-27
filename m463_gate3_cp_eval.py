@@ -14601,6 +14601,185 @@ H4M23_SPEC=dict(id='H4-M23-FFE2-RICH-V1',policy_sha256=H4M23_POLICY_SHA,
     historical_scientific='NO_GO',disposition='NO_PROMOTE',training_authorized=False,
     holdout_authorized=False)
 
+
+# H4-M24-1: distinct held V2 administrative/bootstrap path. Shared science is unchanged.
+# Select only once at the explicit CLI boundary; subprocesses repeat the same selection.
+H4M24_MODE=False
+H4M23_ACTIVE_MARKER='H4M23_RICH_ACTIVE_GO:'
+H4M23_STATIC_MARKER='H4M23_RICH_STATIC_GO:'
+H4M23_CHILD_PREFIX=[]
+H4M24_BOOT_ENV='H4M24_BOOTSTRAP_SHA256'
+H4M24_ROOT=Path('/home/labrobot/nguyenbui/humanoid')
+H4M24_STAGE=H4M24_ROOT/'G1_M3_7_G1_MJX_GPU_ONE_STEP_V1'
+H4M24_PY=H4M24_STAGE/'.venv_m37_jax0435_mjx327/bin/python'
+H4M24_PLAY=H4M24_STAGE/'source/mujoco_playground_2025'
+H4M24_C=H4M24_ROOT/'G1_M3_11C_PPO_MANIFEST_REPAIR_V1/overlays/wheels_20261107_110316_3940764'
+H4M24_MODULES=('mujoco_playground','dm_env','cloudpickle','gym','jax','brax','mujoco','flax','optax','numpy')
+H4M24_ENV=dict(JAX_PLATFORMS='cuda',JAX_DEFAULT_MATMUL_PRECISION='highest',
+    XLA_PYTHON_CLIENT_PREALLOCATE='false',PYTHONNOUSERSITE='1',
+    LD_LIBRARY_PATH=None,PYTHONHOME=None)
+H4M24_EXTRA_COUNTS=dict(bootstrap=12,namespace=10)
+H4M24_V1_DIR=Path('m463_runs/m470_h4_m23_3_ffe2_rich_v1')
+H4M24_V1_FILES={
+    'attempt.json':(415,'2d3a81787d46069d31eed57f5e344f6560533b27e98a4591473807e0b0b109c6'),
+    'attempt_result.json':(674,'e65882c57cafd4764695f3ab4b34a5e5b85b90f89620b87bc1dc990fe79d99de'),
+    'parent.json':(440,'46abe6bbc5055e2e0123597672e6ae2aebbbe4a3995164f4b278bb617ab07cf7'),
+    'runtime.entered.json':(432,'db5abd8f95bb89d8c5bed7b7f9984b17e7681a1b0a3facfd8bef509506df77da'),
+    'runtime.log':(1565,'c8d53d7ff71475dbf5e8801721f6d00a5ff29a2bcee01110a1070469174c3303'),
+    'journal.jsonl':(0,'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')}
+H4M24_V1_STATIC={
+    'm470_h4m23_rich_static_v1.log':(626,'b03ebe9c8484d82016741a42b9755e97eb1d214bcf8bff75fbd2fd8ca7f01388'),
+    'm470_h4m23_rich_static_v1.attempt.json':(429,'52f277e1414aa618b1cd3826b3ccd5c576697ade15b0eba797041b01311216df')}
+
+def h4m24_select():
+    global H4M24_MODE,H4M23_ACTIVE_MARKER,H4M23_STATIC_MARKER,H4M23_CHILD_PREFIX
+    global H4M23_OUTPUT,H4M23_STATIC,H4M23_STATIC_ID,H4M23_STATIC_ATTEMPT,H4M23_SPEC
+    h4m23_req(not H4M24_MODE and H4M23_SPEC['id']=='H4-M23-FFE2-RICH-V1','V2_SELECT_ONCE')
+    H4M24_MODE=True
+    H4M23_ACTIVE_MARKER='H4M24_RICH_ACTIVE_GO:'
+    H4M23_STATIC_MARKER='H4M24_RICH_STATIC_GO:'
+    H4M23_CHILD_PREFIX=['v2']
+    H4M23_OUTPUT=Path('m463_runs/m470_h4_m24_ffe2_rich_v2/report.json')
+    H4M23_STATIC=Path('m463_runs/m470_h4m24_rich_static_v2.log')
+    H4M23_STATIC_ID='H4-M24-STATIC-V2'
+    H4M23_STATIC_ATTEMPT=Path('m463_runs/m470_h4m24_rich_static_v2.attempt.json')
+    H4M23_SPEC=dict(H4M23_SPEC,id='H4-M24-FFE2-RICH-V2',output=str(H4M23_OUTPUT))
+
+def h4m24_validate_bootstrap(root,b):
+    # Pure validation; actual discovery is separate. No import of a native package.
+    root=Path(root).resolve()
+    h4m23_req(set(b)=={'python','prefix','paths','search','env','source_head','source_clean','modules'},'BOOT_SCHEMA')
+    h4m23_req(b['python']==str(H4M24_PY) and b['prefix']==str(H4M24_PY.parent.parent),'BOOT_PYTHON')
+    paths=[Path(x) for x in b['paths']]
+    h4m23_req(len(paths)==len(set(paths))==5 and all(p.is_absolute() for p in paths)
+        and paths[2:]==[H4M24_C.resolve(),H4M24_PLAY.resolve(),root]
+        and all(p.is_relative_to(H4M24_ROOT) for p in paths[:2]),'BOOT_PATHS')
+    h4m23_req(b['search']==b['paths'],'BOOT_SEARCH_ORDER')
+    h4m23_req(b['env']==H4M24_ENV,'BOOT_ENV')
+    h4m23_req(b['source_head']==PIN and b['source_clean'] is True,'BOOT_SOURCE')
+    h4m23_req(set(b['modules'])==set(H4M24_MODULES),'BOOT_MODULE_SET')
+    roles={'mujoco_playground':paths[3],'dm_env':paths[2],'cloudpickle':paths[0],'gym':paths[1]}
+    for name,entry in b['modules'].items():
+        h4m23_req(set(entry)=={'origin','sha256'} and h4m23_is_digest(entry['sha256']),'BOOT_MODULE_DIGEST')
+        origin=Path(entry['origin'])
+        intended=roles.get(name,H4M24_PY.parent.parent.resolve())
+        h4m23_req(origin.is_absolute() and origin.is_relative_to(intended),'BOOT_ORIGIN_'+name)
+    h4m23_req(Path(b['modules']['mujoco_playground']['origin'])==
+        paths[3]/'mujoco_playground/__init__.py','BOOT_PLAYGROUND_ENTRY')
+    return b
+
+def h4m24_bootstrap(root):
+    from importlib.machinery import PathFinder
+    h4m3_no_runtime_imports()
+    root=Path(root).resolve()
+    raw=os.environ.get('PYTHONPATH','').split(os.pathsep)
+    h4m23_req(len(raw)==5 and all(raw),'BOOT_PATH_COUNT')
+    paths=[Path(x).resolve() for x in raw]
+    h4m23_req(all(p.is_dir() for p in paths),'BOOT_MISSING_DIR')
+    modules={}
+    for name in H4M24_MODULES:
+        spec=PathFinder.find_spec(name)
+        h4m23_req(spec is not None and spec.origin is not None,'BOOT_MISSING_'+name)
+        p=Path(spec.origin).resolve()
+        h4m23_req(p.is_file(),'BOOT_MODULE_FILE_'+name)
+        modules[name]={'origin':str(p),'sha256':sha256(p)}
+    head=subprocess.check_output(['git','-C',str(H4M24_PLAY),'rev-parse','HEAD'],
+        text=True,timeout=30).strip()
+    clean=subprocess.check_output(['git','-C',str(H4M24_PLAY),'status','--porcelain'],
+        text=True,timeout=30).strip()==''
+    b=dict(python=str(Path(sys.executable).absolute()),prefix=str(Path(sys.prefix).absolute()),
+        paths=[str(p) for p in paths],
+        search=[str(Path(x or os.getcwd()).resolve()) for x in sys.path[1:6]],
+        env={k:os.environ.get(k) for k in H4M24_ENV},source_head=head,source_clean=clean,modules=modules)
+    h4m3_no_runtime_imports()
+    return h4m24_validate_bootstrap(root,b)
+
+def h4m24_check_parent_digest(b,child,inherited):
+    h4m23_req(inherited==(h4m3_digest(b) if child else None),'BOOT_PARENT_DIGEST')
+
+def h4m24_admit_bootstrap(root,child):
+    if not H4M24_MODE:return None
+    b=h4m24_bootstrap(root)
+    h4m24_check_parent_digest(b,child,os.environ.get(H4M24_BOOT_ENV))
+    return b
+
+def h4m24_child_env(b):
+    return None if b is None else dict(os.environ,**{H4M24_BOOT_ENV:h4m3_digest(b)})
+
+def h4m24_bind_bootstrap(pins,b):
+    if H4M24_MODE:
+        h4m23_req(b is not None and pins['bootstrap/launcher']==h4m3_digest(b),'BOOT_PROVENANCE')
+
+def h4m24_v1_receipts(root):
+    # Read only: preserve the complete failed V1 namespace and accepted static receipts.
+    out=root/H4M24_V1_DIR
+    h4m23_req(out.is_dir() and not out.is_symlink() and out.resolve()==out.absolute()
+        and set(p.name for p in out.iterdir())==set(H4M24_V1_FILES),'V1_NAMESPACE')
+    pins={}
+    for directory,files in ((out,H4M24_V1_FILES),(root/'m463_runs',H4M24_V1_STATIC)):
+        for name,(size,digest) in files.items():
+            p=directory/name
+            h4m23_req(p.is_file() and not p.is_symlink() and p.resolve()==p.absolute()
+                and p.stat().st_size==size and sha256(p)==digest,'V1_RECEIPT_'+name)
+            pins['h4m23_v1/'+name]=digest
+    return pins
+
+def h4m24_fixture_counts():
+    return dict(H4M23_FIXTURE_COUNTS,**H4M24_EXTRA_COUNTS) if H4M24_MODE else H4M23_FIXTURE_COUNTS
+
+def h4m24_fixtures(root,b):
+    # Run only inside authorized host-static child; counts independent of original 73.
+    import copy
+    counts={k:0 for k in H4M24_EXTRA_COUNTS}
+    def good(cat,fn):
+        fn();counts[cat]+=1
+    def bad(cat,fn,label):
+        try:fn()
+        except RuntimeError as exc:h4m23_req(label in str(exc),'V2_FIXTURE_WRONG_'+str(exc)[:120])
+        else:raise RuntimeError('M470_H4M24_FIXTURE_ACCEPTED_'+label)
+        counts[cat]+=1
+    def changed(k,value):
+        q=copy.deepcopy(b);q[k]=value;return q
+    good('bootstrap',lambda:h4m24_validate_bootstrap(root,b))
+    bad('bootstrap',lambda:h4m24_validate_bootstrap(root,changed('paths',b['paths'][:-1])),'BOOT_PATHS')
+    swapped=list(b['paths']);swapped[0],swapped[1]=swapped[1],swapped[0]
+    q=changed('paths',swapped);q['search']=swapped
+    bad('bootstrap',lambda:h4m24_validate_bootstrap(root,q),'BOOT_ORIGIN_cloudpickle')
+    bad('bootstrap',lambda:h4m24_validate_bootstrap(root,changed('search',list(reversed(b['search'])))),'BOOT_SEARCH_ORDER')
+    bad('bootstrap',lambda:h4m24_validate_bootstrap(root,changed('python','/usr/bin/python3')),'BOOT_PYTHON')
+    bad('bootstrap',lambda:h4m24_validate_bootstrap(root,changed('env',dict(b['env'],JAX_PLATFORMS='cpu'))),'BOOT_ENV')
+    bad('bootstrap',lambda:h4m24_validate_bootstrap(root,changed('source_head','0'*40)),'BOOT_SOURCE')
+    q=copy.deepcopy(b);del q['modules']['mujoco_playground']
+    bad('bootstrap',lambda:h4m24_validate_bootstrap(root,q),'BOOT_MODULE_SET')
+    q=copy.deepcopy(b);q['modules']['mujoco_playground']['origin']='/tmp/mujoco_playground/__init__.py'
+    bad('bootstrap',lambda:h4m24_validate_bootstrap(root,q),'BOOT_ORIGIN_mujoco_playground')
+    q=copy.deepcopy(b);q['modules']['dm_env']['sha256']='bad'
+    bad('bootstrap',lambda:h4m24_validate_bootstrap(root,q),'BOOT_MODULE_DIGEST')
+    bad('bootstrap',lambda:h4m24_check_parent_digest(b,True,'0'*64),'BOOT_PARENT_DIGEST')
+    good('bootstrap',lambda:h4m24_check_parent_digest(b,True,h4m3_digest(b)))
+    oldout=str(H4M24_V1_DIR/'report.json');oldlog='m463_runs/m470_h4m23_rich_static_v1.log'
+    native=H4M23_ACTIVE_MARKER+' '+H4M23_SPEC['id']+' '+str(H4M23_OUTPUT)+' '+'a'*64+' '+'b'*64+' '+str(H4M23_STATIC)+' '+'c'*64
+    static=H4M23_STATIC_MARKER+' '+H4M23_STATIC_ID+' '+'a'*40+' '+'b'*40+' '+str(H4M23_STATIC)
+    v1='H4M23_RICH_ACTIVE_GO: H4-M23-FFE2-RICH-V1 '+oldout+' '+'a'*64+' '+'b'*64+' '+oldlog+' '+'c'*64
+    v1s='H4M23_RICH_STATIC_GO: H4-M23-4-STATIC-V1 '+'a'*40+' '+'b'*40+' '+oldlog
+    good('namespace',lambda:h4m23_req(H4M23_OUTPUT.parent!=H4M24_V1_DIR and str(H4M23_STATIC)!=oldlog
+        and H4M23_STATIC_ATTEMPT.name not in H4M24_V1_STATIC and H4M23_CHILD_PREFIX==['v2'],'V2_PATHS'))
+    bad('namespace',lambda:h4m23_marker(v1),'DISTINCT_MARKER')
+    bad('namespace',lambda:h4m23_static_marker(v1s),'STATIC_MARKER')
+    bad('namespace',lambda:h4m23_marker(native+'\n'+v1),'HOLD_OR_CONFLICT')
+    bad('namespace',lambda:h4m23_marker(native.replace(str(H4M23_OUTPUT),oldout)),'DISTINCT_MARKER')
+    bad('namespace',lambda:h4m23_marker(native.replace(str(H4M23_STATIC),oldlog)),'DISTINCT_MARKER')
+    lines=h4m23_static_lines('a'*40,'b'*64,'c'*64,'d'*64)
+    oldlines=list(lines);oldlines[4]='H4M23_STATIC_FIXTURES '+json.dumps(H4M23_FIXTURE_COUNTS,sort_keys=True,separators=(',',':'))
+    bad('namespace',lambda:h4m23_static_receipt(oldlines,'b'*64,'c'*64,'d'*64),'STATIC_RECEIPT_EXACT')
+    good('namespace',lambda:h4m23_static_receipt(lines,'b'*64,'c'*64,'d'*64))
+    good('namespace',lambda:h4m23_req(inspect.getsource(h4m23_dispatch).index('h4m24_admit_bootstrap')<
+        inspect.getsource(h4m23_dispatch).index('h4m6_reserve_tech'),'V2_NATIVE_PREFLIGHT_ORDER'))
+    good('namespace',lambda:h4m23_req(inspect.getsource(h4m23_static_dispatch).index('h4m24_admit_bootstrap')<
+        inspect.getsource(h4m23_static_dispatch).index('h4m6_write_bounded'),'V2_STATIC_PREFLIGHT_ORDER'))
+    h4m23_req(counts==H4M24_EXTRA_COUNTS,'V2_FIXTURE_COUNT')
+    return counts
+
 def h4m23_req(ok,label):
     if not ok:raise RuntimeError('M470_H4M23_'+label)
 
@@ -14670,6 +14849,11 @@ def h4m23_inputs(root):
     pins['m3/report.json']=H4M4_REPORT_SHA
     ext=dict(more,gait={'path':str(gait),'sha256':sha256(gait)},model_manifest=m3r['manifest'],
         brax=a['brax_source_verification'])
+    if H4M24_MODE:
+        b=h4m24_bootstrap(root)
+        pins.update(h4m24_v1_receipts(root))
+        pins['bootstrap/launcher']=h4m3_digest(b)
+        ext['bootstrap']=b
     return pins,ctrl,ext,h4m23_archive_lanes(a)
 
 def h4m23_archive_lanes(a):
@@ -15269,7 +15453,7 @@ def h4m23_marker(rules):
     active=[l for l in rules.splitlines() if re.match(r'^[A-Z0-9_]+_GO:',l)]
     h4m23_req(len(active)==1,'HOLD_OR_CONFLICT')
     a=active[0].split()
-    h4m23_req(len(a)==7 and a[:3]==['H4M23_RICH_ACTIVE_GO:',H4M23_SPEC['id'],str(H4M23_OUTPUT)]
+    h4m23_req(len(a)==7 and a[:3]==[H4M23_ACTIVE_MARKER,H4M23_SPEC['id'],str(H4M23_OUTPUT)]
         and a[5]==str(H4M23_STATIC) and all(re.fullmatch('[0-9a-f]{64}',a[i]) for i in (3,4,6)),
         'DISTINCT_MARKER')
     return dict(id=a[1],output=a[2],source=a[3],provenance=a[4],static_path=a[5],static_sha=a[6])
@@ -15304,7 +15488,7 @@ def h4m23_authorize(root):
     h4m23_req(prior==static_base and approved==h4m23_append_marker(static_base,static_auth['line'])
         and git('rev-parse',static_head+'^')==static_auth['base']
         and git('diff','--name-only',static_auth['base'],static_head)=='G1_RESEARCH_RULES.md','STATIC_MARKER_CLOSED')
-    marker=next(l for l in rules.splitlines() if l.startswith('H4M23_RICH_ACTIVE_GO:'))
+    marker=next(l for l in rules.splitlines() if l.startswith(H4M23_ACTIVE_MARKER))
     h4m23_req(rules==h4m23_append_marker(prior,marker),'EXACT_ROOT_APPEND')
     h4m3_no_runtime_imports()
     return auth,pins,ctrl,ext,lanes
@@ -15432,8 +15616,10 @@ def h4m23_dispatch(root,child=False):
     h4m23_req(os.environ.get('JAX_PLATFORMS')=='cuda'
         and os.environ.get('JAX_DEFAULT_MATMUL_PRECISION')=='highest'
         and os.environ.get('XLA_PYTHON_CLIENT_PREALLOCATE')=='false','CUDA_ENV')
+    boot=h4m24_admit_bootstrap(root,child)
     if child:
         verified,pins,ctrl,ext,lanes=h4m23_authorize(root)
+        h4m24_bind_bootstrap(pins,boot)
         h4m23_req(verified==auth,'CHILD_AUTH')
         return h4m23_worker(root,auth,pins,ctrl,ext,lanes)
     path=root/H4M23_OUTPUT;out=path.parent
@@ -15450,10 +15636,11 @@ def h4m23_dispatch(root,child=False):
     signal.setitimer(signal.ITIMER_REAL,max(.01,deadline-time.monotonic()))
     try:
         verified,pins,ctrl,ext,lanes=h4m23_authorize(root)
+        h4m24_bind_bootstrap(pins,boot)
         h4m23_req(verified==auth,'PARENT_AUTH')
         with (out/'runtime.log').open('xb') as f:
-            proc=subprocess.Popen([sys.executable,'-B','-u',str(root/'m463_gate3_cp_eval.py'),'--h4m23-rich','child'],
-                cwd=root,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,start_new_session=True)
+            proc=subprocess.Popen([sys.executable,'-B','-u',str(root/'m463_gate3_cp_eval.py'),'--h4m23-rich',*H4M23_CHILD_PREFIX,'child'],
+                cwd=root,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,start_new_session=True,env=h4m24_child_env(boot))
             def emit(data):
                 f.write(data);f.flush()
             rc=h4m23_bounded_pipe(proc,out,deadline,H4M23_SPEC['log_cap'],emit,H4M23_SPEC['storage_reserve'])
@@ -15489,6 +15676,10 @@ def h4m23_dispatch(root,child=False):
     print('H4M23_DIAGNOSTIC_COMPLETE',result['report_sha256'],flush=True)
 
 def h4m23_cli(argv):
+    if argv[:1]==['v2']:
+        h4m24_select();argv=argv[1:]
+    elif argv!=['plan']:
+        raise RuntimeError('M470_H4M23_V1_PERMANENTLY_CLOSED')
     if argv==['plan']:
         print(json.dumps(H4M23_SPEC,sort_keys=True));return
     if argv in (['static'],['static-child']):
@@ -15517,7 +15708,7 @@ def h4m23_static_marker(rules):
     active=[l for l in rules.splitlines() if re.match(r'^[A-Z0-9_]+_GO:',l)]
     h4m23_req(len(active)==1,'STATIC_HOLD_OR_CONFLICT')
     a=active[0].split()
-    h4m23_req(len(a)==5 and a[:2]==['H4M23_RICH_STATIC_GO:',H4M23_STATIC_ID]
+    h4m23_req(len(a)==5 and a[:2]==[H4M23_STATIC_MARKER,H4M23_STATIC_ID]
         and all(re.fullmatch('[0-9a-f]{40}',a[i]) for i in (2,3))
         and a[4]==str(H4M23_STATIC),'STATIC_MARKER')
     return dict(id=a[1],base=a[2],blob=a[3],log=a[4],line=active[0])
@@ -15539,7 +15730,7 @@ def h4m23_static_admit(root):
 
 def h4m23_static_lines(head,source,provenance,evaluator):
     return ['H4M23_STATIC_HEAD '+head,'H4M23_SOURCE '+source,'H4M23_PROVENANCE '+provenance,
-        'H4M23_EVALUATOR_SHA256 '+evaluator,'H4M23_STATIC_FIXTURES '+json.dumps(H4M23_FIXTURE_COUNTS,sort_keys=True,separators=(',',':')),
+        'H4M23_EVALUATOR_SHA256 '+evaluator,'H4M23_STATIC_FIXTURES '+json.dumps(h4m24_fixture_counts(),sort_keys=True,separators=(',',':')),
         'H4M23_FULL_STATIC_PASS','STATIC_EXIT_CODE=0 LOG_EXIT_CODE=0']
 
 def h4m23_static_receipt(lines,source,provenance,evaluator):
@@ -15723,8 +15914,8 @@ def h4m23_static_fixture_run(root,pins,ext,lanes):
     good('historical_provenance',lambda:h4m23_req(
         pins['ffe2_dev/static.log']=='9c2af046fd1132d672e1b4d745454b238ee0270514b45388e7b82e1f1fd3524b',
         'HISTORICAL_STATIC_PIN'))
-    marker='H4M23_RICH_ACTIVE_GO: '+H4M23_SPEC['id']+' '+str(H4M23_OUTPUT)+' '+'a'*64+' '+'b'*64+' '+str(H4M23_STATIC)+' '+'c'*64
-    sm='H4M23_RICH_STATIC_GO: '+H4M23_STATIC_ID+' '+'a'*40+' '+'b'*40+' '+str(H4M23_STATIC)
+    marker=H4M23_ACTIVE_MARKER+' '+H4M23_SPEC['id']+' '+str(H4M23_OUTPUT)+' '+'a'*64+' '+'b'*64+' '+str(H4M23_STATIC)+' '+'c'*64
+    sm=H4M23_STATIC_MARKER+' '+H4M23_STATIC_ID+' '+'a'*40+' '+'b'*40+' '+str(H4M23_STATIC)
     good('authorization',lambda:h4m23_marker(marker))
     good('authorization',lambda:h4m23_static_marker(sm))
     bad('authorization',lambda:h4m23_marker(sm),'DISTINCT_MARKER')
@@ -15862,6 +16053,7 @@ def h4m23_static_dispatch(root,child=False):
     """One-use host-only launcher. No JAX, MJX, GPU or training calls."""
     import selectors,signal,shutil,time
     root=Path(root).resolve();auth,head=h4m23_static_admit(root)
+    boot=h4m24_admit_bootstrap(root,child)
     log=root/H4M23_STATIC;attempt=root/H4M23_STATIC_ATTEMPT
     if child:
         p=h4m23_json_file(attempt,8192)
@@ -15877,8 +16069,10 @@ def h4m23_static_dispatch(root,child=False):
         try:
             compile((root/'m463_gate3_cp_eval.py').read_bytes(),'<held evaluator>','exec')
             pins,ctrl,ext,lanes=h4m23_inputs(root)
+            h4m24_bind_bootstrap(pins,boot)
             source=h4red_eval_source(root);prov=h4m3_digest([pins,ext])
             h4m23_static_fixture_run(root,pins,ext,lanes)
+            if H4M24_MODE:h4m24_fixtures(root,boot)
             after=h4m23_inputs(root)
             h4m23_req(after[0]==pins and after[2]==ext and after[3]==lanes
                 and h4red_eval_source(root)==source and h4m23_static_admit(root)==(auth,head),'STATIC_POST_PROVENANCE')
@@ -15894,8 +16088,8 @@ def h4m23_static_dispatch(root,child=False):
     proc=None;data=bytearray();deadline=time.monotonic()+H4M23_STATIC_SECONDS
     with log.open('xb') as f:
         try:
-            proc=subprocess.Popen([sys.executable,'-B','-u',str(root/'m463_gate3_cp_eval.py'),'--h4m23-rich','static-child'],
-                cwd=root,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,start_new_session=True)
+            proc=subprocess.Popen([sys.executable,'-B','-u',str(root/'m463_gate3_cp_eval.py'),'--h4m23-rich',*H4M23_CHILD_PREFIX,'static-child'],
+                cwd=root,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,start_new_session=True,env=h4m24_child_env(boot))
             rc=h4m23_bounded_pipe(proc,log.parent,deadline,H4M23_STATIC_CAP-1024,data.extend,H4M23_SPEC['storage_reserve'])
             h4m23_req(rc==0 and time.monotonic()<deadline,'STATIC_CHILD_EXIT')
             lines=data.decode('utf8').splitlines()
@@ -15904,6 +16098,7 @@ def h4m23_static_dispatch(root,child=False):
             expected=h4m23_static_lines(head,lines[1].split()[-1],lines[2].split()[-1],lines[3].split()[-1])
             h4m23_req(lines==expected[:-1] and lines[3]=='H4M23_EVALUATOR_SHA256 '+sha256(root/'m463_gate3_cp_eval.py')
                 and h4m23_static_admit(root)==(auth,head) and time.monotonic()<deadline,'STATIC_CHILD_SCHEMA')
+            if H4M24_MODE:h4m23_req(h4m24_bootstrap(root)==boot,'BOOT_STATIC_POST')
             f.write(('\n'.join(expected)+'\n').encode('utf8'));f.flush();os.fsync(f.fileno())
         except BaseException as exc:
             if proc is not None and proc.poll() is None:
