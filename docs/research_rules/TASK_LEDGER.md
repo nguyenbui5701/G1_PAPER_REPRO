@@ -55,4 +55,6 @@ Historical complete ledger: [v1.2.294 L5191–5841](https://github.com/nguyenbui
 
 | H4-M23-3B source completion | Held validators, paired state linkage, bounded supervisor/worker and report readers authored | HELD INTEGRATION SOURCE IMPLEMENTED / STATIC PREPARATION REQUIRED / NATIVE HOLD | Source 9c126231e1666c99c6f3a66a849e0cce13540c50; no static fixture runner or receipt, no execution |
 
+| H4-M23-4 | Owner held full host-static preparation and freeze | EDIT-FIRST / HELD | Base eb130925f163af4f7450e2616ffdda96a7020c43; source review only, no execution |
+
 Append one row per task with exact evidence/commit, decision, limitations and next scope. Do not rewrite previous entries or imply authorization.
