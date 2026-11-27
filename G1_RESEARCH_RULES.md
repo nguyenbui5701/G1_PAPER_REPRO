@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.282  
+**Version:** 1.2.283  
 **Ngày cập nhật:** 2026-11-27 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -3719,6 +3719,12 @@ Frozen design unchanged: hard p1/8, original independent20% no-push at every epi
 
 Decision H4-M18-1 PARTIAL_HELD_CORE / full integration NOT COMPLETE / Owner component static pending (not full static). Owner may perform only read-only host component compile/extraction/41 fixtures, exact local wrapper/archive and reverse-byte checks with zero native calls, no output reservation or runtime marker. This receipt is not a training authorization. Next continue existing held implementation after review; preserve frozen specification and all historical source/artifacts. No new repository file; rollback by separately reviewed revert only. No PPO, native/standalone diagnostic, retry, holdout or promotion. Branch A ACTIVE, Branch B HOLD.
 
+### H4-M18-1A — exact Owner FFE core static accepted / full integration remains HELD (v1.2.283; 2026-11-27)
+
+Owner requests review under Rules. SA retrieved complete Rules1.2.282 blob19cdaabb1b0a00fa0216f7212f1eb6d88568b43c at verified branch HEADa84b06ed88d0680f156a0dac98cf9360d43a628e, reviewed operative H4-M18-1 and frozen v1.2.277 requirements, exact env blob9b729487388dc3c8a1cb7fe719135401563007db and baselinead0d9651acee6a338f603d141485361da1ed3fe3; reverse removal of isolated H4FFE_CORE restores exact old text. Independently read and SHA256-rehashed actual Owner receipt m463_runs/m470_h4ffe_core_static_20261127_141940_OvHkWF.log,1195 bytes,a1d0ebfbe1e40b5028eb61bb4853eff95971089176e9a525d84f203daeb5fbd4. Actual complete log has four full-file COMPILE_PASS (coverage/instrumenter/trainer/evaluator), H4FFE_REVERSE_BYTES_PASS, exact local wrapper Git blob pins Playground62e2823b80b692befe29e4640d0b7a816e52271c and Brax2c09c8268a29d14c832dd07050575e4541ee98af, M12 broad1569/1577/1700/1620/1679 and floors1256/1262/1360/1296/1344, nominal916743, H4FFE_CORE_FIXTURES41 with all native/reset/optimizer/inference counters0, H4FFE_STATIC_ZERO, explicit H4FFE_FULL_INTEGRATION_NOT_COMPLETE, H4FFE_CORE_STATIC_PASS and both exit codes0. No traceback. Receipt accepted for exact component scope; earlier Owner command performs nonprinting source/core SHA/Git and archive checks, local wrapper/archive binary bytes not independently rehashed by SA this turn. No claim of native or JAX compilation, actual clock continuity, full generated graph equivalence or material exposure from this host receipt. No duplicate component test required for unchanged bytes.
+
+Decision H4-M18-1A CORE_STATIC_ACCEPTED / full held integration still NOT COMPLETE / no runtime marker. Continue existing H4-M18-1 held integration scope with native opt-in scheduler, exact fold_in RNG isolation, actual r11_sample/r12_cost pre-injection load and capture geometry, legacy scheduler/event/pending conservation, separate hard/ordinary/nominal labels and no fallback; absolute continuation clock across natural AutoReset with typed restore/host reset checks and actual Transition row validation; unchanged native24 reward identity and original PPO/physics/PD/observation/action/termination; pre-SGD fail closed preserving optimizer and normalizer on invalid batch; per-cell/half/chunk and tail/safety accounting, exact archived M12 floors, generated-source and reverse projection, isolated authorization/namespace/bounded supervisor/strict readers and focused full static. If clock/carry or legacy conservation cannot be demonstrated without pinned wrapper edits, stop HOLD. Preserve frozen Official CTRL fullstate9b19312d, 5242880 train/800 optimizer/2000 diagnostic eval/20 rollouts/4 chunks. No combined reward, new training/runtime, standalone diagnostic, retry, holdout or promotion. This review is Rules-only, not implementation or new execution authorization. Branch A ACTIVE, Branch B HOLD.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -3980,6 +3986,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-27)
+
+**H4-M18-1A FFE CORE STATIC ACCEPTED (v1.2.283):** exact Owner receipt a1d0ebfb, four full-source compiles, local pinned wrappers, archive floors,41 fixtures, both RC0, all native counters0; partial held core accepted only. Continue full held integration; actual typed clock/Transition/reward/ledger/pre-SGD/supervisor/reader gates not complete. No active marker, no PPO/runtime/diagnostic/retry/combined reward/holdout/promotion; Branch B HOLD.
 
 **H4-M18-1 FFE-V1 PARTIAL HELD CORE (v1.2.282):** exact frozen design, upstream wrapper source feasibility, archiveM12 SHA exact/broad floors1256/1262/1360/1296/1344, pure scheduler/material gate 41 host fixtures PASS, byte-reversible env helper block only. No native wiring, actual PPO batch or typed carry proof yet; full integration and full static NOT COMPLETE. Owner host component receipt only; no active marker or runtime, no PPO/diagnostic/retry/combined reward/holdout/promotion; Branch B HOLD.
 
@@ -4897,6 +4905,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-27 | H4-M18-1A exact Owner FFE component static review | receipt a1d0ebfb; 4 compile, 2 wrapper pins, 41 fixtures, both RC0, zero native | CORE_STATIC_ACCEPTED / full held integration NOT COMPLETE / runtime HOLD | 1.2.283 |
+
 | 2026-11-27 | H4-M18-1 FFE-V1 partial held host core | exact archived M12 floor, pinned wrapper source review, 41 synthetic fixtures, reverse-byte env core | PARTIAL HELD / full integration NOT COMPLETE / no runtime | 1.2.282 |
 
 | 2026-11-27 | H4-M17-2A exact R12 DEV evidence review | 5 SHA matches; report516b0d3a; 12/60/42240/12; stand double6/8 both; safety30 entries | TECH COMPLETE / scientific NO_GO / NO_PROMOTE / authorization consumed | 1.2.281 |
@@ -5523,6 +5533,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.283 — 2026-11-27:** Accept exact Owner FFE component static receipt; retain full integration and runtime HOLD. No source edits, no repeat of unchanged core fixtures, no PPO/diagnostic/retry/holdout/promotion; Branch B HOLD.
 
 - **v1.2.282 — 2026-11-27:** Record FFE-V1 partial held core, exact M12 broad and nominal floors, pinned AutoReset source feasibility and41 host fixtures; explicitly not full integration or full static. One isolated env block, no runtime wiring/marker/native execution, no PPO/retry/combined arm/holdout/promotion, Branch B HOLD.
 
