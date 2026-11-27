@@ -15276,7 +15276,7 @@ def h4m23_authorize(root):
     pins,ctrl,ext,lanes=h4m23_inputs(root)
     source=h4red_eval_source(root)
     h4m23_req(auth['source']==source and auth['provenance']==h4m3_digest([pins,ext]),'AUTH_PROVENANCE')
-    log=h4abs_pin(root/H4M23_STATIC,auth['static_sha'],H4M23_SPEC['log_cap'])
+    log=h4abs_pin(root/H4M23_STATIC,auth['static_sha'],H4M23_STATIC_CAP)
     lines=log.read_text('utf8').splitlines()
     static_head=h4m23_static_receipt(lines,source,auth['provenance'],pins['source/m463_gate3_cp_eval.py'])
     def git(*argv):return subprocess.check_output(['git',*argv],cwd=root,text=True,timeout=30).strip()
@@ -15290,6 +15290,9 @@ def h4m23_authorize(root):
     prior=subprocess.check_output(['git','show',parent+':G1_RESEARCH_RULES.md'],cwd=root,timeout=30).decode('utf8')
     approved=subprocess.check_output(['git','show',static_head+':G1_RESEARCH_RULES.md'],cwd=root,timeout=30).decode('utf8')
     static_auth=h4m23_static_marker(approved)
+    attempt=h4m23_json_file(root/H4M23_STATIC_ATTEMPT,8192)
+    h4m23_req(set(attempt)=={'authorization','head','pid'} and attempt['authorization']==static_auth
+        and attempt['head']==static_head and type(attempt['pid']) is int and attempt['pid']>0,'STATIC_ATTEMPT_RECEIPT')
     h4m23_req(static_auth['blob']==h4m3_git_blob(root/'m463_gate3_cp_eval.py'),'STATIC_SOURCE_BLOB')
     static_base=subprocess.check_output(['git','show',static_auth['base']+':G1_RESEARCH_RULES.md'],cwd=root,timeout=30).decode('utf8')
     h4m23_req(prior==static_base and approved==h4m23_append_marker(static_base,static_auth['line'])
@@ -15445,18 +15448,10 @@ def h4m23_dispatch(root,child=False):
         with (out/'runtime.log').open('xb') as f:
             proc=subprocess.Popen([sys.executable,'-B','-u',str(root/'m463_gate3_cp_eval.py'),'--h4m23-rich','child'],
                 cwd=root,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,start_new_session=True)
-            with selectors.DefaultSelector() as sel:
-                sel.register(proc.stdout,selectors.EVENT_READ)
-                while True:
-                    remaining=deadline-time.monotonic();h4m23_req(remaining>0,'WATCHDOG')
-                    h4m23_req(shutil.disk_usage(out).free>=H4M23_SPEC['storage_reserve'],'SUPERVISOR_STORAGE')
-                    if not sel.select(min(remaining,1.)):continue
-                    data=os.read(proc.stdout.fileno(),65536)
-                    if not data:break
-                    f.write(data[:max(0,H4M23_SPEC['log_cap']-total)]);total+=len(data)
-                    f.flush();h4m23_req(total<=H4M23_SPEC['log_cap'],'LOG_CAP')
-                    h4m23_req(shutil.disk_usage(out).free>=H4M23_SPEC['storage_reserve'],'SUPERVISOR_STORAGE')
-            rc=proc.wait(timeout=max(.01,deadline-time.monotonic()));f.flush();os.fsync(f.fileno())
+            def emit(data):
+                f.write(data);f.flush()
+            rc=h4m23_bounded_pipe(proc,out,deadline,H4M23_SPEC['log_cap'],emit,H4M23_SPEC['storage_reserve'])
+            f.flush();os.fsync(f.fileno())
         h4m23_req(rc==0 and time.monotonic()<deadline,'CHILD_EXIT')
         after=h4m23_authorize(root)
         h4m23_req(after[0]==auth and after[1]==pins and after[3]==ext,'POST_PROVENANCE')
@@ -15504,9 +15499,9 @@ H4M23_STATIC_ATTEMPT=Path('m463_runs/m470_h4m23_rich_static_v1.attempt.json')
 H4M23_REVIEW_PATHS={'G1_RESEARCH_RULES.md'}|{'docs/research_rules/'+p for p in
     ('CURRENT_STATE.md','ACTIVE_EXPERIMENT.md','TASK_LEDGER.md','CHANGELOG.md','EVIDENCE_INDEX.md')}
 # Counts are number of independently invoked positive/negative cases, not rows.
-H4M23_FIXTURE_COUNTS=dict(projection=3,native_schema=6,packed_fields=10,manifest=4,
-    fork=4,ledger=5,final_reader=4,partial_reader=4,authorization=7,reservation=3,
-    watchdog_log=3,historical_provenance=4,native_calls=0,optimizer_updates=0)
+H4M23_FIXTURE_COUNTS=dict(projection=3,native_schema=6,packed_fields=15,manifest=4,
+    fork=4,ledger=5,final_reader=4,partial_reader=4,authorization=8,reservation=3,
+    watchdog_log=6,historical_provenance=4,native_calls=0,optimizer_updates=0)
 
 def h4m23_append_marker(base,line):
     return base+('' if base.endswith('\n') else '\n')+line+'\n'
@@ -15539,7 +15534,7 @@ def h4m23_static_admit(root):
 def h4m23_static_lines(head,source,provenance,evaluator):
     return ['H4M23_STATIC_HEAD '+head,'H4M23_SOURCE '+source,'H4M23_PROVENANCE '+provenance,
         'H4M23_EVALUATOR_SHA256 '+evaluator,'H4M23_STATIC_FIXTURES '+json.dumps(H4M23_FIXTURE_COUNTS,sort_keys=True,separators=(',',':')),
-        'H4M23_FULL_STATIC_PASS','STATIC_EXIT_CODE=0 TEE_EXIT_CODE=0']
+        'H4M23_FULL_STATIC_PASS','STATIC_EXIT_CODE=0 LOG_EXIT_CODE=0']
 
 def h4m23_static_receipt(lines,source,provenance,evaluator):
     import re
@@ -15674,7 +15669,7 @@ def h4m23_static_fixture_run(root,pins,ext,lanes):
     geo=copy.deepcopy(m['geometry']);geo['legs']['left']['halfsize'][0]=.5
     bad('manifest',lambda:h4m23_validate_manifest(changed(m,'geometry',geo),ext,np),'LEG_halfsize')
     ph=np.zeros(2,np.float32);post=np.full(2,.16,np.float32)
-    raw,row=h4m23_static_mock_raw(m,295,ph,post,np)
+    raw,row=h4m23_static_mock_raw(m,295,ph,post,np.zeros(35,np.float32),np)
     good('native_schema',lambda:h4m23_native_schema(raw,m,np))
     for key,value,label in (('action',np.zeros(28,np.float32),'NATIVE_FLOAT_action'),
         ('pre_air',np.zeros(2,np.float64),'NATIVE_FLOAT_pre_air'),
@@ -15683,6 +15678,27 @@ def h4m23_static_fixture_run(root,pins,ext,lanes):
         bad('native_schema',lambda k=key,v=value:h4m23_native_schema(changed(raw,k,v),m,np),label)
     packed=h4m23_pack(raw,row,m,np)
     good('packed_fields',lambda:h4m23_check_rich(packed,row,m,np))
+    # Nonzero reward and early touchdown fixture, independent of native inference.
+    gait=copy.deepcopy(raw);gr=list(row);ix={k:i for i,k in enumerate(H4M3_COLUMNS)}
+    gait['pre_air']=np.asarray([.1,0],np.float32);gait['pre_contact']=np.asarray([False,True])
+    gait['first_contact_derived']=np.asarray([True,False])
+    gait['reward_air_derived']=gait['pre_air']+np.float32(.02)
+    gait['per_foot_air_derived']=(gait['reward_air_derived']-np.float32(.2))*gait['first_contact_derived']
+    gait['phase_global_v']=np.asarray([.2,0],np.float32);gait['phase_mask_derived']=np.asarray(True)
+    gait['phase_fit_derived']=np.asarray(np.exp(-np.sum((gait['phase_z']-gait['phase_rz_derived'])**2)/np.float32(.01)),np.float32)
+    gait['reward']['reward/feet_phase']=gait['phase_fit_derived']
+    gait['reward']['reward/feet_air_time']=np.float32(2*np.sum(gait['per_foot_air_derived']))
+    gr[ix['reward_total']]=.02*sum(float(v) for v in gait['reward'].values())
+    good('packed_fields',lambda:h4m23_pack(gait,gr,m,np))
+    gp=h4m23_pack(gait,gr,m,np)
+    bad('packed_fields',lambda:h4m23_check_rich(changed(gp,'first_contact_derived',[False,False]),gr,m,np),'AIR_RECONSTRUCTION')
+    margin=copy.deepcopy(packed['raw_ctrl_margin'])
+    idx=next(i for i,v in enumerate(margin) if v is not None);margin[idx]+=1
+    bad('packed_fields',lambda:h4m23_check_rich(changed(packed,'raw_ctrl_margin',margin),row,m,np),'MARGIN_REPLAY_raw_ctrl_margin')
+    ct=copy.deepcopy(packed['contact']);ct['normal_load_N']['left']+=1
+    bad('packed_fields',lambda:h4m23_check_rich(changed(packed,'contact',ct),row,m,np),'LOAD_REPLAY')
+    ct=copy.deepcopy(packed['contact']);ct['slots'][0]['wrench_contact_frame'][0]+=1
+    bad('packed_fields',lambda:h4m23_check_rich(changed(packed,'contact',ct),row,m,np),'WRENCH_REPLAY')
     for key,value,label in (('lowest_corner_z',[1.,1.],'RECT_REPLAY'),
         ('target_minus_post_joint',[1.]*29,'PACKED_SEMANTICS'),
         ('capture_cost',.5,'CAPTURE_REPLAY'),('slot_inventory',[],'COMPLETE_RELEVANT_SLOTS'),
@@ -15708,6 +15724,7 @@ def h4m23_static_fixture_run(root,pins,ext,lanes):
     lines=h4m23_static_lines('a'*40,'b'*64,'c'*64,'d'*64)
     good('authorization',lambda:h4m23_static_receipt(lines,'b'*64,'c'*64,'d'*64))
     bad('authorization',lambda:h4m23_static_receipt(lines[:-1],'b'*64,'c'*64,'d'*64),'STATIC_RECEIPT_SCHEMA')
+    bad('authorization',lambda:h4m23_static_receipt(lines,'f'*64,'c'*64,'d'*64),'STATIC_RECEIPT_EXACT')
     auth=h4m23_marker(marker)
     mock,entries=h4m23_static_mock_journal(m,auth,pins,np)
     with tempfile.TemporaryDirectory(prefix='h4m23_host_fixture_',dir=root/'m463_runs') as td:
@@ -15771,9 +15788,48 @@ def h4m23_static_fixture_run(root,pins,ext,lanes):
         bad('watchdog_log',lambda:h4m23_read_journal(journal,auth,pins,mock,ext=ext,deadline=time.monotonic()-1),'READER_DEADLINE')
         with patch.dict(H4M23_SPEC,{'log_cap':1}):
             bad('watchdog_log',lambda:h4m23_log_receipt(out,True),'LOG_RECEIPT')
+        # Real host-only subprocesses exercise the exact bounded pipe helper.
+        def host(code,cap,seconds):
+            import signal
+            p=subprocess.Popen([sys.executable,'-I','-B','-u','-c',code],stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,start_new_session=True)
+            data=bytearray()
+            try:
+                rc=h4m23_bounded_pipe(p,out,time.monotonic()+seconds,cap,data.extend,0)
+                h4m23_req(rc==0 and bytes(data)==b'ok\n','HOST_CHILD_RESULT')
+            finally:
+                if p.poll() is None:
+                    try:os.killpg(p.pid,signal.SIGKILL)
+                    except ProcessLookupError:pass
+                    p.wait(timeout=10)
+                p.stdout.close()
+        good('watchdog_log',lambda:host("print('ok')",64,10))
+        bad('watchdog_log',lambda:host("print('x'*1024)",64,10),'PIPE_LOG_CAP')
+        bad('watchdog_log',lambda:host("import time;time.sleep(10)",64,.2),'PIPE_WATCHDOG')
     h4m3_no_runtime_imports()
     h4m23_req(counts==H4M23_FIXTURE_COUNTS,'FIXTURE_COUNT')
     return counts
+
+def h4m23_bounded_pipe(proc,storage_path,deadline,cap,write,reserve):
+    """Bounded stdout/stderr reader for spawned child only; caller owns kill."""
+    import selectors,shutil,time
+    total=0
+    with selectors.DefaultSelector() as sel:
+        sel.register(proc.stdout,selectors.EVENT_READ)
+        while True:
+            remaining=deadline-time.monotonic()
+            h4m23_req(remaining>0,'PIPE_WATCHDOG')
+            h4m23_req(shutil.disk_usage(storage_path).free>=reserve,'PIPE_STORAGE')
+            if not sel.select(min(1.,remaining)):continue
+            data=os.read(proc.stdout.fileno(),65536)
+            if not data:break
+            write(data[:max(0,cap-total)])
+            total+=len(data)
+            h4m23_req(total<=cap,'PIPE_LOG_CAP')
+    remaining=deadline-time.monotonic()
+    h4m23_req(remaining>0,'PIPE_WATCHDOG')
+    try:return proc.wait(timeout=remaining)
+    except subprocess.TimeoutExpired as exc:raise RuntimeError('M470_H4M23_PIPE_WATCHDOG') from exc
 
 def h4m23_static_dispatch(root,child=False):
     """One-use host-only launcher. No JAX, MJX, GPU or training calls."""
@@ -15813,17 +15869,7 @@ def h4m23_static_dispatch(root,child=False):
         try:
             proc=subprocess.Popen([sys.executable,'-B','-u',str(root/'m463_gate3_cp_eval.py'),'--h4m23-rich','static-child'],
                 cwd=root,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,start_new_session=True)
-            with selectors.DefaultSelector() as sel:
-                sel.register(proc.stdout,selectors.EVENT_READ)
-                while True:
-                    remaining=deadline-time.monotonic()
-                    h4m23_req(remaining>0 and shutil.disk_usage(log.parent).free>=H4M23_SPEC['storage_reserve'],'STATIC_WATCHDOG_STORAGE')
-                    if not sel.select(min(1.,remaining)):continue
-                    buf=os.read(proc.stdout.fileno(),65536)
-                    if not buf:break
-                    data.extend(buf[:max(0,H4M23_STATIC_CAP-1024-len(data))])
-                    h4m23_req(len(data)<H4M23_STATIC_CAP-1024,'STATIC_LOG_CAP')
-            rc=proc.wait(timeout=max(.01,deadline-time.monotonic()))
+            rc=h4m23_bounded_pipe(proc,log.parent,deadline,H4M23_STATIC_CAP-1024,data.extend,H4M23_SPEC['storage_reserve'])
             h4m23_req(rc==0 and time.monotonic()<deadline,'STATIC_CHILD_EXIT')
             lines=data.decode('utf8').splitlines()
             h4m23_req(len(lines)==6 and all(h4m23_is_digest(lines[i].split()[-1]) for i in (1,2,3))
