@@ -265,3 +265,8 @@ Owner one invocation only via pinned g1_m463 -B -u m463_push_ppo_train.py --h4ss
 ## H4-M28-5B — SSRPC paired full host-static — SA receipt review (2026-11-27)
 **FULL HOST-STATIC PASS (uploaded receipt/manifest acceptance) / STATIC CONSUMED / ROOT CLOSURE HOLD / NATIVE HOLD.** Branch A ACTIVE, B HOLD. No PPO, native diagnostic, retry, comparator rerun, DEV, holdout or promotion authorized by this review.
 Documentation-only review: exact six uploaded artifact hashes and 12-section manifest independently checked against frozen trainer; no governance version change. See ACTIVE_EXPERIMENT and EVIDENCE_INDEX for exact evidence, limitations and next proposed CTRL-only scope. No root or source edit.
+
+
+## H4-M28-6A — SSRPC matched high-cost CTRL — distinct one-use bounded PPO — Owner GO (2026-11-27)
+**OWNER GO / CTRL ONLY / EFFECTIVE ONLY AT EXACT ROOT-ONLY AUTHORIZATION CHILD / OWNER EXECUTION PENDING.** Branch A ACTIVE, B HOLD; CAND/DEV/holdout/promotion HOLD. No static rerun, retry, comparator rerun or source change.
+Owner-approved exact static closure and separate CTRL runtime authorization; no governance version change or executable edits. See ACTIVE_EXPERIMENT and EVIDENCE_INDEX.
