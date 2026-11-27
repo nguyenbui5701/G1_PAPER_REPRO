@@ -361,6 +361,184 @@ def h3_stand_factor(countdown, done):
     return jp.where(done, 1.0, 1.0 - 0.5 * n / 100.0)
 
 
+
+# H4R11_CORE_BEGIN
+# Held R11-NSTR-V1. No native import or extra forward in these helpers.
+R11_SCALARS = ('bad','open','open_side','close','touch','transfer','rejected','side',
+               'before_active','after_active','before_used','after_used',
+               'native','score','desired','actual')
+R11_FIELDS = tuple('r11_'+k for k in R11_SCALARS)
+
+
+def r11_init(xp):
+    out={k:xp.asarray(0,xp.int32) for k in R11_FIELDS[:-4]}
+    out.update({k:xp.asarray(0.,xp.float32) for k in R11_FIELDS[-4:]})
+    out.update(r11_stage=xp.asarray(0,xp.int32),r11_age=xp.asarray(0,xp.int32),
+        r11_role=xp.asarray(0,xp.int32),r11_used=xp.asarray(0,xp.int32),
+        r11_touch_n=xp.asarray(0,xp.int32),r11_transfer_n=xp.asarray(0,xp.int32),
+        r11_anchor=xp.zeros((8,),xp.float32))
+    return out
+
+
+def r11_rect(xp, pos, rot):
+    # Enclosing projected rectangle of the native foot box, not a CoP hull.
+    a=rot[:2,0]
+    n=xp.linalg.norm(a)
+    a=a/xp.maximum(n,xp.asarray(1e-6,xp.float32))
+    b=xp.stack((-a[1],a[0]))
+    axes=xp.stack((a,b))
+    ext=xp.abs(axes@rot[:2,:])@xp.asarray([.09,.03,.008],xp.float32)
+    rect=xp.concatenate((pos[:2],axes.reshape((4,)),ext))
+    good=(n>1e-6)&xp.all(xp.isfinite(rect))&xp.all(ext>0)
+    good=good&xp.all(xp.abs(rot.T@rot-xp.eye(3,dtype=xp.float32))<1e-4)
+    good=good&(xp.linalg.det(rot)>0)
+    return rect,good
+
+
+def r11_distance(xp, xi, rect):
+    return xp.linalg.norm(xp.maximum(xp.abs(rect[2:6].reshape((2,2))@(xi-rect[:2]))-rect[6:],0.))
+
+
+def r11_quality(xp, old_d, new_d, speed):
+    return xp.clip((old_d-new_d)/.10,0.,1.)/(1.+(new_d/.10)**2+(speed/.35)**2)
+
+
+def r11_sample(xp, m, d, feet, floor):
+    # Actual per-world randomized mass; all COM, geometry and loads from
+    # the retained last-forward/solve epoch. qpos separately for position gate.
+    mass=xp.asarray(m.body_mass)
+    if (mass.shape!=(31,) or d.xipos.shape!=(31,3) or d.cvel.shape!=(31,6)
+            or d.subtree_com.shape!=(31,3) or d.qpos.shape!=(36,)
+            or d.ctrl.shape!=(29,) or d.actuator_force.shape!=(29,)
+            or int(m.opt.cone)!=0):
+        raise RuntimeError('M470_R11_NATIVE_SCHEMA')
+    M=xp.sum(mass[1:])
+    den=xp.maximum(M,xp.asarray(1e-6,xp.float32))
+    vel=d.cvel[1:,3:]+xp.cross(d.cvel[1:,:3],d.xipos[1:]-d.subtree_com[1])
+    c=xp.sum(mass[1:,None]*d.xipos[1:],axis=0)/den
+    v=xp.sum(mass[1:,None]*vel,axis=0)/den
+    g=xp.asarray(m.opt.gravity)
+    xi=c[:2]+v[:2]/xp.sqrt(xp.asarray(9.81/.70,xp.float32))
+    bw=xp.maximum(M*xp.abs(g[2]),xp.asarray(1e-6,xp.float32))
+    good=(M>0)&(mass[0]==0)&xp.all(mass[1:]>0)&xp.all(xp.asarray(m.body_rootid)[1:]==1)
+    good=good&(g[0]==0)&(g[1]==0)&(g[2]<0)
+    for x in (mass,c,v,xi,g):
+        good=good&xp.all(xp.isfinite(x))
+    co=d.contact
+    geom=xp.asarray(co.geom); adr=xp.asarray(co.efc_address); dim=xp.asarray(co.dim)
+    n=geom.shape[0]
+    if (geom.shape!=(n,2) or adr.shape!=(n,) or dim.shape!=(n,)
+            or co.dist.shape!=(n,) or co.includemargin.shape!=(n,)
+            or d.efc_force.ndim!=1 or d.efc_force.shape[0]<4):
+        raise RuntimeError('M470_R11_CONTACT_SCHEMA')
+    frame=co.frame.reshape((n,3,3))
+    # Safe gather even for inactive slots. A live invalid address fails closed.
+    idx=xp.clip(adr,0,d.efc_force.shape[0]-4)
+    edges=d.efc_force[idx[:,None]+xp.arange(4)]
+    normal=xp.sum(edges,axis=1)
+    loads=[]; rects=[]
+    for foot in feet:
+        fwd=(geom[:,0]==floor)&(geom[:,1]==foot)
+        rev=(geom[:,1]==floor)&(geom[:,0]==foot)
+        pair=fwd|rev
+        active=pair&(adr>=0)&(co.dist<=co.includemargin)
+        up=xp.where(fwd,frame[:,0,2],-frame[:,0,2])
+        valid=(dim==3)&(adr<=d.efc_force.shape[0]-4)&(up>.99)&(normal>=0)
+        valid=valid&xp.isfinite(normal)&xp.all(xp.isfinite(edges)&(edges>=0),axis=1)
+        valid=valid&xp.all(xp.isfinite(frame),axis=(1,2))
+        valid=valid&xp.all(xp.abs(frame@xp.swapaxes(frame,1,2)-xp.eye(3,dtype=xp.float32))<1e-4,axis=(1,2))
+        good=good&xp.all((~pair)|(xp.isfinite(co.dist)&xp.isfinite(co.includemargin)))
+        good=good&xp.all((~active)|valid)
+        loads.append(xp.sum(xp.where(active&valid,normal,0.))/bw)
+        rect,rect_good=r11_rect(xp,d.geom_xpos[foot],d.geom_xmat[foot].reshape((3,3)))
+        rects.append(rect)
+        good=good&rect_good&xp.all(xp.asarray(m.geom_size)[foot]==xp.asarray([.09,.03,.008],xp.float32))
+    loads=xp.stack(loads); rects=xp.stack(rects)
+    good=good&xp.all(xp.isfinite(loads))&xp.all(loads>=0)
+    good=good&xp.all(xp.asarray(m.actuator_trnid)[:,0]==xp.arange(1,30))
+    good=good&xp.all(xp.asarray(m.jnt_qposadr)[1:]==xp.arange(7,36))
+    safe=xp.asarray(True)
+    for values,ranges,limited in (
+            (d.qpos[7:],xp.asarray(m.jnt_range)[1:],xp.asarray(m.jnt_limited)[1:]),
+            (d.ctrl,xp.asarray(m.actuator_ctrlrange),xp.asarray(m.actuator_ctrllimited)),
+            (d.actuator_force,xp.asarray(m.actuator_forcerange),xp.asarray(m.actuator_forcelimited))):
+        if values.shape!=(29,) or ranges.shape!=(29,2) or limited.shape!=(29,):
+            raise RuntimeError('M470_R11_RANGE_SCHEMA')
+        good=good&xp.all(xp.isfinite(values))&xp.all(xp.isfinite(ranges))
+        good=good&xp.all((limited==0)|(limited==1))&xp.all((limited==0)|(ranges[:,0]<=ranges[:,1]))
+        safe=safe&xp.all((limited==0)|((values>=ranges[:,0])&(values<=ranges[:,1])))
+    return loads,rects,xi,xp.linalg.norm(v[:2]),safe,good
+
+
+def r11_transition(xp, old, pre, post, *, event, boundary, coherent, terminal, native):
+    # Every condition is causal; no future labels or random draws.
+    pl,pr,_,_,_,pg=pre
+    nl,nr,xi,speed,safe,ng=post
+    old_stage=old['r11_stage']; was=old_stage>0
+    role=old['r11_role']; other=1-role
+    age=old['r11_age']+1; used=old['r11_used']
+    tn=old['r11_touch_n']; fn=old['r11_transfer_n']
+    anchor=old['r11_anchor']
+    finite=xp.isfinite(native)
+    valid=pg&ng&finite
+    bad=~valid
+    allowed=coherent&(~boundary)&(~terminal)&valid
+    active=was&(~event)&allowed&(age<=100)
+    pre_sole=(pl>=.05)&(pl[::-1]<.05)
+    post_sole=(nl>=.05)&(nl[::-1]<.05)
+    start_role=xp.argmax(pre_sole.astype(xp.int32)).astype(xp.int32)
+    start=event&allowed&xp.any(pre_sole&post_sole)&(r11_distance(xp,xi,nr[start_role])>.03)
+    # Stage 1: retain old support through touchdown onset and confirmation.
+    waiting=active&(old_stage==1)
+    new_loaded=nl[other]>=.05
+    retention=(nl[role]>=.05)
+    # After first onset old support need not remain for later confirmation.
+    keep_wait=waiting&(retention|((tn>0)&new_loaded))
+    onset=keep_wait&new_loaded&(tn==0)&retention
+    anchor=xp.where(onset,pr[role],anchor)
+    next_tn=xp.where(keep_wait&new_loaded,tn+1,0)
+    touch=keep_wait&(next_tn==3)
+    # Stage 2: three separate subsequent samples of majority/new-only load.
+    transfer_phase=active&(old_stage==2)&new_loaded
+    qualifies=(nl[other]>=.50)&(nl[role]<.05)
+    next_fn=xp.where(transfer_phase&qualifies,fn+1,0)
+    transfer=transfer_phase&(next_fn==3)&(used<2)
+    d_old=r11_distance(xp,xi,anchor)
+    d_new=r11_distance(xp,xi,nr[other])
+    quality=r11_quality(xp,d_old,d_new,speed)
+    reject=transfer&(~safe)
+    score=xp.where(transfer&safe,quality,0.).astype(xp.float32)
+    desired=(xp.asarray(.04,xp.float32)*score).astype(xp.float32)
+    rewarded=xp.where(desired>0,native+desired,native)
+    actual=(rewarded-native).astype(xp.float32)
+    bad=bad|(~xp.isfinite(rewarded))|(~xp.isfinite(actual))
+    # Consume a credit even when quality is zero, never rearm after rejection.
+    used_next=used+transfer.astype(xp.int32)
+    rearm=transfer&safe&(used_next<2)&(d_new>.03)&(age<100)
+    stay=((keep_wait&(~touch))|touch|(transfer_phase&(~transfer)))&(age<100)
+    keep=stay|rearm
+    stage=xp.where(rearm,1,xp.where(touch|transfer_phase,2,1))
+    next_stage=xp.where(start,1,xp.where(keep,stage,0))
+    next_role=xp.where(start,start_role,xp.where(rearm,other,role))
+    next_used=xp.where(start,0,xp.where(keep,used_next,0))
+    after_active=next_stage>0
+    closed=was&(~keep)
+    o=r11_init(xp)
+    ints=dict(stage=next_stage,age=xp.where(start,0,xp.where(keep,age,0)),
+        role=xp.where(after_active,next_role,0),used=next_used,
+        touch_n=xp.where(keep&(~touch)&(~rearm)&(old_stage==1),next_tn,0),
+        transfer_n=xp.where(keep&(~rearm)&(old_stage==2),next_fn,0),
+        bad=bad,open=start,open_side=xp.where(start,start_role+1,0),close=closed,touch=touch,transfer=transfer,rejected=reject,
+        side=xp.where(transfer,other+1,0),before_active=was,after_active=after_active,
+        before_used=used,after_used=next_used)
+    o.update({'r11_'+k:xp.asarray(z,xp.int32) for k,z in ints.items()})
+    o['r11_anchor']=xp.where(after_active&(~start)&(~rearm),anchor,xp.zeros_like(anchor))
+    o.update(r11_native=xp.asarray(native,xp.float32),r11_score=score,
+             r11_desired=desired,r11_actual=actual)
+    return o,rewarded
+
+# H4R11_CORE_END
+
 class CoverageJoystick(joystick.Joystick):
     """JAX-compatible source G1 subclass, independent of pinned checkout.
 
@@ -369,7 +547,7 @@ class CoverageJoystick(joystick.Joystick):
     boundary for re-sampling push targets and counters.  Tracking `age` also
     supports a direct/unwrapped one-env diagnostic.
     """
-    def __init__(self, *, stage: str, config, task='flat_terrain', h1_m1=False, h1_m2=False, h3_m1=False, h4_arm=None, h4cc_arm=None, h4m6_arm=None, h4m6_tech_capture=False, h4m8_common=False, h4red=False):
+    def __init__(self, *, stage: str, config, task='flat_terrain', h1_m1=False, h1_m2=False, h3_m1=False, h4_arm=None, h4cc_arm=None, h4m6_arm=None, h4m6_tech_capture=False, h4m8_common=False, h4red=False, r11=False):
         if stage not in STAGES:
             raise ValueError('M463_BAD_STAGE')
         if bool(config.push_config.enable):
@@ -417,6 +595,9 @@ class CoverageJoystick(joystick.Joystick):
                 h4cc_arm is not None or h4m6_arm is not None or
                 h4m6_tech_capture or h4m8_common)):
             raise ValueError('M470_H4RED_ENV_CONTRACT')
+        if type(r11) is not bool or (r11 and (stage!='easy_repeat_support' or h4_arm!='control' or h4red or h1_m1 or h1_m2 or h3_m1 or h4cc_arm is not None or h4m6_arm is not None or h4m6_tech_capture or h4m8_common)):
+            raise ValueError('M470_R11_ENV_CONTRACT')
+        self._r11 = r11
         self._h4red = h4red
         self._h4m8_common = h4m8_common
         self._h4m6_tech_capture = bool(h4m6_tech_capture)
@@ -583,6 +764,8 @@ class CoverageJoystick(joystick.Joystick):
         if getattr(self,'_h4m8_common',False):
             info.update({'h4m8_'+k:zeros for k in H4M8_STATE+H4M8_INT_FIELDS})
             info.update({'h4m8_'+k:jp.asarray(0.,jp.float32) for k in H4M8_FLOAT_FIELDS})
+        if self._r11:
+            info.update(r11_init(jp))
         return state.replace(info=info)
 
     def step(self, state, action):
@@ -726,6 +909,11 @@ class CoverageJoystick(joystick.Joystick):
                 support_side=support_side,boundary=boundary,age=age,clock=pre_source_step,
                 wrapper_steps=info['steps'],command=pre_command,
                 actor_command=state.obs['state'][9:12],critic_command=state.obs['privileged_state'][9:12])
+        if self._r11:
+            r11_pre=r11_sample(jp,self.mjx_model,state.data,self._feet_geom_id,self._floor_geom_id)
+            r11_old={k:info[k] for k in r11_init(jp)}
+            r11_coherent=(jp.all(pre_command==0)&jp.all(state.obs['state'][9:12]==pre_command)&jp.all(state.obs['privileged_state'][9:12]==pre_command)&(pre_source_step<500)&(~disabled))
+            r11_timeout=info['steps']>=int(self._config.episode_length)-1
         updated_qvel = state.data.qvel.at[:2].add(world_delta)
         if self._h4_arm is not None:
             h4_actual_delta = updated_qvel[:2] - state.data.qvel[:2]
@@ -963,4 +1151,10 @@ class CoverageJoystick(joystick.Joystick):
                 mass=M,h2=h2,cost=cost,momentum_good=good)
             out.update(m8out)
             # CAM validity stays in its own new telemetry; old leaves are untouched.
+        if self._r11:
+            r11_post=r11_sample(jp,self.mjx_model,after.data,self._feet_geom_id,self._floor_geom_id)
+            coherent=r11_coherent&jp.all(out['command']==pre_command)&jp.all(after.obs['state'][9:12]==pre_command)&jp.all(after.obs['privileged_state'][9:12]==pre_command)
+            extra,reward=r11_transition(jp,r11_old,r11_pre,r11_post,event=event,boundary=boundary,coherent=coherent,terminal=(after.done>0)|r11_timeout,native=after.reward)
+            out.update(extra)
+            after=after.replace(reward=reward)
         return after.replace(info=out)

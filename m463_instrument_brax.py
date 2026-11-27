@@ -1579,3 +1579,148 @@ def make_h4red_integrated_source(raw):
     compile(source, '<H4RED generated>', 'exec')
     return source, original
 # H4RED_GENERATOR_END
+
+# H4R11_GENERATOR_BEGIN
+R11_EXT_FIELDS=tuple('r11_'+k for k in (
+    'bad','open','open_side','close','touch','transfer','rejected','side',
+    'before_active','after_active','before_used','after_used',
+    'native','score','desired','actual'))
+
+
+def r11_batch_contract(xp, reward, discount, extras, before, after):
+    """Validate the exact PPO-consumed batch, not a replay or shadow reward."""
+    x=lambda k:extras['r11_'+k]
+    if reward.shape!=(8192,32) or reward.dtype!=xp.float32 or discount.shape!=reward.shape:
+        raise RuntimeError('M470_R11_BATCH_SCHEMA')
+    for k in R11_EXT_FIELDS:
+        if extras[k].shape!=reward.shape or extras[k].dtype!=(xp.float32 if k in R11_EXT_FIELDS[-4:] else xp.int32):
+            raise RuntimeError('M470_R11_EXTRA_SCHEMA '+k)
+    bad=(x('bad')!=0)|(extras['h4_bad']!=0)|(extras['truncation']!=0)
+    for k in ('bad','open','close','touch','transfer','rejected','before_active','after_active'):
+        bad=bad|((x(k)!=0)&(x(k)!=1))
+    for k in ('native','score','desired','actual'):
+        bad=bad|(~xp.isfinite(x(k)))
+    opened=x('open')==1; closed=x('close')==1; transfer=x('transfer')==1
+    rejected=x('rejected')==1
+    was=x('before_active')==1; now=x('after_active')==1
+    used=x('before_used'); next_used=x('after_used')
+    event=extras['m463_event']>0
+    stop=(discount==0)|(extras['truncation']!=0)|(extras['h4_boundary']!=0)
+    expected=xp.where(x('desired')>0,x('native')+x('desired'),x('native'))
+    bad=bad|(~xp.isfinite(reward))|(reward!=expected)|(x('actual')!=reward-x('native'))
+    bad=bad|(x('score')<0)|(x('score')>1)|(x('desired')!=xp.asarray(.04,xp.float32)*x('score'))
+    bad=bad|((x('score')>0)&((~transfer)|rejected|stop|event))
+    bad=bad|((opened|transfer)&((extras['h4_motion']!=0)|(extras['h4_actor_motion']!=0)|stop))
+    bad=bad|(opened&(~event))|(transfer&event)|(rejected&(~transfer))
+    bad=bad|(closed&(~was))|(now.astype(xp.int32)!=was.astype(xp.int32)+opened.astype(xp.int32)-closed.astype(xp.int32))
+    bad=bad|((x('touch')>0)&((~was)|event|stop|transfer))|(transfer&(~was))
+    bad=bad|(used<0)|(used>2)|(next_used<0)|(next_used>2)|(transfer&(used>=2))
+    bad=bad|((~was)&(used!=0))|((~now)&(next_used!=0))
+    want_used=xp.where(opened,0,xp.where(now,used+transfer.astype(xp.int32),0))
+    bad=bad|(next_used!=want_used)
+    for k,mask in (('open_side',opened),('side',transfer)):
+        bad=bad|xp.where(mask,(x(k)<1)|(x(k)>2),x(k)!=0)
+    for k,initial,last in (
+        ('active',(before['r11_stage']>0).astype(xp.int32),(after['r11_stage']>0).astype(xp.int32)),
+        ('used',before['r11_used'],after['r11_used'])):
+        if initial.shape!=(8192,) or last.shape!=(8192,):
+            raise RuntimeError('M470_R11_CARRY_SCHEMA')
+        expected_pre=xp.concatenate((initial[:,None],x('after_'+k)[:,:-1]),axis=1)
+        bad=bad|(x('before_'+k)!=expected_pre)|(x('after_'+k)[:,-1:]!=last[:,None])
+    return bad
+
+
+R11_GUARD_BLOCK = '''    from m463_instrument_brax import r11_batch_contract
+    r11_extra=data.extras['state_extras']
+    r11_bad=r11_batch_contract(jnp,data.reward,data.discount,r11_extra,r11_before,state.info)
+    r11_valid=~jnp.any(r11_bad)
+    for r11_leaf in jax.tree_util.tree_leaves((data,training_state,state)):
+      r11_valid=r11_valid & jnp.all(jnp.isfinite(r11_leaf))
+    r11_valid=jax.lax.pmin(r11_valid.astype(jnp.int32),_PMAP_AXIS_NAME)==1
+    def r11_update(_):
+      norm=running_statistics.update(training_state.normalizer_params,
+          _remove_pixels(data.observation),pmap_axis_name=_PMAP_AXIS_NAME)
+      (opt,par,_),met=jax.lax.scan(
+          functools.partial(sgd_step,data=data,normalizer_params=norm),
+          (training_state.optimizer_state,training_state.params,key_sgd),(),
+          length=num_updates_per_batch)
+      return opt,par,norm,met
+    def r11_reject(_):
+      meta=jax.eval_shape(r11_update,None)[3]
+      met=jax.tree_util.tree_map(lambda x:jnp.zeros(x.shape,x.dtype),meta)
+      return training_state.optimizer_state,training_state.params,training_state.normalizer_params,met
+    optimizer_state,params,normalizer_params,metrics=jax.lax.cond(r11_valid,r11_update,r11_reject,None)
+'''
+
+
+R11_METRICS_SOURCE = '''    # Reduce only actual collected Transition rows, with committed counts separate.
+    r11_x=lambda k:r11_extra['r11_'+k]
+    r11_count=lambda mask:jnp.sum(mask.astype(jnp.float32))
+    for r11_k in ('open','close','touch','transfer','rejected'):
+      coverage['r11_'+r11_k]=r11_count(r11_x(r11_k)>0)
+    for r11_s in (1,2):
+      coverage['r11_open_'+str(r11_s)]=r11_count(r11_x('open_side')==r11_s)
+      coverage['r11_transfer_'+str(r11_s)]=r11_count(r11_x('side')==r11_s)
+    coverage['r11_bad_rows']=r11_count(r11_bad)
+    coverage['r11_collected']=jnp.asarray(1.,jnp.float32)
+    coverage['r11_batch_rejected']=(~r11_valid).astype(jnp.float32)
+    coverage['r11_batch_committed']=r11_valid.astype(jnp.float32)
+    coverage['r11_positive_desired']=r11_count(r11_x('desired')>0)
+    coverage['r11_positive_consumed']=r11_count((r11_x('actual')>0)&r11_valid)
+    coverage['r11_native_sum']=jnp.sum(r11_x('native'))
+    coverage['r11_native_abs_sum']=jnp.sum(jnp.abs(r11_x('native')))
+    coverage['r11_bonus_base_abs_sum']=jnp.sum(jnp.where(r11_x('desired')>0,jnp.abs(r11_x('native')),0.))
+    coverage['r11_desired_sum']=jnp.sum(r11_x('desired'))
+    coverage['r11_consumed_delta']=jnp.where(r11_valid,jnp.sum(r11_x('actual')),0.)
+    coverage['r11_consumed_reward']=jnp.where(r11_valid,jnp.sum(data.reward),0.)
+    coverage['r11_consumed_reward_abs_sum']=jnp.where(r11_valid,jnp.sum(jnp.abs(data.reward)),0.)
+'''
+
+
+def make_r11_held_source(raw):
+    """Full reward/collection core generation; unconditional execution HOLD."""
+    base,original=make_h4m12_integrated_source(raw)
+    if sha256(base.encode('utf8'))!='7f9abc070e38bc287ae1948a3f55ee625d457d0abed6fe99bebf5fdf2ed9c37a':
+        raise RuntimeError('M470_R11_M12_GENERATOR_PIN')
+    fmt=lambda f:"extra_fields=('truncation', "+', '.join(repr(k) for k in f)+'),'
+    fields=EXT_FIELDS+H4_EXT_FIELDS
+    anchor='    metrics = {**metrics, **coverage, **m464_tail}\n'
+    guard="  from m463_push_ppo_train import h4m12_generated_guard\n  h4m12_generated_guard(h4x_audit_fn, __file__, environment, m470_resume_state_path)\n"
+    hold="  raise RuntimeError('M470_R11_GENERATED_EXECUTION_HOLD')\n"
+    chunk=H4M8_CHUNK_HELD.replace('h4m8_','r11_').replace('h8_','r11_')
+    host="      h4x_audit_fn('chunk_after', index=idx+1, carry=carry, metrics=metrics)\n"
+    patches=(
+        (guard,hold),
+        ('    h4x_audit_fn: Optional[Callable[..., None]] = None,\n','    r11_abort_fn=None,\n    h4x_audit_fn: Optional[Callable[..., None]] = None,\n'),
+        (fmt(fields),fmt(fields+R11_EXT_FIELDS)),
+        ('    training_state, state, key = carry\n',
+         "    training_state, state, key = carry\n    r11_before={k:state.info[k] for k in ('r11_stage','r11_used')}\n"),
+        (H4M8_UPDATE_BLOCK.replace('data=learning_data','data=data'),R11_GUARD_BLOCK),
+        ('        env_steps=training_state.env_steps + env_step_per_training_step,\n',
+         '        env_steps=jax.lax.cond(r11_valid,lambda _:training_state.env_steps+env_step_per_training_step,lambda _:training_state.env_steps,None),\n'),
+        (anchor,R11_METRICS_SOURCE+anchor),
+        (H4M8_CHUNK_OLD,chunk),
+        (host,"      if float(metrics['r11_chunk_failed']) != 0.:\n        if r11_abort_fn is not None:\n          r11_abort_fn(idx+1,carry,metrics)\n        raise RuntimeError('M470_R11_PRE_SGD_OR_FINITE_STOP')\n"+host),
+    )
+    s=base
+    for a,b in patches:
+        s=h4c_once(s,a,b)
+    back=s
+    for a,b in reversed(patches):
+        back=h4c_once(back,b,a)
+    if back!=base or s.count(hold)!=1:
+        raise RuntimeError('M470_R11_GENERATOR_REVERSE_OR_HOLD')
+    compile(s,'<R11 held generated>','exec')
+    return s,original
+
+def make_r11_integrated_source(raw):
+    base,original=make_r11_held_source(raw)
+    hold="  raise RuntimeError('M470_R11_GENERATED_EXECUTION_HOLD')\n"
+    guard="  from m463_push_ppo_train import h4m12_generated_guard\n  h4m12_generated_guard(h4x_audit_fn, __file__, environment, m470_resume_state_path, r11=True)\n  if not callable(r11_abort_fn):\n    raise RuntimeError('M470_R11_ABORT_CALLBACK')\n"
+    s=h4c_once(base,hold,guard)
+    if h4c_once(s,guard,hold)!=base:
+        raise RuntimeError('M470_R11_INTEGRATION_PROJECTION')
+    compile(s,'<R11 integrated generated>','exec')
+    return s,original
+
+# H4R11_GENERATOR_END
