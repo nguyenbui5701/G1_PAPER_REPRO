@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.270  
+**Version:** 1.2.271  
 **Ngày cập nhật:** 2026-11-27 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -3451,6 +3451,14 @@ Actual SA offline NumPy float32 draft core outside repository: fixed 8 corners/2
 
 STOP at incomplete integration: existing r11_sample must be reused in actual environment before AutoReset, causal flags and recovery telemetry wired, actual-consumed signed pre-SGD contract plus material exposure/host-reset conservation implemented, R12 distinct typed-restore/namespace/authorization/parent-child guards/readers and exact reverse projections across all three existing files completed and tested. No executable source changes committed, no standalone native diagnostic, no full static receipt or command claimed, zero physical transitions/resets/inference/optimizer/PPO. Rules-only record preserves every frozen v1.2.269 control, thresholds, 24 native reward terms, original CTRL curriculum, R11 OFF and future training budget not allocated. Failure-focused curriculum remains held. No retry of closed historical treatments, holdout or promotion. NEXT complete H4-M16-1 held integration under existing Owner scope; only then supply actual full static command; separate explicit runtime GO required. Branch A active, Branch B HOLD.
 
+### H4-M16-1 continuation — R12 signed batch/ledger host drafts and held wiring (v1.2.271; 2026-11-27)
+
+Owner directed continuation under existing held scope. SA verified exact HEAD ea1b9d5e057457a3830fa45e743a64f5335e89f9, retrieved Rules1.2.270 blobcb60b11abb10ed58cf0a4d5e09f0f2eb60d2ad3a and no active marker, reviewed existing R11 actual Transition guard/reducer, M12/R11 host chunk/reader/carry paths, native pre/post anchors, exact existing range flags and evaluator source foot-foot criterion. No change to frozen design or prior receipts.
+
+New external held drafts (not repository executable changes): signed R12 pre-SGD row contract on 8192x32 float32 reward, exact inactive reward including signed zero, native/delivered/actual subtraction, causal open/close/age/side/kind carry, source event/nominal/moving/boundary/terminal/coherence checks, support-mode and no-load checks. Scalar per-rollout reducer separates desired, delivered and accepted-consumed cost; counts age/support/direction/first-repeat/closure/range/foot-foot. Host checker enforces batch/window/partition/sum conservation, four-chunk exposure replay with exact frozen total10000/halves1000/modes1,2,3/nominal80% screens. Existing original exposure gates must still be wired separately. Draft SHA256370442c74ca6386a72af33a6066d3b99ec500c2b6eab5994ba02bdc9b5d3902b. Actual NumPy host test SHA256e2adbc4b613183dc92dd7d80d6b2d1b7144ef2bd3ee44533bac3a8bb1e0ff111: synthetic262144 rows, 19 row-level negatives incl signed zero and 7 chunk negatives, 4 exposure fixtures PASS. Rejected synthetic batch contributes zero consumed rows/delta; no actual optimizer execution or proof of its freeze. Mock aggregate is not actual contiguous five-batch scan; actual host reset/epoch/archived nominal crosscheck still required.
+
+Separate external wiring draft SHA2560d0f2ccaa3a07d32ef85fe18f05d9d89b2e350e70e7d573e67c4fc6c6fe7a8fa: native pre/post anchors reuse r11_sample, distinct r12 state/reset schema, original range metadata and native foot-foot criterion, proposed generator with exact M12 generated source hash, reverse patches, unconditional generated runtime HOLD, finite/pre-SGD conditional optimizer+normalizer return, failed-chunk latch and abort callback. Actual Python compile of draft PASS, host adapter schema/reset/100 ticks/first/repeat/terminal/range flags PASS. Actual generated Brax source not built or compiled: pinned Brax/MuJoCo absent in SA container and direct repository git access unavailable; connector read/write available. Draft generator and native adapters not installed; exact source projections, trainer typed restore/namespace/auth/provenance/parent-child guards, strict final reader and actual full static remain incomplete. No assertion of technical or scientific PASS, no full static receipt/command. Zero native transitions/reset/inference/SGD. Preserve R12 design and all 24 original terms, original M12 scheduler/optimizer/physics/observation/action, R11 OFF, future budget unallocated, failure-focused curriculum separate HELD. NEXT finish the existing three-file integration and reverse projections, actual pinned source verification and full held static only; no new experiment or standalone diagnostic, no PPO/holdout/promotion, B HOLD.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -3712,6 +3720,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-26)
+
+**H4-M16-1 CONTINUATION SIGNED LEDGER/ADAPTER HOST DRAFT PASS / FULL HELD INTEGRATION INCOMPLETE (v1.2.271):** synthetic262144 rows/26 negatives/4 exposure fixtures; host adapter schema/reset/100 ticks/first/repeat/terminal/range PASS; generator draft compile only, pinned actual generated source not built, trainer/projections/strict reader incomplete. Rules-only commit, no executable edits, no active GO, zero native or SGD, B HOLD.
 
 **H4-M16-1 R12 PARTIAL HOST CORE PASS / FULL HELD INTEGRATION BLOCKED (v1.2.270):** exact frozen design verified, external draft NumPy float32 hull/latch/delivery fixtures passed, actual PPO-consumed ledger/native wiring/projections/guards/readers incomplete. No executable edits or full static receipt, no native authorization, zero native work. Preserve all R12 constraints; Branch B HOLD.
 
@@ -4605,6 +4615,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-27 | H4-M16-1 signed ledger/wiring continuation | 262144 synthetic rows / 26 negatives / 4 exposure cases, adapter host PASS | HOST DRAFT PASS / full held integration incomplete / zero native | 1.2.271 |
+
 | 2026-11-27 | H4-M16-1 partial held host core | 1000 reference hulls / 7 edge cases / latch and delivered delta host fixtures; repo executable unchanged | HOST DRAFT PASS / FULL INTEGRATION BLOCKED / zero native | 1.2.270 |
 
 | 2026-11-27 | H4-M16-0 failure-focused PPO direction and R12-DCR-V1 design | accepted M12/RED/R11 evidence, bounded dense cost and exposure ledger, separate targeted curriculum roadmap | DESIGN COMPLETE / HELD implementation pending / all runtime HOLD | 1.2.269 |
@@ -5207,6 +5219,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.271 — 2026-11-27:** Record tested R12 signed row/aggregate ledger and adapter drafts, explicit synthetic-only limits and incomplete actual generated source/trainer integration. Rules-only, no runtime or full static acceptance. Branch B HOLD.
 
 - **v1.2.270 — 2026-11-27:** Record actual R12 partial offline core fixture results and incomplete source integration blocker; no executable changes, no full static receipt or native GO, all frozen controls retained. Branch B HOLD.
 
