@@ -95,3 +95,6 @@ Append one row per task with exact evidence/commit, decision, limitations and ne
 
 
 | H4-M25-2A | Owner approved minimal held fixture routing and reverse metadata | EDIT-FIRST / HELD | 3b5eef9eb8479111af485dd215df5410b457a658; 122 planned; no execution or marker |
+
+
+| H4-M25-2A completion | Minimal legacy fixture routing; exact V2 reverse text reconstruction, 9 anchors | HELD SOURCE IMPLEMENTED / STATIC GO REQUIRED | 7f35441e52860f3632689d797a61f68761e82c1c; blob 10443f1000a8d51ae81ece3f10e604c42d2d0c62; 122 planned, zero executed |

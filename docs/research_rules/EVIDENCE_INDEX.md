@@ -466,3 +466,7 @@ Each link includes the section until the next heading; ranges are retrieval aids
 
 ## H4-M25-2A held scope
 - [Owner-approved exact base](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/3b5eef9eb8479111af485dd215df5410b457a658); source fda4c2c2eb0117f56d3c613d6f1abcbf458d0f04; no new empirical evidence.
+
+
+## H4-M25-2A held repair completion
+- [EDIT-FIRST](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/3343907654ba3717a14ef6871151ac518e9c291f), [source](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/7f35441e52860f3632689d797a61f68761e82c1c); exact blob 10443f1000a8d51ae81ece3f10e604c42d2d0c62; independent text review, no empirical result.
