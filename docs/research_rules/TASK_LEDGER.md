@@ -89,3 +89,6 @@ Append one row per task with exact evidence/commit, decision, limitations and ne
 
 
 | H4-M25-1 held source completion | V3 quaternion/namespace/provenance/reverse projection; 122 prospective cases | HELD SOURCE IMPLEMENTED / STATIC GO REQUIRED / NATIVE HOLD | b8015308ae97ff2358ef788c2425442ca2f74044; evaluator fda4c2c2eb0117f56d3c613d6f1abcbf458d0f04; zero execution |
+
+
+| H4-M25-2 pre-authorization review | exact frozen source/root verified; original projection negative blocked by V3 outer exact blob guard before expected legacy label | STOP / NOT ISSUED / NO ATTEMPT | 1281ff89100b759b751b7afc4c07f7ea67ffd90b; no source change or execution; held repair separate GO required |
