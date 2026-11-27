@@ -61,4 +61,6 @@ Historical complete ledger: [v1.2.294 L5191–5841](https://github.com/nguyenbui
 
 | H4-M23-5 | Review frozen source and Owner static GO; five historical SHA256 matches | STOP BEFORE ISSUANCE / DISTINCT HISTORICAL MARKER CLOSURE REQUIRED | Base b34b49a4441b321eed274cbc9c88dcfca180044d; root has one consumed marker, prior zero-marker statement corrected; no execution or new marker |
 
+| H4-M23-5 closure and issuance | Owner explicit distinct closure and one-use host-static GO | EDIT-FIRST / AUTHORIZATION EFFECTIVE ONLY AT ROOT-ONLY CHILD | Base fd55c9c9ef64023898287f77913aa7771f83689f; exact frozen evaluator,73 fixtures, separate marker closure then issuance; owner receipt pending |
+
 Append one row per task with exact evidence/commit, decision, limitations and next scope. Do not rewrite previous entries or imply authorization.

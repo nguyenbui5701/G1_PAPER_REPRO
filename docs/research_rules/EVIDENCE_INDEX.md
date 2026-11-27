@@ -419,3 +419,6 @@ Each link includes the section until the next heading; ranges are retrieval aids
 
 ## H4-M23-5 admission blocker
 - [Rules base](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/b34b49a4441b321eed274cbc9c88dcfca180044d), [frozen evaluator](https://github.com/nguyenbui5701/G1_PAPER_REPRO/blob/61794fc3f7c6876d747cf40ea458ead3e537590f/m463_gate3_cp_eval.py), [root at review base](https://github.com/nguyenbui5701/G1_PAPER_REPRO/blob/b34b49a4441b321eed274cbc9c88dcfca180044d/G1_RESEARCH_RULES.md). One historical consumed marker actually present; correction and STOP in ACTIVE_EXPERIMENT. Five exact historical files rehashed. No new empirical results.
+
+## H4-M23-5 explicit historical closure and static issuance
+- [Owner-approved scope base](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/fd55c9c9ef64023898287f77913aa7771f83689f); [frozen evaluator](https://github.com/nguyenbui5701/G1_PAPER_REPRO/blob/61794fc3f7c6876d747cf40ea458ead3e537590f/m463_gate3_cp_eval.py). Root-only closure and issuance follow this EDIT-FIRST commit, no new empirical result.
