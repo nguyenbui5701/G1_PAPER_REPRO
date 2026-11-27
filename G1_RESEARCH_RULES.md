@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.278  
+**Version:** 1.2.279  
 **Ngày cập nhật:** 2026-11-27 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -3679,6 +3679,14 @@ raise SystemExit(0 if ok else 1)
 # H4R12_DEV_OWNER_LAUNCHER_END
 ```
 
+### H4-M17-1A — Exact Owner R12 controlled DEV full static accepted / distinct runtime GO pending (v1.2.279; 2026-11-27)
+
+SA read complete Rules1.2.278 blob51301b168d055f9eb1d4cbeb76a0d1a0e617ea07 at verified HEADcb5b572effc20855d2d26a75bb685aa73f2acbbf and operative h4r12_dev_static/h4m12_eval_auth. Actual uploaded m470_h4r12_dev_static_20261127_133300_864644650.log independently read/rehashed 1757B SHA25633994e6175e0602136d554d1138c9312cdb2fa1fa3831af736956168e2714e5d. Independently retrieved exact remote blobs and recomputed SHA256: Rules8cf8b133db563c5bf682b07daa19b5e926cf142f105d36379d2a4d17bb577aac, evaluator9e0987ac1059c8acd27d5cb1b6551d2c1a2c2102abf1f2898f46860cd5d60470, trainer7c571771cd5f7a56715ae05ebb74d4553146400c9b0e2915b958d157a007c65b, instrumenterc647e67cecf607d9ee778244328cf60765e65a65b1de81f99af36e8612405758, env9ab50f6247b5d8b5711c20b3c4df5e8ba76a221dc422f2520d012244bb068a55. All five exact matches. Frozen launcher block independently hashed8ffb97aebf3880ee5c1c97b85b906e2fa1c5b83af2bed89bec429472c3eca179 exact match. Owner reported sourceee5372f118991b6041d07492394fda9eca81232549ba7930c14e04f9f59a4e89 and provenance97754ba1557c71ae8036e55368f2b1e4652ee8ebedb59f28c6dd471988f7ff6d accepted through actual integrated full static; local helpers, installed deps, archives and checkpoint binaries not independently available to SA, not independently rehashed here.
+
+Unique H4R12_DEV_FULL_STATIC_PASS and final STATIC_EXIT_CODE=0 TEE_EXIT_CODE=0. Actual fixture archive_clone NO_GO, secondary_identity true, marker negatives5, reader negatives12, training_exposure_negatives2, disposition_fixtures3, partial_positive1/negative3, launcher_negative1, byte_projection true, step_graph true, cli_hold4; physical/reset/optimizer/inference all0. Exact compiled evaluator and older projections, training strict reader r12=True with historical source/receipt and failed exposure lock, archive replay, pinned local dependency checks and compiled frozen launcher passed by reviewed ordering. Archive clone and synthetic DEV_PASS are fixtures not R12 efficacy results. No source edits or repeated static, no native calls by SA. R12 material exposure remains EXPOSURE_INCONCLUSIVE, scientific efficacy UNTESTED, overall NO_PROMOTE. Close held integration static gate as FULL_STATIC_ACCEPTED. No active runtime marker.
+
+NEXT H4-M17-2 one-use R12 controlled recovery DEV evaluation only on distinct explicit Owner GO. Bind exact source/provenance/launcher/static receipt above, existing H4R12_EVAL_ACTIVE_GO parser and exclusive m463_runs/m470_h4_m17_1_r12_dev_v1/report.json plus fixed m463_runs/m470_h4r12_dev_runtime_v1.log, frozen launcher only, never direct producer. Candidate R12 only 12 groups/60 logical/max44808 new physical/12 resets, no optimizer, archived Official CTRL41052 primary and M1242246 descriptive secondary only, no comparator rerun. Original +2/8 standing double survival AND recovery5 and all nominal/moving/standing/safety gates unchanged; scientific result separate from unconditional NO_PROMOTE, failed exposure never waived. Existing 5400s watchdog,16MiB log,128MiB report,2GiB disk reserve plus headroom,GPU sampled peak<95%12288MiB, strict clean final/partial reader. No retry, PPO, standalone diagnostic, FFE implementation, combined R12+FFE, holdout or promotion. Branch A ACTIVE, B HOLD.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -3940,6 +3948,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-26)
+
+**H4-M17-1A EXACT R12 DEV FULL STATIC ACCEPTED (v1.2.279):** receipt33994e61, five exact remote SHA256 matches and launcher8ffb97ae, sourceee5372f1/provenance97754ba1, all fixtures and CLI HOLD4 PASS, zero native. H4-M17-2 ready pending distinct explicit Owner GO; no source edits or active runtime marker. R12 EXPOSURE_INCONCLUSIVE/NO_PROMOTE, efficacy UNTESTED; FFE and B HOLD.
 
 **H4-M17-1 R12 EXISTING POLICY HELD DEV INTEGRATION CANDIDATE / OWNER FULL STATIC PENDING (v1.2.278):** exact training report2b03cfd7/8 uploaded hashes; isolated R12 route, failed exposure locked, scientific result separately NO_PROMOTE, reused 12/60/44808/12 protocol, CTRL/M12 archives, bounded launcher and strict reader. Reverse-byte structural PASS; actual Owner full static pending, no active marker or native execution. FFE and Branch B HOLD.
 
@@ -4849,6 +4859,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-27 | H4-M17-1A exact R12 DEV full static review | receipt33994e61; five remote hashes and launcher exact; all fixtures PASS | FULL_STATIC_ACCEPTED / H4-M17-2 explicit GO pending / native0 | 1.2.279 |
+
 | 2026-11-27 | H4-M17-1 held R12 existing-policy DEV integration | exact training report2b03cfd7, evaluator candidate and reverse projection, exposure lock, frozen launcher and fixtures | HELD SOURCE CANDIDATE / Owner full static pending / no runtime | 1.2.278 |
 
 | 2026-11-27 | H4-M17-0 failure-focused temporal exposure design | accepted evidence, FFE-V1 four absolute timing bands and load/CP repeat target, prospective gates, existing R12 evaluation value | OFFLINE COMPLETE / held design / no runtime | 1.2.277 |
@@ -5467,6 +5479,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.279 — 2026-11-27:** Accept exact R12 DEV full static receipt and remote source/launcher hash matches; close static gate, retain failed exposure and NO_PROMOTE, distinct H4-M17-2 Owner GO pending. Rules-only, no active runtime marker, FFE and Branch B HOLD.
 
 - **v1.2.278 — 2026-11-27:** Prepare held R12 existing policy DEV integration with exact training/archives and failed exposure retained, scientific result separate NO_PROMOTE, candidate-only frozen protocol/launcher and full static fixtures. No runtime, PPO, FFE implementation, holdout/promotion; Branch B HOLD.
 
