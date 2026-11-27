@@ -93,6 +93,7 @@ PAIR_STORAGE_CAP = 512*1024**2
 STATIC_STORAGE_CAP = 32*1024**2
 WATCHDOG = 3600
 STATIC_WATCHDOG = 3600
+FIXTURE_COUNT = 64
 ROOT_RULES = 'G1_RESEARCH_RULES.md'
 STATIC_MARKER = 'H4SSRPC_PAIR_STATIC_GO:'
 NATIVE_MARKER = 'H4SSRPC_PAIR_ACTIVE_GO:'
@@ -659,7 +660,7 @@ def native_worker(root,auth,arm,pins,archive,external):
 
 
 def fixture_ids():
-    return tuple('gate/'+row[0] for row in gate_fixture_cases())+(
+    names=tuple('gate/'+row[0] for row in gate_fixture_cases())+(
         'marker/static','marker/native','marker/none','marker/duplicate','marker/foreign',
         'marker/static_extra','marker/native_missing','marker/bad_hex','marker/bad_spacing',
         'identity/json_bool','identity/json_order','identity/nonfinite','identity/duplicate_json',
@@ -675,6 +676,8 @@ def fixture_ids():
         'replay/arm_ledger','replay/arm_order','replay/arm_role','replay/official_no_gain',
         'replay/pair_no_gain','replay/partial_ledger','replay/partial_budget',
     )
+    require(len(names)==len(set(names))==FIXTURE_COUNT,'FIXTURE_COUNT')
+    return names
 
 
 def expect_reject(fn):
@@ -752,28 +755,31 @@ def static_fixtures(root,pins,archive,secondary,external):
     case('host/compile_wrapper',compile((root/Path(__file__).name).read_bytes(),Path(__file__).name,'exec') is not None)
     case('host/compile_frozen',all(compile((root/name).read_bytes(),name,'exec') is not None for name in FROZEN))
     import tempfile
-    with tempfile.TemporaryDirectory(prefix='fixture_',dir=root/STATIC) as tmp:
-        d=Path(tmp);rel=d.relative_to(root);p=d/'receipt.json'
-        write_json(root,'static',p,{'a':1})
-        case('host/strict_read',exact_json(read_bounded(root,rel/'receipt.json',RECEIPT_CAP,t),{'a':1}))
-        q=d/'invalid.json';q.write_bytes(b'{"a":1,"a":2}')
-        case('host/strict_duplicate',expect_reject(lambda:read_bounded(root,rel/'invalid.json',RECEIPT_CAP,t)))
-        q.write_bytes(b'{"a":NaN}')
-        case('host/strict_nonfinite',expect_reject(lambda:read_bounded(root,rel/'invalid.json',RECEIPT_CAP,t)))
-        case('host/strict_cap',expect_reject(lambda:read_bounded(root,rel/'receipt.json',1,t)))
-        case('host/exclusive_write',expect_reject(lambda:write_json(root,'static',p,{'a':2})))
-        write_json(root,'static',p,{'a':3},exclusive=False)
-        case('host/atomic_replace',exact_json(read_bounded(root,rel/'receipt.json',RECEIPT_CAP,t),{'a':3})
-            and unused(p.with_suffix('.json.tmp')))
-        link=d/'alias.json';link.symlink_to(p)
-        case('host/symlink_reject',expect_reject(lambda:read_bounded(root,rel/'alias.json',RECEIPT_CAP,t)))
-        link.unlink()
-        def pipe(name,code,seconds=15,cap=1024):
-            return bounded_process(root,'static',[sys.executable,'-B','-c',code],d/(name+'.log'),seconds,cap)
-        case('pipe/success',type(pipe('success','print("OK")')) is int and (d/'success.log').read_bytes()==b'OK\n')
-        case('pipe/nonzero',expect_reject(lambda:pipe('nonzero','raise SystemExit(7)')))
-        case('pipe/log_cap',expect_reject(lambda:pipe('cap','print("x"*2048)',cap=32)) and (d/'cap.log').stat().st_size<=32)
-        case('pipe/watchdog',expect_reject(lambda:pipe('watchdog','import time; time.sleep(30)',seconds=.25)))
+    # Retain bounded synthetic scratch files: parent storage scan must not race cleanup.
+    d=root/STATIC/'fixtures';d.mkdir(exist_ok=False)
+    rel=d.relative_to(root);p=d/'receipt.json'
+    write_json(root,'static',p,{'a':1})
+    case('host/strict_read',exact_json(read_bounded(root,rel/'receipt.json',RECEIPT_CAP,t),{'a':1}))
+    q=d/'invalid.json';q.write_bytes(b'{"a":1,"a":2}')
+    case('host/strict_duplicate',expect_reject(lambda:read_bounded(root,rel/'invalid.json',RECEIPT_CAP,t)))
+    q.write_bytes(b'{"a":NaN}')
+    case('host/strict_nonfinite',expect_reject(lambda:read_bounded(root,rel/'invalid.json',RECEIPT_CAP,t)))
+    case('host/strict_cap',expect_reject(lambda:read_bounded(root,rel/'receipt.json',1,t)))
+    case('host/exclusive_write',expect_reject(lambda:write_json(root,'static',p,{'a':2})))
+    write_json(root,'static',p,{'a':3},exclusive=False)
+    case('host/atomic_replace',exact_json(read_bounded(root,rel/'receipt.json',RECEIPT_CAP,t),{'a':3})
+        and unused(p.with_suffix('.json.tmp')))
+    # Symlink is intentionally outside the monitored evidence namespace. Only
+    # this synthetic scratch alias is deleted, never any actual receipt.
+    with tempfile.TemporaryDirectory(prefix='ssrpc_alias_fixture_') as tmp:
+        alias_root=Path(tmp).resolve();link=alias_root/'alias.json';link.symlink_to(p)
+        case('host/symlink_reject',expect_reject(lambda:read_bounded(alias_root,Path('alias.json'),RECEIPT_CAP,t)))
+    def pipe(name,code,seconds=15,cap=1024):
+        return bounded_process(root,'static',[sys.executable,'-B','-c',code],d/(name+'.log'),seconds,cap)
+    case('pipe/success',type(pipe('success','print("OK")')) is int and (d/'success.log').read_bytes()==b'OK\n')
+    case('pipe/nonzero',expect_reject(lambda:pipe('nonzero','raise SystemExit(7)')))
+    case('pipe/log_cap',expect_reject(lambda:pipe('cap','print("x"*2048)',cap=32)) and (d/'cap.log').stat().st_size<=32)
+    case('pipe/watchdog',expect_reject(lambda:pipe('watchdog','import time; time.sleep(30)',seconds=.25)))
     # In-memory archival rows used solely as synthetic reader fixtures; no native archive rerun.
     raw=[g for g in archive['groups'] if g['policy']=='CTRL']
     def synthetic(arm):
@@ -852,8 +858,11 @@ def read_static(root,pins,external,*,expected=None,terminal_required=True,outer_
 
 
 def worker_entry(root,phase,arm):
-    import m463_push_ppo_train as t
     auth=authorization(root,phase)
+    for name,expected in FROZEN.items():
+        require(blob((root/name).read_bytes())==expected,'WORKER_SOURCE_'+name)
+    import m463_push_ppo_train as t
+    require(Path(t.__file__).resolve()==root/'m463_push_ppo_train.py','WORKER_TRAINER_ORIGIN')
     base=phase_dir(phase)/(arm if phase=='native' else '')
     require((phase=='native' and arm in ARMS) or (phase=='static' and arm=='static'),'WORKER_PHASE')
     identity=dict(authorization=auth,**({'arm':arm} if phase=='native' else {}))
@@ -917,8 +926,6 @@ def bounded_child(root,phase,arm,base):
 
 
 def supervisor(root,phase):
-    import m463_gate3_cp_eval as e
-    import m463_push_ppo_train as t
     auth=authorization(root,phase)
     base=root/phase_dir(phase)
     outer=root/(STATIC_OUTER if phase=='static' else OUTER)
@@ -932,6 +939,8 @@ def supervisor(root,phase):
             base.mkdir(exist_ok=False)
             write_json(root,phase,base/'attempt.json',dict(authorization=auth,reserved=True,parent_pid=os.getpid()))
             pins,archive,secondary,external=prepare_inputs(root)
+            import m463_gate3_cp_eval as e
+            import m463_push_ppo_train as t
             if phase=='static':
                 worker_pid=bounded_child(root,phase,'static',base)
                 # Independent host admission and strict result reader, no second fixture execution.
