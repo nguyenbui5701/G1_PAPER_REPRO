@@ -440,3 +440,6 @@ Each link includes the section until the next heading; ranges are retrieval aids
 
 ## H4-M24-2 one-use static issuance
 - [Exact held base](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/a3d1fc9b16e12faefa3694e36f7cb743621e420e), evaluator blob 05ada48c07940c8f1aa6d4402cf95a2f2aa78d8d; root-only marker child required. No empirical result yet; see ACTIVE_EXPERIMENT.
+
+## H4-M24-2 reviewed receipt
+- [Static authorization child](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/e8c831c5042e021e9662cc544f940aa540403271), [documentation parent](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/a2eed642f22751d5f0039cd8fa58798352ced54e), [frozen evaluator](https://github.com/nguyenbui5701/G1_PAPER_REPRO/blob/e8c831c5042e021e9662cc544f940aa540403271/m463_gate3_cp_eval.py). Owner log 656B SHA256 827c39b8e8a051b48e3b763808b9678a568e45480fab1da54d9fb306405e1799; attempt 425B SHA256 a9ffff113c38dc181602c780e84977465af334a70dc5a986afc564bd6b903dc5; uploaded receipts independently rehashed. See ACTIVE_EXPERIMENT for limitations and proposed next scope.
