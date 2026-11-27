@@ -10872,9 +10872,11 @@ def ssrpc_replay_lane_chunks(np,records,arm,*,complete):
     if complete:
         require(first.astype(np.int64)+fm==assigned,'FINAL_FIRST')
         require(rep.astype(np.int64)+rm==opened,'FINAL_REPEAT')
-    low=rep&(~high_cost);useful=low&(same>=50);half=band//2
+    low=rep&(~high_cost);qualified_high=rep&high_cost;useful=low&(same>=50);half=band//2
     half_cell=[[int(np.count_nonzero(rep&(half==h)&(cell==c))) for c in range(4)] for h in range(2)]
     low_half_cell=[[int(np.count_nonzero(low&(half==h)&(cell==c))) for c in range(4)] for h in range(2)]
+    high_half_cell=[[int(np.count_nonzero(qualified_high&(half==h)&(cell==c))) for c in range(4)] for h in range(2)]
+    high_chunks=[int(np.count_nonzero((a[:,ix['repeat_k1']]>0)&high_cost)) for a in arrays]
     useful_half_support=[[int(np.count_nonzero(useful&(half==h)&((cell>=2)==bool(s)))) for s in range(2)] for h in range(2)]
     useful_direction=[int(np.count_nonzero(useful&(cell%2==d))) for d in range(2)]
     opportunity=all(n>=3 for row in half_cell for n in row) and len(chunks)==4 and min(chunks)>=1
@@ -10883,6 +10885,7 @@ def ssrpc_replay_lane_chunks(np,records,arm,*,complete):
     return dict(arm=arm,complete=complete,assigned=int(assigned.sum()),first=int(first.sum()),
         repeat=int(rep.sum()),low_repeat=int(low.sum()),useful50=int(useful.sum()),
         half_cell=half_cell,low_half_cell=low_half_cell,repeat_chunks=chunks,
+        high_repeat=int(qualified_high.sum()),high_half_cell=high_half_cell,high_repeat_chunks=high_chunks,
         useful_half_support=useful_half_support,useful_direction=useful_direction,
         tail_pending_or_final_censor=int((tail_open-close).sum()),
         candidate_exposure_screen=bool(complete and arm=='cand' and opportunity and low_gate and tail_gate),
@@ -11377,7 +11380,7 @@ def ssrpc_check_complete(out,r,auth):
         Path(H4M12_NEW_FULL).with_suffix('.json').name},'FINAL_ARTIFACT_SET')
     for name,sha in files.items():
         h4x_file_pin(out/name,sha)
-    meta=json.loads((out/Path(H4M12_NEW_FULL).with_suffix('.json')).read_bytes())
+    meta=ssrpc_read_json(out/Path(H4M12_NEW_FULL).with_suffix('.json'),65536)
     h4m12_require(meta==ssrpc_checkpoint_meta(auth,files[H4M12_NEW_FULL],files[H4M12_NEW_POLICY]),
                   'FINAL_MANIFEST')
     h4x_file_pin(out/'m463_brax_ppo_instrumented.py',auth['generated_sha256'])
@@ -11893,5 +11896,247 @@ if __name__=='__main__' and sys.argv[1:2]==['--h4ssrpc-continuation']:
     ssrpc_main(sys.argv[2:])
     sys.exit(0)
 # SSRPC_4B_WORKER_END
+
+# SSRPC_5A_FIXTURES_BEGIN
+def ssrpc_expect_reject(fn,label):
+    try:fn()
+    except (RuntimeError,ValueError,TypeError,KeyError):return
+    raise RuntimeError('SSRPC_FIXTURE_NEGATIVE_ACCEPTED '+label)
+
+def ssrpc_static_core_scope(root):
+    ns=h4ffe2_core_scope(root)
+    raw=(Path(root)/'m463_coverage_env.py').read_text('utf8')
+    a=raw.index('# H4SSRPC_HELD_ENV_BEGIN\n')
+    b=raw.index('class SSRPCCoverageJoystick(',a)
+    exec(compile(raw[a:b],'<SSRPC pure core>','exec'),ns)
+    return ns
+
+def ssrpc_core_fixture(root):
+    import numpy as np
+    ns=ssrpc_static_core_scope(root)
+    i=np.int32;f=np.float32;tests=0
+    for arm in ('ctrl','cand'):
+        pre=ns['ssrpc_pre_'+arm];post=ns['ssrpc_post'];labels=ns['ssrpc_labels_'+arm]
+        def check(b,c,k,phase,mode,cost,*,boundary=False,nominal=False,coherent=True,geometry=True,count=None,source=100,terminal=False,refresh=False):
+            nonlocal tests
+            due=40+160*b
+            old=dict(k=i(k),hard=i(1),band=i(b),cell=i(c),due=i(due),phase=i(phase),
+                     repeat_due=i(due+35),block=i(1))
+            args=dict(boundary=np.bool_(boundary),nominal=np.bool_(nominal),count=i((0 if phase==1 else 1) if count is None else count),
+                coherent=np.bool_(coherent),source_step=i(source),mode=i(mode),cost=f(cost),geometry_valid=np.bool_(geometry))
+            p,pick=pre(np,old,hard_draw=i(1),band_draw=i(b),cell_draw=i(c),due_draw=i(due),**args)
+            n,r=post(np,p,pick,gap=i(32),post_coherent=np.bool_(True),terminal=np.bool_(terminal),refresh=np.bool_(refresh))
+            l=labels(np,old,p,pick,n,r,**args,shadow_gap=i(32),terminal=np.bool_(terminal),
+                refresh=np.bool_(refresh),post_coherent=np.bool_(True))
+            tests+=1
+            return pick,n,r,l
+        for band in range(4):
+            due=40+160*band
+            for cell in range(4):
+                mode=cell+1 if cell<2 else 3
+                p,n,r,l=check(band,cell,due,1,mode,.5)
+                h4m12_require(p['first'] and n['repeat_due']==due+35 and l['repeat_opened'],'SSRPC_FIRST')
+                for gap in (34,35,36):
+                    for cost in (f(0),np.nextafter(f(.5),f(0)),f(.5),np.nextafter(f(.5),f(1)),f(1)):
+                        p,n,r,l=check(band,cell,due+gap,2,mode,cost)
+                        expected=gap==35 and (arm=='cand' or cost>=f(.5))
+                        h4m12_require(bool(p['repeat'])==expected and bool(l['repeat_event'])==expected and
+                            bool(l['repeat_risk'])==(gap==35) and n['phase']==(2 if gap==34 else 3),'SSRPC_GAP_COST')
+        for kw in (dict(boundary=True),dict(nominal=True),dict(coherent=False),dict(geometry=False),
+                   dict(count=0),dict(source=500)):
+            p,n,r,l=check(0,2,75,2,3,.5,**kw)
+            h4m12_require(not p['repeat'] and n['phase']==3,'SSRPC_COMMON_PREDICATE')
+        for mode in (0,1,2):
+            p,n,r,l=check(0,2,75,2,mode,.5)
+            h4m12_require(not p['repeat'] and n['phase']==3,'SSRPC_TARGET')
+        for cost in (float('nan'),float('inf'),-.1,1.1):
+            p,n,r,l=check(0,2,75,2,3,cost)
+            h4m12_require(not p['repeat'] and r['bad'],'SSRPC_INVALID_GEOMETRY')
+        p,n,r,l=check(0,2,40,1,3,.5,terminal=True)
+        h4m12_require(p['first'] and not l['repeat_opened'] and l['first_terminal'],'SSRPC_FIRST_TERMINAL')
+        p,n,r,l=check(0,2,75,2,3,.5,terminal=True)
+        h4m12_require(p['repeat'] and l['repeat_terminal'],'SSRPC_REPEAT_TERMINAL')
+    h4m12_require(tests==542,'SSRPC_CORE_COUNT')
+    return dict(cases=tests)
+
+def ssrpc_batch_fixture(root,arm):
+    """Exact new row checker with synthetic pre/post adapter rows; no native."""
+    import numpy as np
+    from types import SimpleNamespace
+    import m463_instrument_brax as inst
+    ns=ssrpc_static_core_scope(root)
+    scheduler=tuple(ns[k] for k in ('ssrpc_pre_ctrl','ssrpc_pre_cand','ssrpc_post','ssrpc_labels_ctrl','ssrpc_labels_cand'))
+    pre_fn,label_fn=(scheduler[0],scheduler[3]) if arm=='ctrl' else (scheduler[1],scheduler[4])
+    raw=(root/'m463_coverage_env.py').read_text('utf8')
+    a=raw.index('# H4FFE_ENV_WIRING_BEGIN\n');b=raw.index('# H4FFE_ENV_WIRING_END\n',a)
+    exec(compile(raw[a:b],'<FFE wiring schema>','exec'),ns)
+    h4m12_require(ns['FFE_EXTRA_FIELDS']==inst.FFE_FIELDS and ns['FFE2_ROW_FIELDS']==inst.FFE2_ROW_FIELDS,'FFE2_EXTRA_IDENTITY')
+    f=np.float32;i=np.int32;N=8192;shape=(N,32)
+    full=lambda x,dtype=i:np.full(N,x,dtype)
+    hard=np.where((np.arange(N)<4096)|(np.arange(N)>=7168),1,0).astype(i)
+    nominal=np.arange(N)>=7168
+    cell=(np.arange(N)%4).astype(i);mode=np.where(cell<2,cell+1,3).astype(i)
+    band=full(0);due=full(40);gap=full(32);cost=np.where((np.arange(N)//4)%2==0,f(.5),np.nextafter(f(.5),f(0))).astype(f);yes=full(True,bool)
+    old={k:full(v) for k,v in ns['ffe_init'](np).items()}
+    count=full(0);source=full(0);age=full(0);fp=full(0);rp=full(0)
+    kind=full(0);tail_age=full(0);tail_stratum=full(0);tail_same=full(0)
+    ordinary_next=full(12)
+    shadow=full(-1);prior_mode=full(0);prior_cost=full(0.,f);prior_geo=full(0)
+    prior_tick_kind=full(0);prior_tick_age=full(0);prior_tick_stratum=full(0)
+    def carry():
+        return {**{'ffe_'+k:v.copy() for k,v in old.items()},
+            'ffe_tail_stratum':tail_stratum.copy(),'ffe_tail_same':tail_same.copy(),
+            'm463_push_count':count.copy(),'step':source.copy(),
+            'h4_first_pending':fp.copy(),'h4_repeat_pending':rp.copy(),
+            'h4_tail_kind':kind.copy(),'ffe2_shadow_gap':shadow.copy(),
+            'ffe_mode':prior_mode.copy(),'ffe_cost':prior_cost.copy(),
+            'ffe_geometry_valid':prior_geo.copy(),'h4_tick_kind':prior_tick_kind.copy(),
+            'h4_tick_age':prior_tick_age.copy(),'ffe_tick_stratum':prior_tick_stratum.copy(),
+            'h4_tail_age':tail_age.copy()}
+    neg=0;rows=[];total_repeat=np.zeros(4,i);total_first=0;total_miss=0
+    before=carry()
+    payloads=[];lane_arrays=[]
+    for k in range(160):
+        boundary=full(k in (0,11),bool);terminal=full(k==10,bool);refresh=source>=500
+        count0=np.where(boundary,0,count).astype(i);age=np.where(boundary,0,age).astype(i)
+        ordinary_next=np.where(boundary,12,ordinary_next).astype(i)
+        pre,pick=pre_fn(np,old,hard_draw=hard,band_draw=band,cell_draw=cell,
+            due_draw=due,boundary=boundary,nominal=nominal,count=count0,
+            coherent=yes,source_step=source,mode=mode,cost=cost,geometry_valid=yes)
+        nxt,result=scheduler[2](np,pre,pick,gap=gap,post_coherent=yes,
+            terminal=terminal,refresh=refresh)
+        ordinary=(~pick['block'])&(~nominal)&(age==ordinary_next)&(count0<2)
+        event=pick['first']|pick['repeat']|ordinary
+        repeat=event&(count0>0);first=event&(~repeat)
+        ra=first&np.where(pick['block'],nxt['phase']==2,True)
+        block=pick['block']&(~nominal)
+        phase=np.where(old['k']==0,1,old['phase'])
+        target=np.where(phase==2,old['repeat_due'],pre['due'])
+        target=np.where(phase==3,2**30,age+target-old['k'])
+        target=np.where(block,target,ordinary_next).astype(i)
+        direction=np.where(block,pick['direction'],2).astype(i)
+        fprev=np.where(boundary,~nominal,fp>0);rprev=(~boundary)&(rp>0)
+        newfp=(fprev&(~first)&(~terminal)).astype(i)
+        newrp=(((rprev&(~repeat))|ra)&(~terminal)).astype(i)
+        count1=np.where(event,np.where(ra,1,2),count0).astype(i)
+        source1=np.where(terminal|refresh,0,source+1).astype(i)
+        stratum=np.where(nominal,0,np.where(block,2,1)).astype(i)
+        tick=(kind>0)&(~boundary)&(~event)
+        tick_kind=np.where(tick,kind,0).astype(i)
+        tick_age=np.where(tick,tail_age+1,0).astype(i)
+        tick_same=tick&(tail_same>0)
+        newkind=np.where(event&(~terminal),np.where(repeat,2,1),
+            np.where(tick&(~terminal)&(tick_age<250),kind,0)).astype(i)
+        newtail=np.where(event&(~terminal),stratum,np.where(newkind>0,tail_stratum,0)).astype(i)
+        newsame=np.where(event&(~terminal),True,(newkind>0)&tick_same).astype(i)
+        row=dict(hard_draw=hard,band_draw=band,cell_draw=cell,due_draw=due,
+            count=count0,after_count=count1,source_step=source,after_source_step=source1,
+            pre_coherent=yes,post_coherent=yes,geometry_valid=yes,mode=mode,gap=gap,
+            refresh=refresh,terminal=terminal,first=pick['first'],repeat=pick['repeat'],
+            block=pick['block'],reason=result['reason'],bad=result['bad'],stratum=stratum,
+            ordinary_event=ordinary,tail_stratum=newtail,tick_stratum=np.where(tick,tail_stratum,0),
+            tail_same=newsame,tick_same=tick_same,joint_excess=full(0),ctrl_excess=full(0),
+            force_excess=full(0),foot_foot=full(0))
+        x={'ffe_'+n:np.asarray(v,i) for n,v in row.items()}
+        for p,values in (('before_',old),('after_',nxt)):
+            x.update({'ffe_'+p+n:np.asarray(v,i) for n,v in values.items()})
+        x.update(ffe_native=full(-0.,f),ffe_cost=cost.copy())
+        shadow_next=np.where(pick['first'],gap,shadow).astype(i)
+        labels=label_fn(np,old,pre,pick,nxt,result,boundary=boundary,
+            nominal=nominal,count=count0,coherent=yes,source_step=source,mode=mode,cost=cost,
+            geometry_valid=yes,shadow_gap=shadow,terminal=terminal,refresh=refresh,post_coherent=yes)
+        x.update({'ffe2_'+name:np.asarray(v,i) for name,v in labels.items()})
+        x.update(ffe2_shadow_before=shadow.copy(),ffe2_shadow_after=shadow_next)
+        mag=np.where(event,f(.4),f(0)).astype(f)
+        legacy=dict(m463_event=event,m463_repeat=repeat,m463_no_push=nominal,
+            h4_boundary=boundary,h4_refresh=refresh,h4_changed=full(0),
+            h4_source_terminal=terminal,h4_assigned=boundary&(~nominal),
+            h4_repeat_assigned=ra,h4_first_pending=newfp,h4_repeat_pending=newrp,
+            h4_first_due=fprev&(age==target),h4_repeat_due=rprev&(age==target),
+            h4_first_closed=fprev&terminal&(~first),
+            h4_repeat_closed=terminal&((rprev&(~repeat))|ra),
+            h4_event_terminal=event&terminal,h4_close_boundary=full(0),
+            h4_close_repeat=(kind>0)&(~boundary)&event,h4_close_terminal=tick&terminal,
+            h4_close_complete=tick&(tick_age==250)&(~terminal),
+            h4_bad=full(0),truncation=full(0),h4_class=(~nominal),
+            h4_motion=full(0),h4_actor_motion=full(0),h4_age=age,h4_target=target,
+            m463_direction=direction,h4_tick_kind=tick_kind,h4_tick_age=tick_age,
+            h4_tick_same=tick_same,h4_tick_survived=tick&(~terminal),h4_tail_kind=newkind,
+            h4_tail_age=np.where(tick&(newkind>0)&(~terminal)&(tick_age<250),tick_age,0))
+        x.update({n:np.asarray(v,i) for n,v in legacy.items()})
+        x.update(m463_magnitude=mag,h4_actual_dx=mag.copy(),h4_actual_dy=full(0.,f),
+                 m463_repeat_gap=np.where(pick['repeat'],35,0).astype(i))
+        h4m12_require(set(inst.FFE_FIELDS)<=set(x),'FFE_FIXTURE_FIELDS')
+        rows.append(x)
+        ordinary_next=np.where(ordinary,np.where(first,age+30,2**30),ordinary_next).astype(i)
+        shadow=shadow_next;prior_mode=mode.copy();prior_cost=cost.copy();prior_geo=full(1)
+        prior_tick_kind=tick_kind;prior_tick_age=tick_age;prior_tick_stratum=x['ffe_tick_stratum']
+        old=nxt;count=count1;source=source1;fp=newfp;rp=newrp;kind=newkind
+        tail_stratum=newtail;tail_same=newsame
+        tail_age=np.where(tick&(kind>0),tick_age,0).astype(i);age=age+1
+        if (k+1)%32:continue
+        extras={n:np.stack([r[n] for r in rows],axis=1) for n in rows[0]}
+        obs=dict(state=np.zeros((*shape,12),f),privileged_state=np.zeros((*shape,12),f))
+        data=SimpleNamespace(reward=extras['ffe_native'].copy(),discount=(1-extras['ffe_terminal']).astype(f),
+            extras={'state_extras':extras},observation=obs,next_observation=obs)
+        after=carry()
+        def guard():
+            return inst.ssrpc_batch_contract_pure(np,data,before,after,full(0.,f),full(0.,f),arm,scheduler)
+        bad=guard();h4m12_require(not bad.any(),'FFE_ADAPTER_TRANSITION '+str(np.argwhere(bad)[:5]))
+        met=inst.ffe_reduce(np,extras,bad,np.bool_(True))
+        h4m12_require(set(met)=={'ffe_'+x for x in h4ffe_metric_keys()} and met['ffe_batch_committed']==1,'FFE_REDUCER_KEYS')
+        total_repeat+=np.array([met[f'ffe_cell_{j}_repeat'] for j in range(4)],i)
+        total_first+=sum(int(met[f'ffe_cell_{j}_first']) for j in range(4))
+        total_miss+=sum(int(met[f'ffe_cell_{j}_first_miss']) for j in range(4))
+        payloads.append(inst.ffe2_device_reduce(np,extras,before,np.bool_(True)))
+        lane_arrays.append(inst.ssrpc_lane_reduce(np,extras,before,np.bool_(True)))
+        if k==95:
+            h4m12_require(not inst.ssrpc_lane_reduce(np,extras,before,np.bool_(False)).any(),'SSRPC_REJECTED_LANE_CREDIT')
+            for n,index,value in (
+                ('ffe_cost',(0,11),f(.49)),('ffe_mode',(0,11),3),
+                ('ffe_geometry_valid',(0,11),0),('ffe_after_k',(0,11),99),
+                ('ffe_source_step',(0,11),99),('m463_direction',(0,11),3),
+                ('h4_repeat_pending',(0,10),0),('ffe_native',(0,11),f(0.)),
+                ('h4_bad',(0,11),1),('truncation',(0,11),1),
+                ('ffe_pre_coherent',(0,11),0),('ffe_tick_stratum',(0,12),1),
+                ('ffe2_shadow_before',(0,11),31),('ffe2_repeat_extended',(0,11),1),
+                ('ffe2_repeat_mask',(0,11),1),('ffe2_shadow_after',(0,11),31),
+                ('h4_tick_age',(0,12),99),('h4_close_repeat',(0,11),0),('m463_repeat_gap',(0,11),34)):
+                oldvalue=extras[n][index].copy();extras[n][index]=value
+                mask=guard();h4m12_require(mask.any(),'FFE_NEGATIVE '+n)
+                rejected=inst.ffe_reduce(np,extras,mask,np.bool_(False))
+                h4m12_require(rejected['ffe_batch_rejected']==1 and rejected['ffe_batch_committed']==0,'FFE_NEGATIVE_REDUCE')
+                extras[n][index]=oldvalue;neg+=1
+            data.reward[0,11]=f(0.)
+            h4m12_require(guard().any(),'FFE_SIGNED_ZERO');neg+=1
+            data.reward[0,11]=f(-0.)
+            h4m12_require(not guard().any(),'FFE_RESTORED_FIXTURE')
+        before=after;rows=[]
+    expected=512 if arm=='ctrl' else 1024
+    h4m12_require(total_repeat.tolist()==[expected]*4 and total_first==4096 and total_miss==1024,
+        'SSRPC_ADAPTER_COUNTS')
+    merged={}
+    for key in payloads[0]:
+        values=np.stack([p[key] for p in payloads])
+        merged[key]=(np.bitwise_or.reduce(values,axis=0) if key=='ffe2_lanes' else
+                     np.max(values,axis=0) if key=='ffe2_shadow_last' else
+                     np.sum(values,axis=0,dtype=i))
+    merged['ffe2_ssrpc_lane']=np.sum(np.stack(lane_arrays),axis=0,dtype=i)
+    pending=[[int(np.count_nonzero((old['band']==g//4)&(old['cell']==g%4)&
+        (tail_stratum==2)&(kind==kind_id))) for kind_id in (1,2)] for g in range(16)]
+    record=ssrpc_prepare_chunk(np,merged,1,pending)
+    screen=ssrpc_replay_joint_chunks(np,[record],arm,complete=False)['screen']
+    h4m12_require(screen['repeat']==4*expected and screen['high_repeat']==2048 and
+        screen['low_repeat']==(0 if arm=='ctrl' else 2048) and
+        screen['useful50']==screen['low_repeat'],'SSRPC_ADAPTER_JOINT_COUNTS')
+    for key,value in (('repeat_k1',77),('repeat_episode1',1),('tail_ticks',0),('same_alive_bits',0),('high_mask1',129)):
+        changed=merged['ffe2_ssrpc_lane'].copy()
+        changed[0,inst.SSRPC_LANE_FIELDS.index(key)]=value
+        bad=dict(record,ssrpc_lane=ssrpc_encode_lane_chunk(np,changed,1))
+        ssrpc_expect_reject(lambda:ssrpc_replay_joint_chunks(np,[bad],arm,complete=False),'lane_'+key)
+    return dict(positive_batches=5,negative_rows=neg,rejected_lane_credit=1,
+        positive_joint=1,negative_joint=5,synthetic_rows=5*8192*32,
+        repeat=screen['repeat'],low_repeat=screen['low_repeat'],useful50=screen['useful50'])
+# SSRPC_5A_FIXTURES_END
 # H4SSRPC_HELD_TRAINER_END
 if __name__=='__main__': main()

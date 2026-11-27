@@ -2549,10 +2549,16 @@ def ssrpc_batch_contract(xp,data,before,after,before_done,after_done,arm):
     """Retain V2 legacy/reward/clock/tail replay plus separate predicate."""
     from m463_coverage_env import (ssrpc_pre_ctrl,ssrpc_pre_cand,ssrpc_post,
                                    ssrpc_labels_ctrl,ssrpc_labels_cand)
-    if arm not in ('ctrl','cand'):
+    return ssrpc_batch_contract_pure(xp,data,before,after,before_done,after_done,arm,
+        (ssrpc_pre_ctrl,ssrpc_pre_cand,ssrpc_post,ssrpc_labels_ctrl,ssrpc_labels_cand))
+
+def ssrpc_batch_contract_pure(xp,data,before,after,before_done,after_done,arm,scheduler):
+    """Identical native checker body, explicit scheduler for host-only fixtures."""
+    if type(arm) is not str or arm not in ('ctrl','cand'):
         raise RuntimeError('SSRPC_ARM')
-    pre,label=(ssrpc_pre_ctrl,ssrpc_labels_ctrl) if arm=='ctrl' else (ssrpc_pre_cand,ssrpc_labels_cand)
-    bad=ffe2_batch_contract(xp,data,before,after,before_done,after_done,pre,ssrpc_post,label)
+    pre_ctrl,pre_cand,post,label_ctrl,label_cand=scheduler
+    pre,label=(pre_ctrl,label_ctrl) if arm=='ctrl' else (pre_cand,label_cand)
+    bad=ffe2_batch_contract(xp,data,before,after,before_done,after_done,pre,post,label)
     z=lambda k:data.extras['state_extras'][k]
     k=z('ffe_before_k')
     waiting=(z('ffe_before_phase')==2)&(z('ffe_before_hard')==1)&(z('ffe_before_block')==1)
