@@ -86,3 +86,6 @@ Append one row per task with exact evidence/commit, decision, limitations and ne
 
 
 | H4-M25-1 | Owner explicit held scope and separate consumed V2 marker closure | EDIT-FIRST / HELD | 7eaef25556aa3705a9892533eb168eca493560ea; no static or native execution; see ACTIVE_EXPERIMENT |
+
+
+| H4-M25-1 held source completion | V3 quaternion/namespace/provenance/reverse projection; 122 prospective cases | HELD SOURCE IMPLEMENTED / STATIC GO REQUIRED / NATIVE HOLD | b8015308ae97ff2358ef788c2425442ca2f74044; evaluator fda4c2c2eb0117f56d3c613d6f1abcbf458d0f04; zero execution |

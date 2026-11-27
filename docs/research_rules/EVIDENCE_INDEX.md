@@ -454,3 +454,7 @@ Each link includes the section until the next heading; ranges are retrieval aids
 
 ## H4-M25-1 held scope
 - [Exact Owner-approved base](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/7eaef25556aa3705a9892533eb168eca493560ea); frozen V2 blob 05ada48c07940c8f1aa6d4402cf95a2f2aa78d8d. No new empirical results.
+
+
+## H4-M25-1 held source completion
+- [EDIT-FIRST](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/c20858a8f729c81cad0574e5f37ed2f1e89e7982), [closure](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/e032e7ff9286071063084d61f1564886ccc4d345), [source](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/b8015308ae97ff2358ef788c2425442ca2f74044), evaluator blob fda4c2c2eb0117f56d3c613d6f1abcbf458d0f04. Remote exact readback/reverse text comparison, 122 prospective host cases, no empirical result. See ACTIVE_EXPERIMENT.
