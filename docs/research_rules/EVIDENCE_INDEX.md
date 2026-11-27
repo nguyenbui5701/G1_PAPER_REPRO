@@ -350,3 +350,6 @@ Each link includes the section until the next heading; ranges are retrieval aids
 
 ## H4-M20-2B accepted full host-static receipt
 - [Exact log review and limits](ACTIVE_EXPERIMENT.md#h4-m20-2b--owner-exact-full-host-static-receipt-review-2026-11-27); [authorization](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/0aafef0da3fa6c7d80dbb6c1fcbeb233b26d796a); m463_runs/m470_h4ffe2_static_final_oneuse_v1.log 1841B SHA256 cb824e5830f344e06e7fffd467d93204b258b52304e7f46547dc229be5cc458c; Owner final aggregate 492664bafc6aa360bbb6d9671a5ed85f4a1d3596b3f937869ca9d9c58c50ef86, generated 9d20cdd77ac0e3330cb5f3d89df408ba150bc568f1bfa3d4ee2e6399bcba72cf. Host-only evidence, no native resource admission or efficacy.
+
+## H4-M20-3 one-use PPO authorization
+- [Exact contract and marker](ACTIVE_EXPERIMENT.md#h4-m20-3--ffe-v2-one-use-bounded-ppo-execution--owner-go-2026-11-27); [reviewed base](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/d363299727ff3563affe566a78dd8360974b612b); full-static SHA256 cb824e5830f344e06e7fffd467d93204b258b52304e7f46547dc229be5cc458c, source 492664bafc6aa360bbb6d9671a5ed85f4a1d3596b3f937869ca9d9c58c50ef86, generated 9d20cdd77ac0e3330cb5f3d89df408ba150bc568f1bfa3d4ee2e6399bcba72cf. Runtime receipt expected at m463_runs/m470_h4_m20_ffe_v2; no new empirical evidence yet.
