@@ -14581,7 +14581,7 @@ def h4ffe2_dev_static(root):
 H4FFE2_DEV_PATCHES=[["\n    args=p.parse_args()\n    if args.h4ffe_eval:\n","\n    p.add_argument('--h4ffe2-eval',action='store_true')\n    p.add_argument('--h4ffe2-eval-static',action='store_true')\n    args=p.parse_args()\n    if args.h4ffe2_eval:\n        allowed={'mode','output','h4ffe2_eval','h4ffe2_eval_static'}\n        h4m12_req(all(getattr(args,k)==p.get_default(k) for k in vars(args) if k not in allowed),'FFE2_FLAG_CONFLICT')\n        h4m12_req(args.output.absolute()==args.output.resolve()==H4_EVAL_ROOT/H4FFE2_DEV_OUTPUT,'FFE2_OUTPUT')\n        if args.mode=='run':\n            h4m12_req(not args.h4ffe2_eval_static,'FFE2_MODE_CONFLICT')\n            args.h4red_eval='ffe2'\n            return h4m12_dispatch(args,red='ffe2')\n        if args.h4ffe2_eval_static:return h4ffe2_dev_static(H4_EVAL_ROOT)\n        print('H4FFE2_DEV_PLAN',json.dumps(H4FFE2_DEV_SPEC,sort_keys=True));return\n    if args.h4ffe2_eval_static:p.error('H4FFE2_EVAL_FLAG_REQUIRED')\n    if args.h4ffe_eval:\n"],["\n    auth=(h4ffe_dev_marker if red=='ffe' else","\n    auth=(h4ffe2_dev_marker if red=='ffe2' else h4ffe_dev_marker if red=='ffe' else"],["\n    if red=='ffe':\n        h4m12_req(lines[-2:]==['H4FFE_DEV_FULL_STATIC_PASS','STATIC_EXIT_CODE=0 TEE_EXIT_CODE=0'],'FFE_STATIC_FOOTER')","\n    if red=='ffe2':\n        h4m12_req(lines[-2:]==['H4FFE2_DEV_FULL_STATIC_PASS','STATIC_EXIT_CODE=0 TEE_EXIT_CODE=0'],'FFE2_STATIC_FOOTER')\n    if red=='ffe':\n        h4m12_req(lines[-2:]==['H4FFE_DEV_FULL_STATIC_PASS','STATIC_EXIT_CODE=0 TEE_EXIT_CODE=0'],'FFE_STATIC_FOOTER')"],["\n    training_pins=H4FFE_DEV_TRAIN_PINS if red=='ffe' else","\n    training_pins=H4FFE2_DEV_TRAIN_PINS if red=='ffe2' else H4FFE_DEV_TRAIN_PINS if red=='ffe' else"],["\n    if red in ('r12','ffe'):h4m12_req(out.is_dir()","\n    if red in ('r12','ffe','ffe2'):h4m12_req(out.is_dir()"],["\n    h4m12_req(t.h4m12_read_final(root,training_pins['report.json'],auth,red=(red is True),r11=(red=='r11'),r12=(red=='r12'),ffe=(red=='ffe'))==r,'TRAIN_READER')\n","\n    if red=='ffe2':h4ffe2_dev_training_contract(root,r)\n    else:\n        h4m12_req(t.h4m12_read_final(root,training_pins['report.json'],auth,red=(red is True),r11=(red=='r11'),r12=(red=='r12'),ffe=(red=='ffe'))==r,'TRAIN_READER')\n"],["\n        (h4ffe_dev_training_contract if red=='ffe' else","\n        if red!='ffe2':(h4ffe_dev_training_contract if red=='ffe' else"],["\n    approved=('H4FFE_TRAINING_APPROVED: ' if red=='ffe' else","\n    approved=('H4FFE2_TRAINING_APPROVED: ' if red=='ffe2' else 'H4FFE_TRAINING_APPROVED: ' if red=='ffe' else"],["\n        pins['training/static.log']=(H4FFE_DEV_TRAIN_AUTH if red=='ffe' else","\n        pins['training/static.log']=(H4FFE2_DEV_TRAIN_AUTH if red=='ffe2' else H4FFE_DEV_TRAIN_AUTH if red=='ffe' else"],["\n    if red in ('r12','ffe'):\n        h4m12_req(path.is_file()","\n    if red in ('r12','ffe','ffe2'):\n        h4m12_req(path.is_file()"],["\n    if red=='ffe':h4ffe_dev_disposition(result)","\n    if red=='ffe':h4ffe_dev_disposition(result)\n    if red=='ffe2':h4ffe2_dev_disposition(result)"],["\n    h4m12_req(type(red) is bool or red in ('r11','r12','ffe'),'R11_MODE')","\n    h4m12_req(type(red) is bool or red in ('r11','r12','ffe','ffe2'),'R11_MODE')"],["\n    return 'FFE' if red=='ffe' else","\n    return 'FFE2' if red=='ffe2' else 'FFE' if red=='ffe' else"],["\n    return H4FFE_DEV_TRAIN_DIR if red=='ffe' else","\n    return H4FFE2_DEV_TRAIN_DIR if red=='ffe2' else H4FFE_DEV_TRAIN_DIR if red=='ffe' else"],["\n    return H4FFE_DEV_OUTPUT if red=='ffe' else","\n    return H4FFE2_DEV_OUTPUT if red=='ffe2' else H4FFE_DEV_OUTPUT if red=='ffe' else"],["\n    return H4FFE_DEV_SPEC if red=='ffe' else","\n    return H4FFE2_DEV_SPEC if red=='ffe2' else H4FFE_DEV_SPEC if red=='ffe' else"],["\n    return H4FFE_DEV_LOG if red=='ffe' else","\n    return H4FFE2_DEV_LOG if red=='ffe2' else H4FFE_DEV_LOG if red=='ffe' else"],["\ndef h4ffe_dev_projection(raw):\n","\ndef h4ffe_dev_projection(raw):\n    if b'# H4FFE2_DEV_'+b'BEGIN\\n' in raw:raw=h4ffe2_dev_projection(raw)\n"]]
 # H4FFE2_DEV_END
 # H4M23_RICH_BEGIN
-# H4-M23-3 held candidate. No dispatcher/authorization exists in this revision.
+# H4-M23-3B held candidate. Requires a distinct future static receipt and root authorization.
 H4M23_BASE='3758f03eaf3e2dfdaf4c57831e849f393778fd8b'
 H4M23_BASE_BLOB='87f82602fb57e93e5e39e51f2a65b257946e109a'
 H4M23_OUTPUT=Path('m463_runs/m470_h4_m23_3_ffe2_rich_v1/report.json')
@@ -14962,7 +14962,7 @@ def h4m23_read_journal(path,auth,pins,lanes,*,complete=False,ext=None,deadline=N
         journal_sha256=sha256(p),complete=complete)
 
 def h4m23_native_lane(args,i,env,step_fn,jax,jnp,np):
-    h4m23_enter(args)  # absolute HOLD in this source revision
+    h4m23_enter(args)  # repeat independent worker admission
     l=args.h4m23_lanes[i];j=args.h4m23_journal;m=args.h4m23_manifest
     clone=lambda st:jax.tree_util.tree_map(lambda x:x,st)
     dg=lambda st:h4abs_state_digest(st,jax.tree_util.tree_flatten_with_path,jax.device_get)
@@ -14995,7 +14995,12 @@ def h4m23_native_lane(args,i,env,step_fn,jax,jnp,np):
     boundary('lane_end',l['end'])
 
 def h4m23_enter(args):
-    raise RuntimeError('M470_H4M23_HELD_NO_STATIC_OR_NATIVE_AUTHORIZATION')
+    auth=h4m23_marker((H4_EVAL_ROOT/'G1_RESEARCH_RULES.md').read_text('utf8'))
+    h4m23_req(getattr(args,'h4m23_auth',None)==auth and getattr(args,'h4m23_admitted',False) is True
+        and args.output==H4_EVAL_ROOT/H4M23_OUTPUT and args.seeds==[7601,7613,7357]
+        and args.profiles==['stand'] and args.h4red_eval=='ffe2','WORKER_ADMISSION')
+    h4m23_req(h4m23_json_file(args.output.parent/'runtime.entered.json',8192)==
+        dict(authorization=auth,pid=os.getpid(),parent_pid=os.getppid()),'WORKER_RECEIPT')
 
 
 
@@ -15196,9 +15201,251 @@ def h4m23_independent_fields(p,row,m,np):
         safe=safe and all(v is None or v>=0 for v in p[name])
     h4m23_req(safe==p['capture_safe'],'CAPTURE_SAFETY')
 
-H4M23_PATCHES=[["def run(args):\n    abs_mode=","def run(args):\n    m23=bool(getattr(args,'h4m23_rich',False))\n    if m23:h4m23_enter(args)\n    abs_mode="],["    m12=bool(getattr(args,'h4m12_eval',False))\n    h4_mode=","    m12=bool(getattr(args,'h4m12_eval',False)) or m23\n    h4_mode="],["    if m12:\n        h4m12_enter(args,red=getattr(args,'h4red_eval',False))","    if m12 and not m23:\n        h4m12_enter(args,red=getattr(args,'h4red_eval',False))\n    elif m23:\n        pass  # separate held entry, never use historical DEV authorization"],["        h4m3_runtime_model_source(env,args.h3_session)\n    if m6:","        h4m3_runtime_model_source(env,args.h3_session)\n        if m23:\n            args.h4m23_manifest=h4m3_manifest(env,np)\n            args.h4m23_manifest['geometry']=h4m4_model_geometry(env,args.h4m23_manifest,np)\n            h4m23_runtime_manifest(args,env,np)\n            args.h4m23_journal.header(args.h4m23_manifest)\n    if m6:"],["                if placement_capture:\n                    pre_placement=h4m3_pre_capture(state)","                if placement_capture:\n                    pre_placement=(h4m23_pre_capture(state) if m23 else h4m3_pre_capture(state))"],["                    return next_state,diag,h4m3_post_capture(pre_placement,action,next_state,env)\n                return next_state,diag","                    return next_state,diag,(h4m23_post_capture(pre_placement,action,next_state,env,jnp)\n                        if m23 else h4m3_post_capture(pre_placement,action,next_state,env))\n                return next_state,diag"],["if placement or m6 else jax.jit(one_step))\n            if abs_mode:","if placement or m6 or m23 else jax.jit(one_step))\n            if m23:\n                h4m23_native_lane(args,lane_index,env,step_fn,jax,jnp,np)\n                continue\n            if abs_mode:"],["    if placement:\n        return\n    if h3_mode:\n        if m12:","    if placement or m23:\n        return\n    if h3_mode:\n        if m12:"],["def h4ffe2_dev_projection(raw):\n    begin=","def h4ffe2_dev_projection(raw):\n    if b'# H4M23_RICH_'+b'BEGIN\\n' in raw:raw=h4m23_projection(raw)\n    begin="],["def h4ffe2_dev_project(root):\n    import ast\n    raw=(root/'m463_gate3_cp_eval.py').read_bytes()","def h4ffe2_dev_project(root):\n    import ast\n    raw=(root/'m463_gate3_cp_eval.py').read_bytes()\n    if b'# H4M23_RICH_'+b'BEGIN\\n' in raw:raw=h4m23_projection(raw)"]]
+
+# Held supervisor and report readers; no static/native GO is issued here.
+H4M23_STATIC=Path('m463_runs/m470_h4m23_rich_static_v1.log')
+H4M23_BRANCH='experiment/b1-hardware-scaled'
+H4M23_PARTIAL_READ_S=60
+
+def h4m23_json_file(path,cap):
+    p=Path(path)
+    h4m23_req(p.is_file() and not p.is_symlink() and p.resolve()==p.absolute()
+        and 0<p.stat().st_size<=cap,'JSON_FILE')
+    def unique(items):
+        d={}
+        for k,v in items:h4m23_req(k not in d,'DUPLICATE_KEY');d[k]=v
+        return d
+    return json.loads(p.read_bytes(),object_pairs_hook=unique,
+        parse_constant=lambda x:(_ for _ in ()).throw(ValueError(x)))
+
+def h4m23_marker(rules):
+    import re
+    active=[l for l in rules.splitlines() if re.match(r'^[A-Z0-9_]+_GO:',l)]
+    h4m23_req(len(active)==1,'HOLD_OR_CONFLICT')
+    a=active[0].split()
+    h4m23_req(len(a)==7 and a[:3]==['H4M23_RICH_ACTIVE_GO:',H4M23_SPEC['id'],str(H4M23_OUTPUT)]
+        and a[5]==str(H4M23_STATIC) and all(re.fullmatch('[0-9a-f]{64}',a[i]) for i in (3,4,6)),
+        'DISTINCT_MARKER')
+    return dict(id=a[1],output=a[2],source=a[3],provenance=a[4],static_path=a[5],static_sha=a[6])
+
+def h4m23_authorize(root):
+    """Host only. Held HEAD has no active marker; fail before any native import."""
+    import re
+    h4m3_no_runtime_imports();root=Path(root).resolve()
+    rules=(root/'G1_RESEARCH_RULES.md').read_text('utf8');auth=h4m23_marker(rules)
+    pins,ctrl,ext,lanes=h4m23_inputs(root)
+    source=h4red_eval_source(root)
+    h4m23_req(auth['source']==source and auth['provenance']==h4m3_digest([pins,ext]),'AUTH_PROVENANCE')
+    log=h4abs_pin(root/H4M23_STATIC,auth['static_sha'],H4M23_SPEC['log_cap'])
+    lines=log.read_text('utf8').splitlines()
+    for line in ('H4M23_SOURCE '+source,'H4M23_PROVENANCE '+auth['provenance'],
+        'H4M23_EVALUATOR_SHA256 '+pins['source/m463_gate3_cp_eval.py'],
+        'H4M23_FULL_STATIC_PASS','STATIC_EXIT_CODE=0 TEE_EXIT_CODE=0'):
+        h4m23_req(lines.count(line)==1,'STATIC_RECEIPT')
+    for prefix in ('H4M23_SOURCE ','H4M23_PROVENANCE ','H4M23_EVALUATOR_SHA256 ','STATIC_EXIT_CODE='):
+        h4m23_req(sum(x.startswith(prefix) for x in lines)==1,'STATIC_RECEIPT_AMBIGUOUS')
+    # The distinct static stage must supply all categories of negative fixtures;
+    # no claim is made that such a receipt exists in this held revision.
+    evidence=[x.removeprefix('H4M23_STATIC_FIXTURES ') for x in lines if x.startswith('H4M23_STATIC_FIXTURES ')]
+    h4m23_req(len(evidence)==1,'STATIC_FIXTURE_RECEIPT')
+    fixture=json.loads(evidence[0])
+    categories={'projection','native_schema','packed_fields','manifest','fork','ledger','final_reader',
+        'partial_reader','authorization','reservation','watchdog_log','historical_provenance'}
+    h4m23_req(set(fixture)==categories|{'native_calls','optimizer_updates'}
+        and all(type(fixture[k]) is int and fixture[k]>0 for k in categories)
+        and fixture['native_calls']==fixture['optimizer_updates']==0,'STATIC_FIXTURE_CONTRACT')
+    heads=[x.split()[1] for x in lines if re.fullmatch(r'H4M23_STATIC_HEAD [0-9a-f]{40}',x)]
+    h4m23_req(len(heads)==1 and lines[-2:]==['H4M23_FULL_STATIC_PASS','STATIC_EXIT_CODE=0 TEE_EXIT_CODE=0']
+        and not any('STATIC_HOLD' in x for x in lines),'STATIC_HEAD_RECEIPT')
+    def git(*argv):return subprocess.check_output(['git',*argv],cwd=root,text=True,timeout=30).strip()
+    h4m23_req(git('branch','--show-current')==H4M23_BRANCH
+        and git('status','--porcelain','--untracked-files=no')==''
+        and git('rev-parse','HEAD^')==heads[0] and git('diff','--name-only',heads[0],'HEAD')=='G1_RESEARCH_RULES.md',
+        'ROOT_ONLY_AUTH_CHILD')
+    prior=subprocess.check_output(['git','show',heads[0]+':G1_RESEARCH_RULES.md'],cwd=root,timeout=30).decode('utf8')
+    marker=next(l for l in rules.splitlines() if l.startswith('H4M23_RICH_ACTIVE_GO:'))
+    h4m23_req(not any(re.match(r'^[A-Z0-9_]+_GO:',l) for l in prior.splitlines())
+        and rules==prior+('' if prior.endswith('\n') else '\n')+marker+'\n','EXACT_ROOT_APPEND')
+    h4m3_no_runtime_imports()
+    return auth,pins,ctrl,ext,lanes
+
+def h4m23_gpu_check_report(gi,g):
+    h4m23_req(gi['total_mib']==g['total_mib']==12288 and 0<=gi['used_mib']<.95*12288
+        and 0<g['peak_used_mib']<.95*12288 and type(g['samples']) is int and g['samples']>0
+        and g['sampler_errors']==[],'GPU_REPORT')
+
+def h4m23_worker(root,auth,pins,ctrl,ext,lanes):
+    import time
+    from types import SimpleNamespace
+    from m462_ppo_warmstart_run import GPUMonitor,sample_gpu
+    path=root/H4M23_OUTPUT;out=path.parent
+    h4m3_no_runtime_imports()
+    parent=h4m23_json_file(out/'parent.json',8192)
+    h4m23_req(set(parent)=={'authorization','pid','deadline'} and parent['authorization']==auth
+        and parent['pid']==os.getppid() and type(parent['pid']) is int
+        and type(parent['deadline']) is float and time.monotonic()<parent['deadline']
+        and h4m23_json_file(out/'attempt.json',8192)==dict(authorization=auth,reserved=True),'PARENT_ADMISSION')
+    h4m23_req(set(x.name for x in out.iterdir())=={'attempt.json','parent.json','runtime.log'},'WORKER_NAMESPACE')
+    h4m6_write_bounded(out/'runtime.entered.json',dict(authorization=auth,pid=os.getpid(),
+        parent_pid=os.getppid()),exclusive=True,cap=8192)
+    gi=sample_gpu();h4m23_req(gi['total_mib']==12288 and 0<=gi['used_mib']<.95*12288,'GPU_INITIAL')
+    monitor=GPUMonitor();journal=H4M23Journal(out/'journal.jsonl',auth,pins,lanes,monitor,parent['deadline'])
+    args=SimpleNamespace(h4m23_rich=True,h4m23_auth=auth,h4m23_admitted=True,h4red_eval='ffe2',
+        h4m23_lanes=lanes,h4m23_journal=journal,h4m12_archive=ctrl,h4m12_external=ext,
+        h3_session=dict(input_sha256=pins),h3_monitor=monitor,output=path,
+        seeds=[7601,7613,7357],profiles=['stand'],h2a=False,h2b=False)
+    try:
+        with monitor:run(args)
+        g=h3_gpu_check(monitor)
+    finally:journal.f.close()
+    verified=h4m23_read_journal(out/'journal.jsonl',auth,pins,lanes,complete=True,ext=ext,deadline=parent['deadline'])
+    h4m23_req(args.h3_session['brax_source_verification']==ext['brax'] and journal.n==verified['events_recorded']
+        and journal.pending is None,'WORKER_RECONCILE')
+    h4m23_gpu_check_report(gi,g)
+    h4m6_write_bounded(path,dict(status='DIAGNOSTIC_COMPLETE',authorization=auth,input_sha256=pins,
+        spec=H4M23_SPEC,verification=verified,gpu_initial=gi,gpu=g,brax=ext['brax'],
+        optimizer_updates=0,promotion_authorized=False),exclusive=True,cap=1024**2)
+
+def h4m23_report_contract(report,auth,pins,ext,v):
+    h4m23_req(set(report)=={'status','authorization','input_sha256','spec','verification','gpu_initial','gpu',
+        'brax','optimizer_updates','promotion_authorized'} and report['status']=='DIAGNOSTIC_COMPLETE'
+        and report['authorization']==auth and report['input_sha256']==pins and report['spec']==H4M23_SPEC
+        and report['verification']==v and report['brax']==ext['brax'] and type(report['optimizer_updates']) is int
+        and report['optimizer_updates']==0 and report['promotion_authorized'] is False,'FINAL_REPORT')
+    h4m23_gpu_check_report(report['gpu_initial'],report['gpu'])
+
+def h4m23_parent_receipt(out,auth):
+    h4m23_req(h4m23_json_file(out/'attempt.json',8192)==dict(authorization=auth,reserved=True),'ATTEMPT')
+    p=h4m23_json_file(out/'parent.json',8192)
+    h4m23_req(set(p)=={'authorization','pid','deadline'} and p['authorization']==auth
+        and type(p['pid']) is int and p['pid']>0 and type(p['deadline']) is float and math.isfinite(p['deadline']),
+        'PARENT_RECEIPT')
+    return p
+
+def h4m23_child_receipt(out,auth,parent):
+    c=h4m23_json_file(out/'runtime.entered.json',8192)
+    h4m23_req(set(c)=={'authorization','pid','parent_pid'} and c['authorization']==auth
+        and type(c['pid']) is int and c['pid']>0 and c['parent_pid']==parent['pid'],'CHILD_RECEIPT')
+    return c
+
+def h4m23_log_receipt(out,required):
+    p=out/'runtime.log'
+    if not required and not p.exists() and not p.is_symlink():return 0,None
+    h4m23_req(p.is_file() and not p.is_symlink() and p.resolve()==p.absolute()
+        and (not required or p.stat().st_size>0) and p.stat().st_size<=H4M23_SPEC['log_cap'],'LOG_RECEIPT')
+    return p.stat().st_size,sha256(p)
+
+def h4m23_check_final(root,auth,pins,ext,lanes,*,deadline=None,terminal=True):
+    path=root/H4M23_OUTPUT;out=path.parent
+    report=h4m23_json_file(path,1024**2)
+    v=h4m23_read_journal(out/'journal.jsonl',auth,pins,lanes,complete=True,ext=ext,deadline=deadline)
+    h4m23_report_contract(report,auth,pins,ext,v)
+    parent=h4m23_parent_receipt(out,auth);child=h4m23_child_receipt(out,auth,parent)
+    size,log=h4m23_log_receipt(out,True)
+    result=dict(authorization=auth,status='COMPLETE',rc=0,child_pid=child['pid'],parent_pid=parent['pid'],
+        report_sha256=sha256(path),journal_sha256=v['journal_sha256'],log_sha256=log,
+        log_bytes=size,verification=v)
+    expected={'attempt.json','parent.json','runtime.entered.json','runtime.log','journal.jsonl','report.json'}
+    if terminal:
+        h4m23_req(h4m23_json_file(out/'attempt_result.json',1024**2)==result,'FINAL_TERMINAL')
+        expected.add('attempt_result.json')
+    h4m23_req(set(x.name for x in out.iterdir())==expected,'FINAL_NAMESPACE')
+    return result
+
+def h4m23_check_partial(root,auth,pins,ext,lanes,*,deadline=None,terminal=True):
+    """Verified persisted prefix only, not successful native replay."""
+    path=root/H4M23_OUTPUT;out=path.parent;parent=h4m23_parent_receipt(out,auth)
+    child=out/'runtime.entered.json';journal=out/'journal.jsonl'
+    allowed={'attempt.json','parent.json','runtime.entered.json','runtime.log','journal.jsonl','report.json','attempt_result.json'}
+    h4m23_req(set(x.name for x in out.iterdir())<=allowed,'PARTIAL_NAMESPACE')
+    entered=None
+    if child.exists() or child.is_symlink():entered=h4m23_child_receipt(out,auth,parent)
+    v=None;reason='NO_JOURNAL'
+    if journal.exists() or journal.is_symlink():
+        h4m23_req(entered is not None and journal.is_file() and not journal.is_symlink()
+            and journal.resolve()==journal.absolute() and journal.stat().st_size<=H4M23_SPEC['report_cap'],'PARTIAL_JOURNAL')
+        if journal.stat().st_size:
+            v=h4m23_read_journal(journal,auth,pins,lanes,ext=ext,deadline=deadline);reason='VERIFIED_PREFIX'
+        else:reason='EMPTY_JOURNAL_PRE_HEADER'
+    if path.exists() or path.is_symlink():
+        r=h4m23_json_file(path,1024**2)
+        h4m23_req(v is not None and v['physical_recorded']==1295 and v['rich_recorded']==413
+            and v['resets_recorded']==3 and v['suffixes_recorded']==6 and v['kicks_recorded']==6
+            and v['pending'] is None and v['events_recorded']==len(h4m23_schedule(lanes)),'PARTIAL_REPORT_LEDGER')
+        h4m23_report_contract(r,auth,pins,ext,dict(v,complete=True))
+    size,digest=h4m23_log_receipt(out,False)
+    result=dict(verification=v,reason=reason,child_pid=None if entered is None else entered['pid'],
+        parent_pid=parent['pid'],log_bytes=size,log_sha256=digest)
+    if terminal:
+        t=h4m23_json_file(out/'attempt_result.json',1024**2)
+        h4m23_req(set(t)=={'authorization','status','rc','error','partial'}
+            and t['authorization']==auth and t['status']=='STOP' and t['partial']==result
+            and isinstance(t['error'],str) and 0<len(t['error'])<=4096
+            and (t['rc'] is None or type(t['rc']) is int),'PARTIAL_TERMINAL')
+    return result
+
+def h4m23_dispatch(root,child=False):
+    import selectors,signal,shutil,time
+    root=Path(root).resolve();auth,pins,ctrl,ext,lanes=h4m23_authorize(root)
+    h4m23_req(os.environ.get('JAX_PLATFORMS')=='cuda'
+        and os.environ.get('JAX_DEFAULT_MATMUL_PRECISION')=='highest'
+        and os.environ.get('XLA_PYTHON_CLIENT_PREALLOCATE')=='false','CUDA_ENV')
+    if child:return h4m23_worker(root,auth,pins,ctrl,ext,lanes)
+    path=root/H4M23_OUTPUT;out=path.parent
+    h4m23_req(shutil.disk_usage(out.parent).free>=H4M23_SPEC['storage_reserve']+
+        2*(H4M23_SPEC['report_cap']+H4M23_SPEC['log_cap']),'STORAGE_RESERVE')
+    deadline=time.monotonic()+H4M23_SPEC['watchdog_s']
+    h4m6_reserve_tech(path,auth)
+    h4m6_write_bounded(out/'parent.json',dict(authorization=auth,pid=os.getpid(),deadline=deadline),exclusive=True,cap=8192)
+    proc=None;rc=None;total=0
+    try:
+        with (out/'runtime.log').open('xb') as f:
+            proc=subprocess.Popen([sys.executable,'-B','-u',str(root/'m463_gate3_cp_eval.py'),'--h4m23-rich','child'],
+                cwd=root,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,start_new_session=True)
+            with selectors.DefaultSelector() as sel:
+                sel.register(proc.stdout,selectors.EVENT_READ)
+                while True:
+                    remaining=deadline-time.monotonic();h4m23_req(remaining>0,'WATCHDOG')
+                    if not sel.select(min(remaining,1.)):continue
+                    data=os.read(proc.stdout.fileno(),65536)
+                    if not data:break
+                    f.write(data[:max(0,H4M23_SPEC['log_cap']-total)]);total+=len(data)
+                    f.flush();h4m23_req(total<=H4M23_SPEC['log_cap'],'LOG_CAP')
+                    h4m23_req(shutil.disk_usage(out).free>=H4M23_SPEC['storage_reserve'],'SUPERVISOR_STORAGE')
+            rc=proc.wait(timeout=max(.01,deadline-time.monotonic()));f.flush();os.fsync(f.fileno())
+        h4m23_req(rc==0 and time.monotonic()<deadline,'CHILD_EXIT')
+        after=h4m23_authorize(root)
+        h4m23_req(after[0]==auth and after[1]==pins and after[3]==ext,'POST_PROVENANCE')
+        result=h4m23_check_final(root,auth,pins,ext,lanes,deadline=deadline,terminal=False)
+        h4m23_req(result['child_pid']==proc.pid and result['parent_pid']==os.getpid()
+            and time.monotonic()<deadline,'SUPERVISOR_RECEIPT')
+    except BaseException as exc:
+        # Kill only the child process group this supervisor created, never other GPU processes.
+        if proc is not None:
+            if proc.poll() is None:
+                try:os.killpg(proc.pid,signal.SIGKILL)
+                except ProcessLookupError:pass
+            try:rc=proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:rc=None
+        try:partial=h4m23_check_partial(root,auth,pins,ext,lanes,deadline=time.monotonic()+H4M23_PARTIAL_READ_S,terminal=False)
+        except Exception as err:
+            partial=None;exc=RuntimeError(str(exc)+'; partial rejected: '+repr(err)[:1000])
+        h4m6_write_bounded(out/'attempt_result.json',dict(authorization=auth,status='STOP',rc=rc,
+            error=repr(exc)[:4096],partial=partial),exclusive=True,cap=1024**2)
+        raise RuntimeError('M470_H4M23_STOP_NO_RETRY') from exc
+    h4m6_write_bounded(out/'attempt_result.json',result,exclusive=True,cap=1024**2)
+    print('H4M23_DIAGNOSTIC_COMPLETE',result['report_sha256'],flush=True)
+
+def h4m23_cli(argv):
+    if argv==['plan']:
+        print(json.dumps(H4M23_SPEC,sort_keys=True));return
+    h4m23_req(argv in (['run'],['child']),'CLI')
+    return h4m23_dispatch(H4_EVAL_ROOT,child=argv==['child'])
+
+H4M23_PATCHES=[["def run(args):\n    abs_mode=","def run(args):\n    m23=bool(getattr(args,'h4m23_rich',False))\n    if m23:h4m23_enter(args)\n    abs_mode="],["    m12=bool(getattr(args,'h4m12_eval',False))\n    h4_mode=","    m12=bool(getattr(args,'h4m12_eval',False)) or m23\n    h4_mode="],["    if m12:\n        h4m12_enter(args,red=getattr(args,'h4red_eval',False))","    if m12 and not m23:\n        h4m12_enter(args,red=getattr(args,'h4red_eval',False))\n    elif m23:\n        pass  # separate held entry, never use historical DEV authorization"],["        h4m3_runtime_model_source(env,args.h3_session)\n    if m6:","        h4m3_runtime_model_source(env,args.h3_session)\n        if m23:\n            args.h4m23_manifest=h4m3_manifest(env,np)\n            args.h4m23_manifest['geometry']=h4m4_model_geometry(env,args.h4m23_manifest,np)\n            h4m23_runtime_manifest(args,env,np)\n            args.h4m23_journal.header(args.h4m23_manifest)\n    if m6:"],["                if placement_capture:\n                    pre_placement=h4m3_pre_capture(state)","                if placement_capture:\n                    pre_placement=(h4m23_pre_capture(state) if m23 else h4m3_pre_capture(state))"],["                    return next_state,diag,h4m3_post_capture(pre_placement,action,next_state,env)\n                return next_state,diag","                    return next_state,diag,(h4m23_post_capture(pre_placement,action,next_state,env,jnp)\n                        if m23 else h4m3_post_capture(pre_placement,action,next_state,env))\n                return next_state,diag"],["if placement or m6 else jax.jit(one_step))\n            if abs_mode:","if placement or m6 or m23 else jax.jit(one_step))\n            if m23:\n                h4m23_native_lane(args,lane_index,env,step_fn,jax,jnp,np)\n                continue\n            if abs_mode:"],["    if placement:\n        return\n    if h3_mode:\n        if m12:","    if placement or m23:\n        return\n    if h3_mode:\n        if m12:"],["def h4ffe2_dev_projection(raw):\n    begin=","def h4ffe2_dev_projection(raw):\n    if b'# H4M23_RICH_'+b'BEGIN\\n' in raw:raw=h4m23_projection(raw)\n    begin="],["def h4ffe2_dev_project(root):\n    import ast\n    raw=(root/'m463_gate3_cp_eval.py').read_bytes()","def h4ffe2_dev_project(root):\n    import ast\n    raw=(root/'m463_gate3_cp_eval.py').read_bytes()\n    if b'# H4M23_RICH_'+b'BEGIN\\n' in raw:raw=h4m23_projection(raw)"],["    if len(sys.argv)>1 and sys.argv[1]=='--h4absd':h4absd_cli(sys.argv[2:])\n    elif len(sys.argv)>1 and sys.argv[1]=='--h4abs':h4abs_cli(sys.argv[2:])\n    else:main()\n","    if len(sys.argv)>1 and sys.argv[1]=='--h4m23-rich':h4m23_cli(sys.argv[2:])\n    elif len(sys.argv)>1 and sys.argv[1]=='--h4absd':h4absd_cli(sys.argv[2:])\n    elif len(sys.argv)>1 and sys.argv[1]=='--h4abs':h4abs_cli(sys.argv[2:])\n    else:main()\n"]]
 # H4M23_RICH_END
 if __name__=='__main__':
-    if len(sys.argv)>1 and sys.argv[1]=='--h4absd':h4absd_cli(sys.argv[2:])
+    if len(sys.argv)>1 and sys.argv[1]=='--h4m23-rich':h4m23_cli(sys.argv[2:])
+    elif len(sys.argv)>1 and sys.argv[1]=='--h4absd':h4absd_cli(sys.argv[2:])
     elif len(sys.argv)>1 and sys.argv[1]=='--h4abs':h4abs_cli(sys.argv[2:])
     else:main()
