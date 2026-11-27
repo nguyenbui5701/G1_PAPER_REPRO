@@ -14652,6 +14652,11 @@ def h4m23_inputs(root):
             a['second_push_magnitude_mps'],a['dt_s'],a['max_steps'])==(300,.50,335,.35,.02,1000),'PROTOCOL')
     pins.update({'ffe2_dev/'+k:v for k,v in H4M23_PINS.items()})
     pins['ffe2_dev/runtime.log']=H4M23_LOG_SHA
+    old_static='m463_runs/m470_h4ffe2_dev_static_v1.log'
+    old_static_sha='9c2af046fd1132d672e1b4d745454b238ee0270514b45388e7b82e1f1fd3524b'
+    h4m23_req(auth['static_path']==old_static and auth['static_sha256']==old_static_sha
+        and h4abs_pin(root/old_static,old_static_sha,8192).stat().st_size==783,'HISTORICAL_STATIC_RECEIPT')
+    pins['ffe2_dev/static.log']=old_static_sha
     # Separate new provenance from the historical digest above.
     more=h4m4_external_sources(root)
     h4m23_req(more['nvcc_compat']==ext['nvcc_compat'] and more['mjx']==ext['mjx'],'EXTERNAL_IDENTITY')
@@ -14677,6 +14682,7 @@ def h4m23_archive_lanes(a):
         g=gs[0];x=g['directions'][direction]
         h4m23_req(g['complete'] is True and g['command']==[0.,0.,0.]
             and len(g['nominal_frames'])==1000 and len(x['single_suffix'])==701
+            and len(x['double_suffix'])==(end-334 if end<385 else 666)
             and x['first']['exposed'] is True and x['second']['exposed'] is True,'GROUP_PROTOCOL')
         rows=dict(nominal=g['nominal_frames'][:299],first=x['single_suffix'][:35],
                   single=x['single_suffix'][35:86],double=x['double_suffix'][:end-334])
@@ -15500,8 +15506,8 @@ H4M23_REVIEW_PATHS={'G1_RESEARCH_RULES.md'}|{'docs/research_rules/'+p for p in
     ('CURRENT_STATE.md','ACTIVE_EXPERIMENT.md','TASK_LEDGER.md','CHANGELOG.md','EVIDENCE_INDEX.md')}
 # Counts are number of independently invoked positive/negative cases, not rows.
 H4M23_FIXTURE_COUNTS=dict(projection=3,native_schema=6,packed_fields=15,manifest=4,
-    fork=4,ledger=5,final_reader=4,partial_reader=4,authorization=8,reservation=3,
-    watchdog_log=6,historical_provenance=4,native_calls=0,optimizer_updates=0)
+    fork=4,ledger=9,final_reader=4,partial_reader=6,authorization=8,reservation=3,
+    watchdog_log=6,historical_provenance=5,native_calls=0,optimizer_updates=0)
 
 def h4m23_append_marker(base,line):
     return base+('' if base.endswith('\n') else '\n')+line+'\n'
@@ -15714,6 +15720,9 @@ def h4m23_static_fixture_run(root,pins,ext,lanes):
         and a['decision']['decision']=='NO_PROMOTE' and a['decision']['training_exposure']=='EXPOSURE_INCONCLUSIVE','HISTORY'))
     bad('historical_provenance',lambda:h4m23_archive_lanes(changed(a,'frame_columns',[])),'GROUP_SCHEMA')
     bad('historical_provenance',lambda:h4m23_archive_lanes(changed(a,'groups',a['groups'][:-1])),'GROUP_SCHEMA')
+    good('historical_provenance',lambda:h4m23_req(
+        pins['ffe2_dev/static.log']=='9c2af046fd1132d672e1b4d745454b238ee0270514b45388e7b82e1f1fd3524b',
+        'HISTORICAL_STATIC_PIN'))
     marker='H4M23_RICH_ACTIVE_GO: '+H4M23_SPEC['id']+' '+str(H4M23_OUTPUT)+' '+'a'*64+' '+'b'*64+' '+str(H4M23_STATIC)+' '+'c'*64
     sm='H4M23_RICH_STATIC_GO: '+H4M23_STATIC_ID+' '+'a'*40+' '+'b'*40+' '+str(H4M23_STATIC)
     good('authorization',lambda:h4m23_marker(marker))
@@ -15737,6 +15746,18 @@ def h4m23_static_fixture_run(root,pins,ext,lanes):
         write('runtime.entered.json',dict(authorization=auth,pid=12,parent_pid=11))
         (out/'runtime.log').write_bytes(b'synthetic host fixture\n')
         journal=out/'journal.jsonl'
+        # Exercise real writer pending-before-operation and exclusive file rules
+        # with GPU sampler deliberately mocked (host fixtures only).
+        with patch.dict(globals(),{'h3_gpu_check':lambda monitor:None}):
+            j=H4M23Journal(journal,auth,pins,mock,None,time.monotonic()+60)
+            try:
+                j.header(m);key=[0,'reset',0];j.begin(key)
+                good('ledger',lambda:h4m23_req(h4m23_read_journal(journal,auth,pins,mock,ext=ext)['resets_attempted']==1,'WRITER_PENDING'))
+                bad('ledger',lambda:j.begin(key),'SCHEDULE')
+                bad('ledger',lambda:j.record([0,'nominal',1],{}),'PENDING')
+                j.record(key,dict(seed=7601,actor_shape=[103],critic_shape=[216],done=False))
+                good('ledger',lambda:h4m23_req(h4m23_read_journal(journal,auth,pins,mock,ext=ext)['resets_recorded']==1,'WRITER_COMMIT'))
+            finally:j.f.close()
         def store(xs):journal.write_bytes(b''.join(h4m23_bytes(e) for e in xs))
         def read(complete=False):return h4m23_read_journal(journal,auth,pins,mock,complete=complete,ext=ext)
         store(entries)
@@ -15784,6 +15805,12 @@ def h4m23_static_fixture_run(root,pins,ext,lanes):
         bad('partial_reader',lambda:h4m23_check_partial(sandbox,auth,pins,ext,mock),'READER_LINE')
         store(entries[:2]);write('runtime.entered.json',dict(authorization=auth,pid=12,parent_pid=13))
         bad('partial_reader',lambda:h4m23_check_partial(sandbox,auth,pins,ext,mock),'CHILD_RECEIPT')
+        write('runtime.entered.json',dict(authorization=auth,pid=12,parent_pid=11))
+        journal.write_bytes(b'')
+        good('partial_reader',lambda:h4m23_req(h4m23_check_partial(sandbox,auth,pins,ext,mock,terminal=False)['reason']=='EMPTY_JOURNAL_PRE_HEADER','PARTIAL_EMPTY'))
+        journal.unlink()
+        good('partial_reader',lambda:h4m23_req(h4m23_check_partial(sandbox,auth,pins,ext,mock,terminal=False)['reason']=='NO_JOURNAL','PARTIAL_ABSENT'))
+        store(entries[:2])
         good('watchdog_log',lambda:h4m23_log_receipt(out,True))
         bad('watchdog_log',lambda:h4m23_read_journal(journal,auth,pins,mock,ext=ext,deadline=time.monotonic()-1),'READER_DEADLINE')
         with patch.dict(H4M23_SPEC,{'log_cap':1}):
@@ -15791,7 +15818,7 @@ def h4m23_static_fixture_run(root,pins,ext,lanes):
         # Real host-only subprocesses exercise the exact bounded pipe helper.
         def host(code,cap,seconds):
             import signal
-            p=subprocess.Popen([sys.executable,'-I','-B','-u','-c',code],stdout=subprocess.PIPE,
+            p=subprocess.Popen([sys.executable,'-I','-S','-B','-u','-c',code],stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,start_new_session=True)
             data=bytearray()
             try:
@@ -15876,7 +15903,7 @@ def h4m23_static_dispatch(root,child=False):
                 and lines[0]=='H4M23_STATIC_HEAD '+head,'STATIC_CHILD_RECEIPT')
             expected=h4m23_static_lines(head,lines[1].split()[-1],lines[2].split()[-1],lines[3].split()[-1])
             h4m23_req(lines==expected[:-1] and lines[3]=='H4M23_EVALUATOR_SHA256 '+sha256(root/'m463_gate3_cp_eval.py')
-                and h4m23_static_admit(root)==(auth,head),'STATIC_CHILD_SCHEMA')
+                and h4m23_static_admit(root)==(auth,head) and time.monotonic()<deadline,'STATIC_CHILD_SCHEMA')
             f.write(('\n'.join(expected)+'\n').encode('utf8'));f.flush();os.fsync(f.fileno())
         except BaseException as exc:
             if proc is not None and proc.poll() is None:
