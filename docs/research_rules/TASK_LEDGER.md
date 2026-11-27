@@ -21,4 +21,6 @@ Historical complete ledger: [v1.2.294 L5191–5841](https://github.com/nguyenbui
 | H4-M20-3 closure / H4-M21-1 | Owner exact receipt acceptance and held evaluator integration GO | CLOSED / CONSUMED / TECHNICAL_PASS / EXPOSURE_INCONCLUSIVE / NO_PROMOTE; H4-M21-1 source pending; static/native HOLD | Root-only closure 6f802ffc3bc1135822034d0085751b3c8b378ff5; exact hashes and limitations in ACTIVE_EXPERIMENT |
 | H4-M21-1 held source preparation | Existing candidate-only evaluator and bounded launcher | HELD SOURCE CANDIDATE PUSHED / focused static prepared not executed or authorized / native HOLD | Source 5f8ae89b5fa48b2f919810916603a297b99790b1; reverse text and Git scope checked; Owner-local host-static receipt pending separate GO |
  
+| H4-M21-2-FFE2-DEV-FULL-HOST-STATIC-V1 | Owner distinct one-use full host-static GO | ISSUED / receipt pending / native HOLD | Reviewed base 09e091a6e297210f35975687bd88e7f7c4dcb3e0; exact reverse projection checked; fixed m463_runs/m470_h4ffe2_dev_static_v1.log; bounded launcher in ACTIVE_EXPERIMENT |
+
 Append one row per task with exact evidence/commit, decision, limitations and next scope. Do not rewrite previous entries or imply authorization.

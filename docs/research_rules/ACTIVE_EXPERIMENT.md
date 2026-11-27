@@ -433,3 +433,125 @@ Fixed report m463_runs/m470_h4_m21_1_ffe2_dev_v1/report.json; exclusive outer ru
 Focused host-static plan (NOT authorization; wait for distinct Owner GO): one invocation of `g1_m463 -B -u m463_gate3_cp_eval.py --mode plan --h4ffe2-eval --h4ffe2-eval-static --output m463_runs/m470_h4_m21_1_ffe2_dev_v1/report.json` via bounded exclusive log `m463_runs/m470_h4ffe2_dev_static_v1.log`, timeout 3600s, log cap16MiB including footer, disk reserve2GiB; exact new branch HEAD and clean tracked tree, unused report/log, no active marker, no native imports; require final two lines `H4FFE2_DEV_FULL_STATIC_PASS` and `STATIC_EXIT_CODE=0 TEE_EXIT_CODE=0` on success only. Return exact log SHA/size/outer rc, source/provenance/launcher SHA and fixtures. Existing fixture plan: exact projection/AST, pinned provenance, archive clone only (not new policy evidence), 5 marker negatives, 13 reader negatives, 2 training exposure negatives, 3 dispositions, 1 partial positive/3 negatives, launcher negative, 5 CLI HOLD tests. Zero native physical transitions/resets/inference/optimizer. Any mismatch STOP, preserve log; no retry. Launcher command to be pinned in separate one-use static GO, not supplied as active execution here.
 
 Failure-mechanism comparison (offline after candidate report): use accepted immutable FFE-V1 DEV report SHA256 a651439c256c6508d46fccea4be82f00d267921fc1e238fd5b27427f8e240dd9 and archived Rules [L3980–3989](https://github.com/nguyenbui5701/G1_PAPER_REPRO/blob/a2a1056075f4a41e9f05115b30e2a50144b34154/G1_RESEARCH_RULES.md#L3980-L3989). V1 39133 physical, nominal12/12, total survival51/60, standing double survival/recovery5 5/8 each, moving double recovery5 forward7/8 turn4/8; hard entries34 in23 cases (control16/joint9/new foot-foot5/lost survival4). Four lost survival cases: 7331 turn_left double left; 7613 forward_fast single left, forward_fast double left, turn_left double left. Compare V2 with same case keys and actual available raw frames, first/second push aligned and common windows; CTRL remains sole primary, M12 descriptive, V1 historical descriptive only. Distinguish initiating deviation, propagation and termination, matched denominators and censoring. If V1 raw report unavailable use accepted summary only, never fabricate per-frame comparison. No new evaluator graph, extra inference, or physical transitions. Scientific result cannot change material disposition. PPO next design held until scientific/failure evidence reviewed and separately approved. Branch A ACTIVE/B HOLD.
+
+
+## H4-M21-2 — FFE-V2 Existing Checkpoint Controlled Recovery Evaluation — One-Use Full Host-Static Verification (2026-11-27)
+
+**H4-M21-2-FFE2-DEV-FULL-HOST-STATIC-V1 ISSUED / OWNER RECEIPT PENDING / NATIVE RUNTIME HOLD.** Owner explicit GO at 09e091a6e297210f35975687bd88e7f7c4dcb3e0. H4-M20-3 remains CLOSED/CONSUMED/TECHNICAL_PASS/EXPOSURE_INCONCLUSIVE/NO_PROMOTE. Branch A ACTIVE/B HOLD.
+
+SA checked remote Branch A identical to reviewed base; exact evaluator blob 87f82602fb57e93e5e39e51f2a65b257946e109a and root blob e09c35a82f06a97fe5406ba36bb3fd9664913583; root contains zero active GO marker lines. Reversed all 18 scoped anchors in connector source and compared recovered text exactly with historical evaluator at 8cd304731cd35cd631cc994f424006a0d0e1d3ed (blob 7efb74e89a141f768ca2b41f5bf3408b0079fea4). Reviewed FFE2 historical source projection, accepted candidate/final static pins, 11 training artifact pins, parent/terminal/ledger/exposure replay, shared final/partial readers and archive contracts, held runtime launcher and frozen disposition. Source review only: no Python compilation, actual local provenance or native execution by SA; Owner fixture run required. Reader fixture negatives exercise shared in-memory validation, not a new native report or independent full file-reader integration proof. Historical outer-console limitation accepted and unchanged.
+
+One invocation of existing plan/static entry, fixed exclusive log m463_runs/m470_h4ffe2_dev_static_v1.log, 3600s operational watchdog, 16MiB cap including 4096B footer reserve, disk reserve 2GiB plus cap. Clean tracked branch and exact authorization HEAD (direct child of reviewed base), unchanged evaluator/root pins and no runtime marker, unused runtime report directory/log and static log. Exclusive log creation consumes authorization; preserve log even on failure. No retry even preclaim STOP. Verify unique source/provenance/launcher digests and exact fixture schema/zero counters, final two lines H4FFE2_DEV_FULL_STATIC_PASS and STATIC_EXIT_CODE=0 TEE_EXIT_CODE=0 on success only (direct bounded capture, no separate tee process; compatibility footer indicates capture succeeded). Return exact log bytes, SHA256, byte count and outer rc or exact preflight failure. Existing CLI HOLD negatives are host-only guard tests; no native evaluation, inference, resets, PPO, comparator rerun, holdout or promotion. No executable/root changes. No native admission after static PASS without separate Owner GO and SA review. Frozen science 12 groups/60 logical/max44808 physical/12 resets; +2/8 standing double survival AND recovery5 and all existing gates; CTRL primary, M12 and FFE-V1 descriptive only. Exposure remains inconclusive and overall NO_PROMOTE even if later DEV passes.
+
+```python
+# H4FFE2_DEV_STATIC_OWNER_BEGIN
+import hashlib, json, os, re, selectors, shutil, signal, subprocess, sys, time
+from pathlib import Path
+root = Path.cwd().resolve()
+runs = root / "m463_runs"
+out = runs / "m470_h4_m21_1_ffe2_dev_v1"
+runtime = runs / "m470_h4ffe2_dev_runtime_v1.log"
+log = runs / "m470_h4ffe2_dev_static_v1.log"
+cap = 16 * 1024**2
+reserve = 4096
+def require(ok, reason):
+    if not ok:
+        raise RuntimeError(reason)
+def git(*args):
+    return subprocess.check_output(["git", *args], cwd=root, text=True).strip()
+def unused(p):
+    return not p.exists() and not p.is_symlink()
+def clean():
+    return git("status", "--porcelain", "--untracked-files=no") == ""
+def pins():
+    require(git("hash-object", "m463_gate3_cp_eval.py") == "87f82602fb57e93e5e39e51f2a65b257946e109a", "EVALUATOR_PIN")
+    require(git("hash-object", "G1_RESEARCH_RULES.md") == "e09c35a82f06a97fe5406ba36bb3fd9664913583", "ROOT_PIN")
+    require(not any(re.match(r"^[A-Z0-9_]+_GO:", x) for x in (root/"G1_RESEARCH_RULES.md").read_text("utf8").splitlines()), "NATIVE_MARKER")
+require(git("branch", "--show-current") == "experiment/b1-hardware-scaled", "BRANCH")
+head = git("rev-parse", "HEAD")
+require(git("rev-parse", "HEAD^") == "09e091a6e297210f35975687bd88e7f7c4dcb3e0", "REVIEW_PARENT")
+require(clean(), "TRACKED_DIRTY")
+pins()
+require(runs.is_dir() and not runs.is_symlink(), "RUNS_PATH")
+require(all(unused(p) for p in (out, runtime, log)), "ONE_USE_OR_RUNTIME_USED")
+require(shutil.disk_usage(runs).free >= 2*1024**3 + cap, "STORAGE")
+require(not any(k.split(".")[0] in ("jax","jaxlib","brax","mujoco","mujoco_playground") for k in sys.modules), "NATIVE_PREIMPORT")
+argv = [sys.executable, "-B", "-u", str(root/"m463_gate3_cp_eval.py"), "--mode", "plan", "--h4ffe2-eval", "--h4ffe2-eval-static", "--output", str(out/"report.json")]
+expected = dict(archive_clone="NO_GO", secondary_identity=True, marker_negatives=5, reader_negatives=13, training_exposure_negatives=2, disposition_fixtures=3, partial_positive=1, partial_negatives=3, launcher_negative=1, byte_projection=True, step_graph=True, cli_hold=5, physical_transitions=0, resets=0, optimizer_updates=0, inference=0)
+rc = None
+error = None
+overflow = False
+stored = 0
+child = None
+deadline = time.monotonic() + 3600
+with log.open("xb") as f:
+    def emit(data):
+        global stored, overflow
+        keep = data[:max(0, cap-reserve-stored)]
+        if keep:
+            f.write(keep)
+            f.flush()
+            stored += len(keep)
+        if len(keep) != len(data):
+            overflow = True
+            raise RuntimeError("LOG_CAP")
+    try:
+        emit(("H4FFE2_DEV_STATIC_HEAD " + head + "\n").encode())
+        child = subprocess.Popen(argv, cwd=root, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True, bufsize=0)
+        with selectors.DefaultSelector() as sel:
+            sel.register(child.stdout, selectors.EVENT_READ)
+            while True:
+                left = deadline-time.monotonic()
+                require(left > 0, "WATCHDOG")
+                if not sel.select(min(1,left)):
+                    continue
+                data = os.read(child.stdout.fileno(), 65536)
+                if not data:
+                    break
+                emit(data)
+        left = deadline-time.monotonic()
+        require(left > 0, "WATCHDOG")
+        rc = child.wait(timeout=left)
+        require(rc == 0, "STATIC_RC")
+        require(clean() and git("rev-parse", "HEAD") == head, "POST_SOURCE")
+        pins()
+        require(unused(out) and unused(runtime), "POST_RUNTIME_OUTPUT")
+        lines = log.read_text("utf8").splitlines()
+        require(lines[-1:] == ["H4FFE2_DEV_FULL_STATIC_PASS"] and lines.count("H4FFE2_DEV_FULL_STATIC_PASS") == 1, "STATIC_PASS")
+        for tag in ("SOURCE", "PROVENANCE", "LAUNCHER"):
+            prefix = "H4FFE2_DEV_"+tag+" "
+            hits = [x for x in lines if x.startswith(prefix)]
+            require(len(hits)==1 and re.fullmatch(re.escape(prefix)+r"[0-9a-f]{64}",hits[0]) is not None, "STATIC_"+tag)
+        prefix = "H4FFE2_DEV_STATIC_FIXTURES "
+        hits = [x[len(prefix):] for x in lines if x.startswith(prefix)]
+        require(len(hits)==1, "FIXTURE_SECTION")
+        obj = json.loads(hits[0])
+        require(type(obj) is dict and obj==expected and all(type(obj[k]) is type(v) for k,v in expected.items()), "FIXTURE_VALUES")
+    except BaseException as exc:
+        error = repr(exc)[:1024]
+        if child is not None:
+            try:
+                os.killpg(child.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            rc = child.wait(timeout=10)
+    finally:
+        ok = rc == 0 and error is None and not overflow
+        if ok:
+            footer = b"STATIC_EXIT_CODE=0 TEE_EXIT_CODE=0\n"
+        else:
+            footer = ("\nH4FFE2_DEV_STATIC_STOP "+json.dumps(dict(static_rc=rc,error=error,overflow=overflow,stored_bytes=stored),ensure_ascii=True,sort_keys=True)+"\n").encode()
+        require(len(footer) <= reserve, "FOOTER_CAP")
+        f.write(footer)
+        f.flush()
+        os.fsync(f.fileno())
+    require(f.tell() <= cap, "LOG_CAP")
+print("===== STATIC RECEIPT TAIL =====", flush=True)
+with log.open("rb") as f:
+    f.seek(max(0,log.stat().st_size-16384))
+    print(f.read().decode("utf8",errors="replace"),end="",flush=True)
+print("H4FFE2_DEV_STATIC_LOG",str(log),log.stat().st_size,hashlib.sha256(log.read_bytes()).hexdigest(),flush=True)
+print("H4FFE2_DEV_STATIC_OUTER_RC",0 if ok else 1,flush=True)
+sys.exit(0 if ok else 1)
+# H4FFE2_DEV_STATIC_OWNER_END
+```

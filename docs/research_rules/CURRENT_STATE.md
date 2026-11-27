@@ -3,6 +3,11 @@
 Governance v2.0.0 — 2026-11-27 — documentation only. Historical research state pinned to a2a1056075f4a41e9f05115b30e2a50144b34154.
 
 ## Current decision
+**H4-M21-2-FFE2-DEV-FULL-HOST-STATIC-V1 ISSUED / OWNER RECEIPT PENDING / NATIVE RUNTIME HOLD.** Owner explicit GO at 09e091a6e297210f35975687bd88e7f7c4dcb3e0. H4-M20-3 remains CLOSED/CONSUMED/TECHNICAL_PASS/EXPOSURE_INCONCLUSIVE/NO_PROMOTE. Branch A ACTIVE/B HOLD.
+
+Fixed exclusive static log m463_runs/m470_h4ffe2_dev_static_v1.log; exact embedded bounded launcher in ACTIVE_EXPERIMENT. No native GO, no retry, no comparator rerun or promotion. Await exact Owner receipt; no static PASS claimed.
+
+### H4-M21-1 historical preparation (not active)
 **H4-M20-3 CLOSED / CONSUMED / TECHNICAL_PASS accepted / EXPOSURE_INCONCLUSIVE / NO_PROMOTE. H4-M21-1 HELD SOURCE CANDIDATE PUSHED / focused full host-static prepared, NOT AUTHORIZED OR EXECUTED / native runtime HOLD.** Root-only closure 6f802ffc3bc1135822034d0085751b3c8b378ff5; exact 8 uploaded SHA256 accepted, binary/generated local rehash pending, outer-console receipt not supplied (Owner accepts). No retry/resume/PPO, no comparator rerun, no promotion. Branch A ACTIVE/B HOLD.
 
 Source/launcher commit 5f8ae89b5fa48b2f919810916603a297b99790b1, evaluator blob 87f82602fb57e93e5e39e51f2a65b257946e109a. 18 reversible scoped anchors; Git compare verified only evaluator and held root approval/launcher changed. No active runtime marker. Next distinct Owner one-use host-static GO only; no PPO/native/holdout/promotion.
