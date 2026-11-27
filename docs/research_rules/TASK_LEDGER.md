@@ -66,3 +66,5 @@ Historical complete ledger: [v1.2.294 L5191–5841](https://github.com/nguyenbui
 Append one row per task with exact evidence/commit, decision, limitations and next scope. Do not rewrite previous entries or imply authorization.
 
 | H4-M23-5 receipt / H4-M23-6 | Owner explicit acceptance and one-use bounded native diagnostic GO; exact uploaded log/attempt rehashed | STATIC CLOSED/CONSUMED / FULL HOST-STATIC PASS / EDIT-FIRST / NATIVE GO EFFECTIVE ONLY AT SEPARATE ROOT-ONLY CHILD | Base cb6d4bf09fce263d2d3ae6922ac22573f889c8e7; 73/73; log626B b03ebe9c8484d82016741a42b9755e97eb1d214bcf8bff75fbd2fd8ca7f01388; attempt429B 52f277e1414aa618b1cd3826b3ccd5c576697ade15b0eba797041b01311216df; owner accepts verification limits; no SA runtime; max1308/426/3/6/6; immutable NO_GO/EXPOSURE_INCONCLUSIVE/NO_PROMOTE |
+
+| H4-M23-6 receipt / bootstrap correction | 5/5 exact uploaded SHA256; import failure before journal header; corrected future launcher contract | CLOSED/CONSUMED / TECH STOP / NATIVE HOLD | ef88f5665c26eae1d0e5a62ee64fdc0eb0c59d27; journal and outer console Owner-reported; no execution or new authorization; see ACTIVE_EXPERIMENT |

@@ -111,3 +111,6 @@ Owner explicitly permits exact historical marker closure followed by distinct ro
 
 ## 2026-11-27 — H4-M23-5 receipt acceptance / H4-M23-6 EDIT-FIRST
 Accept exact uploaded static log and attempt (2/2 SHA256 matched, 73/73 host fixtures). Owner explicit separate static closure and bounded native diagnostic GO; root-only closure then distinct root-only issuance, unchanged evaluator and gates. No governance version change, no executable edit or SA native execution. Native receipt pending.
+
+## 2026-11-27 — H4-M23-6 receipt / launcher contract correction
+Technical STOP accepted, five uploaded hashes exact. Correct task-specific launcher contract (existing pinned g1_m463 overlay path, host-only preflight before future reservation), no general governance version change, no executable changes, no new GO. Exact consumed marker closure separate root-only commit; immutable prior science.
