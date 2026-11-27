@@ -354,8 +354,10 @@ def read_arm(root, arm, auth, pins, external, archive, *, complete, terminal_req
         require(report['status']=='COMPLETE' and not failure_path.exists()
                 and not failure_path.is_symlink(), 'COMPLETE_STATUS')
         view, ledger=compatibility_view(e,arm,report)
+        decision=e.h4m12_decide(archive,view)
+        decision['comparison_roles']['CAND']=LABELS[arm]
         require(report['ledger']==ledger and all(archive[k]==report[k] for k in e.H4M12_PROTOCOL)
-                and report['decision']==e.h4m12_decide(archive,view)
+                and exact_json(report['decision'],decision)
                 and report['brax_source_verification']==archive['brax_source_verification']
                 and report['mjx_sources']==external['mjx']
                 and set(report['playground_runtime'])=={'joystick','mjx_env'},
@@ -390,12 +392,14 @@ def read_arm(root, arm, auth, pins, external, archive, *, complete, terminal_req
     return report,ledger
 
 
-def read_pair(root, auth, pins, archive, secondary, external):
+def read_pair(root, auth, pins, archive, secondary, external, *, terminal_required=True, outer_required=True):
     """Complete pair only. Recompute all decisions; no single-arm promotion."""
     import m463_gate3_cp_eval as e
     import m463_push_ppo_train as t
     root=Path(root).resolve()
     check_auth_identity(auth,pins,external)
+    require(authorization(root,'native',historical=auth['authorization_head'])==auth,'PAIR_AUTH_HISTORY')
+    read_static(root,pins,external,expected=auth)
     c,_=read_arm(root,'ctrl',auth,pins,external,archive,complete=True)
     a,_=read_arm(root,'cand',auth,pins,external,archive,complete=True)
     result=decide_pair(archive,secondary,c,a)
@@ -418,7 +422,11 @@ def read_pair(root, auth, pins, archive, secondary, external):
     terminal=dict(authorization=auth,status='COMPLETE',report_sha256=e.sha256(root/PAIR/'report.json'),
                   producer_rc=0,reader_rc=0,arm_terminal_sha256=expected['arm_terminal_sha256'])
     require(exact_json(read_bounded(root,PAIR/'attempt_result.json',RECEIPT_CAP,t),{k:v for k,v in terminal.items() if k!='reader_rc'}), 'PAIR_RESULT')
-    require(exact_json(read_bounded(root,PAIR/'supervisor.terminal.json',RECEIPT_CAP,t),terminal),'PAIR_TERMINAL')
+    if terminal_required:
+        require(exact_json(read_bounded(root,PAIR/'supervisor.terminal.json',RECEIPT_CAP,t),terminal),'PAIR_TERMINAL')
+    else:
+        require(unused(root/PAIR/'supervisor.terminal.json'),'PAIR_PRETERMINAL')
+    if outer_required:check_outer(root,'native',auth)
     return expected
 
 
@@ -496,6 +504,13 @@ def json_bytes(value):
     return (json.dumps(value,sort_keys=True,separators=(',',':'),allow_nan=False)+'\n').encode('utf8')
 
 
+def check_outer(root,phase,auth):
+    p=root/(STATIC_OUTER if phase=='static' else OUTER)
+    expected=('AUTHORIZATION_HEAD='+auth['authorization_head']+'\nSTATUS=INVOKED\nEXIT_CODE=0\n').encode()
+    require(p.absolute()==p.resolve() and p.is_file() and p.stat().st_size==len(expected)
+            and p.read_bytes()==expected,'OUTER_RECEIPT')
+
+
 def phase_dir(phase):
     require(phase in ('static','native'),'PHASE')
     return STATIC if phase=='static' else PAIR
@@ -514,8 +529,14 @@ def storage(root, phase, extra=0, initial=False):
         for p in directory.rglob('*'):
             require(not p.is_symlink(),'STORAGE_SYMLINK')
             if p.is_dir():continue
-            require(p.is_file(),'STORAGE_FILE')
-            total+=p.stat().st_size
+            try:
+                if not p.is_file():
+                    if p.name.endswith('.tmp') and not p.exists():continue
+                    require(False,'STORAGE_FILE')
+                total+=p.stat().st_size
+            except FileNotFoundError:
+                # The only disappearing entry is a writer's atomic temporary file.
+                require(p.name.endswith('.tmp'),'STORAGE_DISAPPEARED')
         if outer.exists():
             require(outer.is_file() and not outer.is_symlink() and outer.stat().st_size<=RECEIPT_CAP,'OUTER_CAP')
             total+=outer.stat().st_size
@@ -539,7 +560,10 @@ def write_json(root,phase,path,value,*,exclusive=True,cap=RECEIPT_CAP):
 
 
 def report_view(session,arm):
-    return dict(session,groups=[dict(g,policy=LABELS[arm]) for g in session['groups']])
+    view=dict(session,groups=[dict(g,policy=LABELS[arm]) for g in session['groups']])
+    if 'decision' in session:
+        view['decision']=dict(session['decision'],comparison_roles=dict(session['decision']['comparison_roles'],CAND=LABELS[arm]))
+    return view
 
 
 def isolated_graph(e, *, enter, live_auth, train_dir, writer):
@@ -648,6 +672,8 @@ def fixture_ids():
         'host/compile_wrapper','host/compile_frozen','host/strict_read','host/strict_duplicate',
         'host/strict_nonfinite','host/strict_cap','host/exclusive_write','host/atomic_replace',
         'host/symlink_reject','pipe/success','pipe/nonzero','pipe/log_cap','pipe/watchdog',
+        'replay/arm_ledger','replay/arm_order','replay/arm_role','replay/official_no_gain',
+        'replay/pair_no_gain','replay/partial_ledger','replay/partial_budget',
     )
 
 
@@ -744,10 +770,31 @@ def static_fixtures(root,pins,archive,secondary,external):
         link.unlink()
         def pipe(name,code,seconds=15,cap=1024):
             return bounded_process(root,'static',[sys.executable,'-B','-c',code],d/(name+'.log'),seconds,cap)
-        case('pipe/success',type(pipe('success','print("OK")')) is int and (d/'success.log').read_bytes()==b'OK\\n')
+        case('pipe/success',type(pipe('success','print("OK")')) is int and (d/'success.log').read_bytes()==b'OK\n')
         case('pipe/nonzero',expect_reject(lambda:pipe('nonzero','raise SystemExit(7)')))
         case('pipe/log_cap',expect_reject(lambda:pipe('cap','print("x"*2048)',cap=32)) and (d/'cap.log').stat().st_size<=32)
         case('pipe/watchdog',expect_reject(lambda:pipe('watchdog','import time; time.sleep(30)',seconds=.25)))
+    # In-memory archival rows used solely as synthetic reader fixtures; no native archive rerun.
+    raw=[g for g in archive['groups'] if g['policy']=='CTRL']
+    def synthetic(arm):
+        return dict(archive,spec=arm_spec(arm),groups=[dict(g,policy=LABELS[arm]) for g in raw],
+            physical_transitions_attempted=41052,physical_transitions_recorded=41052,
+            logical_trajectories_completed=60,reset_lanes_attempted=12,reset_lanes_recorded=12)
+    c=synthetic('ctrl');a=synthetic('cand')
+    view,ledger=compatibility_view(e,'ctrl',c)
+    case('replay/arm_ledger',ledger['physical']==41052 and ledger['logical']==60 and ledger['reset_lanes']==12)
+    bad=dict(c,groups=list(reversed(c['groups'])))
+    case('replay/arm_order',expect_reject(lambda:compatibility_view(e,'ctrl',bad)))
+    case('replay/arm_role',expect_reject(lambda:compatibility_view(e,'cand',c)))
+    official=e.h4m12_decide(archive,view)
+    case('replay/official_no_gain',official['decision']=='NO_GO' and all(v['CTRL']==v['CAND']==6 for v in official['official']['primary_stand_double'].values()))
+    result=decide_pair(archive,secondary,c,a)
+    case('replay/pair_no_gain',result['decision']=='NO_GO' and result['physical']==82104 and result['promotion_authorized'] is False
+        and result['official']['ctrl']['comparison_roles']['CAND']==LABELS['ctrl'])
+    partial=dict(view,groups=[],physical_transitions_attempted=0,physical_transitions_recorded=0,
+        logical_trajectories_completed=0,reset_lanes_attempted=0,reset_lanes_recorded=0)
+    case('replay/partial_ledger',e.h4m12_ledger(partial,partial=True)['physical']==0)
+    case('replay/partial_budget',expect_reject(lambda:e.h4m12_ledger(dict(partial,physical_transitions_attempted=2),partial=True)))
     require(tuple(results)==fixture_ids(),'FIXTURE_MANIFEST')
     e.h4m3_no_runtime_imports()
     require(t.ssrpc_static_no_native(),'STATIC_NATIVE_IMPORT')
@@ -766,7 +813,7 @@ def static_worker(root,auth,pins,archive,secondary,external):
     print('H4SSRPC_PAIR_FULL_STATIC_PASS '+digest,flush=True)
 
 
-def read_static(root,pins,external,*,expected=None,terminal_required=True):
+def read_static(root,pins,external,*,expected=None,terminal_required=True,outer_required=True):
     import m463_gate3_cp_eval as e
     import m463_push_ppo_train as t
     out=root/STATIC
@@ -795,6 +842,8 @@ def read_static(root,pins,external,*,expected=None,terminal_required=True):
         worker_log_sha256=e.sha256(log),stored_log_bytes=log.stat().st_size)
     if terminal_required:
         require(exact_json(read_bounded(root,STATIC/'supervisor.terminal.json',RECEIPT_CAP,t),terminal),'STATIC_TERMINAL')
+    else:require(unused(out/'supervisor.terminal.json'),'STATIC_PRETERMINAL')
+    if outer_required:check_outer(root,'static',auth)
     if expected is not None:
         require(digest==expected['static_sha256'] and e.sha256(out/'supervisor.terminal.json')==expected['static_terminal_sha256']
                 and report['provenance_sha256']==expected['provenance_sha256']
@@ -888,10 +937,10 @@ def supervisor(root,phase):
                 # Independent host admission and strict result reader, no second fixture execution.
                 p,_,_,x=prepare_inputs(root)
                 require(exact_json([pins,external],[p,x]),'STATIC_POST_INPUTS')
-                terminal=read_static(root,pins,external,terminal_required=False)
+                terminal=read_static(root,pins,external,terminal_required=False,outer_required=False)
                 require(terminal['worker_pid']==worker_pid,'STATIC_SUPERVISOR_PID')
                 write_json(root,phase,base/'supervisor.terminal.json',terminal)
-                read_static(root,pins,external)
+                read_static(root,pins,external,outer_required=False)
             else:
                 check_auth_identity(auth,pins,external)
                 read_static(root,pins,external,expected=auth)
@@ -932,8 +981,9 @@ def supervisor(root,phase):
                 terminal=dict(authorization=auth,status='COMPLETE',report_sha256=e.sha256(base/'report.json'),
                     producer_rc=0,reader_rc=0,arm_terminal_sha256=expected['arm_terminal_sha256'])
                 write_json(root,phase,base/'attempt_result.json',{k:v for k,v in terminal.items() if k!='reader_rc'})
+                read_pair(root,auth,pins,archive,secondary,external,terminal_required=False,outer_required=False)
                 write_json(root,phase,base/'supervisor.terminal.json',terminal)
-                read_pair(root,auth,pins,archive,secondary,external)
+                read_pair(root,auth,pins,archive,secondary,external,outer_required=False)
             f.write(b'EXIT_CODE=0\n');f.flush();os.fsync(f.fileno())
         except BaseException as exc:
             # Never erase partial evidence or re-dispatch either arm.
