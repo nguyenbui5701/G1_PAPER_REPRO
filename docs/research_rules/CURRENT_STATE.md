@@ -3,6 +3,9 @@
 Governance v2.0.0 — 2026-11-27 — documentation only. Historical research state pinned to a2a1056075f4a41e9f05115b30e2a50144b34154.
 
 ## Current decision
+**H4-M21-2-FFE2-DEV-FULL-HOST-STATIC-V1 CLOSED / CONSUMED / SCOPED FULL HOST-STATIC PASS receipt accepted / NATIVE RUNTIME HOLD.** Exact log 783B SHA256 9c2af046fd1132d672e1b4d745454b238ee0270514b45388e7b82e1f1fd3524b; authorization 10c1922f6591d213012e3300b357a309cf78b943; all expected host fixtures and zero counters reported. Runtime launcher independently rehashed 8fec7f0086e851a4840ee78fde80531046e16d7459d30780e7bc151ea928b35f. Separate outer console receipt (printed SHA/size and outer rc) not supplied; embedded success footer is consistent but not independent outer process proof. Owner must supply it or explicitly accept this limitation before distinct runtime GO. SA independently rehashed log bytes and frozen root runtime launcher, not Owner-local aggregate source/provenance files. Fixtures validate shared in-memory readers, not end-to-end actual native final/partial reports. Native typed restore, actual GPU/resource admission and scientific efficacy untested. No rerun or runtime authorization. FFE2 EXPOSURE_INCONCLUSIVE/NO_PROMOTE immutable; Branch A ACTIVE/B HOLD.
+
+### Historical H4-M21-2 issuance (closed by receipt above)
 **H4-M21-2-FFE2-DEV-FULL-HOST-STATIC-V1 ISSUED / OWNER RECEIPT PENDING / NATIVE RUNTIME HOLD.** Owner explicit GO at 09e091a6e297210f35975687bd88e7f7c4dcb3e0. H4-M20-3 remains CLOSED/CONSUMED/TECHNICAL_PASS/EXPOSURE_INCONCLUSIVE/NO_PROMOTE. Branch A ACTIVE/B HOLD.
 
 Fixed exclusive static log m463_runs/m470_h4ffe2_dev_static_v1.log; exact embedded bounded launcher in ACTIVE_EXPERIMENT. No native GO, no retry, no comparator rerun or promotion. Await exact Owner receipt; no static PASS claimed.
