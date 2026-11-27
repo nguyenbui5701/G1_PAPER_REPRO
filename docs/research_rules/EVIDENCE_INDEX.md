@@ -434,3 +434,6 @@ Each link includes the section until the next heading; ranges are retrieval aids
 
 ## H4-M24-1 held scope
 - [Owner scope base](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/05632be604b7fa3464cb4ae51c62ebc4197589b0); evaluator blob a65d2a1731b63b250f57836d011ecee7a5cda998. No new empirical results.
+
+## H4-M24-1 held source completion
+- [EDIT-FIRST](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/7f98679b66f894b87cb87fb023b96bcc0a9f7951), [source](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/2d96add1bce3d1e23b6504561114f7cff29a16da), blob 05ada48c07940c8f1aa6d4402cf95a2f2aa78d8d. Exact outside-block and hook list text readback; no execution. See ACTIVE_EXPERIMENT for fixed paths and planned95 cases.
