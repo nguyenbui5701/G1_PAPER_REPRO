@@ -431,3 +431,6 @@ Each link includes the section until the next heading; ranges are retrieval aids
 
 ## H4-M23 bootstrap path receipt
 - [Probe review base](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/cf908bac458a8da2857381f99f4be1c7e7dd826c). Owner-reported three footer lines only; see ACTIVE_EXPERIMENT for limitations. No native evidence.
+
+## H4-M24-1 held scope
+- [Owner scope base](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/05632be604b7fa3464cb4ae51c62ebc4197589b0); evaluator blob a65d2a1731b63b250f57836d011ecee7a5cda998. No new empirical results.

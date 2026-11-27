@@ -70,3 +70,5 @@ Append one row per task with exact evidence/commit, decision, limitations and ne
 | H4-M23-6 receipt / bootstrap correction | 5/5 exact uploaded SHA256; import failure before journal header; corrected future launcher contract | CLOSED/CONSUMED / TECH STOP / NATIVE HOLD | ef88f5665c26eae1d0e5a62ee64fdc0eb0c59d27; journal and outer console Owner-reported; no execution or new authorization; see ACTIVE_EXPERIMENT |
 
 | H4-M23 bootstrap path receipt | Three Owner-reported PASS/zero footer lines | SCOPED OWNER-REPORTED PATH PASS / NATIVE HOLD | cf908bac458a8da2857381f99f4be1c7e7dd826c; full console/path origins/exit not supplied; no new GO |
+
+| H4-M24-1 | Owner explicit held source scope | EDIT-FIRST / HELD | Base 05632be604b7fa3464cb4ae51c62ebc4197589b0; zero execution, no authorization |
