@@ -10981,22 +10981,25 @@ def ssrpc_parse_marker(rules):
     import re
     lines=[v for v in rules.splitlines() if re.match(r'^[A-Z0-9_]+_GO:',v)]
     h4m12_require(len(lines)==1,'SSRPC_ACTIVE_MARKER_COUNT')
-    m=re.fullmatch(r'H4SSRPC_ACTIVE_GO: (ctrl|cand) ([0-9a-f]{64}) ([0-9a-f]{64}) ([0-9a-f]{64}) ([0-9a-f]{40})',lines[0])
+    m=re.fullmatch(r'H4SSRPC_ACTIVE_GO: (ctrl|cand) ([0-9a-f]{64}) ([0-9a-f]{64}) ([0-9a-f]{64}) ([0-9a-f]{40}) (-|[0-9a-f]{64}) (-|[0-9a-f]{64})',lines[0])
     h4m12_require(m is not None,'SSRPC_MARKER')
-    arm,source,generated,static_sha,source_head=m.groups()
+    arm,source,generated,static_sha,source_head,ctrl_report,ctrl_terminal=m.groups()
+    h4m12_require((arm=='ctrl' and ctrl_report==ctrl_terminal=='-') or
+        (arm=='cand' and ctrl_report!='-' and ctrl_terminal!='-'),'SSRPC_CTRL_RECEIPT_BINDING')
     return dict(id=ssrpc_spec(arm)['id'],arm=arm,output=SSRPC_ARM_OUTPUT[arm],
                 source_sha256=source,generated_sha256=generated,
                 static_path=SSRPC_STATIC_PREFIX+arm+'_static_v1.json',
-                static_sha256=static_sha,source_head=source_head)
+                static_sha256=static_sha,source_head=source_head,
+                ctrl_report_sha256=ctrl_report,ctrl_terminal_sha256=ctrl_terminal)
 
 def ssrpc_validate_auth_evidence(root,auth):
     import re,subprocess
     root=Path(root).resolve()
-    keys={'id','arm','output','source_sha256','generated_sha256','static_path','static_sha256','source_head'}
+    keys={'id','arm','output','source_sha256','generated_sha256','static_path','static_sha256','source_head','ctrl_report_sha256','ctrl_terminal_sha256'}
     h4m12_require(type(auth) is dict and set(auth)==keys and
         all(type(v) is str for v in auth.values()),'SSRPC_AUTH_SCHEMA')
     arm=auth['arm']
-    marker='H4SSRPC_ACTIVE_GO: '+arm+' '+auth['source_sha256']+' '+auth['generated_sha256']+' '+auth['static_sha256']+' '+auth['source_head']
+    marker='H4SSRPC_ACTIVE_GO: '+arm+' '+auth['source_sha256']+' '+auth['generated_sha256']+' '+auth['static_sha256']+' '+auth['source_head']+' '+auth['ctrl_report_sha256']+' '+auth['ctrl_terminal_sha256']
     h4m12_require(ssrpc_parse_marker(marker)==auth,'SSRPC_AUTH_IDENTITY')
     h4m12_require(not any((H4_EXECUTION_AUTHORIZED,H4R_EXECUTION_AUTHORIZED,
         H4C_EXECUTION_AUTHORIZED,H4CC_EXECUTION_AUTHORIZED,H4M8_EXECUTION_AUTHORIZED)),'SSRPC_LEGACY_HOLD')
@@ -11010,7 +11013,7 @@ def ssrpc_validate_auth_evidence(root,auth):
     # exclusive static supervisor still require separate held completion.
     p=root/auth['static_path'];h4x_file_pin(p,auth['static_sha256'])
     h4m12_require(p.stat().st_size<=65536,'SSRPC_STATIC_CAP')
-    r=json.loads(p.read_bytes())
+    r=ssrpc_read_json(p,H4M12_SPEC['other_cap'])
     expected=dict(status='FULL_STATIC_COMPLETE',arm=arm,source_head=auth['source_head'],
         source_sha256=auth['source_sha256'],generated_sha256=auth['generated_sha256'],
         physical_transitions=0,optimizer_updates=0,resets=0,native_inference=0)
@@ -11024,11 +11027,60 @@ def ssrpc_auth(root,arm):
     root=Path(root).resolve()
     a=ssrpc_parse_marker((root/'G1_RESEARCH_RULES.md').read_text('utf8'))
     h4m12_require(a['arm']==arm,'SSRPC_ACTIVE_ARM')
+    ssrpc_root_only_authorization(root)
     return ssrpc_validate_auth_evidence(root,a)
+
+
+def ssrpc_read_json(path,cap):
+    path=Path(path)
+    h4m12_require(path.is_file() and not path.is_symlink() and
+        0<path.stat().st_size<=cap,'SSRPC_JSON_PATH')
+    def pairs(items):
+        d={}
+        for k,v in items:
+            h4m12_require(k not in d,'SSRPC_JSON_DUPLICATE')
+            d[k]=v
+        return d
+    def constant(value):
+        raise RuntimeError('SSRPC_JSON_CONSTANT '+value)
+    return json.loads(path.read_bytes(),object_pairs_hook=pairs,parse_constant=constant)
+
+def ssrpc_root_only_authorization(root):
+    """Distinct root-only child of exact closed root."""
+    import subprocess
+    root=Path(root).resolve()
+    git=lambda *args:subprocess.check_output(['git',*args],cwd=root)
+    h4m12_require(git('symbolic-ref','--short','HEAD').strip()==b'experiment/b1-hardware-scaled'
+        and not git('status','--porcelain','--untracked-files=no'),'SSRPC_TRACKED_STATE')
+    h4m12_require(git('diff','--name-only','HEAD^','HEAD').splitlines()==[b'G1_RESEARCH_RULES.md'],
+        'SSRPC_ROOT_ONLY')
+    prior=git('show','HEAD^:G1_RESEARCH_RULES.md')
+    h4m12_require(hashlib.sha1(b'blob '+str(len(prior)).encode()+b'\0'+prior).hexdigest()==
+        'e09c35a82f06a97fe5406ba36bb3fd9664913583','SSRPC_CLOSED_ROOT')
+    current=(root/'G1_RESEARCH_RULES.md').read_bytes()
+    h4m12_require(current==git('show','HEAD:G1_RESEARCH_RULES.md'),'SSRPC_ROOT_BYTES')
+    added=[v for v in current.splitlines(keepends=True) if v.startswith(b'H4SSRPC_ACTIVE_GO: ')]
+    h4m12_require(len(added)==1 and current.replace(added[0],b'',1)==prior,'SSRPC_ROOT_EXACT_ADDITION')
+
+def ssrpc_require_control(root,auth):
+    """Candidate admission requires exact separately accepted CTRL receipts."""
+    root=Path(root).resolve()
+    if auth['arm']=='ctrl':
+        return
+    out=root/SSRPC_ARM_OUTPUT['ctrl']
+    h4x_file_pin(out/'report.json',auth['ctrl_report_sha256'])
+    h4x_file_pin(out/'supervisor.terminal.json',auth['ctrl_terminal_sha256'])
+    a=ssrpc_read_json(out/'attempt.json',65536)['authorization']
+    h4m12_require(a['arm']=='ctrl' and a['source_sha256']==auth['source_sha256'],
+        'SSRPC_MATCHED_CONTROL_SOURCE')
+    report=ssrpc_read_final(root,auth['ctrl_report_sha256'],a)
+    h4m12_require(report['ssrpc_ledger']['common_floors'] is True and
+        report['ssrpc_ledger']['decision']=='MATCHED_CONTROL_COMPLETE','SSRPC_CONTROL_COMMON_GATE')
 
 def ssrpc_generated_guard(audit,generated_file,environment,resume,arm,abort,prepare,commit):
     root=Path(__file__).resolve().parent
     auth=ssrpc_auth(root,arm);out=root/SSRPC_ARM_OUTPUT[arm]
+    ssrpc_require_control(root,auth)
     from m463_coverage_env import SSRPCCoverageJoystick
     h4m12_require(type(environment) is SSRPCCoverageJoystick and environment.ssrpc_arm==arm
         and environment._h4_arm=='control' and environment._ffe is True and environment._ffe2 is True
@@ -11040,7 +11092,7 @@ def ssrpc_generated_guard(audit,generated_file,environment,resume,arm,abort,prep
         and Path(resume).resolve()==root/H4M12_PARENT/H4M12_FULL,'SSRPC_GENERATED_BINDING')
     h4x_file_pin(Path(generated_file),auth['generated_sha256'])
     h4x_file_pin(Path(resume),SSRPC_PARENT_SHA)
-    h4m12_require(json.loads((out/'attempt.json').read_bytes())==
+    h4m12_require(ssrpc_read_json(out/'attempt.json',65536)==
         {'authorization':auth,'parent_pid':os.getppid()},'SSRPC_RESERVATION')
     h4x_write_json(out/'dispatch.started.json',{'authorization':auth},exclusive=True)
 
@@ -11091,16 +11143,16 @@ def ssrpc_read_partial(out,auth):
     out=Path(out);p=out/'report.json'
     h4m12_require(p.is_file() and not p.is_symlink() and p.stat().st_size<=H4M12_SPEC['output_cap']
         and not (out/'supervisor.terminal.json').exists(),'SSRPC_PARTIAL_PATH')
-    r=json.loads(p.read_bytes())
+    r=ssrpc_read_json(p,H4M12_SPEC['other_cap'])
     h4m12_require(r['status'] in ('RUNNING','STOP') and r['authorization']==auth and
         r['spec']==ssrpc_spec(auth['arm']) and r['promotion_authorized'] is False,'SSRPC_PARTIAL_STATUS')
     b=H4M12Budget()
     for row in r['operational_rows']:b.advance(row['event'])
     h4m12_require(b.snapshot()==r['budget'],'SSRPC_PARTIAL_BUDGET')
     joint=ssrpc_replay_report(np,r,complete=False)
-    attempt=json.loads((out/'attempt.json').read_bytes())
-    worker=json.loads((out/'worker.started.json').read_bytes())
-    result=json.loads((out/'attempt_result.json').read_bytes())
+    attempt=ssrpc_read_json(out/'attempt.json',65536)
+    worker=ssrpc_read_json(out/'worker.started.json',65536)
+    result=ssrpc_read_json(out/'attempt_result.json',65536)
     h4m12_require(set(attempt)=={'authorization','parent_pid'} and attempt['authorization']==auth
         and type(attempt['parent_pid']) is int and attempt['parent_pid']>0 and
         set(worker)=={'authorization','pid'} and worker['authorization']==auth and
@@ -11108,6 +11160,41 @@ def ssrpc_read_partial(out,auth):
         result['status']=='STOP','SSRPC_PARTIAL_RECEIPTS')
     for name in ('attempt.json','worker.started.json','attempt_result.json'):
         h4m12_require((out/name).is_file() and not (out/name).is_symlink(),'SSRPC_PARTIAL_SYMLINK')
+    root=out.parent.parent.resolve()
+    ssrpc_validate_auth_evidence(root,auth)
+    h4m12_require(out.resolve()==root/SSRPC_ARM_OUTPUT[auth['arm']]
+        and r['parent']==ssrpc_parent_preflight(root),'SSRPC_PARTIAL_PARENT')
+    h4x_file_pin(out/'m463_brax_ppo_instrumented.py',auth['generated_sha256'])
+    for name,sha in r['artifacts'].items():
+        h4m12_require(name in (H4M12_NEW_POLICY,H4M12_NEW_FULL,
+            Path(H4M12_NEW_FULL).with_suffix('.json').name),'SSRPC_PARTIAL_ARTIFACT')
+        h4x_file_pin(out/name,sha)
+    failure=ssrpc_read_json(out/'supervisor.failed.json',65536)
+    h4m12_require(set(result)=={'status','authorization','producer_rc','stored_log_bytes','error'}
+        and result==failure and type(result['stored_log_bytes']) is int and
+        0<=result['stored_log_bytes']<=H4M12_SPEC['external_log_reserve']
+        and type(result['error']) is str and len(result['error'])<=2048
+        and (result['producer_rc'] is None or type(result['producer_rc']) is int),'SSRPC_PARTIAL_FAILURE')
+    dispatch=out/'dispatch.started.json'
+    if dispatch.exists() or dispatch.is_symlink():
+        h4m12_require(ssrpc_read_json(dispatch,65536)=={'authorization':auth},'SSRPC_PARTIAL_DISPATCH')
+    else:
+        h4m12_require(not r['operational_rows'],'SSRPC_PARTIAL_UNDISPATCHED_ROWS')
+    before=h4ffe_empty_pending();completed=0;rows=r.get('ffe_chunks',[])
+    h4m12_require(len(rows)<=4,'SSRPC_PARTIAL_LEGACY_LENGTH')
+    for i,row in enumerate(rows,1):
+        h4m12_require(row['index']==i and row['before']==before,'SSRPC_PARTIAL_LEGACY_ROW')
+        if row['passed'] is not True:
+            h4m12_require(i==len(rows),'SSRPC_PARTIAL_LEGACY_ORDER');break
+        h4m12_require(r['h4_chunks'][i-1]['passed'] is True,'SSRPC_PARTIAL_LEGACY')
+        h4ffe_check_chunk(row['metrics'],before,row['after'],r['h4_chunks'][i-1]['counts'],i)
+        before=row['after'];completed+=1
+    accepted=len(r['ffe2_chunks'])
+    h4m12_require(accepted<=completed<=accepted+1 and
+        completed*1310720<=b.attempted['training'],'SSRPC_PARTIAL_CHARGE')
+    if 'ssrpc_ledger' in r:
+        h4m12_require(accepted==4 and ssrpc_replay_report(np,r,complete=True)==r['ssrpc_ledger'],
+            'SSRPC_PARTIAL_STALE_SUMMARY')
     abort=r.get('ffe_abort')
     if abort is not None:
         m=abort['metrics'];col=m['ffe_collected'];comm=m['ffe_batch_committed'];rej=m['ffe_batch_rejected']
@@ -11273,6 +11360,7 @@ def ssrpc_check_complete(out,r,auth):
     import numpy as np
     h4m12_require(h4ffe2_replay_full_ledger(np,r,complete=True)==r['ffe2_ledger'],'FFE2_FINAL_LEDGER')
     h4m12_require(ssrpc_replay_report(np,r,complete=True)==r['ssrpc_ledger'],'SSRPC_FINAL_JOINT')
+    h4m12_require(r['ssrpc_ledger']['common_floors'] is True,'SSRPC_COMMON_EXPOSURE_FAIL')
     gpu=r['gpu']
     h4m12_require(gpu['total_mib']==12288 and 0<gpu['peak_used_mib']<.95*12288
         and not gpu['sampler_errors'] and gpu['samples']>0 and r['returned_policy_exact'] is True,
@@ -11298,7 +11386,7 @@ def ssrpc_terminal_receipt(out,expected_sha,auth):
         log.stat().st_size<=H4FFE2_SPEC['external_log_reserve'],'FFE2_TERMINAL_PATH')
     expected=dict(status='COMPLETE',authorization=auth,report_sha256=expected_sha,
         producer_rc=0,reader_rc=0,worker_log_sha256=digest(log),stored_log_bytes=log.stat().st_size)
-    value=json.loads(terminal.read_bytes())
+    value=ssrpc_read_json(terminal,65536)
     h4m12_require(type(value) is dict and set(value)==set(expected) and
         all(type(value[k]) is type(expected[k]) for k in expected) and value==expected,'FFE2_TERMINAL_RECEIPT')
     return True
@@ -11307,21 +11395,22 @@ def _ssrpc_read_final(root,expected_sha,auth,*,require_terminal):
     root=Path(root).resolve()
     ssrpc_validate_auth_evidence(root,auth)
     out=root/SSRPC_ARM_OUTPUT[auth['arm']]
+    ssrpc_require_control(root,auth)
     failed=out/'supervisor.failed.json'
     h4m12_require(not failed.exists() and not failed.is_symlink(),'FFE2_SUPERVISOR_FAILURE')
     h4x_file_pin(out/'report.json',expected_sha)
-    r=json.loads((out/'report.json').read_bytes())
+    r=ssrpc_read_json(out/'report.json',H4M12_SPEC['other_cap'])
     for name in ('dispatch.started.json','attempt.json','worker.started.json','attempt_result.json'):
         h4m12_require((out/name).is_file() and not (out/name).is_symlink(),'FINAL_RECEIPT_PATH')
-    h4m12_require(json.loads((out/'dispatch.started.json').read_bytes())==
+    h4m12_require(ssrpc_read_json(out/'dispatch.started.json',65536)==
         {'authorization':auth},'FINAL_DISPATCH')
-    worker=json.loads((out/'worker.started.json').read_bytes())
+    worker=ssrpc_read_json(out/'worker.started.json',65536)
     h4m12_require(set(worker)=={'authorization','pid'} and worker['authorization']==auth
         and type(worker['pid']) is int and worker['pid']>0,'FINAL_WORKER')
-    receipt=json.loads((out/'attempt.json').read_bytes())
+    receipt=ssrpc_read_json(out/'attempt.json',65536)
     h4m12_require(set(receipt)=={'authorization','parent_pid'} and receipt['authorization']==auth
         and type(receipt['parent_pid']) is int and receipt['parent_pid']>0,'FINAL_RESERVATION')
-    result=json.loads((out/'attempt_result.json').read_bytes())
+    result=ssrpc_read_json(out/'attempt_result.json',65536)
     h4m12_require(result=={'status':'COMPLETE','authorization':auth,
                           'report_sha256':expected_sha,'producer_rc':0},'FINAL_RECEIPT')
     parent_check=ssrpc_parent_preflight
@@ -11339,7 +11428,7 @@ def ssrpc_worker(a,auth,root,out):
     import inspect
     import importlib.util
     from m463_instrument_brax import make_h4m12_integrated_source,h4c_git_blob
-    h4m12_require(json.loads((out/'attempt.json').read_bytes())==
+    h4m12_require(ssrpc_read_json(out/'attempt.json',65536)==
         {'authorization':auth,'parent_pid':os.getppid()},'WORKER_RESERVATION')
     h4x_write_json(out/'worker.started.json',{'authorization':auth,'pid':os.getpid()},exclusive=True)
     h4ffe_mode(red,r11,r12,ffe)
@@ -11720,6 +11809,7 @@ def ssrpc_main(argv):
     parent_check=ssrpc_parent_preflight
     auth=authorize(root)
     out=root/SSRPC_ARM_OUTPUT[a.arm]
+    ssrpc_require_control(root,auth)
     if a.worker:
         return ssrpc_worker(a,auth,root,out)
     parent_check(root)
@@ -11750,7 +11840,7 @@ def ssrpc_main(argv):
         rc=child.wait(timeout=max(1,deadline-time.monotonic()))
         h4m12_require(rc==0,'PRODUCER_RC')
         report=out/'report.json'
-        r=json.loads(report.read_bytes())
+        r=ssrpc_read_json(report,H4M12_SPEC['other_cap'])
         ssrpc_check_complete(out,r,auth)
         h4m12_require(parent_check(root,require_unused=False)==r['parent'] and authorize(root)==auth,'SUPERVISOR_IMMUTABILITY')
         sha=digest(report)
