@@ -6593,4 +6593,3 @@ for name in ("report.json","attempt.json","dispatch.started.json","attempt_resul
         print("H4FFE2_DEV_ARTIFACT",str(p),p.stat().st_size,digest(p),flush=True)
 raise SystemExit(0 if ok else 1)
 # H4FFE2_DEV_OWNER_LAUNCHER_END
-H4M23_RICH_STATIC_GO: H4-M23-4-STATIC-V1 7a4b62ffc743eb40ee43186a56f880976e90a9ab a65d2a1731b63b250f57836d011ecee7a5cda998 m463_runs/m470_h4m23_rich_static_v1.log
