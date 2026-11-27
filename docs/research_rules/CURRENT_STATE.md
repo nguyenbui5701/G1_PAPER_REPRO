@@ -3,7 +3,9 @@
 Governance v2.0.0 — 2026-11-27 — documentation only. Historical research state pinned to a2a1056075f4a41e9f05115b30e2a50144b34154.
 
 ## Current decision
-**H4-M20-1-FFE2-STATIC-CANDIDATE-V1 — ONE-USE HOST-STATIC GO ISSUED / OWNER RECEIPT PENDING / FULL STATIC & NATIVE RUNTIME HOLD.** Exact reviewed source unchanged from ee1f7eeeae560ecccfa19f9157a1ba8b4da34bc2. One top-level existing --h4ffe2-static via bounded fixed-log launcher in ACTIVE_EXPERIMENT; zero native execution, no retry. Await exact log/receipt; no H4-M20-2 full PASS or PPO.
+**H4-M20-1-FFE2-STATIC-CANDIDATE-V1 CLOSED / CONSUMED / HOST-STATIC CANDIDATE PASS ACCEPTED / FULL STATIC & NATIVE RUNTIME HOLD.** Owner log2032B SHA256 58a07796561115d3c570258684043fc994bd037761bcd44db0fc5ebc9d1902c5; exact authorization HEAD 5954499880367c1f3c5275c73343b3478b4b7099; supervisor complete/rc0/no overflow/error; 136 core, 3 synthetic batches, 19 row negatives, readers2/19, terminal1/7, zero native. No retry. Next recommendation only: distinct held H4-M20-2 final source freeze/full-static preparation; no full PASS or PPO authorization.
+
+**Historical issuance (closed by receipt above) — H4-M20-1-FFE2-STATIC-CANDIDATE-V1.** Exact reviewed source unchanged from ee1f7eeeae560ecccfa19f9157a1ba8b4da34bc2. One top-level existing --h4ffe2-static via bounded fixed-log launcher in ACTIVE_EXPERIMENT; zero native execution, no retry. Await exact log/receipt; no H4-M20-2 full PASS or PPO.
 
 **H4-M20-1 — SOURCE REVIEW CORRECTIONS DRAFTED / GIT SCOPE VERIFIED / HOST-STATIC CANDIDATE CHECK RECOMMENDED, NOT AUTHORIZED / FULL STATIC & RUNTIME HOLD.** Legacy target replay, risk histogram and tail cross-checks, strict partial/final/terminal receipt corrections and resource schema bound drafted. No local static or native execution. Next distinct Owner authorization for one bounded host-only candidate check; no H4-M20-2 full PASS or PPO. Base 58320914cb042c9f8a008abd2be664df064a74a0.
 
