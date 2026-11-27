@@ -98,3 +98,6 @@ Append one row per task with exact evidence/commit, decision, limitations and ne
 
 
 | H4-M25-2A completion | Minimal legacy fixture routing; exact V2 reverse text reconstruction, 9 anchors | HELD SOURCE IMPLEMENTED / STATIC GO REQUIRED | 7f35441e52860f3632689d797a61f68761e82c1c; blob 10443f1000a8d51ae81ece3f10e604c42d2d0c62; 122 planned, zero executed |
+
+
+| H4-M25-2B | Owner explicit one-use V3 full host-static GO; exact frozen repaired blob and nine anchors reviewed | EDIT-FIRST / effective at root-only child / receipt pending | 49484e834b8f1019bc7ef717f72c1e5cb49709d0; 122 planned; zero native/optimizer; no SA execution |

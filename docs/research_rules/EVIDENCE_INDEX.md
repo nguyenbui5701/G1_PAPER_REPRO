@@ -470,3 +470,7 @@ Each link includes the section until the next heading; ranges are retrieval aids
 
 ## H4-M25-2A held repair completion
 - [EDIT-FIRST](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/3343907654ba3717a14ef6871151ac518e9c291f), [source](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/7f35441e52860f3632689d797a61f68761e82c1c); exact blob 10443f1000a8d51ae81ece3f10e604c42d2d0c62; independent text review, no empirical result.
+
+
+## H4-M25-2B authorization review
+- [Owner-approved frozen base](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/49484e834b8f1019bc7ef717f72c1e5cb49709d0), [exact evaluator](https://github.com/nguyenbui5701/G1_PAPER_REPRO/blob/49484e834b8f1019bc7ef717f72c1e5cb49709d0/m463_gate3_cp_eval.py); Git blob 10443f1000a8d51ae81ece3f10e604c42d2d0c62. Source-only review; no static result yet.
