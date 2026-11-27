@@ -108,11 +108,8 @@ def pinned_file(root, rel, expected, trainer):
 
 def prepare_inputs(root):
     """Future host-only admission. Strict historical replay, not native work."""
-    import m463_gate3_cp_eval as e
-    import m463_push_ppo_train as t
     root = Path(root).resolve()
-    e.h4m3_no_runtime_imports()
-    require(root == e.H4_EVAL_ROOT and git(root,'branch','--show-current').decode().strip()==BRANCH
+    require(root == Path(__file__).resolve().parent and git(root,'branch','--show-current').decode().strip()==BRANCH
             and not git(root,'status','--porcelain','--untracked-files=no').strip(), 'TRACKED_STATE')
     pins = {}
     for name, expected in FROZEN.items():
@@ -125,7 +122,12 @@ def prepare_inputs(root):
     self_path = Path(__file__).resolve()
     require(self_path.parent==root and self_path.read_bytes()==git(root,'show','HEAD:'+self_path.name),
             'WRAPPER_TRACKED')
-    pins['source/'+self_path.name] = e.sha256(self_path)
+    pins['source/'+self_path.name] = hashlib.sha256(self_path.read_bytes()).hexdigest()
+    import m463_gate3_cp_eval as e
+    import m463_push_ppo_train as t
+    require(Path(e.__file__).resolve()==root/'m463_gate3_cp_eval.py'
+            and Path(t.__file__).resolve()==root/'m463_push_ppo_train.py', 'MODULE_ORIGINS')
+    e.h4m3_no_runtime_imports()
     pins['historical_bootstrap'] = t.ssrpc_bootstrap_identity(root)
     reports = {}
     for arm in ARMS:
@@ -260,6 +262,140 @@ def decide_pair(archive, secondary, ctrl, cand):
                 matched_pair_metrics=paired, matched_pair_roles=dict(CTRL=LABELS['ctrl'],CAND=LABELS['cand']),
                 matched_pair_h3_verdict_descriptive=True, arm_ledgers=ledgers,
                 physical=total, logical=120, resets=24, optimizer_updates=0)
+
+
+
+# Held future receipt schema. These readers do NOT issue an authorization.
+# A separately reviewed supervisor must first validate the root-only marker,
+# fresh static receipt, exact source and local provenance before reservation.
+RECEIPT_CAP = 65536
+PAIR_REPORT_CAP = 16*1024**2
+AUTH_KEYS = {'id','source_blob','source_sha256','provenance_sha256',
+             'static_sha256','authorization_head'}
+
+
+def read_bounded(root, rel, cap, trainer):
+    p=root/rel
+    require(p.absolute()==p.resolve() and p.is_file() and not p.is_symlink()
+            and 0<p.stat().st_size<=cap, 'RECEIPT_PATH_'+str(rel))
+    return trainer.ssrpc_read_json(p,cap)
+
+
+def check_auth_identity(auth, pins, external):
+    import re
+    import m463_gate3_cp_eval as e
+    require(type(auth) is dict and set(auth)==AUTH_KEYS and auth['id']==ID
+            and all(type(v) is str for v in auth.values()), 'AUTH_SCHEMA')
+    require(all(re.fullmatch('[0-9a-f]{64}',auth[k]) for k in
+                ('source_sha256','provenance_sha256','static_sha256'))
+            and all(re.fullmatch('[0-9a-f]{40}',auth[k]) for k in
+                ('source_blob','authorization_head')), 'AUTH_DIGESTS')
+    require(auth['source_sha256']==pins['source/'+Path(__file__).name]
+            and auth['source_blob']==blob(Path(__file__).read_bytes())
+            and auth['provenance_sha256']==e.h4m3_digest([pins,external]), 'AUTH_BINDING')
+
+
+def read_arm(root, arm, auth, pins, external, archive, *, complete):
+    """Held strict final/partial receipt reader; no native execution."""
+    import m463_gate3_cp_eval as e
+    import m463_push_ppo_train as t
+    root=Path(root).resolve()
+    require(arm in ARMS and type(complete) is bool, 'READ_ARM')
+    check_auth_identity(auth,pins,external)
+    base=PAIR/arm
+    out=root/base
+    require(out.absolute()==out.resolve() and out.is_dir() and not out.is_symlink(), 'ARM_NAMESPACE')
+    identity=dict(authorization=auth,arm=arm)
+    attempt=read_bounded(root,base/'attempt.json',RECEIPT_CAP,t)
+    require(set(attempt)==set(identity)|{'reserved','parent_pid'}
+            and all(attempt[k]==v for k,v in identity.items())
+            and attempt['reserved'] is True and type(attempt['parent_pid']) is int
+            and attempt['parent_pid']>0,'ATTEMPT')
+    report=read_bounded(root,base/'report.json',REPORT_CAP,t)
+    require(report['authorization']==auth and report['spec']==arm_spec(arm)
+            and report['input_sha256']==pins
+            and report['evaluator_sha256']==pins['source/m463_gate3_cp_eval.py']
+            and report['wrapper_sha256']==pins['source/'+Path(__file__).name]
+            and report['promotion_authorized'] is False and report['further_training_authorized'] is False
+            and report['holdout_authorized'] is False and report['training_performed'] is False
+            and all(g['policy']==LABELS[arm] for g in report['groups']), 'REPORT_IDENTITY')
+    dispatch=root/base/'dispatch.started.json'
+    if complete or dispatch.exists() or dispatch.is_symlink():
+        require(read_bounded(root,base/'dispatch.started.json',RECEIPT_CAP,t)==identity, 'DISPATCH')
+    result_path=root/base/'attempt_result.json'
+    terminal_path=root/base/'supervisor.terminal.json'
+    failure_path=root/base/'supervisor.failed.json'
+    log=root/base/'worker.log'
+    if complete:
+        require(report['status']=='COMPLETE' and not failure_path.exists()
+                and not failure_path.is_symlink(), 'COMPLETE_STATUS')
+        _, ledger=compatibility_view(e,arm,report)
+        require(report['ledger']==ledger and all(archive[k]==report[k] for k in e.H4M12_PROTOCOL),
+                'COMPLETE_REPLAY')
+        gpu=report['gpu']
+        require(gpu['total_mib']==12288 and 0<gpu['peak_used_mib']<.95*12288
+                and type(gpu['samples']) is int and gpu['samples']>0 and not gpu['sampler_errors'],
+                'GPU')
+        digest=e.sha256(out/'report.json')
+        expected=dict(identity,status='COMPLETE',report_sha256=digest,producer_rc=0)
+        require(read_bounded(root,base/'attempt_result.json',RECEIPT_CAP,t)==expected,'RESULT')
+        require(log.absolute()==log.resolve() and log.is_file() and not log.is_symlink()
+                and log.stat().st_size<=LOG_CAP,'LOG')
+        expected=dict(expected,reader_rc=0,worker_log_sha256=e.sha256(log),stored_log_bytes=log.stat().st_size)
+        require(read_bounded(root,base/'supervisor.terminal.json',RECEIPT_CAP,t)==expected,'TERMINAL')
+    else:
+        require(report['status'] in ('IN_PROGRESS','STOP') and not terminal_path.exists()
+                and not terminal_path.is_symlink(), 'PARTIAL_STATUS')
+        # Reuse the historical partial row/flag/ledger checker on a temporary
+        # compatibility view; never write it to disk or change the source report.
+        view=dict(report,groups=[dict(g,policy='M12') for g in report['groups']],
+                  status='M470_H4M12_DEV_'+report['status'],spec=e.H4M12_EVAL_SPEC)
+        ledger=e.h4red_eval_partial_check(view,auth,pins,red=False)
+        if result_path.exists() or result_path.is_symlink():
+            require(read_bounded(root,base/'attempt_result.json',RECEIPT_CAP,t)==
+                    dict(identity,status='STOP'), 'PARTIAL_RESULT')
+    e.h4m3_no_runtime_imports()
+    return report,ledger
+
+
+def read_pair(root, auth, pins, archive, secondary, external):
+    """Complete pair only. Recompute all decisions; no single-arm promotion."""
+    import m463_gate3_cp_eval as e
+    import m463_push_ppo_train as t
+    root=Path(root).resolve()
+    check_auth_identity(auth,pins,external)
+    c,_=read_arm(root,'ctrl',auth,pins,external,archive,complete=True)
+    a,_=read_arm(root,'cand',auth,pins,external,archive,complete=True)
+    result=decide_pair(archive,secondary,c,a)
+    expected=dict(authorization=auth, status='COMPLETE',
+        arm_report_sha256={arm:e.sha256(root/PAIR/arm/'report.json') for arm in ARMS},
+        arm_terminal_sha256={arm:e.sha256(root/PAIR/arm/'supervisor.terminal.json') for arm in ARMS},
+        result=result)
+    require(read_bounded(root,PAIR/'report.json',PAIR_REPORT_CAP,t)==expected,'PAIR_FINAL_REPLAY')
+    require(not (root/PAIR/'supervisor.failed.json').exists()
+            and not (root/PAIR/'supervisor.failed.json').is_symlink(), 'PAIR_FAILURE')
+    return expected
+
+
+def gate_fixture_cases():
+    """Prospective focused fixture definitions; not executed in H4-M28-8."""
+    def row(cs,cr,ts,tr,nominal=12,moving=8):
+        return dict(primary_stand_double={'survival':{'CTRL':cs,'CAND':ts},
+                    'recovery5':{'CTRL':cr,'CAND':tr}},
+                    nominal_survivors={'CTRL':12,'CAND':nominal},
+                    moving_double_recovery5={'forward_fast':{'CTRL':8,'CAND':moving},
+                                            'turn_left':{'CTRL':8,'CAND':8}})
+    return [
+        ('strict_gain','DEV_PASS',row(6,6,8,8),'DEV_PASS'),
+        ('one_metric_gain','DEV_PASS',row(8,7,8,8),'DEV_PASS'),
+        ('both_ceiling','DEV_PASS',row(8,8,8,8),'INCONCLUSIVE'),
+        ('official_failure','NO_GO',row(6,6,8,8),'NO_GO'),
+        ('official_missing_window','INCONCLUSIVE',row(6,6,8,8),'INCONCLUSIVE'),
+        ('nominal_loss','DEV_PASS',row(6,6,8,8,nominal=11),'NO_GO'),
+        ('moving_loss','DEV_PASS',row(6,6,8,8,moving=7),'NO_GO'),
+        ('primary_loss','DEV_PASS',row(8,8,7,8),'NO_GO'),
+        ('no_increment','DEV_PASS',row(7,7,7,7),'NO_GO'),
+    ]
 
 
 def held():
