@@ -45,4 +45,6 @@ Historical complete ledger: [v1.2.294 L5191–5841](https://github.com/nguyenbui
 
 | H4-M23-1 | Owner-approved offline gait reward source and matched trajectory audit | OFFLINE COMPLETE / STOP DESIGN HOLD | Base 9c974bd9d92b7c07c91823969aeb907431c85cfb; five exact report hashes, 120556 relevant frames; no causal reward selection or runtime; proposed H4-M23-2 offline design separate GO |
 
+| H4-M23-2 | Owner-approved offline rich telemetry inventory and prospective minimal paired design | OFFLINE DESIGN COMPLETE / CONDITIONAL DIAGNOSTIC HELD / PPO DESIGN HOLD | Base fb8b50b5403b6413e49246a6c9b7f5a55b150c88; eight exact hashes; FFE2-only max1308 physical/3 resets/426 rich; H4-M23-3 held integration separate GO |
+
 Append one row per task with exact evidence/commit, decision, limitations and next scope. Do not rewrite previous entries or imply authorization.

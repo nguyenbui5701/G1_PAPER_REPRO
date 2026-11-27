@@ -81,3 +81,6 @@ Four exact train/DEV reports rehashed; source/ledger audit establishes five V2 b
 
 ## 2026-11-27 — H4-M23-1 gait signal conflict audit (governance v2.0.0 unchanged)
 Five reports rehashed, matched CTRL/FFE1/FFE2 raw trajectories and pinned gait formulas audited; source-derived proxies labeled distinct from actual reward and PPO advantage. Late/no touchdown and prior limits observed, no sufficient causal conflict or training exposure; STOP DESIGN HOLD. No executable/root/archive changes or runtime.
+
+## 2026-11-27 — H4-M23-2 minimal telemetry offline design (governance v2.0.0 unchanged)
+Exact M3/M4/M5 and five CTRL/FFE reports rehashed; actual historical gait metrics and previous adverse/unsupported probes reviewed. FFE2-only 3-lane paired rich design held with strict projection and budget; no intervention or execution. PPO design HOLD.
