@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.262  
+**Version:** 1.2.263  
 **Ngày cập nhật:** 2026-11-27 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -3229,6 +3229,14 @@ Frozen future budget 5242880 train/800 optimizer/2000 diagnostic evaluation; ori
 
 SA review of Owner actual m470_h4r11_static_20261127_074850_780970680.log (1591 bytes, SHA256 f4eb7c23e9f48141f454e21a6dfb9e2bd1e5b0457f3a40ab89ab988e29c6d978), HEAD fea7c572e0ac30122254ea56326318f4c5564aa9, Rules1.2.261. Retrieved exact Rules blob e3e4e14ff63ab97752b487e67a4385f812eb4978 and remote four executable file bytes; all five SHA256 equal Owner receipt. H4R11_SOURCE c40c8af7e3ca6e7087c816cdfae478264eb2c58b679bf8265a5ed34067f0ce1e, H4R11_GENERATED 17f5b90ebb32a3529265b74217db70e675a9f9df0dc74eed25ae1afa4faf16a2 reported by exact local static; local config/installed Brax/generated/checkpoint bytes not independently re-executed by SA. Owner matched archive hashes CTRL DEV32bf04d6, M12 generated7f9abc07, M12 DEV eb44c364, policy50b7d203, report a28ebc6f agree with frozen pins. Fixtures quality2/trace3/batch positive1 negative7/credit cap1/close-invalid-expiry7/load mock1/range-address-edge3/ledger positive2 negative10; native calls0. H4R11_FULL_STATIC_PASS and STATIC_EXIT_CODE=0 TEE_EXIT_CODE=0; zero physical transitions/resets/optimizer/native inference. Static and provenance receipt ACCEPTED, not native runtime or efficacy PASS. No standalone diagnostic, no source edit, no extra static rerun. Owner reiterates R11 PPO next under frozen budget but distinct explicit one-use runtime GO not yet given; no active marker in this revision. Next H4-M15-2 one-use R11-NSTR-V1 PPO authorization only on explicit Owner GO; use original locked 5242880 train/800 optimizer/2000 diagnostic eval transitions, Official CTRL true reset-edge fullstate, archived M12 comparator, all guards and separate DEV GO unchanged. Native JAX/XLA/SGD isolation, actual reward consumption and GPU remain untested; fail closed, no retry or alternative hypothesis. Branch A active, B HOLD.
 
+### H4-M15-2 — R11-NSTR-V1 bounded reward-only PPO / distinct one-use runtime GO (v1.2.263; 2026-11-27)
+
+Owner explicit GO received for one candidate only, following H4-M15-1A accepted static. SA retrieved Rules1.2.262 blob25f229fbcc97df65541e4f36f994a4a85d50e9b8 at verified HEAD20ab7b83871bc63ea736628982a58c625522df78, reread exact Owner 1591-byte receipt and independently recalculated SHA256 f4eb7c23e9f48141f454e21a6dfb9e2bd1e5b0457f3a40ab89ab988e29c6d978; original full static PASS, both exit codes0, zero runtime, exact source/generated and matched-control fingerprints unchanged. Verified trainer blob505f8a71c8e26560cb17edcfb79fa5f33fb726a3, CLI --h4r11-continuation (parent, never --worker), h4r11_parse_marker/auth/parent_preflight, exclusive mkdir/attempt reservation, worker.started, strict reader, no other active markers. No executable edits, no new files, no fresh native or static experiment. One distinct marker below binds accepted exact bytes at local receipt path, source, generated and exclusive output. Local dependency/checkpoint bytes and native behavior remain subject to runtime fail-closed checks, not a claim of native readiness or success.
+
+H4R11_ACTIVE_GO: H4-M15-R11-NSTR-V1 m463_runs/m470_h4_m15_r11_v1 c40c8af7e3ca6e7087c816cdfae478264eb2c58b679bf8265a5ed34067f0ce1e 17f5b90ebb32a3529265b74217db70e675a9f9df0dc74eed25ae1afa4faf16a2 m463_runs/m470_h4r11_static_20261127_074850_780970680.log f4eb7c23e9f48141f454e21a6dfb9e2bd1e5b0457f3a40ab89ab988e29c6d978
+
+Authorize exactly one supervisor invocation, one candidate R11-NSTR-V1 only: Official CTRL true reset-edge fullstate9b19312da08d71513ad8fa6638c632401bec20e09399fdf4a9f6f6e2b2619c80, seed1, unchanged original CTRL easy_repeat_support scheduler/DR/RNG/network/24 native reward terms/physics/termination/PPO settings. Start10485760 Adam1600, end15728640 Adam2400, 8192x32, 20 rollouts, 4x5 chunks, 5242880 training + 2000 diagnostic eval = 5244880 total physical transitions, 800 optimizer updates, existing reset lane budgets24576 train/2 eval unchanged. Immutable archived M12 and Official CTRL DEV reused, no comparator rerun. Require same original C401M input checkpoint, typed restore receipt and reward-report CLI pins as v1.2.261; they are provenance inputs, actual continuation is from Official CTRL fullstate, not M12 or fresh Adam. Keep actual reward consumption, nominal exposure floor, batch invalid/sticky abort, strict final report, 3600s watchdog, internal log16MiB, output512MiB, disk reserve2GiB and sampled GPU peak<95%12288MiB. Owner shell launcher must preserve original receipt, enforce external log <=16MiB, validate exact HEAD, clean tracked worktree, existing g1_m463, exclusive unused output and no other heavy GPU job; parent performs frozen provenance/storage checks before reservation, native bootstrap/guard before training. STOP on any mismatch, nonzero exit, abort, OOM or incomplete report; no retry even if preflight failed until SA reviews, never remove reservation or change marker to reuse. No standalone diagnostic, no independent holdout, no DEV evaluation yet, no promotion, no budget extension or alternative reward. Owner returns complete supervisor log and actual report/attempt/worker artifacts including hashes (no checkpoint binaries required for initial review). Native execution remains Owner-only and PENDING; authorization not technical/efficacy PASS. After attempt, close marker on SA review; any future controlled DEV requires separate GO. Branch A active, B HOLD.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -3490,6 +3498,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-26)
+
+**H4-M15-2 R11-NSTR-V1 DISTINCT ONE-USE PPO GO / OWNER EXECUTION PENDING (v1.2.263):** exact accepted receipt f4eb7c23, source c40c8af7, generated17f5b90e, exclusive m463_runs/m470_h4_m15_r11_v1; one active H4R11 marker, no executable changes. Frozen 5242880 train/800 optimizer/2000 diag eval, original CTRL fullstate and matched M12 unchanged. Native/efficacy untested. STOP/no retry on failure; no standalone diagnostic, no DEV/holdout/promotion, Branch B HOLD.
 
 **H4-M15-1A R11 OWNER FULL STATIC ACCEPTED / DISTINCT ONE-USE PPO GO PENDING (v1.2.262):** exact Owner receipt f4eb7c23, source c40c8af7, generated17f5b90e, matched-control/fixtures/zero-runtime/footer PASS; five remote file SHA256 independently matched. Native runtime and efficacy untested. Next only H4-M15-2 R11 bounded PPO on distinct explicit Owner GO, frozen budget 5242880/800/2000; no active marker, no extra diagnostic, no other hypothesis, Branch B HOLD.
 
@@ -4367,6 +4377,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-27 | H4-M15-2 R11 one-use bounded PPO authorization | exact static receipt f4eb7c23 / source c40c8af7 / generated17f5b90e; Owner explicit GO | ONE-USE GO / Owner execution pending / no DEV | 1.2.263 |
+
 | 2026-11-27 | H4-M15-1A R11 Owner full static acceptance | log f4eb7c23, source c40c8af7, generated17f5b90e, matched pins, fixtures and zero runtime PASS | FULL STATIC ACCEPTED / one-use PPO GO pending | 1.2.262 |
 
 | 2026-11-27 | H4-M15-1 R11 reward-only full held source candidate | env f30242af, instrument dc4e30d0, trainer 505f8a71; host core/batch fixture PASS | SOURCE CANDIDATE / Owner full static PENDING / runtime HOLD | 1.2.261 |
@@ -4953,6 +4965,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.263 — 2026-11-27:** Owner explicit H4-M15-2 one-use R11 reward-only PPO GO; bind exact accepted static receipt/source/generated to exclusive R11 namespace, frozen 5242880/800/2000 budget, unchanged source and guards. No runtime by SA, no retry/standalone diagnostic/DEV/holdout/promotion; Branch B HOLD.
 
 - **v1.2.262 — 2026-11-27:** Accept exact Owner R11 full static receipt; remote source and Rules hashes matched. No executable change, no runtime or efficacy claim, no active marker. Next distinct one-use frozen R11 PPO GO only, Branch B HOLD.
 
