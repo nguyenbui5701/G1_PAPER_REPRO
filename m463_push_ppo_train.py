@@ -10700,4 +10700,190 @@ def h4ffe2_final_static_main(argv):
     print('H4FFE2_STATIC_ZERO physical_transitions=0 resets=0 optimizer_updates=0 native_inference=0',flush=True)
     print('H4FFE2_FULL_STATIC_PASS',flush=True)
 # H4FFE2_FINAL_STATIC_END
+
+# H4SSRPC_HELD_TRAINER_BEGIN
+# Held supplemental accounting. No CLI or worker dispatch.
+SSRPC_ARM_OUTPUT={'ctrl':'m463_runs/m470_h4_m28_ssrpc_ctrl_v1',
+                  'cand':'m463_runs/m470_h4_m28_ssrpc_cand_v1'}
+SSRPC_PARENT_SHA='9b19312da08d71513ad8fa6638c632401bec20e09399fdf4a9f6f6e2b2619c80'
+SSRPC_OLD_BLOBS={
+    'm463_coverage_env.py':'efe71d850746f07c42f5d1e0256399d2b963da21',
+    'm463_instrument_brax.py':'6b28d055e068f9a36f7b58f852167fbc113a8b54',
+    'm463_push_ppo_train.py':'2f7ef6a387c205bfee8f3b500a06490b817f9f12'}
+SSRPC_LANE_SHAPE=(8192,32)
+SSRPC_LEDGER_CAP=12*1024**2
+
+def ssrpc_execution_hold(*args,**kwargs):
+    raise RuntimeError('M470_SSRPC_INTEGRATION_INCOMPLETE_HOLD')
+
+def ssrpc_source_projection(root):
+    """Remove isolated blocks/dispatch anchors; require original byte hashes."""
+    import hashlib
+    from pathlib import Path
+    root=Path(root)
+    pairs=[["            ffe_pre_fn=ffe2_pre if self._ffe2 else ffe_pre","            # SSRPC_DISPATCH_PRE_BEGIN\n            ffe_pre_fn=(ssrpc_pre_cand if self.ssrpc_arm=='cand' else ssrpc_pre_ctrl) if isinstance(self,SSRPCCoverageJoystick) else (ffe2_pre if self._ffe2 else ffe_pre)\n            # SSRPC_DISPATCH_PRE_END"],["            ffe_post_fn=ffe2_post if self._ffe2 else ffe_post","            # SSRPC_DISPATCH_POST_BEGIN\n            ffe_post_fn=ssrpc_post if isinstance(self,SSRPCCoverageJoystick) else (ffe2_post if self._ffe2 else ffe_post)\n            # SSRPC_DISPATCH_POST_END"],["            gap=jp.where(ffe_block,30 if self._ffe2 else ffe_gap,gap)","            # SSRPC_DISPATCH_GAP_BEGIN\n            gap=jp.where(ffe_block,35 if isinstance(self,SSRPCCoverageJoystick) else (30 if self._ffe2 else ffe_gap),gap)\n            # SSRPC_DISPATCH_GAP_END"],["                labels=ffe2_risk_labels(jp,ffe_old,ffe_prestate,ffe_pick,ffe_new,ffe_result,","                # SSRPC_DISPATCH_LABEL_BEGIN\n                label_fn=(ssrpc_labels_cand if self.ssrpc_arm=='cand' else ssrpc_labels_ctrl) if isinstance(self,SSRPCCoverageJoystick) else ffe2_risk_labels\n                labels=label_fn(jp,ffe_old,ffe_prestate,ffe_pick,ffe_new,ffe_result,\n                # SSRPC_DISPATCH_LABEL_END"]]
+    for name,label in zip(SSRPC_OLD_BLOBS,('ENV','INSTRUMENT','TRAINER')):
+        data=(root/name).read_bytes()
+        a=b'\n# H4SSRPC_HELD_'+label.encode()+b'_BEGIN\n'
+        b=b'# H4SSRPC_HELD_'+label.encode()+b'_END\n'
+        if data.count(a)!=1 or data.count(b)!=1:
+            raise RuntimeError('SSRPC_PROJECTION_SENTINEL '+name)
+        i=data.index(a);j=data.index(b,i)+len(b)
+        old=data[:i]+data[j:]
+        if label=='ENV':
+            for before,after in pairs:
+                aa=after.encode();bb=before.encode()
+                if old.count(aa)!=1:
+                    raise RuntimeError('SSRPC_PROJECTION_DISPATCH')
+                old=old.replace(aa,bb,1)
+        blob=hashlib.sha1(b'blob '+str(len(old)).encode()+b'\0'+old).hexdigest()
+        if blob!=SSRPC_OLD_BLOBS[name]:
+            raise RuntimeError('SSRPC_PROJECTION_PIN '+name)
+    return True
+
+def ssrpc_lane_resource_bound():
+    """Supplemental serialization bound, not peak-XLA admission."""
+    n=8192*32*4
+    serialized=4*2*n+65536
+    original=h4ffe2_resource_bound()
+    if serialized>SSRPC_LEDGER_CAP or (
+        original['atomic_risk_plus_external_bytes']+2*serialized>=original['other_cap']):
+        raise RuntimeError('SSRPC_RESOURCE_BOUND')
+    return dict(raw_snapshot_bytes=n,raw_four_snapshots_bytes=4*n,
+        supplemental_serialized_upper_bytes=serialized,cap=SSRPC_LEDGER_CAP,
+        atomic_with_legacy=original['atomic_risk_plus_external_bytes']+2*serialized,
+        other_cap=original['other_cap'],peak_xla_verified=False)
+
+def ssrpc_encode_lane_chunk(np,rows,index):
+    if type(index) is not int or not 1<=index<=4:
+        raise RuntimeError('SSRPC_CHUNK_INDEX')
+    if rows.shape!=SSRPC_LANE_SHAPE or rows.dtype!=np.int32 or np.any(rows<0):
+        raise RuntimeError('SSRPC_LANE_SCHEMA')
+    raw=rows.astype('<i4',copy=False).tobytes(order='C')
+    return dict(index=index,encoding='le-i32-8192x32-hex',data=raw.hex())
+
+def ssrpc_replay_lane_chunks(np,records,arm,*,complete):
+    """Strict supplemental replay; caller must independently prove commitment.
+    Not a replacement for full supervisor/provenance/final/partial readers.
+    """
+    from m463_instrument_brax import SSRPC_LANE_FIELDS,SSRPC_TAIL_AGES
+    if arm not in SSRPC_ARM_OUTPUT or type(complete) is not bool or type(records) is not list:
+        raise RuntimeError('SSRPC_LEDGER_ARGS')
+    if len(records)>4 or (complete and len(records)!=4) or len(SSRPC_LANE_FIELDS)!=32:
+        raise RuntimeError('SSRPC_LEDGER_LENGTH')
+    ix={k:i for i,k in enumerate(SSRPC_LANE_FIELDS)}
+    total=np.zeros(SSRPC_LANE_SHAPE,np.int64)
+    chunks=[];arrays=[]
+    def require(ok,label):
+        if not bool(np.all(ok)):
+            raise RuntimeError('SSRPC_REPLAY_'+label)
+    for j,r in enumerate(records,1):
+        if type(r) is not dict or set(r)!={'index','encoding','data'} or (
+            type(r['index']) is not int or r['index']!=j or r['encoding']!='le-i32-8192x32-hex'):
+            raise RuntimeError('SSRPC_LEDGER_RECORD')
+        h=r['data']
+        if type(h) is not str or len(h)!=2*8192*32*4:
+            raise RuntimeError('SSRPC_LEDGER_BYTES')
+        raw=bytes.fromhex(h)
+        if raw.hex()!=h:
+            raise RuntimeError('SSRPC_LEDGER_CANONICAL')
+        a=np.frombuffer(raw,dtype='<i4').reshape(SSRPC_LANE_SHAPE).astype(np.int64)
+        require((a>=0)&(a<=641),'RANGE')
+        for key in ('first_k1','repeat_k1'):
+            q=a[:,ix[key]]
+            require((q==0)|((q>(j-1)*160)&(q<=j*160)),'EVENT_CHUNK')
+        for key in ('executed_bits','survived_bits','same_alive_bits'):
+            z=ix[key]
+            require((a[:,z]<=63)&((total[:,z]&a[:,z])==0),'TAIL_BIT_DUPLICATE')
+        for key in ('group1','due1','first_k1','first_episode1','gap35_seen',
+                    'mode_cost1','high_mask1','repeat_k1','repeat_episode1'):
+            z=ix[key]
+            require(~((a[:,z]>0)&(total[:,z]>0)),'LANE_DUPLICATE_'+key)
+        if j>1:
+            require(a[:,ix['group1']]==0,'LATE_ASSIGNMENT')
+        total+=a
+        arrays.append(a)
+        chunks.append(int(np.count_nonzero(a[:,ix['repeat_k1']])))
+    v=lambda k:total[:,ix[k]]
+    group=v('group1');assigned=group>0;first=v('first_k1')>0;rep=v('repeat_k1')>0
+    opened=v('repeat_opened');seen=v('gap35_seen');fm=v('first_miss');rm=v('repeat_miss')
+    for key in ('first_due','first_terminal','repeat_opened','first_miss','gap35_seen',
+                'eligible_high','eligible_inclusive','repeat_terminal','repeat_miss',
+                'close_terminal','close_boundary','close_repeat','close_complete'):
+        require(v(key)<=1,key)
+    require((group<=16)&((v('due1')>0)==assigned),'ASSIGNMENT')
+    band=(group-1)//4;cell=(group-1)%4
+    require((~assigned)|((v('due1')>=41+160*band)&(v('due1')<=81+160*band)),'DUE')
+    require((~first)|(assigned&(v('first_episode1')>0)&(v('first_episode1')<=v('first_k1'))&
+        (v('first_k1')>=v('due1'))&(v('first_k1')<=113+160*band)),'FIRST')
+    require((~rep)|(first&(opened==1)&(seen==1)&(v('repeat_k1')==v('first_k1')+35)&
+        (v('repeat_episode1')==v('first_episode1'))),'REPEAT')
+    require((v('first_episode1')>0)==first,'FIRST_EPISODE')
+    require((v('repeat_episode1')>0)==rep,'REPEAT_EPISODE')
+    require(first.astype(np.int64)+fm<=assigned,'FIRST_CONSERVATION')
+    require(opened<=first,'OPENED')
+    require(v('first_terminal')<=first.astype(np.int64)-opened,'FIRST_TERMINAL')
+    require(rep.astype(np.int64)+rm<=opened,'REPEAT_CONSERVATION')
+    require(seen<=opened,'RISK')
+    for reason,miss in (('first_reason',fm),('repeat_reason',rm),
+                        ('nonopened_reason',first.astype(np.int64)-opened)):
+        require(((v(reason)>0)==(miss==1))&(v(reason)<=6),'CLOSURE_REASON')
+    mc=v('mode_cost1');mask=v('high_mask1')
+    require(((mc>0)==(seen==1))&((mask>0)==(seen==1))&(mc<=9)&(mask<=256),'RISK_SCHEMA')
+    mode=(mc-1)//2;high_cost=(mc-1)%2==1
+    require((~((seen==1)&(mc<=8)))|((((mask-1)&128)==0)==high_cost),'COST_BIT')
+    inc=(seen==1)&(mc<=8)&(((mask-1)&127)==0)
+    high=inc&high_cost
+    require((v('eligible_inclusive')==inc)&(v('eligible_high')==high),'ELIGIBILITY')
+    require((~inc)|(mode==np.where(cell<2,cell+1,3)),'TARGET')
+    require(rep==(high if arm=='ctrl' else inc),'ACTUAL_REPEAT')
+    terminal=v('repeat_terminal')
+    require(terminal<=rep,'REPEAT_TERMINAL')
+    tail_open=rep.astype(np.int64)-terminal
+    ticks=v('tail_ticks');alive=v('tail_alive');same=v('tail_same_alive')
+    close=sum(v(x) for x in ('close_terminal','close_boundary','close_repeat','close_complete'))
+    require((close<=tail_open)&(same<=alive)&(alive<=ticks)&(ticks<=250*tail_open),'TAIL_CONSERVATION')
+    require(v('tail_refresh')<=ticks,'REFRESH')
+    require(v('tail_incoherent')<=ticks,'NOT_SAME')
+    eb=v('executed_bits');sb=v('survived_bits');mb=v('same_alive_bits')
+    require((sb&~eb)==0,'SURVIVED_BITS')
+    require((mb&~sb)==0,'SAME_BITS')
+    for i,age in enumerate(SSRPC_TAIL_AGES):
+        require(((eb&(1<<i))!=0)==(ticks>=age),'EXECUTED_AGE')
+        require(((sb&(1<<i))!=0)==(alive>=age),'SURVIVED_AGE')
+        require(((mb&(1<<i))!=0)==(same>=age),'SAME_AGE')
+    # Each counted later tick must lie in its original committed chunk.
+    # Tails are contiguous by the separately replayed device tail-clock contract.
+    for j,a in enumerate(arrays,1):
+        start=(j-1)*160+1;end=j*160
+        for column,n in (('tail_ticks',ticks),('tail_alive',alive),('tail_same_alive',same)):
+            lo=np.maximum(start,v('repeat_k1')+1)
+            hi=np.minimum(end,v('repeat_k1')+n)
+            require(a[:,ix[column]]==np.where(rep,np.maximum(0,hi-lo+1),0),'TAIL_CHUNK_'+column)
+        for i,age in enumerate(SSRPC_TAIL_AGES):
+            event_age=v('repeat_k1')+age
+            for column,n in (('executed_bits',ticks),('survived_bits',alive),('same_alive_bits',same)):
+                expect=rep&(n>=age)&(event_age>=start)&(event_age<=end)
+                require(((a[:,ix[column]]&(1<<i))!=0)==expect,'TAIL_AGE_CHUNK')
+    require((ticks-alive<=1)&((ticks-alive)==v('close_terminal')),'TERMINAL_TICK')
+    require(v('close_complete')==(alive==250),'COMPLETE_TAIL')
+    if complete:
+        require(first.astype(np.int64)+fm==assigned,'FINAL_FIRST')
+        require(rep.astype(np.int64)+rm==opened,'FINAL_REPEAT')
+    low=rep&(~high_cost);useful=low&(same>=50);half=band//2
+    half_cell=[[int(np.count_nonzero(rep&(half==h)&(cell==c))) for c in range(4)] for h in range(2)]
+    low_half_cell=[[int(np.count_nonzero(low&(half==h)&(cell==c))) for c in range(4)] for h in range(2)]
+    useful_half_support=[[int(np.count_nonzero(useful&(half==h)&((cell>=2)==bool(s)))) for s in range(2)] for h in range(2)]
+    useful_direction=[int(np.count_nonzero(useful&(cell%2==d))) for d in range(2)]
+    opportunity=all(n>=3 for row in half_cell for n in row) and len(chunks)==4 and min(chunks)>=1
+    low_gate=int(low.sum())>=12 and all(n>=1 for row in low_half_cell for n in row)
+    tail_gate=int(useful.sum())>=8 and all(n>=1 for row in useful_half_support for n in row) and min(useful_direction)>=1
+    return dict(arm=arm,complete=complete,assigned=int(assigned.sum()),first=int(first.sum()),
+        repeat=int(rep.sum()),low_repeat=int(low.sum()),useful50=int(useful.sum()),
+        half_cell=half_cell,low_half_cell=low_half_cell,repeat_chunks=chunks,
+        useful_half_support=useful_half_support,useful_direction=useful_direction,
+        tail_pending_or_final_censor=int((tail_open-close).sum()),
+        candidate_exposure_screen=bool(complete and arm=='cand' and opportunity and low_gate and tail_gate),
+        promotion_authorized=False,runtime_authorized=False)
+# H4SSRPC_HELD_TRAINER_END
 if __name__=='__main__': main()
