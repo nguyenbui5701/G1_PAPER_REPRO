@@ -407,3 +407,6 @@ Each link includes the section until the next heading; ranges are retrieval aids
 
 ## H4-M23-3B source-review scope
 - [Rules base](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/cd0bc6c00eb1226eb5c19a6766c00c341d097337); [candidate](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/3c964122c95a7d866a3abc70c8ed2e67c53b6679); exact five DEV artifacts rehashed. No new empirical results.
+
+## H4-M23-3B held source receipt
+- [EDIT-FIRST](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/6b6258bebec272a91f73b31d171dfeac76bebb90), [source final](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/9c126231e1666c99c6f3a66a849e0cce13540c50), evaluator blob c7bc4d23aa4aedc66953f810cbb1975b91bf6432. Exact five uploaded DEV hashes repeated. No static or native results. See ACTIVE_EXPERIMENT for remaining limits.
