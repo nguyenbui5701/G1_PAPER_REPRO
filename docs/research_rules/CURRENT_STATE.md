@@ -3,6 +3,8 @@
 Governance v2.0.0 — 2026-11-27 — documentation only. Historical research state pinned to a2a1056075f4a41e9f05115b30e2a50144b34154.
 
 ## Current decision
+**H4-M23 bootstrap repair — OWNER-REPORTED HOST PATH PREFLIGHT PASS / NATIVE HOLD (2026-11-27).** Owner supplied exactly three footer lines: H4M23_BOOTSTRAP_PATH_PASS, ZERO_NATIVE_EXECUTION, ZERO_OPTIMIZER_UPDATES, following the read-only g1_m463 PathFinder probe at cf908bac458a8da2857381f99f4be1c7e7dd826c. Accept scoped Owner-reported success, not independently verified full console/path/origin/exit receipt. Actual native imports, child inheritance and replay remain untested. V1 STOP/CONSUMED remains immutable, zero active markers, no new GO. Next proposed H4-M24-1 held bootstrap repair/distinct namespace and fresh static binding preparation only, pending explicit Owner scope approval and acceptance of receipt limitations. No retry, native, PPO, comparator rerun, holdout or promotion. A ACTIVE/B HOLD.
+
 **H4-M23-6 CLOSED / CONSUMED / TECHNICAL STOP (bootstrap ModuleNotFoundError: mujoco_playground) / SCIENCE NOT EVALUATED / NATIVE HOLD.** Owner invocation at ef88f5665c26eae1d0e5a62ee64fdc0eb0c59d27, five uploaded receipts independently rehashed, child rc1, EMPTY_JOURNAL_PRE_HEADER, verification null, no recorded telemetry. V1 namespace permanently consumed; never delete/rename/retry. Restore historical launcher overlay environment before a future separately approved diagnostic; no new authorization. FFE-V2 historical NO_GO/EXPOSURE_INCONCLUSIVE/NO_PROMOTE immutable; CCOA/recovery-aware gait HELD/UNTESTED; A ACTIVE/B HOLD.
 
 ### Historical H4-M23-6 issuance (consumed; not active)

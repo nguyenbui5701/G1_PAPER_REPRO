@@ -428,3 +428,6 @@ Each link includes the section until the next heading; ranges are retrieval aids
 
 ## H4-M23-6 native STOP receipt
 - [Exact native authorization](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/ef88f5665c26eae1d0e5a62ee64fdc0eb0c59d27), [evaluator](https://github.com/nguyenbui5701/G1_PAPER_REPRO/blob/ef88f5665c26eae1d0e5a62ee64fdc0eb0c59d27/m463_gate3_cp_eval.py#L2788). Five exact uploaded file SHA256/bytes and limitations in ACTIVE_EXPERIMENT.md receipt review; no journal or independent outer console uploaded. No scientific evaluation.
+
+## H4-M23 bootstrap path receipt
+- [Probe review base](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/cf908bac458a8da2857381f99f4be1c7e7dd826c). Owner-reported three footer lines only; see ACTIVE_EXPERIMENT for limitations. No native evidence.
