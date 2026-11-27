@@ -6593,3 +6593,4 @@ for name in ("report.json","attempt.json","dispatch.started.json","attempt_resul
         print("H4FFE2_DEV_ARTIFACT",str(p),p.stat().st_size,digest(p),flush=True)
 raise SystemExit(0 if ok else 1)
 # H4FFE2_DEV_OWNER_LAUNCHER_END
+H4SSRPC_V2_ACTIVE_GO: cand ee0fce6a2cfec25c905c4d535d02ba640e9a5d96e4c7a22350a27ed5f0b840d5 df7b511e01b442744fb45425435bb1b81bfcfd508911e8c86ddedf142d14f10f 2cb566ab9a9c58f0aef95f3752a43a073098cdf8e417875c9fc557001cc22069 eaa13375380c030e3df6d7b910ee71409eb32711 88bb3feff4f0a877aa97cbaddf2761709562ec76 93f84d08c3244560ae75a293c5bd321c4b78c8c609f31964a2c79fe0e74f8cf7 585189f2c4e10ddab845ab942708a0f2554fc7bec96a2ddea7fcec3c1af36e21
