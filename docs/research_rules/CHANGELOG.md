@@ -60,3 +60,6 @@ Owner requires all cases reviewed before PPO/reward selection. Case2.1 provision
 
 ## 2026-11-27 — Sequential failure-case discussion Case 2.2 (governance v2.0.0 unchanged)
 Offline pre-push contact counts and pinned native Joystick source reviewed; provisional revised schedule/reward/observation hypotheses recorded. Case2.1 questions retained, Case2.3 next. All implementation and PPO HELD, no root/executable/archive changes or native execution.
+
+## 2026-11-27 — Sequential failure-case discussion Case 2.3 (governance v2.0.0 unchanged)
+Pinned native collision/geometry/reward and historical H1-M2/R12 evidence reviewed. Provisional placement/path, perturbation and safety hypotheses HELD; Case2.2 open questions retained. No executable/root/archive change, runtime or new empirical evidence.
