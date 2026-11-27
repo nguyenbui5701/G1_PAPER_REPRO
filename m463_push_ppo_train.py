@@ -10877,6 +10877,14 @@ def ssrpc_replay_lane_chunks(np,records,arm,*,complete):
     low_half_cell=[[int(np.count_nonzero(low&(half==h)&(cell==c))) for c in range(4)] for h in range(2)]
     high_half_cell=[[int(np.count_nonzero(qualified_high&(half==h)&(cell==c))) for c in range(4)] for h in range(2)]
     high_chunks=[int(np.count_nonzero((a[:,ix['repeat_k1']]>0)&high_cost)) for a in arrays]
+    tail_by_cost={name:{str(age):dict(executed=int(np.count_nonzero(mask&((eb&(1<<i))!=0))),
+        survived=int(np.count_nonzero(mask&((sb&(1<<i))!=0))),
+        same_alive=int(np.count_nonzero(mask&((mb&(1<<i))!=0))))
+        for i,age in enumerate(SSRPC_TAIL_AGES)} for name,mask in (('low',low),('high',qualified_high))}
+    eligibility_by_group=[dict(high=int(np.count_nonzero((group==g+1)&high)),
+        inclusive=int(np.count_nonzero((group==g+1)&inc))) for g in range(16)]
+    eligibility_by_chunk=[dict(high=int(a[:,ix['eligible_high']].sum()),
+        inclusive=int(a[:,ix['eligible_inclusive']].sum())) for a in arrays]
     useful_half_support=[[int(np.count_nonzero(useful&(half==h)&((cell>=2)==bool(s)))) for s in range(2)] for h in range(2)]
     useful_direction=[int(np.count_nonzero(useful&(cell%2==d))) for d in range(2)]
     opportunity=all(n>=3 for row in half_cell for n in row) and len(chunks)==4 and min(chunks)>=1
@@ -10886,6 +10894,7 @@ def ssrpc_replay_lane_chunks(np,records,arm,*,complete):
         repeat=int(rep.sum()),low_repeat=int(low.sum()),useful50=int(useful.sum()),
         half_cell=half_cell,low_half_cell=low_half_cell,repeat_chunks=chunks,
         high_repeat=int(qualified_high.sum()),high_half_cell=high_half_cell,high_repeat_chunks=high_chunks,
+        tail_by_cost=tail_by_cost,eligibility_by_group=eligibility_by_group,eligibility_by_chunk=eligibility_by_chunk,
         useful_half_support=useful_half_support,useful_direction=useful_direction,
         tail_pending_or_final_censor=int((tail_open-close).sum()),
         candidate_exposure_screen=bool(complete and arm=='cand' and opportunity and low_gate and tail_gate),
@@ -10931,8 +10940,13 @@ def ssrpc_replay_joint_chunks(np,records,arm,*,complete):
         rows=np.asarray(record['payload']['rows'],dtype=np.int64)
         packed=record['payload']['lane_bits']
         v=lambda k:a[:,fields[k]]
+        hist=np.asarray(record['payload']['hist'],dtype=np.int64)
         for g in range(16):
             scope=group==g+1
+            raw=v('high_mask1')-1
+            selected=scope&(v('gap35_seen')==1)
+            actual=raw[selected] if arm=='ctrl' else (raw[selected]&127)
+            require(np.array_equal(np.bincount(actual,minlength=256),hist[g,128:384]),'REPEAT_MASK_HISTOGRAM')
             def match(flag,values):
                 values=np.where(scope,values,0)
                 require(int(values.sum())==rows[g,flags[flag]],'COUNT_'+flag)
@@ -11832,6 +11846,8 @@ def ssrpc_main(argv):
         return ssrpc_worker(a,auth,root,out)
     parent_check(root)
     h4m12_require(not out.exists() and not out.is_symlink(),'SSRPC_OUTPUT_USED')
+    a.h4_exploratory_reward_report=a.reward_report
+    ssrpc_bootstrap(a,h4m12=True,ffe=True)
     ssrpc_lane_resource_bound()
     h4x_file_pin(a.checkpoint,SEED1_SHA)
     h4x_file_pin(a.restore_report,H3_CAUSAL_RESTORE_SHA)
@@ -12305,6 +12321,37 @@ def ssrpc_contract_fixture():
         ssrpc_expect_reject(lambda:ssrpc_abort_check(bad,1),'abort_contract')
     return dict(static_schema_positive=1,static_schema_negative=8,control_positive=1,
         control_negative=5,abort_positive=2,abort_negative=6)
+
+def ssrpc_cross_chunk_fixture():
+    import numpy as np
+    from m463_instrument_brax import SSRPC_LANE_FIELDS
+    ix={k:i for i,k in enumerate(SSRPC_LANE_FIELDS)}
+    a=np.zeros(SSRPC_LANE_SHAPE,np.int32);b=a.copy()
+    def setrow(x,**values):
+        for k,v in values.items():x[0,ix[k]]=v
+    # First at k112 (encoded113), repeat at k147 (encoded148). The
+    # terminal is the 51st later action, so exactly 50 are survived.
+    setrow(a,group1=1,due1=41,first_due=1,first_k1=113,first_episode1=1,
+        repeat_opened=1,gap35_seen=1,mode_cost1=3,high_mask1=129,
+        eligible_inclusive=1,repeat_k1=148,repeat_episode1=1,
+        tail_ticks=12,tail_alive=12,tail_same_alive=12,
+        executed_bits=3,survived_bits=3,same_alive_bits=3)
+    setrow(b,tail_ticks=39,tail_alive=38,tail_same_alive=38,
+        executed_bits=12,survived_bits=12,same_alive_bits=12,close_terminal=1)
+    encode=lambda rows:[ssrpc_encode_lane_chunk(np,x,j+1) for j,x in enumerate(rows)]
+    first=ssrpc_replay_lane_chunks(np,encode([a]),'cand',complete=False)
+    h4m12_require(first['useful50']==0 and first['tail_pending_or_final_censor']==1,'SSRPC_CROSS_PENDING')
+    final=ssrpc_replay_lane_chunks(np,encode([a,b]),'cand',complete=False)
+    h4m12_require(final['useful50']==1 and final['tail_pending_or_final_censor']==0 and
+        final['tail_by_cost']['low']['50']==dict(executed=1,survived=1,same_alive=1),'SSRPC_CROSS_USEFUL')
+    zero=np.zeros_like(a)
+    full=ssrpc_replay_lane_chunks(np,encode([a,b,zero,zero]),'cand',complete=True)
+    h4m12_require(full['useful50']==1 and not full['candidate_exposure_screen'],'SSRPC_CROSS_FULL_SCREEN')
+    ssrpc_expect_reject(lambda:ssrpc_replay_lane_chunks(np,encode([a,b]),'ctrl',complete=False),'ctrl_low_repeat')
+    for key,value in (('tail_ticks',40),('tail_alive',39),('same_alive_bits',13),('close_terminal',0)):
+        changed=b.copy();setrow(changed,**{key:value})
+        ssrpc_expect_reject(lambda:ssrpc_replay_lane_chunks(np,encode([a,changed]),'cand',complete=False),'cross_'+key)
+    return dict(positive=3,negative=5)
 # SSRPC_5A_FIXTURES_END
 
 # SSRPC_5A_STATIC_SUPERVISOR_BEGIN
@@ -12325,6 +12372,7 @@ def ssrpc_static_manifest():
         report_cand=dict(final_positive=1,final_negative=10,pending_positive=1,commit_positive=2,pending_negative=2),
         receipts=dict(json_positive=1,json_negative=6,terminal_positive=1,terminal_negative=7),
         marker=dict(positive=2,negative=6,static_positive=1,static_negative=4),
+        cross_chunk=dict(positive=3,negative=5),
         contracts=dict(static_schema_positive=1,static_schema_negative=8,control_positive=1,
             control_negative=5,abort_positive=2,abort_negative=6),
         typed=dict(positive=2,negative=5,native_calls=0,typed_mock_only=True),
@@ -12505,7 +12553,8 @@ def ssrpc_static_worker(root,args,auth,out):
         report_ctrl=ssrpc_report_fixture(root,parent,dict(arm='ctrl',generated_sha256=generated['ctrl']),src['ctrl']),
         report_cand=ssrpc_report_fixture(root,parent,dict(arm='cand',generated_sha256=generated['cand']),src['cand']),
         receipts=ssrpc_static_receipt_fixture(root),marker=ssrpc_marker_fixture(),contracts=ssrpc_contract_fixture(),
-        typed=h4ffe2_typed_fixture(root),generator=dict(arms=2,invalid_arm_rejected=1,held_runtime_rejected=2))
+        typed=h4ffe2_typed_fixture(root),cross_chunk=ssrpc_cross_chunk_fixture(),
+        generator=dict(arms=2,invalid_arm_rejected=1,held_runtime_rejected=2))
     h4m12_require(ssrpc_static_no_native() and ssrpc_static_auth(root)==auth and
         all(not (root/p).exists() and not (root/p).is_symlink() for p in SSRPC_ARM_OUTPUT.values()),
         'SSRPC_STATIC_FINAL_HOLD')
