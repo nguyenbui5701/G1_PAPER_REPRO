@@ -371,3 +371,6 @@ Each link includes the section until the next heading; ranges are retrieval aids
 
 ## Owner sequential failure-case discussion — Case 2.1
 - [Reviewed base](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/843d8ba840d2ea061f081325b5da0772ea005cdc); prior report SHA256 3ecbf7363566f89f037097599be748fe6e302e54cd7e4c339ea9175c3adabc3d; [original reward names](https://github.com/nguyenbui5701/G1_PAPER_REPRO/blob/843d8ba840d2ea061f081325b5da0772ea005cdc/m463_coverage_env.py#L141-L145); latest ACTIVE_EXPERIMENT contains provisional discussion, limitations and HOLD.
+
+## Owner sequential failure-case discussion — Case 2.2
+- [Case2.1 base](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/a07dce17919a231f9f80a2b5ccfbfe1e2a326afd); [pinned native Joystick](https://github.com/google-deepmind/mujoco_playground/blob/9bcbe736177472ba35d60773e3030a36e37962b7/mujoco_playground/_src/locomotion/g1/joystick.py) blob 561a18948e3467ab924468eaf362150dadb9d4a6; [pre-push fork](https://github.com/nguyenbui5701/G1_PAPER_REPRO/blob/a07dce17919a231f9f80a2b5ccfbfe1e2a326afd/m463_gate3_cp_eval.py#L1923-L1937); prior report SHA256 3ecbf7363566f89f037097599be748fe6e302e54cd7e4c339ea9175c3adabc3d; details and HOLD in ACTIVE_EXPERIMENT.

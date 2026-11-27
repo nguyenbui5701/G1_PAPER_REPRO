@@ -57,3 +57,6 @@ Candidate evaluator routing and historical training-provenance projection, held 
 
 ## 2026-11-27 — Sequential failure-case discussion (governance v2.0.0 unchanged)
 Owner requires all cases reviewed before PPO/reward selection. Case2.1 provisional revised hypotheses documented, numerical choices HELD. Prior H4-M21-3 consumed; no executable/root/archive changes, no new runtime authorization or empirical result.
+
+## 2026-11-27 — Sequential failure-case discussion Case 2.2 (governance v2.0.0 unchanged)
+Offline pre-push contact counts and pinned native Joystick source reviewed; provisional revised schedule/reward/observation hypotheses recorded. Case2.1 questions retained, Case2.3 next. All implementation and PPO HELD, no root/executable/archive changes or native execution.
