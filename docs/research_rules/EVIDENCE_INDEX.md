@@ -365,3 +365,6 @@ Each link includes the section until the next heading; ranges are retrieval aids
 
 ## H4-M21-2 full host-static receipt
 - Exact Owner log 783B SHA256 9c2af046fd1132d672e1b4d745454b238ee0270514b45388e7b82e1f1fd3524b; [authorization](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/10c1922f6591d213012e3300b357a309cf78b943); source/provenance/launcher digests and receipt limitations in ACTIVE_EXPERIMENT latest closure. Native HOLD, no rerun.
+
+## H4-M21-3 existing checkpoint bounded runtime authorization
+- [Owner reviewed base](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/05b28eafd18204d41045289ffc9eb6a328527396); exact static 783B SHA256 9c2af046fd1132d672e1b4d745454b238ee0270514b45388e7b82e1f1fd3524b; exact marker, source/provenance/launcher and receipt scope in ACTIVE_EXPERIMENT latest section. Owner accepted limitations; runtime requires separate root-only child; no new evidence until execution.

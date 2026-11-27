@@ -25,4 +25,6 @@ Historical complete ledger: [v1.2.294 L5191–5841](https://github.com/nguyenbui
 
 | H4-M21-2-FFE2-DEV-FULL-HOST-STATIC-V1 receipt | Owner exact log review | CLOSED / CONSUMED / scoped full host-static PASS / native HOLD | 783B SHA256 9c2af046fd1132d672e1b4d745454b238ee0270514b45388e7b82e1f1fd3524b; outer console receipt absent, limitation must be addressed before runtime GO; no retry |
 
+| H4-M21-3 / H4-M21-FFE2-DEV-V1 | Owner distinct existing checkpoint bounded runtime GO | ISSUED subject to separate root-only marker child / receipt pending | Reviewed 05b28eafd18204d41045289ffc9eb6a328527396; static 9c2af046fd1132d672e1b4d745454b238ee0270514b45388e7b82e1f1fd3524b; limitations Owner accepted; no PPO/retry/holdout/promotion |
+
 Append one row per task with exact evidence/commit, decision, limitations and next scope. Do not rewrite previous entries or imply authorization.
