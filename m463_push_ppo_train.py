@@ -10968,7 +10968,8 @@ def ssrpc_replay_joint_chunks(np,records,arm,*,complete):
 # SSRPC_4B_WORKER_BEGIN
 # Held integration: runtime entry fails before reservation. A separate source
 # review/full-static authorization must complete the activation contract.
-SSRPC_RUNTIME_READY=False  # Held until separate final-source review; do not toggle after static receipt.
+# No runtime activation flag: only a distinct root-only runtime marker and
+# a matching accepted paired static receipt can authorize either arm.
 def ssrpc_spec(arm):
     h4m12_require(type(arm) is str and arm in SSRPC_ARM_OUTPUT,'SSRPC_ARM')
     return dict(H4M12_SPEC,id='H4-M28-SSRPC-'+arm.upper()+'-V1',arm=arm,
@@ -11017,8 +11018,7 @@ def ssrpc_validate_auth_evidence(root,auth):
     return auth
 
 def ssrpc_auth(root,arm):
-    # No runtime authorization, reservation, or native access in M28-4B.
-    h4m12_require(SSRPC_RUNTIME_READY is True,'SSRPC_RUNTIME_HELD')
+    # No active runtime marker is supplied by held source preparation.
     root=Path(root).resolve()
     a=ssrpc_parse_marker((root/'G1_RESEARCH_RULES.md').read_text('utf8'))
     h4m12_require(a['arm']==arm,'SSRPC_ACTIVE_ARM')
@@ -11075,8 +11075,29 @@ def ssrpc_require_control(root,auth):
     h4m12_require(a['arm']=='ctrl' and a['source_sha256']==auth['source_sha256'],
         'SSRPC_MATCHED_CONTROL_SOURCE')
     report=ssrpc_read_final(root,auth['ctrl_report_sha256'],a)
-    h4m12_require(report['ssrpc_ledger']['common_floors'] is True and
-        report['ssrpc_ledger']['decision']=='MATCHED_CONTROL_COMPLETE','SSRPC_CONTROL_COMMON_GATE')
+    ssrpc_control_gate(report,a,auth)
+
+
+def ssrpc_control_gate(report,ctrl_auth,cand_auth):
+    h4m12_require(ctrl_auth['arm']=='ctrl' and cand_auth['arm']=='cand'
+        and ctrl_auth['source_sha256']==cand_auth['source_sha256']
+        and report['authorization']==ctrl_auth and report['status']=='TECHNICAL_PASS'
+        and report['ssrpc_ledger']['common_floors'] is True
+        and report['ssrpc_ledger']['decision']=='MATCHED_CONTROL_COMPLETE',
+        'SSRPC_CONTROL_COMMON_GATE')
+    return True
+
+def ssrpc_abort_check(abort,completed):
+    if abort is None:return True
+    h4m12_require(type(abort) is dict and set(abort)=={'index','metrics','clock','complete'},
+        'SSRPC_ABORT_SCHEMA')
+    m=abort['metrics'];col=m['ffe_collected'];comm=m['ffe_batch_committed'];rej=m['ffe_batch_rejected']
+    h4m12_require(abort['complete'] is False and type(abort['index']) is int and
+        abort['index']==completed+1 and 0<=completed<4 and
+        all(type(x) in (int,float) and math.isfinite(x) and x==int(x) and 0<=x<=5 for x in (col,comm,rej)) and
+        col==comm+rej and rej<=1 and type(abort['clock']) is int and
+        abort['clock']==160*completed+32*col and m['ffe_chunk_failed']==1,'SSRPC_PARTIAL_ABORT')
+    return True
 
 def ssrpc_generated_guard(audit,generated_file,environment,resume,arm,abort,prepare,commit):
     root=Path(__file__).resolve().parent
@@ -11198,12 +11219,7 @@ def ssrpc_read_partial(out,auth):
         h4m12_require(accepted==4 and ssrpc_replay_report(np,r,complete=True)==r['ssrpc_ledger'],
             'SSRPC_PARTIAL_STALE_SUMMARY')
     abort=r.get('ffe_abort')
-    if abort is not None:
-        m=abort['metrics'];col=m['ffe_collected'];comm=m['ffe_batch_committed'];rej=m['ffe_batch_rejected']
-        h4m12_require(abort['complete'] is False and abort['index']==len(r['ffe2_chunks'])+1 and
-            all(type(x) in (int,float) and x==int(x) and 0<=x<=5 for x in (col,comm,rej)) and
-            col==comm+rej and rej<=1 and abort['clock']==160*len(r['ffe2_chunks'])+32*col and
-            m['ffe_chunk_failed']==1,'SSRPC_PARTIAL_ABORT')
+    ssrpc_abort_check(abort,len(r['ffe2_chunks']))
     return dict(status='STOP_PARTIAL',sha256=digest(p),budget=b.snapshot(),joint=joint,
                 provisional='ssrpc_pending_lane' in r,abort=abort,promotion_authorized=False)
 
@@ -11883,7 +11899,7 @@ def ssrpc_main(argv):
                 print('H4SSRPC_PARTIAL_READER_STOP',repr(failure)[:1024],flush=True)
         raise
 
-# This dispatch is unreachable for native work while SSRPC_RUNTIME_READY=False.
+# No native work without distinct root-only runtime authorization and paired static receipt.
 if __name__=='__main__' and sys.argv[1:2]==['--h4ssrpc-continuation']:
     ssrpc_main(sys.argv[2:])
     sys.exit(0)
@@ -12257,6 +12273,38 @@ def ssrpc_marker_fixture():
     for v in ('',static+'\n'+ctrl,static+' extra',static[:-1]):
         ssrpc_expect_reject(lambda:ssrpc_static_parse_marker(v),'static_marker')
     return dict(positive=2,negative=6,static_positive=1,static_negative=4)
+
+def ssrpc_contract_fixture():
+    # Pure mock checks of the exact receipt schema and prerequisite/abort
+    # predicates; no fake receipt enters the real authorization namespace.
+    auth=dict(id=SSRPC_STATIC_ID,source_head='a'*40,output=SSRPC_STATIC_OUTPUT,authorization_head='b'*40)
+    generated=dict(ctrl='c'*64,cand='d'*64);source='e'*64
+    r=ssrpc_static_expected_report(auth,source,generated,ssrpc_static_manifest())
+    h4m12_require(ssrpc_static_report_check(r,auth,source)==r,'SSRPC_STATIC_SCHEMA_POSITIVE')
+    for field,value in (('physical_transitions',False),('optimizer_updates',1),('native_imports',1),
+        ('generated_sha256',dict(ctrl='c'*64,cand='c'*64)),('source_sha256','f'*64),
+        ('fixtures',{}),('resource',{}),('promotion_authorized',True)):
+        ssrpc_expect_reject(lambda:ssrpc_static_report_check(dict(r,**{field:value}),auth,source),'static_schema_'+field)
+    ctrl=dict(arm='ctrl',source_sha256=source)
+    cand=dict(arm='cand',source_sha256=source)
+    report=dict(status='TECHNICAL_PASS',authorization=ctrl,
+        ssrpc_ledger=dict(common_floors=True,decision='MATCHED_CONTROL_COMPLETE'))
+    h4m12_require(ssrpc_control_gate(report,ctrl,cand),'SSRPC_CONTROL_POSITIVE')
+    for bad,ca,ta in ((dict(report,status='STOP'),ctrl,cand),
+        (dict(report,ssrpc_ledger=dict(common_floors=False,decision='MATCHED_CONTROL_COMPLETE')),ctrl,cand),
+        (dict(report,ssrpc_ledger=dict(common_floors=True,decision='EXPOSURE_INCONCLUSIVE')),ctrl,cand),
+        (report,ctrl,dict(cand,source_sha256='f'*64)),(report,ctrl,dict(cand,arm='ctrl'))):
+        ssrpc_expect_reject(lambda:ssrpc_control_gate(bad,ca,ta),'control_gate')
+    abort=dict(index=2,metrics=dict(ffe_collected=3,ffe_batch_committed=2,ffe_batch_rejected=1,ffe_chunk_failed=1),
+        clock=256,complete=False)
+    h4m12_require(ssrpc_abort_check(None,0) and ssrpc_abort_check(abort,1),'SSRPC_ABORT_POSITIVE')
+    for bad in (dict(abort,index=3),dict(abort,clock=255),dict(abort,complete=True),
+        dict(abort,metrics=dict(abort['metrics'],ffe_batch_committed=3)),
+        dict(abort,metrics=dict(abort['metrics'],ffe_batch_rejected=2)),
+        dict(abort,metrics=dict(abort['metrics'],ffe_collected=True))):
+        ssrpc_expect_reject(lambda:ssrpc_abort_check(bad,1),'abort_contract')
+    return dict(static_schema_positive=1,static_schema_negative=8,control_positive=1,
+        control_negative=5,abort_positive=2,abort_negative=6)
 # SSRPC_5A_FIXTURES_END
 
 # SSRPC_5A_STATIC_SUPERVISOR_BEGIN
@@ -12277,6 +12325,8 @@ def ssrpc_static_manifest():
         report_cand=dict(final_positive=1,final_negative=10,pending_positive=1,commit_positive=2,pending_negative=2),
         receipts=dict(json_positive=1,json_negative=6,terminal_positive=1,terminal_negative=7),
         marker=dict(positive=2,negative=6,static_positive=1,static_negative=4),
+        contracts=dict(static_schema_positive=1,static_schema_negative=8,control_positive=1,
+            control_negative=5,abort_positive=2,abort_negative=6),
         typed=dict(positive=2,negative=5,native_calls=0,typed_mock_only=True),
         generator=dict(arms=2,invalid_arm_rejected=1,held_runtime_rejected=2))
 
@@ -12447,14 +12497,14 @@ def ssrpc_static_worker(root,args,auth,out):
         compile(held,'<SSRPC held '+arm+'>','exec');compile(source,'<SSRPC integrated '+arm+'>','exec')
         src[arm]=source;generated[arm]=hashlib.sha256(source.encode('utf8')).hexdigest()
         try:ssrpc_auth(root,arm)
-        except RuntimeError as exc:h4m12_require('SSRPC_RUNTIME_HELD' in str(exc),'SSRPC_WRONG_HOLD_REASON')
+        except RuntimeError as exc:h4m12_require('SSRPC_MARKER' in str(exc),'SSRPC_WRONG_HOLD_REASON')
         else:raise RuntimeError('SSRPC_RUNTIME_OPEN')
     ssrpc_expect_reject(lambda:make_ssrpc_integrated_source(raw,'invalid'),'generator_invalid_arm')
     fixtures=dict(core=ssrpc_core_fixture(root),batch_ctrl=ssrpc_batch_fixture(root,'ctrl'),
         batch_cand=ssrpc_batch_fixture(root,'cand'),
         report_ctrl=ssrpc_report_fixture(root,parent,dict(arm='ctrl',generated_sha256=generated['ctrl']),src['ctrl']),
         report_cand=ssrpc_report_fixture(root,parent,dict(arm='cand',generated_sha256=generated['cand']),src['cand']),
-        receipts=ssrpc_static_receipt_fixture(root),marker=ssrpc_marker_fixture(),
+        receipts=ssrpc_static_receipt_fixture(root),marker=ssrpc_marker_fixture(),contracts=ssrpc_contract_fixture(),
         typed=h4ffe2_typed_fixture(root),generator=dict(arms=2,invalid_arm_rejected=1,held_runtime_rejected=2))
     h4m12_require(ssrpc_static_no_native() and ssrpc_static_auth(root)==auth and
         all(not (root/p).exists() and not (root/p).is_symlink() for p in SSRPC_ARM_OUTPUT.values()),
