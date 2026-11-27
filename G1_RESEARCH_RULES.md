@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.290  
+**Version:** 1.2.291  
 **Ngày cập nhật:** 2026-11-27 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -3789,6 +3789,167 @@ Before any approved V2 integration freeze a compact per-band/cell/half risk-set 
 
 Decision value: before committing another PPO run, recommend one separately approved held candidate-only controlled DEV integration for the existing FFE-V1 policy, conditional on exact missing terminal supervisor/strict-reader receipt or a separately reviewed receipt limitation; no repeat training. It can reveal realized policy recovery and locomotion/safety vs CTRL after curriculum-only treatment, not prove both-loaded learning or waive exposure. Reuse h4_shared_frozen_loader/h3_group/h3_decide and immutable CTRL32bf04d6 primary, M12eb44c364 descriptive; 12 groups/60 logical/max44808 physical/12 resets, same seeds7331/7357/7601/7613, stand/forward_fast/turn_left, L/R, nominal/single/double, push300/.50 and335/.35, deterministic DR OFF, original scientific gates. No rerun CTRL/M12, no promotion/holdout regardless. If DEV has no decision value after receipt review, hold rather than run. R12 existing result NO_GO unchanged. Next Owner decision: held FFE candidate DEV integration (distinct GO; no runtime) or explicitly choose the prospective V2 held design/integration after reviewing this proposal; not both automatically. H4-M19-0 OFFLINE REVIEW COMPLETE / design HELD / no active runtime authorization. No executable changes, standalone diagnostics, combined reward, PPO, threshold relaxation, or new seed/budget. A ACTIVE/B HOLD. Owner operational override v1.2.287 retained.
 
+### H4-M19-1 — FFE-V1 existing checkpoint controlled DEV held source candidate (v1.2.291; 2026-11-27)
+
+Owner explicit GO for held integration only. SA retrieved full Rules blob8c47058cd6262beabeef427cd559aef194b3d771 at verified HEAD2663883cf473729fe24aac828e460d6c572b020d, AGENTS, exact evaluator9352ccc0, trainer and environment; operative historical receipt and FFE training reader reviewed. Prior seven uploaded file SHA256 checks accepted from v1.2.289, not independently repeated this turn. Final binary SHA values recorded, not newly rehashed by SA. Historical supervisor terminal/footer and independent strict-reader receipt NOT SUPPLIED; technical report PASS remains conditional. Decision value of one existing-policy DEV is distinct from training receipt acceptance. Require strict local host replay of exact FFE report, all ten artifact pins, historical authorization and source/generated/static pins; immutable limitation carried in evaluation spec and final disposition, never claim historical supervisor acceptance. Runtime requires separate review of limitation/strict reader and explicit distinct GO.
+
+EDIT-FIRST: only existing m463_gate3_cp_eval.py and Rules changed. 19 scoped reversible mode/CLI/input/auth/final-reader/projection routing anchors plus isolated H4FFE_DEV block (marker, historical byte projection, AST graph checks, training exposure and provenance contract, disposition, focused static fixtures). Existing h4_shared_frozen_loader, h3_group, h3_decide, native one_step, physics, reward/PD/observation/action/termination, archived Official CTRL primary and archived M12 descriptive unchanged. FFE training/exposure gate unchanged. Candidate-only 12 groups, 60 logical trajectories, max44808 physical, 12 resets; seeds7331/7357/7601/7613, stand/forward_fast/turn_left, L/R, nominal/single/double, pushes300/.50 and335/.35, deterministic actor DR OFF. Frozen +2/8 standing double survival AND recovery5, nominal/moving/safety gates unchanged. Evaluate paired standing double, moving tracking, foot-foot collision and joint/control excess using original metrics. Independent scientific gate result, EXPOSURE_INCONCLUSIVE and NO_PROMOTE immutable, no holdout/further training/promotion.
+
+Exact approved input bytes for HELD static only (not technical receipt upgrade, not runtime GO):
+
+H4FFE_TRAINING_APPROVED: 4f22d82ef8c1849f01521976262761c808cdc8d78609574bda38e5dfb32fb535 2a5e91d3dd91d064b73e5b43c70770cbfead978505bf1b2d65f2f34e0e5a6b3c d593274db57df624bd6d687f8682670d1e3e0193a64c4f2e8809663a9c6667ed fc263ae085aaf19e346a0f58b1ca4cd94fa9030fb624e8e1f2ae462af56ad358
+
+Reuse bounded supervisor with distinct fixed namespace m463_runs/m470_h4_m19_1_ffe_dev_v1/report.json and m470_h4ffe_dev_runtime_v1.log, 5400s deadline, 16MiB log cap, 128MiB report cap, exclusive claim/reservation and strict final/partial readers. No GPU process occupancy gate or interactive prompt under v1.2.287, preserve sampled VRAM and storage/watchdog. No active marker. Static requires unused namespace; compiles evaluator and launcher, reverse byte projection to exact base, original step graph/loader/group/decision AST, pinned inputs and archives, strict FFE training reader host replay, archive clone fixture (not native evidence), negative marker/ledger/reader/exposure/disposition cases, all five CLI HOLD checks and zero native calls/physical/resets/inference/optimizer. SA verified exact reversible source anchors in connector; did not execute Python static on Owner installed environment or independently run fixtures. Owner exact full static receipt pending; on any failure STOP and preserve evidence. No native execution, rerun CTRL/M12, PPO, standalone diagnostic, holdout or promotion. A ACTIVE/B HOLD. Rollback via reviewed reverse patch/projection; do not reset branch history.
+
+Only next Owner action: g1_m463 -B -u m463_gate3_cp_eval.py --mode plan --h4ffe-eval --h4ffe-eval-static --output m463_runs/m470_h4_m19_1_ffe_dev_v1/report.json (absolute resolved output equivalent). Return unique static log with H4FFE_DEV_FULL_STATIC_PASS and both exit codes; no runtime authorization.
+
+```python
+# H4FFE_DEV_OWNER_LAUNCHER_BEGIN
+import hashlib, json, os, selectors, shutil, signal, subprocess, sys, time, traceback
+from pathlib import Path
+
+root = Path.cwd().resolve()
+runs = root / "m463_runs"
+out = runs / "m470_h4_m19_1_ffe_dev_v1" / "report.json"
+log = runs / "m470_h4ffe_dev_runtime_v1.log"
+cap = 16 * 1024**2
+deadline = time.monotonic() + 5400
+stored = 0
+producer_rc = None
+reader_rc = None
+partial_rc = None
+overflow = False
+error = None
+def require(ok, msg):
+    if not ok:
+        raise RuntimeError(msg)
+def digest(p):
+    with p.open("rb") as f:
+        return hashlib.file_digest(f, "sha256").hexdigest() if hasattr(hashlib, "file_digest") else digest_stream(f)
+def digest_stream(f):
+    h = hashlib.sha256()
+    for chunk in iter(lambda: f.read(1024**2), b""):
+        h.update(chunk)
+    return h.hexdigest()
+def emit(f, data):
+    global stored, overflow
+    room = cap - stored
+    keep = data[:room]
+    if keep:
+        f.write(keep)
+        stored += len(keep)
+        f.flush()
+    if len(data) > room:
+        overflow = True
+        raise RuntimeError("LOG_CAP")
+def stop_group(p):
+    try:
+        os.killpg(p.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    p.wait(timeout=10)
+def child(f, argv):
+    require(time.monotonic() < deadline, "WATCHDOG")
+    p = subprocess.Popen(argv, cwd=root, stdin=subprocess.DEVNULL,
+                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                         start_new_session=True, bufsize=0)
+    try:
+        with selectors.DefaultSelector() as sel:
+            sel.register(p.stdout, selectors.EVENT_READ)
+            while True:
+                left = deadline - time.monotonic()
+                require(left > 0, "WATCHDOG")
+                events = sel.select(min(left, 1.0))
+                if not events:
+                    continue
+                data = os.read(p.stdout.fileno(), 65536)
+                if not data:
+                    break
+                emit(f, data)
+        left = deadline - time.monotonic()
+        require(left > 0, "WATCHDOG")
+        return p.wait(timeout=left)
+    except BaseException:
+        stop_group(p)
+        raise
+    finally:
+        p.stdout.close()
+
+require(runs.is_dir() and not runs.is_symlink(), "RUNS_PATH")
+# Auth before exclusive claim; held static only compiles this block.
+import m463_gate3_cp_eval as e
+e.h4m3_no_runtime_imports()
+auth = e.h4m12_eval_auth(root,red='ffe')
+e.h4m3_no_runtime_imports()
+# Exclusive fixed log is the outer one-use claim, even if native reservation never occurs.
+# Never remove or rename either the log or the native attempt directory to retry.
+with log.open("xb") as f:
+    print("H4FFE_DEV_LAUNCH_LOG", log, flush=True)
+    try:
+        require(not out.parent.exists() and not out.parent.is_symlink(), "OUTPUT_USED")
+        require(shutil.disk_usage(runs).free >= 2*1024**3 + 2*128*1024**2 + cap, "STORAGE")
+        require(e.h4red_eval_source(root)==auth['source_sha256'], "SOURCE_SHA")
+        static = root/auth['static_path']
+        require(static.is_file() and not static.is_symlink() and digest(static)==auth['static_sha256'], "STATIC_SHA")
+        emit(f, ("H4FFE_DEV_AUTH "+json.dumps(auth,sort_keys=True)+"\n").encode())
+        os.environ['H4FFE_DEV_SUPERVISOR_PID']=str(os.getpid())
+        for k,v in {"JAX_PLATFORMS":"cuda", "JAX_DEFAULT_MATMUL_PRECISION":"highest",
+                    "XLA_PYTHON_CLIENT_PREALLOCATE":"false"}.items():
+            require(os.environ.get(k)==v, "ENV_"+k)
+        require(not any(k.split(".")[0] in ("jax","jaxlib","brax","mujoco","mujoco_playground")
+                        for k in sys.modules), "LAUNCHER_NATIVE_PREIMPORT")
+        emit(f, ("H4FFE_DEV_LAUNCH "+json.dumps({"interpreter":sys.executable,
+                 "head":subprocess.check_output(["git","rev-parse","HEAD"],text=True,cwd=root).strip(),
+                 "watchdog_s":5400,"log_cap":cap,"output":str(out)})+"\n").encode())
+        producer_rc = child(f, [sys.executable,"-B","-u",str(root/"m463_gate3_cp_eval.py"),
+                                 "--mode","run","--h4ffe-eval","--output",str(out)])
+        if producer_rc != 0 and out.is_file() and not overflow and time.monotonic()<deadline:
+            # Host-only partial reader; never treat its output as completion.
+            partial = (
+                "import json;from pathlib import Path;import m463_gate3_cp_eval as e;"
+                "r=Path.cwd();a=e.h4m12_eval_auth(r,red='ffe');"
+                "print('H4FFE_DEV_PARTIAL_READER',json.dumps(e.h4red_eval_read_partial(r,a,red='ffe'),sort_keys=True),flush=True)"
+            )
+            partial_rc = child(f,[sys.executable,"-B","-u","-c",partial])
+        require(producer_rc == 0, "PRODUCER_RC")
+        # Clean host-only final reader, no additional evaluation/inference.
+        reader = (
+            "import json;from pathlib import Path;import m463_gate3_cp_eval as e;"
+            "r=Path.cwd();e.h4m3_no_runtime_imports();p=r/e.H4FFE_DEV_OUTPUT;"
+            "a=e.h4m12_eval_auth(r,red='ffe');s=e.h4m12_read_eval_final(r,e.sha256(p),a,red='ffe');"
+            "e.h4m3_no_runtime_imports();"
+            "print('H4FFE_DEV_FINAL_READER_PASS',e.sha256(p),"
+            "json.dumps({'decision':s['decision']['decision'],'scientific_gate_result':s['decision']['scientific_gate_result'],'training_exposure':s['decision']['training_exposure'],'ledger':s['ledger']},sort_keys=True),flush=True)"
+        )
+        reader_rc = child(f, [sys.executable,"-B","-u","-c",reader])
+        require(reader_rc == 0, "FINAL_READER_RC")
+    except BaseException as exc:
+        error = repr(exc)[:1024]
+        if not overflow:
+            try:
+                emit(f, traceback.format_exc().encode())
+            except BaseException:
+                pass
+    finally:
+        try:
+            f.flush()
+            os.fsync(f.fileno())
+        except OSError as exc:
+            error = repr(exc)[:1024]
+ok = error is None and producer_rc == reader_rc == 0 and not overflow
+print("H4FFE_DEV_BOUNDED_STATUS", json.dumps({
+    "decision":"COMPLETE" if ok else "STOP","producer_rc":producer_rc,
+    "reader_rc":reader_rc,"partial_reader_rc":partial_rc,"overflow":overflow,"stored_bytes":stored,
+    "error":error,"log":str(log),"log_sha256":digest(log)
+}), flush=True)
+for name in ("report.json","attempt.json","dispatch.started.json","attempt_result.json"):
+    p = out.parent/name
+    if p.is_file() and not p.is_symlink():
+        print("H4FFE_DEV_ARTIFACT",str(p),p.stat().st_size,digest(p),flush=True)
+raise SystemExit(0 if ok else 1)
+# H4FFE_DEV_OWNER_LAUNCHER_END
+```
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -4050,6 +4211,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-27)
+
+**H4-M19-1 — FFE existing policy controlled DEV (v1.2.291)**: HELD source candidate, exact local full static pending, conditional historical training terminal receipt explicitly retained; strict local host training replay required. 12/60/44808/12 candidate-only, no CTRL/M12 rerun, immutable exposure/NO_PROMOTE, scientific efficacy UNTESTED, no runtime marker. Branch A ACTIVE/B HOLD.
 
 **H4-M19-0 — FFE eligibility bottleneck offline review (v1.2.290; 2026-11-27)**: FFE-V1 first144/1022, repeat30/144, single25/77 vs both5/67; source confirms narrow first window and conjunctive loaded/capture repeat gate. Aggregate expiry780 cannot identify predicate or stage. Prospective bounded V2 timing/risk-set ledger design HELD, no threshold change, no executable edits. Recommend separate held existing FFE policy DEV decision before another PPO, subject to receipt review and explicit Owner GO; no exposure waiver. V1 EXPOSURE_INCONCLUSIVE/NO_PROMOTE immutable, technical receipt conditional, efficacy UNTESTED. Branch A ACTIVE/B HOLD.
 
@@ -4984,6 +5147,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-27 | H4-M19-1 FFE controlled DEV held integration | Reversible evaluator mode, strict provenance and receipt limitation, bounded supervisor, focused static | HELD SOURCE / OWNER STATIC PENDING / no runtime | 1.2.291 |
+
 | 2026-11-27 | H4-M19-0 eligibility bottleneck offline review | First144/1022; single25/77 vs both5/67; expiry predicate unresolved; prospective window and risk-set ledger | OFFLINE COMPLETE / V2 HELD / separate existing-policy DEV decision / no runtime | 1.2.290 |
 
 | 2026-11-27 | H4-M18-2C FFE runtime review | Seven SHA exact; report technical PASS, supervisor footer missing; hard30, half-cell FAIL, nominal/ordinary PASS | GO consumed / EXPOSURE_INCONCLUSIVE / NO_PROMOTE / no runtime | 1.2.289 |
@@ -5626,6 +5791,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.291 — 2026-11-27:** Integrate held existing FFE policy candidate-only evaluator, preserve historical receipt limitation and exposure/NO_PROMOTE, frozen archived comparators/gates, Owner exact static pending; no runtime, Branch B HOLD.
 
 - **v1.2.290 — 2026-11-27:** Review FFE eligibility and source conditions; record prospective timing-only state opportunity candidate with stage/predicate risk-set telemetry, preserve all historical exposure/scientific gates and recommend separately approved existing-policy DEV decision. Rules only, no runtime or executable edit, Branch B HOLD.
 
