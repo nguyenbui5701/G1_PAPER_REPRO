@@ -83,3 +83,6 @@ Append one row per task with exact evidence/commit, decision, limitations and ne
 
 
 | H4-M24-3 receipt review | 5/5 uploaded SHA256 exact; native manifest quaternion failure before journal header; source-level representation mismatch and offline arithmetic | CLOSED/CONSUMED / TECH STOP / SCIENCE NOT EVALUATED / NATIVE HOLD | 30eb954b80ef3489c04e8518fc3106c7465622de; journal and outer console Owner-reported; proposed H4-M25-1 held only; explicit closure/scope required; no source or execution |
+
+
+| H4-M25-1 | Owner explicit held scope and separate consumed V2 marker closure | EDIT-FIRST / HELD | 7eaef25556aa3705a9892533eb168eca493560ea; no static or native execution; see ACTIVE_EXPERIMENT |

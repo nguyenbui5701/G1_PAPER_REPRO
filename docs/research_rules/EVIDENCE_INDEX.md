@@ -450,3 +450,7 @@ Each link includes the section until the next heading; ranges are retrieval aids
 
 ## H4-M24-3 reviewed native STOP
 - [Exact native authorization](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/30eb954b80ef3489c04e8518fc3106c7465622de), [producer](https://github.com/nguyenbui5701/G1_PAPER_REPRO/blob/30eb954b80ef3489c04e8518fc3106c7465622de/m463_gate3_cp_eval.py#L6245-L6259), [consumer](https://github.com/nguyenbui5701/G1_PAPER_REPRO/blob/30eb954b80ef3489c04e8518fc3106c7465622de/m463_gate3_cp_eval.py#L15247-L15285), [mock](https://github.com/nguyenbui5701/G1_PAPER_REPRO/blob/30eb954b80ef3489c04e8518fc3106c7465622de/m463_gate3_cp_eval.py#L15745-L15753). Five exact uploaded hashes/bytes in ACTIVE_EXPERIMENT; no independent journal or outer-console file. No scientific evaluation.
+
+
+## H4-M25-1 held scope
+- [Exact Owner-approved base](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/7eaef25556aa3705a9892533eb168eca493560ea); frozen V2 blob 05ada48c07940c8f1aa6d4402cf95a2f2aa78d8d. No new empirical results.
