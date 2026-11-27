@@ -12137,6 +12137,130 @@ def ssrpc_batch_fixture(root,arm):
     return dict(positive_batches=5,negative_rows=neg,rejected_lane_credit=1,
         positive_joint=1,negative_joint=5,synthetic_rows=5*8192*32,
         repeat=screen['repeat'],low_repeat=screen['low_repeat'],useful50=screen['useful50'])
+def ssrpc_report_fixture(root,parent,auth,src):
+    """Mock complete/partial reports from immutable M12, not FFE results."""
+    import tempfile
+    import numpy as np
+    import m463_instrument_brax as inst
+    r=copy.deepcopy(json.loads((root/H4M12_OUTPUT/'report.json').read_bytes()))
+    r.update(authorization=auth,spec=ssrpc_spec(auth['arm']),parent=parent)
+    before=h4ffe_empty_pending();rows=[]
+    for i,old in enumerate(r['h4_chunks'],1):
+        l=lambda k:old['counts']['m463_h4_'+k+'_per_rollout']
+        c={k:0 for k in h4ffe_metric_keys()};c.update(collected=5,batch_committed=5)
+        c['stratum_0_steps']=l('class_0_steps');c['stratum_1_steps']=1310720-c['stratum_0_steps']
+        c['stratum_1_events']=l('broad_events')
+        c['stratum_1_first']=l('first_events');c['stratum_1_repeat']=l('repeat_events')
+        c['stratum_1_terminal']=l('source_terminal')
+        for j in range(6):c[f'ordinary_motion_{j}']=l(f'broad_motion_{j}')
+        for q in (1,2):
+            for w in H4_SPEC['tail_windows']:
+                for n in ('executed','survived','same'):
+                    c[f'tail_1_{q}_{w}_{n}']=l(f'tail_{q}_{w}_'+('same_command' if n=='same' else n))
+        after=h4ffe_empty_pending();after['clock']=160*i
+        if i==4:after['ordinary_tail']=[r['h4_epochs'][0]['pending_at_reset']['tail_pending'],0]
+        rows.append(dict(index=i,before=before,after=after,metrics=c,passed=True));before=after
+    r['ffe_chunks']=rows;hist=r['report_history'][0]['metrics']
+    hist.update({'training/ffe_'+k:sum(x['metrics'][k] for x in rows)/4 for k in h4ffe_metric_keys()})
+    hist['training/ffe_chunk_failed']=0.
+    for x in r['operational_rows']:
+        if x['event'].endswith('reset_after'):
+            x['ffe_host_reset_closed']=before if x['event']=='reset_after' else h4ffe_empty_pending()
+    r['ffe_exposure']=h4ffe_exposure_replay(r)
+    n=len(inst.FFE2_DEVICE_FLAGS);h=sum(inst.FFE2_HIST_SIZES)
+    payload=h4ffe2_chunk_payload(np,dict(ffe2_rows=np.zeros((16,n),np.int32),
+        ffe2_lanes=np.zeros((16,n,inst.FFE2_LANE_BYTES),np.uint8),ffe2_hist=np.zeros((16,h),np.int32),
+        ffe2_shadow_last=np.full((2,8192),-1,np.int32)))
+    r['ffe2_chunks']=[dict(index=i,payload=copy.deepcopy(payload),tail_pending=[[0,0] for _ in range(16)]) for i in range(1,5)]
+    r['ffe2_ledger']=h4ffe2_replay_full_ledger(np,r,complete=True)
+    h4m12_require(r['ffe_exposure']['decision']=='EXPOSURE_INCONCLUSIVE','FFE_READER_ZERO')
+    r['ssrpc_lane_chunks']=[ssrpc_encode_lane_chunk(np,np.zeros(SSRPC_LANE_SHAPE,np.int32),j) for j in range(1,5)]
+    r['ssrpc_ledger']=ssrpc_replay_report(np,r,complete=True)
+    h4m12_require(r['ssrpc_ledger']['common_floors'] is True and r['ssrpc_ledger']['screen']['repeat']==0,
+                  'SSRPC_ZERO_HARD_COMPLETE')
+    with tempfile.TemporaryDirectory(prefix='ssrpc_mock_',dir=root/'m463_runs') as tmp:
+        out=Path(tmp)
+        (out/'m463_brax_ppo_instrumented.py').write_text(src,encoding='utf8')
+        r['artifacts']={}
+        for name in (H4M12_NEW_POLICY,H4M12_NEW_FULL):
+            (out/name).write_bytes(b'HOST_FIXTURE_NOT_CHECKPOINT')
+            r['artifacts'][name]=digest(out/name)
+        meta=Path(H4M12_NEW_FULL).with_suffix('.json').name
+        (out/meta).write_text(json.dumps(ssrpc_checkpoint_meta(auth,r['artifacts'][H4M12_NEW_FULL],
+            r['artifacts'][H4M12_NEW_POLICY])),encoding='utf8')
+        r['artifacts'][meta]=digest(out/meta)
+        h4m12_require(ssrpc_check_complete(out,r,auth),'SSRPC_FINAL_MOCK')
+        for tag in ('budget','joint','lane','legacy','censor','config','gpu','arm','summary','artifact'):
+            bad=copy.deepcopy(r)
+            if tag=='budget':bad['budget']['recorded']['optimizer']-=1
+            elif tag=='joint':bad['ffe2_chunks'][0]['payload']['hist'][0][0]=1
+            elif tag=='lane':bad['ssrpc_lane_chunks'][0]['index']=2
+            elif tag=='legacy':bad['ffe_chunks'][0]['metrics']['ordinary_motion_1']+=1
+            elif tag=='censor':next(x for x in bad['operational_rows'] if x['event']=='reset_after')['ffe_host_reset_closed']=h4ffe_empty_pending()
+            elif tag=='config':bad['hardware_scaled_config']['num_timesteps']+=1
+            elif tag=='gpu':bad['gpu']['peak_used_mib']=12288
+            elif tag=='arm':bad['authorization']=dict(auth,arm='cand' if auth['arm']=='ctrl' else 'ctrl')
+            elif tag=='summary':bad['ssrpc_ledger']['decision']='EXPOSURE_PASS'
+            elif tag=='artifact':bad['artifacts'][H4M12_NEW_FULL]='0'*64
+            ssrpc_expect_reject(lambda:ssrpc_check_complete(out,bad,auth),'report_'+tag)
+    # Simulate exact prefix before and after chunk_ledger. Only the committed
+    # operational event can charge recorded transitions/updates.
+    p=copy.deepcopy(r)
+    cutoff=next(i for i,x in enumerate(p['operational_rows']) if x['event']=='chunk_ledger')
+    p['operational_rows']=p['operational_rows'][:cutoff]
+    b=H4M12Budget()
+    for row in p['operational_rows']:b.advance(row['event'])
+    p['budget']=b.snapshot();p['ffe_chunks']=p['ffe_chunks'][:1];p['h4_chunks']=p['h4_chunks'][:1]
+    p['ffe2_pending_chunk']=p['ffe2_chunks'][0];p['ssrpc_pending_lane']=p['ssrpc_lane_chunks'][0]
+    p['ffe2_chunks']=[];p['ssrpc_lane_chunks']=[]
+    h4m12_require(ssrpc_replay_report(np,p,complete=False)['screen']['repeat']==0,'SSRPC_PENDING_MOCK')
+    trial=copy.deepcopy(p)
+    trial['ffe2_chunks']=[trial.pop('ffe2_pending_chunk')]
+    trial['ssrpc_lane_chunks']=[trial.pop('ssrpc_pending_lane')]
+    ssrpc_expect_reject(lambda:ssrpc_replay_report(np,trial,complete=False),'premature_commit')
+    ssrpc_replay_report(np,trial,complete=False,prospective_commit=True)
+    trial['operational_rows'].append(dict(event='chunk_ledger',chunk=1));b.advance('chunk_ledger');trial['budget']=b.snapshot()
+    ssrpc_replay_report(np,trial,complete=False)
+    bad=copy.deepcopy(p);del bad['ssrpc_pending_lane']
+    ssrpc_expect_reject(lambda:ssrpc_replay_report(np,bad,complete=False),'split_pending')
+    return dict(final_positive=1,final_negative=10,pending_positive=1,commit_positive=2,pending_negative=2)
+
+def ssrpc_static_receipt_fixture(root):
+    import tempfile
+    auth=dict(arm='ctrl');sha='a'*64
+    with tempfile.TemporaryDirectory(prefix='ssrpc_receipt_',dir=root/'m463_runs') as tmp:
+        out=Path(tmp);p=out/'receipt.json'
+        for raw in (b'{"x":1,"x":2}',b'{"x":NaN}',b'{"x":1e999}',b''):
+            p.write_bytes(raw);ssrpc_expect_reject(lambda:ssrpc_read_json(p,65536),'strict_json')
+        p.write_bytes(b'{"x":1}')
+        h4m12_require(ssrpc_read_json(p,65536)=={'x':1},'SSRPC_JSON_POSITIVE')
+        ssrpc_expect_reject(lambda:ssrpc_read_json(p,2),'strict_cap')
+        link=out/'link.json';link.symlink_to(p)
+        ssrpc_expect_reject(lambda:ssrpc_read_json(link,65536),'strict_symlink')
+        log=out/'worker.log';log.write_bytes(b'HOST_FIXTURE')
+        terminal=out/'supervisor.terminal.json'
+        ssrpc_expect_reject(lambda:ssrpc_terminal_receipt(out,sha,auth),'missing_terminal')
+        good=dict(status='COMPLETE',authorization=auth,report_sha256=sha,producer_rc=0,
+            reader_rc=0,worker_log_sha256=digest(log),stored_log_bytes=log.stat().st_size)
+        terminal.write_text(json.dumps(good),encoding='utf8')
+        h4m12_require(ssrpc_terminal_receipt(out,sha,auth),'SSRPC_TERMINAL_MOCK')
+        for key,value in (('reader_rc',1),('producer_rc',False),('stored_log_bytes',0),
+                          ('report_sha256','b'*64),('worker_log_sha256','b'*64)):
+            terminal.write_text(json.dumps(dict(good,**{key:value})),encoding='utf8')
+            ssrpc_expect_reject(lambda:ssrpc_terminal_receipt(out,sha,auth),'terminal_'+key)
+        terminal.write_text(json.dumps(good),encoding='utf8')
+        (out/'supervisor.failed.json').write_text('{}',encoding='utf8')
+        ssrpc_expect_reject(lambda:ssrpc_terminal_receipt(out,sha,auth),'terminal_conflict')
+    return dict(json_positive=1,json_negative=6,terminal_positive=1,terminal_negative=7)
+
+def ssrpc_marker_fixture():
+    ctrl='H4SSRPC_ACTIVE_GO: ctrl '+' '.join(('a'*64,'b'*64,'c'*64,'d'*40,'-','-'))
+    cand='H4SSRPC_ACTIVE_GO: cand '+' '.join(('a'*64,'e'*64,'c'*64,'d'*40,'f'*64,'1'*64))
+    h4m12_require(ssrpc_parse_marker(ctrl)['arm']=='ctrl' and ssrpc_parse_marker(cand)['arm']=='cand',
+                  'SSRPC_MARKER_POSITIVE')
+    for value in ('',ctrl+'\n'+cand,ctrl+'\nOTHER_GO: X',ctrl.replace('ctrl','cand'),cand.replace('cand','ctrl'),ctrl+' extra'):
+        ssrpc_expect_reject(lambda:ssrpc_parse_marker(value),'runtime_marker')
+    return dict(positive=2,negative=6)
 # SSRPC_5A_FIXTURES_END
 # H4SSRPC_HELD_TRAINER_END
 if __name__=='__main__': main()
