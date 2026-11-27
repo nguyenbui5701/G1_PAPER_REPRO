@@ -2322,6 +2322,13 @@ def ffe2_batch_contract(xp,data,before,after,before_done,after_done,pre_fn,post_
         shadow_gap=shadow,terminal=terminal,refresh=refresh,post_coherent=post_coherent)
     for k in FFE2_LABEL_KEYS:
         bad=bad|(y(k)!=labels[k].astype(i))
+    # The actual legacy target is the episode-relative view of V2's absolute
+    # first/repeat clock. No invented legacy closure at hard expiry.
+    phase=xp.where(old['k']==0,1,old['phase'])
+    target=xp.where(phase==2,old['repeat_due'],pre['due'])
+    target=xp.where(phase==3,2**30,z('h4_age')+target-old['k'])
+    block=pick['block']&(~nominal)
+    bad=bad|(block&(z('h4_target')!=target))
     for k in FFE2_CARRY_FIELDS[1:]:
         bad=bad|(extras[k][:,-1:]!=after[k][:,None])
     # Independently replay tail clocks, event supersession and closure from

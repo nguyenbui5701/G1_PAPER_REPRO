@@ -9052,6 +9052,21 @@ def h4ffe2_chunk_payload(np,payload):
             raise RuntimeError('FFE2_PAYLOAD_HIST')
     if np.any(h[3].sum(axis=1)>rows[:,idx['repeat_risk']]) or np.any(h[0][:,0]!=rows[:,idx['first_eligible']]) or np.any(h[1][:,0]!=rows[:,idx['repeat_eligible']]):
         raise RuntimeError('FFE2_PAYLOAD_ELIGIBILITY')
+    for stage,n,hh in (('first',7,h[0]),('repeat',8,h[1])):
+        mask=np.arange(1<<n)
+        for i in range(n):
+            passed=(mask&(1<<i))==0
+            funnel=(mask&((1<<(i+1))-1))==0
+            for name,sel in (('pass',passed),('fail',~passed),('funnel',funnel)):
+                if np.any(hh[:,sel].sum(axis=1)!=rows[:,idx[f'{stage}_predicate_{i}_{name}']]):
+                    raise RuntimeError('FFE2_PREDICATE_HIST_REPLAY')
+    for stage,hh in (('first',h[4:6]),('repeat',h[6:8])):
+        if np.any(hh[1][:,0]) or np.any(hh[1][:,6]):
+            raise RuntimeError('FFE2_CLOSURE_REASON')
+        for name in ('early','terminal','refresh','incoherent','boundary','nominal'):
+            a=idx[stage+'_close_'+name];b=idx[stage+'_miss']
+            if np.any(rows[:,a]>rows[:,b]) or np.any(lanes[:,a]&(~lanes[:,b])):
+                raise RuntimeError('FFE2_CLOSURE_SUBSET')
     for kind in (1,2):
         prefix=f'tail_{kind}_';start=8+(kind-1)*4
         succ=rows[:,idx[prefix+'successor_geometry']]
@@ -9176,6 +9191,10 @@ def h4ffe2_replay_chunk_records(np,records,*,complete=False):
     abits=lanes[:,idx['assigned']]
     if np.any(np.unpackbits(abits,axis=-1,bitorder='little').sum(axis=0)>1):
         raise RuntimeError('FFE2_RECORD_GROUP_IDENTITY')
+    if np.any(lanes&(~abits[:,None,:])):
+        raise RuntimeError('FFE2_RECORD_UNASSIGNED_TELEMETRY')
+    if np.any(np.unpackbits(abits,axis=-1,bitorder='little').sum(axis=-1)!=assigned):
+        raise RuntimeError('FFE2_RECORD_ASSIGNMENT_IDENTITY')
     for name in ('first_event','first_miss','repeat_opened','repeat_event','repeat_miss'):
         bits=lanes[:,idx[name]]
         if np.any(bits&(~abits)) or np.any(np.unpackbits(bits,axis=-1,bitorder='little').sum(axis=-1)!=rows[:,idx[name]]):
@@ -9213,11 +9232,13 @@ def h4ffe2_parse_marker(rules):
     return dict(id=H4FFE2_SPEC['id'],output=str(H4FFE2_OUTPUT),source_sha256=a,
         generated_sha256=b,static_path=c,static_sha256=d)
 
-def h4ffe2_auth(root):
+def h4ffe2_validate_auth_evidence(root,a):
     root=Path(root).resolve()
     h4m12_require(not any((H4_EXECUTION_AUTHORIZED,H4R_EXECUTION_AUTHORIZED,
         H4C_EXECUTION_AUTHORIZED,H4CC_EXECUTION_AUTHORIZED,H4M8_EXECUTION_AUTHORIZED)),'FFE2_LEGACY_HOLD')
-    a=h4ffe2_parse_marker((root/'G1_RESEARCH_RULES.md').read_text('utf8'))
+    h4m12_require(type(a) is dict and set(a)=={'id','output','source_sha256','generated_sha256','static_path','static_sha256'},'FFE2_AUTH_KEYS')
+    marker='H4FFE2_ACTIVE_GO: '+a['id']+' '+a['output']+' '+a['source_sha256']+' '+a['generated_sha256']+' '+a['static_path']+' '+a['static_sha256']
+    h4m12_require(h4ffe2_parse_marker(marker)==a,'FFE2_AUTH_IDENTITY')
     h4m12_require(h4x_source_digest(root)==a['source_sha256'],'FFE2_SOURCE')
     log=root/a['static_path'];h4x_file_pin(log,a['static_sha256'])
     h4m12_require(log.stat().st_size<=H4FFE2_SPEC['external_log_reserve'],'FFE2_STATIC_SIZE')
@@ -9226,8 +9247,13 @@ def h4ffe2_auth(root):
         and lines.count('H4FFE2_FULL_STATIC_PASS')==1
         and lines.count('H4FFE2_SOURCE '+a['source_sha256'])==1
         and lines.count('H4FFE2_GENERATED '+a['generated_sha256'])==1,'FFE2_STATIC_RECEIPT')
-    # This integration candidate is not complete; even a fabricated marker or
-    # receipt cannot open it. Remove only in a reviewed held source revision.
+    return a
+
+def h4ffe2_auth(root):
+    root=Path(root).resolve()
+    a=h4ffe2_parse_marker((root/'G1_RESEARCH_RULES.md').read_text('utf8'))
+    h4ffe2_validate_auth_evidence(root,a)
+    # Hard incomplete HOLD remains even with a correctly shaped marker.
     h4ffe2_execution_hold()
 
 
@@ -9265,6 +9291,14 @@ def h4ffe2_replay_full_ledger(np,r,*,complete):
         if n>=len(old) or old[n]['passed'] is not True:
             raise RuntimeError('FFE2_UNCOMMITTED_CHUNK')
         m=old[n]['metrics'];rows=np.asarray(rec['payload']['rows'])
+        for kind in (1,2):
+            for age in (1,10,25,50,100,250):
+                for what in ('executed','survived','same'):
+                    if int(rows[:,idx[f'tail_{kind}_{age}_{what}']].sum())!=m[f'tail_2_{kind}_{age}_{what}']:
+                        raise RuntimeError('FFE2_LEGACY_TAIL_WINDOW')
+        for what in ('joint_excess','ctrl_excess','force_excess','foot_foot'):
+            if sum(int(rows[:,idx[f'tail_{kind}_{what}']].sum()) for kind in (1,2))!=m[f'tail_2_{what}']:
+                raise RuntimeError('FFE2_LEGACY_TAIL_SAFETY')
         pending=np.asarray(rec['tail_pending']).reshape(4,4,2).sum(axis=0).tolist()
         h4m12_require(pending==old[n]['after']['hard_tail'],'FFE2_TAIL_PENDING_LEGACY')
         for cell in range(4):
@@ -9481,8 +9515,24 @@ def h4ffe2_check_complete(out,r,auth):
     h4x_storage(out)
     return True
 
-def h4ffe2_read_final(root,expected_sha,auth,*,require_terminal=True):
+
+def h4ffe2_terminal_receipt(out,expected_sha,auth):
+    out=Path(out);terminal=out/'supervisor.terminal.json';log=out/'worker.log'
+    failure=out/'supervisor.failed.json'
+    h4m12_require(not failure.exists() and not failure.is_symlink(),'FFE2_SUPERVISOR_FAILURE')
+    h4m12_require(terminal.is_file() and not terminal.is_symlink() and
+        log.is_file() and not log.is_symlink() and
+        log.stat().st_size<=H4FFE2_SPEC['external_log_reserve'],'FFE2_TERMINAL_PATH')
+    expected=dict(status='COMPLETE',authorization=auth,report_sha256=expected_sha,
+        producer_rc=0,reader_rc=0,worker_log_sha256=digest(log),stored_log_bytes=log.stat().st_size)
+    value=json.loads(terminal.read_bytes())
+    h4m12_require(type(value) is dict and set(value)==set(expected) and
+        all(type(value[k]) is type(expected[k]) for k in expected) and value==expected,'FFE2_TERMINAL_RECEIPT')
+    return True
+
+def _h4ffe2_read_final(root,expected_sha,auth,*,require_terminal):
     root=Path(root).resolve()
+    h4ffe2_validate_auth_evidence(root,auth)
     out=root/H4FFE2_OUTPUT
     failed=out/'supervisor.failed.json'
     h4m12_require(not failed.exists() and not failed.is_symlink(),'FFE2_SUPERVISOR_FAILURE')
@@ -9504,16 +9554,16 @@ def h4ffe2_read_final(root,expected_sha,auth,*,require_terminal=True):
     parent_check=h4ffe2_parent_preflight
     h4m12_require(parent_check(root,require_unused=False)==r['parent'],'FINAL_PARENT')
     h4ffe2_check_complete(out,r,auth)
-    if require_terminal:
-        terminal=out/'supervisor.terminal.json';log=out/'worker.log'
-        h4m12_require(terminal.is_file() and not terminal.is_symlink() and log.is_file() and not log.is_symlink() and log.stat().st_size<=H4FFE2_SPEC['external_log_reserve'],'FFE2_TERMINAL_PATH')
-        expected=dict(status='COMPLETE',authorization=auth,report_sha256=expected_sha,
-            producer_rc=0,reader_rc=0,worker_log_sha256=digest(log),stored_log_bytes=log.stat().st_size)
-        h4m12_require(json.loads(terminal.read_bytes())==expected,'FFE2_TERMINAL_RECEIPT')
+    if require_terminal:h4ffe2_terminal_receipt(out,expected_sha,auth)
     return r
+
+def h4ffe2_read_final(root,expected_sha,auth):
+    return _h4ffe2_read_final(root,expected_sha,auth,require_terminal=True)
 
 def h4ffe2_read_partial(out,auth):
     out=Path(out);p=out/'report.json'
+    terminal=out/'supervisor.terminal.json'
+    h4m12_require(not terminal.exists() and not terminal.is_symlink(),'FFE2_PARTIAL_TERMINAL_CONFLICT')
     h4m12_require(p.is_file() and not p.is_symlink() and p.stat().st_size<=H4FFE2_SPEC['output_cap'],'FFE_PARTIAL_PATH')
     r=json.loads(p.read_bytes())
     h4m12_require(r['status'] in ('RUNNING','STOP') and r['authorization']==auth and r['spec']==H4FFE2_SPEC and
@@ -9557,8 +9607,13 @@ def h4ffe2_read_partial(out,auth):
             col==comm+rej and rej<=1 and abort['clock']==160*completed+32*col and
             m['ffe_chunk_failed']==1,'FFE_PARTIAL_ABORT')
     import numpy as np
-    h4ffe2_replay_full_ledger(np,r,complete=False)
-    return dict(sha256=digest(p),status='STOP_PARTIAL',completed_chunks=completed,
+    replay=h4ffe2_replay_full_ledger(np,r,complete=False)
+    accepted=len(r['ffe2_chunks'])
+    h4m12_require(accepted<=completed<=accepted+1 and ledger.recorded['training']<=accepted*1310720,'FFE2_PARTIAL_ACCEPTED_CHUNKS')
+    if 'ffe2_ledger' in r:
+        h4m12_require(accepted==4 and h4ffe2_replay_full_ledger(np,r,complete=True)==r['ffe2_ledger'],'FFE2_PARTIAL_STALE_SUMMARY')
+    return dict(sha256=digest(p),status='STOP_PARTIAL',completed_chunks=accepted,
+        legacy_completed_chunks=completed,provisional_chunk='ffe2_pending_chunk' in r,
         budget=ledger.snapshot(),abort=abort,promotion_authorized=False)
 
 def h4ffe2_worker(a,auth,root,out):
@@ -9966,7 +10021,7 @@ def h4ffe2_main(argv):
         sha=digest(report)
         h4x_write_json(out/'attempt_result.json',dict(status='COMPLETE',authorization=auth,
                        report_sha256=sha,producer_rc=0),exclusive=True)
-        h4ffe2_read_final(root,sha,auth,require_terminal=False)
+        _h4ffe2_read_final(root,sha,auth,require_terminal=False)
         h4x_write_json(out/'supervisor.terminal.json',dict(status='COMPLETE',authorization=auth,
             report_sha256=sha,producer_rc=0,reader_rc=0,worker_log_sha256=digest(out/'worker.log'),
             stored_log_bytes=total),exclusive=True)
@@ -10297,6 +10352,7 @@ def h4ffe2_reader_fixture(root,parent,auth,src):
             elif tag=='risk_pending':z['ffe2_chunks'][0]['tail_pending'][0][0]=1
             reject(lambda:h4ffe2_check_complete(out,z,auth))
         z=copy.deepcopy(r);z.update(status='STOP',artifacts={})
+        del z['ffe2_ledger']
         n=next(i for i,x in enumerate(z['operational_rows']) if x['event']=='chunk_ledger')+1
         z['operational_rows']=z['operational_rows'][:n];ledger=H4M12Budget()
         for x in z['operational_rows']:ledger.advance(x['event'])
@@ -10308,14 +10364,59 @@ def h4ffe2_reader_fixture(root,parent,auth,src):
             (out/name).write_text(json.dumps(value),encoding='utf8')
         p=out/'report.json';p.write_text(json.dumps(z),encoding='utf8')
         h4m12_require(h4ffe2_read_partial(out,auth)['completed_chunks']==1,'FFE_PARTIAL_POSITIVE')
-        for tag in ('budget','auth','clock'):
+        for tag in ('budget','auth','clock','stale_summary','missing_accepted'):
             bad=copy.deepcopy(z)
             if tag=='budget':bad['budget']['recorded']['optimizer']+=1
             elif tag=='auth':bad['authorization']={}
-            else:bad['ffe_chunks'][0]['after']['clock']=0
+            elif tag=='clock':bad['ffe_chunks'][0]['after']['clock']=0
+            elif tag=='stale_summary':bad['ffe2_ledger']=r['ffe2_ledger']
+            else:bad['ffe2_chunks']=[]
             p.write_text(json.dumps(bad),encoding='utf8')
             reject(lambda:h4ffe2_read_partial(out,auth))
-    return dict(positive=2,negative=17,native_calls=0,fixture_only=True)
+    return dict(positive=2,negative=19,native_calls=0,fixture_only=True)
+
+
+
+def h4ffe2_terminal_fixture(root):
+    import tempfile
+    auth={'fixture_only':True};sha='a'*64
+    def reject(fn):
+        try:fn()
+        except (RuntimeError,KeyError,ValueError,TypeError):return
+        raise RuntimeError('FFE2_TERMINAL_NEGATIVE_ACCEPTED')
+    with tempfile.TemporaryDirectory(prefix='h4ffe2_terminal_fixture_',dir=Path(root)/'m463_runs') as tmp:
+        out=Path(tmp);log=out/'worker.log';log.write_bytes(b'HOST_FIXTURE')
+        terminal=out/'supervisor.terminal.json'
+        reject(lambda:h4ffe2_terminal_receipt(out,sha,auth))
+        good=dict(status='COMPLETE',authorization=auth,report_sha256=sha,producer_rc=0,
+            reader_rc=0,worker_log_sha256=digest(log),stored_log_bytes=log.stat().st_size)
+        terminal.write_text(json.dumps(good),encoding='utf8')
+        h4m12_require(h4ffe2_terminal_receipt(out,sha,auth),'FFE2_TERMINAL_POSITIVE')
+        for key,value in (('reader_rc',1),('producer_rc',False),('stored_log_bytes',0),
+                          ('report_sha256','b'*64),('worker_log_sha256','b'*64)):
+            terminal.write_text(json.dumps(dict(good,**{key:value})),encoding='utf8')
+            reject(lambda:h4ffe2_terminal_receipt(out,sha,auth))
+        terminal.write_text(json.dumps(good),encoding='utf8')
+        failure=out/'supervisor.failed.json';failure.write_text('{}',encoding='utf8')
+        reject(lambda:h4ffe2_terminal_receipt(out,sha,auth))
+    return dict(positive=1,negative=7,native_calls=0,fixture_only=True)
+
+def h4ffe2_resource_bound():
+    """Conservative serialized schema bound, not XLA peak admission."""
+    from m463_instrument_brax import FFE2_DEVICE_FLAGS,FFE2_HIST_SIZES,FFE2_ROW_FIELDS
+    n=len(FFE2_DEVICE_FLAGS);h=sum(FFE2_HIST_SIZES)
+    h4m12_require(n==180 and h==575 and len(FFE2_ROW_FIELDS)==30,'FFE2_SCHEMA_SIZE')
+    # json indent=2: upper bound 48 bytes per scalar including separators
+    # and indentation; bitmap string <= 2048+48. Include aggregate and one
+    # provisional record (never more than 4 total chunk records).
+    chunk=16*n*(2048+48)+48*(16*(2*n+h+2)+2*8192)+65536
+    aggregate=48*(16*(2*n+h+4)+2*8192)+65536
+    risk=4*chunk+aggregate
+    h4m12_require(2*risk+H4FFE2_SPEC['external_log_reserve']<H4X_SPEC['other_cap'],'FFE2_RISK_SERIALIZED_CAP')
+    return dict(flags=n,hist=h,raw_extra_bytes=len(FFE2_ROW_FIELDS)*8192*32*4,
+        payload_bytes=16*n*(4+1024)+16*h*4+2*8192*4,
+        risk_json_upper_bytes=risk,atomic_risk_plus_external_bytes=2*risk+H4FFE2_SPEC['external_log_reserve'],
+        other_cap=H4X_SPEC['other_cap'],peak_xla_verified=False)
 
 def h4ffe2_static_main(argv):
     import subprocess
@@ -10365,9 +10466,11 @@ def h4ffe2_static_main(argv):
     try:h4ffe2_auth(root)
     except RuntimeError as exc:h4m12_require('FFE2_EXECUTION_HOLD_OR_CONFLICT' in str(exc),'FFE_STATIC_HOLD')
     else:raise RuntimeError('M470_FFE_AUTH_OPEN')
+    print('H4FFE2_RESOURCE_SCHEMA',json.dumps(h4ffe2_resource_bound(),sort_keys=True),flush=True)
     print('H4FFE2_CORE_FIXTURES',json.dumps(h4ffe2_core_fixture(root),sort_keys=True),flush=True)
     print('H4FFE2_BATCH_FIXTURES',json.dumps(h4ffe2_batch_fixture(root),sort_keys=True),flush=True)
     print('H4FFE2_READER_FIXTURES',json.dumps(h4ffe2_reader_fixture(root,parent,auth,src),sort_keys=True),flush=True)
+    print('H4FFE2_TERMINAL_FIXTURES',json.dumps(h4ffe2_terminal_fixture(root),sort_keys=True),flush=True)
     for worker in ([],['--worker']):
         proc=subprocess.run([sys.executable,'-B',str(root/'m463_push_ppo_train.py'),'--h4ffe2-continuation',
             '--checkpoint','unused','--restore-report','unused','--reward-report','unused',*worker],

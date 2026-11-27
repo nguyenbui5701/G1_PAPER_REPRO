@@ -332,3 +332,6 @@ Each link includes the section until the next heading; ranges are retrieval aids
 
 ## H4-M20-1 end-to-end held source candidate
 - [Exact source blobs, schema arithmetic, fixture preparation and remaining acceptance blockers](ACTIVE_EXPERIMENT.md#h4-m20-1-continuation--end-to-end-held-source-candidate-and-host-static-preparation-2026-11-27); base [df38dbca54599f49eb6e1654ed2bfa718cbca932](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/df38dbca54599f49eb6e1654ed2bfa718cbca932). Source-only, no static/empirical receipt.
+
+## H4-M20-1 review
+- [Candidate source review, exact source blobs, corrections, bounded schema and evidence limits](ACTIVE_EXPERIMENT.md#h4-m20-1--end-to-end-candidate-source-review--held-host-static-preparation-2026-11-27); base [58320914cb042c9f8a008abd2be664df064a74a0](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/58320914cb042c9f8a008abd2be664df064a74a0). No empirical/static receipt.

@@ -18,3 +18,6 @@ V2 opt-in environment and held generator, device chunk aggregation and host chun
 
 ## 2026-11-27 — H4-M20-1 end-to-end held source candidate (governance v2.0.0 unchanged)
 Expanded device risk/tail ledger, isolated worker/supervisor, strict reader/terminal receipt and host-only static fixtures authored. No full integration acceptance, no fixture execution/resource admission, hard runtime HOLD. Frozen controls/evidence unchanged. Base df38dbca54599f49eb6e1654ed2bfa718cbca932.
+
+## 2026-11-27 — H4-M20-1 candidate review (governance v2.0.0 unchanged)
+Legacy target replay, histogram/tail membership checks, partial/final/terminal reader corrections and resource schema bounds authored. Source-template review and unchanged legacy prefix verification only; no local compile or fixtures. Recommend distinct bounded host-static candidate check. Hard runtime HOLD; gates unchanged. Base 58320914cb042c9f8a008abd2be664df064a74a0.

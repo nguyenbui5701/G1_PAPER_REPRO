@@ -1639,7 +1639,7 @@ class CoverageJoystick(joystick.Joystick):
         return after.replace(info=out)
 
 # H4FFE2_HELD_CORE_BEGIN
-# Isolated pure candidate. Not called by CoverageJoystick or any CLI.
+# Pure V2 scheduler, called only by opt-in CoverageJoystick; runtime remains HOLD.
 # Do not remove execution HOLD until separate full integration review.
 def ffe2_pre(xp,old,*,hard_draw,band_draw,cell_draw,due_draw,boundary,nominal,
             count,coherent,source_step,mode,cost,geometry_valid):
