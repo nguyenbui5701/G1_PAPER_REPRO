@@ -404,3 +404,6 @@ Each link includes the section until the next heading; ranges are retrieval aids
 
 ## H4-M23-3 source candidate receipt
 - [EDIT-FIRST](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/65002da688a87afd07d746850594e61234cb36b8); [held source](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/3c964122c95a7d866a3abc70c8ed2e67c53b6679), evaluator blob851eca851902fe88bd9961935c007f985c66bc4e. Reverse content comparison only; no static/native execution. Remaining blockers in ACTIVE_EXPERIMENT.
+
+## H4-M23-3B source-review scope
+- [Rules base](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/cd0bc6c00eb1226eb5c19a6766c00c341d097337); [candidate](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/3c964122c95a7d866a3abc70c8ed2e67c53b6679); exact five DEV artifacts rehashed. No new empirical results.

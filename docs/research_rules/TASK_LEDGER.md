@@ -51,4 +51,6 @@ Historical complete ledger: [v1.2.294 L5191–5841](https://github.com/nguyenbui
 
 | H4-M23-3 source candidate | Existing evaluator opt-in capture, paired runner and journal candidate | PUSHED / INTEGRATION INCOMPLETE / STOP BEFORE STATIC | 3c964122c95a7d866a3abc70c8ed2e67c53b6679; supervisor/report wrapper and source review pending; zero execution |
 
+| H4-M23-3B | Owner source-only held completion/review | EDIT-FIRST / HELD | Base cd0bc6c00eb1226eb5c19a6766c00c341d097337, exact candidate reviewed, five hashes rechecked; zero execution |
+
 Append one row per task with exact evidence/commit, decision, limitations and next scope. Do not rewrite previous entries or imply authorization.
