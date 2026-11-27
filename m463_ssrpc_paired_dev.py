@@ -185,6 +185,11 @@ def prepare_inputs(root):
             and archive['jax_version']=='0.4.35', 'ARCHIVE_SCHEMA')
     for name in ('train.py','paper_config.py','m462_ppo_warmstart_run.py','m462_typed_orbax_stage.py'):
         pins['source/'+name] = pinned_file(root, Path(name), archive['input_sha256']['source/'+name], t)
+    # Check module origins before any evaluator runtime imports; local files are pinned by archive.
+    from importlib.util import find_spec
+    for name in ('train','paper_config','m462_ppo_warmstart_run','m462_typed_orbax_stage'):
+        origin=find_spec(name)
+        require(origin is not None and origin.origin is not None and Path(origin.origin).resolve()==root/(name+'.py'), 'LOCAL_MODULE_'+name)
     pins['source/paper_config_preflight.json'] = pinned_file(root, Path('paper_config_preflight.json'), t.H4R_CONFIG_SHA, t)
     train = Path(archive['brax_source_verification']['path'])
     t.h4x_file_pin(train,e.TRAIN_SHA)
@@ -200,6 +205,7 @@ def prepare_inputs(root):
     pins['dependency/episode_wrapper']=e.sha256(wrapper)
     external=e.h4m3_external_sources(root)
     e.h4m3_no_runtime_imports()
+    require(t.ssrpc_static_no_native(),'HOST_NATIVE_IMPORT')
     return pins, archive, secondary, external
 
 
@@ -363,7 +369,8 @@ def read_arm(root, arm, auth, pins, external, archive, *, complete, terminal_req
         require(exact_json(read_bounded(root,base/'attempt_result.json',RECEIPT_CAP,t),expected),'RESULT')
         require(log.absolute()==log.resolve() and log.is_file() and not log.is_symlink()
                 and log.stat().st_size<=LOG_CAP,'LOG')
-        expected=dict(expected,reader_rc=0,worker_log_sha256=e.sha256(log),stored_log_bytes=log.stat().st_size)
+        expected=dict(expected,reader_rc=0,worker_pid=worker['pid'],parent_pid=attempt['parent_pid'],
+            worker_log_sha256=e.sha256(log),stored_log_bytes=log.stat().st_size)
         if terminal_required:
             require(exact_json(read_bounded(root,base/'supervisor.terminal.json',RECEIPT_CAP,t),expected),'TERMINAL')
         else:
@@ -396,15 +403,18 @@ def read_pair(root, auth, pins, archive, secondary, external):
         arm_report_sha256={arm:e.sha256(root/PAIR/arm/'report.json') for arm in ARMS},
         arm_terminal_sha256={arm:e.sha256(root/PAIR/arm/'supervisor.terminal.json') for arm in ARMS},
         result=result)
-    require(read_bounded(root,PAIR/'report.json',PAIR_REPORT_CAP,t)==expected,'PAIR_FINAL_REPLAY')
+    require(exact_json(read_bounded(root,PAIR/'report.json',PAIR_REPORT_CAP,t),expected),'PAIR_FINAL_REPLAY')
     require(not (root/PAIR/'supervisor.failed.json').exists()
             and not (root/PAIR/'supervisor.failed.json').is_symlink(), 'PAIR_FAILURE')
     pair_attempt=read_bounded(root,PAIR/'attempt.json',RECEIPT_CAP,t)
     require(set(pair_attempt)=={'authorization','reserved','parent_pid'} and pair_attempt['authorization']==auth
             and pair_attempt['reserved'] is True and type(pair_attempt['parent_pid']) is int
             and pair_attempt['parent_pid']>0,'PAIR_ATTEMPT')
+    workers=[]
     for arm in ARMS:
         require(read_bounded(root,PAIR/arm/'attempt.json',RECEIPT_CAP,t)['parent_pid']==pair_attempt['parent_pid'], 'PAIR_PARENT')
+        workers.append(read_bounded(root,PAIR/arm/'worker.started.json',RECEIPT_CAP,t)['pid'])
+    require(len(set(workers))==2,'PAIR_FRESH_WORKERS')
     terminal=dict(authorization=auth,status='COMPLETE',report_sha256=e.sha256(root/PAIR/'report.json'),
                   producer_rc=0,reader_rc=0,arm_terminal_sha256=expected['arm_terminal_sha256'])
     require(exact_json(read_bounded(root,PAIR/'attempt_result.json',RECEIPT_CAP,t),{k:v for k,v in terminal.items() if k!='reader_rc'}), 'PAIR_RESULT')
@@ -635,6 +645,9 @@ def fixture_ids():
         'resource/atomic_bound','resource/static_bound','resource/log_bound','resource/disk_reserve',
         'supervisor/ctrl_technical_stop','supervisor/ctrl_scientific_no_go','supervisor/cand_complete',
         'supervisor/receipt_binding','supervisor/exclusive_path','supervisor/worker_parent',
+        'host/compile_wrapper','host/compile_frozen','host/strict_read','host/strict_duplicate',
+        'host/strict_nonfinite','host/strict_cap','host/exclusive_write','host/atomic_replace',
+        'host/symlink_reject','pipe/success','pipe/nonzero','pipe/log_cap','pipe/watchdog',
     )
 
 
@@ -709,8 +722,35 @@ def static_fixtures(root,pins,archive,secondary,external):
     case('supervisor/receipt_binding',not exact_json({'producer_rc':0},{'producer_rc':False}))
     case('supervisor/exclusive_path',unused(root/PAIR) and unused(root/OUTER))
     case('supervisor/worker_parent',expect_reject(lambda:next_arm(('cand',),True)))
+    # Real host-only parser/writer/supervisor cases under the separate static GO.
+    case('host/compile_wrapper',compile((root/Path(__file__).name).read_bytes(),Path(__file__).name,'exec') is not None)
+    case('host/compile_frozen',all(compile((root/name).read_bytes(),name,'exec') is not None for name in FROZEN))
+    import tempfile
+    with tempfile.TemporaryDirectory(prefix='fixture_',dir=root/STATIC) as tmp:
+        d=Path(tmp);rel=d.relative_to(root);p=d/'receipt.json'
+        write_json(root,'static',p,{'a':1})
+        case('host/strict_read',exact_json(read_bounded(root,rel/'receipt.json',RECEIPT_CAP,t),{'a':1}))
+        q=d/'invalid.json';q.write_bytes(b'{"a":1,"a":2}')
+        case('host/strict_duplicate',expect_reject(lambda:read_bounded(root,rel/'invalid.json',RECEIPT_CAP,t)))
+        q.write_bytes(b'{"a":NaN}')
+        case('host/strict_nonfinite',expect_reject(lambda:read_bounded(root,rel/'invalid.json',RECEIPT_CAP,t)))
+        case('host/strict_cap',expect_reject(lambda:read_bounded(root,rel/'receipt.json',1,t)))
+        case('host/exclusive_write',expect_reject(lambda:write_json(root,'static',p,{'a':2})))
+        write_json(root,'static',p,{'a':3},exclusive=False)
+        case('host/atomic_replace',exact_json(read_bounded(root,rel/'receipt.json',RECEIPT_CAP,t),{'a':3})
+            and unused(p.with_suffix('.json.tmp')))
+        link=d/'alias.json';link.symlink_to(p)
+        case('host/symlink_reject',expect_reject(lambda:read_bounded(root,rel/'alias.json',RECEIPT_CAP,t)))
+        link.unlink()
+        def pipe(name,code,seconds=15,cap=1024):
+            return bounded_process(root,'static',[sys.executable,'-B','-c',code],d/(name+'.log'),seconds,cap)
+        case('pipe/success',type(pipe('success','print("OK")')) is int and (d/'success.log').read_bytes()==b'OK\\n')
+        case('pipe/nonzero',expect_reject(lambda:pipe('nonzero','raise SystemExit(7)')))
+        case('pipe/log_cap',expect_reject(lambda:pipe('cap','print("x"*2048)',cap=32)) and (d/'cap.log').stat().st_size<=32)
+        case('pipe/watchdog',expect_reject(lambda:pipe('watchdog','import time; time.sleep(30)',seconds=.25)))
     require(tuple(results)==fixture_ids(),'FIXTURE_MANIFEST')
     e.h4m3_no_runtime_imports()
+    require(t.ssrpc_static_no_native(),'STATIC_NATIVE_IMPORT')
     return results
 
 
@@ -751,7 +791,8 @@ def read_static(root,pins,external,*,expected=None,terminal_required=True):
     log=out/'worker.log'
     require(log.absolute()==log.resolve() and log.is_file() and 0<log.stat().st_size<=LOG_CAP
         and log.read_bytes().splitlines().count(('H4SSRPC_PAIR_FULL_STATIC_PASS '+digest).encode())==1,'STATIC_LOG')
-    terminal=dict(result,reader_rc=0,worker_log_sha256=e.sha256(log),stored_log_bytes=log.stat().st_size)
+    terminal=dict(result,reader_rc=0,worker_pid=worker['pid'],parent_pid=attempt['parent_pid'],
+        worker_log_sha256=e.sha256(log),stored_log_bytes=log.stat().st_size)
     if terminal_required:
         require(exact_json(read_bounded(root,STATIC/'supervisor.terminal.json',RECEIPT_CAP,t),terminal),'STATIC_TERMINAL')
     if expected is not None:
@@ -784,13 +825,13 @@ def worker_entry(root,phase,arm):
         native_worker(root,auth,arm,pins,archive,external)
 
 
-def bounded_child(root,phase,arm,base):
-    """Fresh process, bounded pipe, monotonic watchdog; kill own process group only."""
-    log=base/'worker.log'
-    deadline=time.monotonic()+(STATIC_WATCHDOG if phase=='static' else WATCHDOG)
+def bounded_process(root,phase,argv,log,seconds,log_cap):
+    """Shared actual bounded pipe; static fixtures use only stdlib child commands."""
+    require(type(seconds) in (int,float) and 0<seconds<=WATCHDOG and type(log_cap) is int and 0<log_cap<=LOG_CAP,
+            'CHILD_LIMITS')
+    deadline=time.monotonic()+seconds
     with log.open('xb') as stream:
-        proc=subprocess.Popen([sys.executable,'-B',str(Path(__file__).resolve()),'_worker',phase,arm],
-            cwd=root,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,start_new_session=True)
+        proc=subprocess.Popen(argv,cwd=root,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,start_new_session=True)
         count=0
         try:
             with selectors.DefaultSelector() as sel:
@@ -801,7 +842,7 @@ def bounded_child(root,phase,arm,base):
                     for key,_ in sel.select(timeout=.25):
                         chunk=os.read(key.fd,65536)
                         if not chunk:sel.unregister(key.fileobj);continue
-                        require(count+len(chunk)<=LOG_CAP,'LOG_CAP')
+                        require(count+len(chunk)<=log_cap,'LOG_CAP')
                         storage(root,phase,len(chunk))
                         stream.write(chunk);stream.flush();count+=len(chunk)
                 rc=proc.wait(timeout=max(.001,deadline-time.monotonic()))
@@ -813,6 +854,17 @@ def bounded_child(root,phase,arm,base):
             proc.wait(timeout=10)
             raise
         finally:proc.stdout.close()
+    return proc.pid
+
+
+def bounded_child(root,phase,arm,base):
+    pid=bounded_process(root,phase,[sys.executable,'-B',str(Path(__file__).resolve()),'_worker',phase,arm],
+            base/'worker.log',STATIC_WATCHDOG if phase=='static' else WATCHDOG,LOG_CAP)
+    import m463_push_ppo_train as t
+    rel=phase_dir(phase)/(arm if phase=='native' else '')/'worker.started.json'
+    receipt=read_bounded(root,rel,RECEIPT_CAP,t)
+    require(type(receipt['pid']) is int and receipt['pid']==pid and receipt['parent_pid']==os.getpid(),'CHILD_PID_BINDING')
+    return pid
 
 
 def supervisor(root,phase):
@@ -832,11 +884,12 @@ def supervisor(root,phase):
             write_json(root,phase,base/'attempt.json',dict(authorization=auth,reserved=True,parent_pid=os.getpid()))
             pins,archive,secondary,external=prepare_inputs(root)
             if phase=='static':
-                bounded_child(root,phase,'static',base)
+                worker_pid=bounded_child(root,phase,'static',base)
                 # Independent host admission and strict result reader, no second fixture execution.
                 p,_,_,x=prepare_inputs(root)
                 require(exact_json([pins,external],[p,x]),'STATIC_POST_INPUTS')
                 terminal=read_static(root,pins,external,terminal_required=False)
+                require(terminal['worker_pid']==worker_pid,'STATIC_SUPERVISOR_PID')
                 write_json(root,phase,base/'supervisor.terminal.json',terminal)
                 read_static(root,pins,external)
             else:
@@ -847,13 +900,25 @@ def supervisor(root,phase):
                     require(next_arm(completed,True)==arm and authorization(root,'native')==auth,'ARM_ORDER')
                     out=base/arm;out.mkdir(exist_ok=False)
                     write_json(root,phase,out/'attempt.json',dict(authorization=auth,arm=arm,reserved=True,parent_pid=os.getpid()))
-                    bounded_child(root,phase,arm,out)
+                    try:
+                        worker_pid=bounded_child(root,phase,arm,out)
+                    except BaseException as exc:
+                        partial_validated=False
+                        try:
+                            read_arm(root,arm,auth,pins,external,archive,complete=False)
+                            partial_validated=True
+                        except BaseException as err:
+                            print('PAIR_PARTIAL_UNVERIFIED',repr(err),flush=True)
+                        write_json(root,phase,out/'supervisor.failed.json',dict(authorization=auth,arm=arm,
+                            status='STOP',partial_validated=partial_validated,error=repr(exc)[:4096]))
+                        raise
                     p,_,_,x=prepare_inputs(root)
                     require(exact_json([pins,external],[p,x]),'POST_INPUTS')
                     read_arm(root,arm,auth,pins,external,archive,complete=True,terminal_required=False)
                     result=read_bounded(root,PAIR/arm/'attempt_result.json',RECEIPT_CAP,t)
                     log=out/'worker.log'
-                    terminal=dict(result,reader_rc=0,worker_log_sha256=e.sha256(log),stored_log_bytes=log.stat().st_size)
+                    terminal=dict(result,reader_rc=0,worker_pid=worker_pid,parent_pid=os.getpid(),
+                        worker_log_sha256=e.sha256(log),stored_log_bytes=log.stat().st_size)
                     write_json(root,phase,out/'supervisor.terminal.json',terminal)
                     read_arm(root,arm,auth,pins,external,archive,complete=True)
                     completed.append(arm)
