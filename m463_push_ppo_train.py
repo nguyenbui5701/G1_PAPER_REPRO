@@ -10703,8 +10703,8 @@ def h4ffe2_final_static_main(argv):
 
 # H4SSRPC_HELD_TRAINER_BEGIN
 # Held supplemental accounting. No CLI or worker dispatch.
-SSRPC_ARM_OUTPUT={'ctrl':'m463_runs/m470_h4_m28_ssrpc_ctrl_v1',
-                  'cand':'m463_runs/m470_h4_m28_ssrpc_cand_v1'}
+SSRPC_ARM_OUTPUT={'ctrl':'m463_runs/m470_h4_m28_ssrpc_ctrl_v2',
+                  'cand':'m463_runs/m470_h4_m28_ssrpc_cand_v2'}
 SSRPC_PARENT_SHA='9b19312da08d71513ad8fa6638c632401bec20e09399fdf4a9f6f6e2b2619c80'
 SSRPC_OLD_BLOBS={
     'm463_coverage_env.py':'efe71d850746f07c42f5d1e0256399d2b963da21',
@@ -10986,7 +10986,7 @@ def ssrpc_replay_joint_chunks(np,records,arm,*,complete):
 # a matching accepted paired static receipt can authorize either arm.
 def ssrpc_spec(arm):
     h4m12_require(type(arm) is str and arm in SSRPC_ARM_OUTPUT,'SSRPC_ARM')
-    return dict(H4M12_SPEC,id='H4-M28-SSRPC-'+arm.upper()+'-V1',arm=arm,
+    return dict(H4M12_SPEC,id='H4-M28-SSRPC-'+arm.upper()+'-V2',arm=arm,
                 repeat_gap=35,repeat_cost='high_only' if arm=='ctrl' else 'inclusive',
                 promotion_authorized=False)
 
@@ -10998,35 +10998,71 @@ def ssrpc_parse_marker(rules):
     import re
     lines=[v for v in rules.splitlines() if re.match(r'^[A-Z0-9_]+_GO:',v)]
     h4m12_require(len(lines)==1,'SSRPC_ACTIVE_MARKER_COUNT')
-    m=re.fullmatch(r'H4SSRPC_ACTIVE_GO: (ctrl|cand) ([0-9a-f]{64}) ([0-9a-f]{64}) ([0-9a-f]{64}) ([0-9a-f]{40}) (-|[0-9a-f]{64}) (-|[0-9a-f]{64})',lines[0])
+    m=re.fullmatch(r'H4SSRPC_V2_ACTIVE_GO: (ctrl|cand) ([0-9a-f]{64}) ([0-9a-f]{64}) ([0-9a-f]{64}) ([0-9a-f]{40}) ([0-9a-f]{40}) (-|[0-9a-f]{64}) (-|[0-9a-f]{64})',lines[0])
     h4m12_require(m is not None,'SSRPC_MARKER')
-    arm,source,generated,static_sha,source_head,ctrl_report,ctrl_terminal=m.groups()
+    arm,source,generated,static_sha,source_head,repair_head,ctrl_report,ctrl_terminal=m.groups()
     h4m12_require((arm=='ctrl' and ctrl_report==ctrl_terminal=='-') or
         (arm=='cand' and ctrl_report!='-' and ctrl_terminal!='-'),'SSRPC_CTRL_RECEIPT_BINDING')
     return dict(id=ssrpc_spec(arm)['id'],arm=arm,output=SSRPC_ARM_OUTPUT[arm],
                 source_sha256=source,generated_sha256=generated,
                 static_path=SSRPC_STATIC_OUTPUT+'/report.json',
-                static_sha256=static_sha,source_head=source_head,
+                static_sha256=static_sha,source_head=source_head,repair_head=repair_head,
                 ctrl_report_sha256=ctrl_report,ctrl_terminal_sha256=ctrl_terminal)
+
+def ssrpc_repair_projection(root,auth):
+    """Bind exact reviewed runtime commit; reconstruct historical aggregate without changing files."""
+    import subprocess
+    root=Path(root).resolve()
+    git=lambda *args:subprocess.check_output(['git',*args],cwd=root)
+    trainer='m463_push_ppo_train.py'
+    historical='eaa13375380c030e3df6d7b910ee71409eb32711'
+    old_blob='ab2047fee23ae4a5103c3103fdf57d8852ccfbfd'
+    repair_parent='1bd1603bd602c6236c89859e5baa30b9efedc6d4'
+    repair=auth['repair_head']
+    h4m12_require(auth['source_head']==historical and
+        git('rev-list','--parents','-n','1',repair).split()==[repair.encode(),repair_parent.encode()],
+        'SSRPC_V2_REPAIR_PARENT')
+    h4m12_require(git('diff','--name-only',repair_parent,repair).splitlines()==[trainer.encode()] and
+        git('rev-parse',historical+':'+trainer).decode().strip()==old_blob and
+        git('rev-parse',repair_parent+':'+trainer).decode().strip()==old_blob,
+        'SSRPC_V2_REPAIR_DIFF')
+    old=git('show',historical+':'+trainer)
+    repaired=git('show',repair+':'+trainer)
+    blob=lambda raw:hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()
+    h4m12_require(blob(old)==old_blob and old!=repaired and
+        blob(repaired)==git('rev-parse',repair+':'+trainer).decode().strip() and
+        (root/trainer).read_bytes()==repaired and repaired==git('show','HEAD:'+trainer),
+        'SSRPC_V2_TRAINER_BYTES')
+    names=(*H4_FILES,'m463_gate3_cp_eval.py','paper_config_preflight.json')
+    others=tuple(name for name in names if name!=trainer)
+    h4m12_require(subprocess.run(['git','merge-base','--is-ancestor',historical,repair],cwd=root).returncode==0 and
+        subprocess.run(['git','merge-base','--is-ancestor',repair,'HEAD'],cwd=root).returncode==0 and
+        subprocess.run(['git','diff','--quiet',historical,'HEAD','--',*others],cwd=root).returncode==0 and
+        subprocess.run(['git','diff','--quiet',repair,'HEAD','--',*names],cwd=root).returncode==0,
+        'SSRPC_V2_SOURCE_ANCESTRY')
+    # Only the exact authorized repaired trainer is projected to the immutable
+    # historical blob; every other input is hashed from the live filesystem.
+    payload={name:(hashlib.sha256(old).hexdigest() if name==trainer else digest(root/name))
+             for name in names}
+    return hashlib.sha256(json.dumps(payload,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+
 
 def ssrpc_validate_auth_evidence(root,auth):
     import re,subprocess
     root=Path(root).resolve()
-    keys={'id','arm','output','source_sha256','generated_sha256','static_path','static_sha256','source_head','ctrl_report_sha256','ctrl_terminal_sha256'}
+    keys={'id','arm','output','source_sha256','generated_sha256','static_path','static_sha256','source_head','repair_head','ctrl_report_sha256','ctrl_terminal_sha256'}
     h4m12_require(type(auth) is dict and set(auth)==keys and
         all(type(v) is str for v in auth.values()),'SSRPC_AUTH_SCHEMA')
     arm=auth['arm']
-    marker='H4SSRPC_ACTIVE_GO: '+arm+' '+auth['source_sha256']+' '+auth['generated_sha256']+' '+auth['static_sha256']+' '+auth['source_head']+' '+auth['ctrl_report_sha256']+' '+auth['ctrl_terminal_sha256']
+    marker='H4SSRPC_V2_ACTIVE_GO: '+arm+' '+auth['source_sha256']+' '+auth['generated_sha256']+' '+auth['static_sha256']+' '+auth['source_head']+' '+auth['repair_head']+' '+auth['ctrl_report_sha256']+' '+auth['ctrl_terminal_sha256']
     h4m12_require(ssrpc_parse_marker(marker)==auth,'SSRPC_AUTH_IDENTITY')
     h4m12_require(not any((H4_EXECUTION_AUTHORIZED,H4R_EXECUTION_AUTHORIZED,
         H4C_EXECUTION_AUTHORIZED,H4CC_EXECUTION_AUTHORIZED,H4M8_EXECUTION_AUTHORIZED)),'SSRPC_LEGACY_HOLD')
-    h4m12_require(h4x_source_digest(root)==auth['source_sha256'],'SSRPC_SOURCE')
+    h4m12_require(auth['source_sha256']=='ee0fce6a2cfec25c905c4d535d02ba640e9a5d96e4c7a22350a27ed5f0b840d5' and
+        auth['static_sha256']=='2cb566ab9a9c58f0aef95f3752a43a073098cdf8e417875c9fc557001cc22069' and
+        ssrpc_repair_projection(root,auth)==auth['source_sha256'],'SSRPC_SOURCE')
     ssrpc_source_projection(root)
-    names=(*H4_FILES,'m463_gate3_cp_eval.py','paper_config_preflight.json')
-    h4m12_require(subprocess.run(['git','merge-base','--is-ancestor',auth['source_head'],'HEAD'],cwd=root).returncode==0
-        and subprocess.run(['git','diff','--quiet',auth['source_head'],'HEAD','--',*names],cwd=root).returncode==0,
-        'SSRPC_SOURCE_ANCESTRY')
-    r=ssrpc_read_static(root,auth['static_sha256'])
+    r=ssrpc_read_static(root,auth['static_sha256'],runtime_auth=auth)
     h4m12_require(r['source_head']==auth['source_head'] and r['source_sha256']==auth['source_sha256']
         and r['generated_sha256'][arm]==auth['generated_sha256'],'SSRPC_STATIC_BINDING')
     return auth
@@ -11074,7 +11110,7 @@ def ssrpc_root_only_authorization(root):
         'e09c35a82f06a97fe5406ba36bb3fd9664913583','SSRPC_CLOSED_ROOT')
     current=(root/'G1_RESEARCH_RULES.md').read_bytes()
     h4m12_require(current==git('show','HEAD:G1_RESEARCH_RULES.md'),'SSRPC_ROOT_BYTES')
-    added=[v for v in current.splitlines(keepends=True) if v.startswith(b'H4SSRPC_ACTIVE_GO: ')]
+    added=[v for v in current.splitlines(keepends=True) if v.startswith(b'H4SSRPC_V2_ACTIVE_GO: ')]
     h4m12_require(len(added)==1 and current.replace(added[0],b'',1)==prior,'SSRPC_ROOT_EXACT_ADDITION')
 
 def ssrpc_require_control(root,auth):
@@ -11086,8 +11122,8 @@ def ssrpc_require_control(root,auth):
     h4x_file_pin(out/'report.json',auth['ctrl_report_sha256'])
     h4x_file_pin(out/'supervisor.terminal.json',auth['ctrl_terminal_sha256'])
     a=ssrpc_read_json(out/'attempt.json',65536)['authorization']
-    h4m12_require(a['arm']=='ctrl' and a['source_sha256']==auth['source_sha256'],
-        'SSRPC_MATCHED_CONTROL_SOURCE')
+    h4m12_require(a['arm']=='ctrl' and a['source_sha256']==auth['source_sha256'] and
+        a['repair_head']==auth['repair_head'],'SSRPC_MATCHED_CONTROL_SOURCE')
     report=ssrpc_read_final(root,auth['ctrl_report_sha256'],a)
     ssrpc_control_gate(report,a,auth)
 
@@ -11915,10 +11951,6 @@ def ssrpc_main(argv):
                 print('H4SSRPC_PARTIAL_READER_STOP',repr(failure)[:1024],flush=True)
         raise
 
-# No native work without distinct root-only runtime authorization and paired static receipt.
-if __name__=='__main__' and sys.argv[1:2]==['--h4ssrpc-continuation']:
-    ssrpc_main(sys.argv[2:])
-    sys.exit(0)
 # SSRPC_4B_WORKER_END
 
 # SSRPC_5A_FIXTURES_BEGIN
@@ -12561,7 +12593,7 @@ def ssrpc_static_report_check(r,auth,source,bootstrap):
                   'SSRPC_STATIC_MANIFEST')
     return r
 
-def ssrpc_read_static(root,expected_sha,*,terminal_required=True):
+def ssrpc_read_static(root,expected_sha,*,terminal_required=True,runtime_auth=None):
     import subprocess
     root=Path(root).resolve();out=root/SSRPC_STATIC_OUTPUT
     h4m12_require(out.is_dir() and not out.is_symlink() and not out.parent.is_symlink(),
@@ -12578,11 +12610,18 @@ def ssrpc_read_static(root,expected_sha,*,terminal_required=True):
         type(worker['pid']) is int and worker['pid']>0 and type(worker['parent_pid']) is int
         and worker['parent_pid']==attempt['parent_pid'],'SSRPC_STATIC_WORKER')
     p=out/'report.json';h4x_file_pin(p,expected_sha)
-    source=h4x_source_digest(root)
-    names=(*H4_FILES,'m463_gate3_cp_eval.py','paper_config_preflight.json')
-    h4m12_require(subprocess.run(['git','merge-base','--is-ancestor',auth['source_head'],'HEAD'],cwd=root).returncode==0
-        and subprocess.run(['git','diff','--quiet',auth['source_head'],'HEAD','--',*names],cwd=root).returncode==0,
-        'SSRPC_STATIC_SOURCE_ANCESTRY')
+    if runtime_auth is None:
+        source=h4x_source_digest(root)
+        names=(*H4_FILES,'m463_gate3_cp_eval.py','paper_config_preflight.json')
+        h4m12_require(subprocess.run(['git','merge-base','--is-ancestor',auth['source_head'],'HEAD'],cwd=root).returncode==0
+            and subprocess.run(['git','diff','--quiet',auth['source_head'],'HEAD','--',*names],cwd=root).returncode==0,
+            'SSRPC_STATIC_SOURCE_ANCESTRY')
+    else:
+        h4m12_require(auth['source_head']==runtime_auth['source_head'] and
+            auth['authorization_head']=='52f3c778745a52e7b4eec5de02aa0feb0f3ce783' and
+            expected_sha==runtime_auth['static_sha256'],'SSRPC_V2_HISTORICAL_STATIC')
+        source=ssrpc_repair_projection(root,runtime_auth)
+        h4m12_require(source==runtime_auth['source_sha256'],'SSRPC_V2_HISTORICAL_AGGREGATE')
     r=ssrpc_static_report_check(ssrpc_read_json(p,SSRPC_STATIC_REPORT_CAP),auth,source,ssrpc_bootstrap_identity(root))
     if terminal_required:
         log=out/'worker.log'
@@ -12699,9 +12738,13 @@ def ssrpc_static_main(argv):
             ssrpc_static_write(out/'attempt_result.json',failure)
         raise
 
-if __name__=='__main__' and sys.argv[1:2]==['--h4ssrpc-full-static']:
-    ssrpc_static_main(sys.argv[2:])
+# No native work without distinct root-only runtime authorization and paired static receipt.
+if __name__=='__main__' and sys.argv[1:2]==['--h4ssrpc-continuation']:
+    ssrpc_main(sys.argv[2:])
     sys.exit(0)
+
+if __name__=='__main__' and sys.argv[1:2]==['--h4ssrpc-full-static']:
+    raise RuntimeError('SSRPC_V2_HISTORICAL_STATIC_CONSUMED_NO_RERUN')
 # SSRPC_5A_STATIC_SUPERVISOR_END
 # H4SSRPC_HELD_TRAINER_END
 if __name__=='__main__': main()
