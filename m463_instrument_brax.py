@@ -2533,3 +2533,111 @@ def make_ffe2_integrated_source(raw):
     compile(s,'<FFE2 integrated candidate>','exec')
     return s,original
 # H4FFE2_INTEGRATED_GENERATOR_HELD_END
+
+# H4SSRPC_HELD_INSTRUMENT_BEGIN
+SSRPC_LANE_FIELDS=(
+    'group1','due1','first_due','first_k1','first_episode1','first_terminal',
+    'repeat_opened','first_miss','first_reason','gap35_seen','mode_cost1',
+    'high_mask1','eligible_high','eligible_inclusive','repeat_k1','repeat_episode1',
+    'repeat_terminal','repeat_miss','repeat_reason','tail_ticks','tail_alive',
+    'tail_same_alive','executed_bits','survived_bits','same_alive_bits',
+    'close_terminal','close_boundary','close_repeat','close_complete',
+    'tail_refresh','nonopened_reason','tail_incoherent')
+SSRPC_TAIL_AGES=(1,10,25,50,100,250)
+
+def ssrpc_batch_contract(xp,data,before,after,before_done,after_done,arm):
+    """Retain V2 legacy/reward/clock/tail replay plus separate predicate."""
+    from m463_coverage_env import (ssrpc_pre_ctrl,ssrpc_pre_cand,ssrpc_post,
+                                   ssrpc_labels_ctrl,ssrpc_labels_cand)
+    if arm not in ('ctrl','cand'):
+        raise RuntimeError('SSRPC_ARM')
+    pre,label=(ssrpc_pre_ctrl,ssrpc_labels_ctrl) if arm=='ctrl' else (ssrpc_pre_cand,ssrpc_labels_cand)
+    bad=ffe2_batch_contract(xp,data,before,after,before_done,after_done,pre,ssrpc_post,label)
+    z=lambda k:data.extras['state_extras'][k]
+    k=z('ffe_before_k')
+    waiting=(z('ffe_before_phase')==2)&(z('ffe_before_hard')==1)&(z('ffe_before_block')==1)
+    at35=waiting&(k==z('ffe_before_repeat_due'))
+    cell=z('ffe_before_cell')
+    mode=z('ffe_mode');cost=z('ffe_cost')
+    common=at35&(z('h4_boundary')==0)&(z('m463_no_push')==0)&(z('ffe_pre_coherent')==1)&(
+        z('ffe_source_step')<500)&(z('ffe_geometry_valid')==1)&xp.isfinite(cost)&(
+        cost>=0)&(cost<=1)&(z('ffe_count')==1)&(mode==xp.where(cell<2,cell+1,3))
+    expected=common&((cost>=xp.asarray(.5,xp.float32)) if arm=='ctrl' else xp.ones_like(common))
+    first=z('ffe_first')==1;rep=z('ffe_repeat')==1
+    opened=first&(z('ffe_after_phase')==2)
+    return bad|(rep!=expected)|(at35!=(z('ffe2_repeat_risk')==1))|(
+        at35&(z('ffe2_gap')!=35))|(opened&(z('ffe_after_repeat_due')!=k+35))|(
+        rep&(z('m463_repeat_gap')!=35))|(waiting&(k>z('ffe_before_repeat_due')))|(
+        first&(z('h4_age')>k))|(rep&(z('h4_age')>k))
+
+def ssrpc_lane_reduce(xp,extras,before,valid):
+    """32 additive lane columns, one hard assignment/repeat per continuation.
+    Absolute episode-start tick = k - episode age, encoded +1.
+    Tail bits use disjoint ages; host checks no duplicate age across chunks.
+    """
+    z=lambda k:extras[k]
+    x=lambda k:z('ffe_'+k)
+    y=lambda k:z('ffe2_'+k)
+    k=x('before_k');episode=k-z('h4_age')+1
+    assigned=y('assigned')==1;first=y('first_event')==1;rep=y('repeat_event')==1
+    opened=y('repeat_opened')==1;fm=y('first_miss')==1;rm=y('repeat_miss')==1
+    risk=y('repeat_risk')==1
+    cost_high=x('cost')>=xp.asarray(.5,xp.float32)
+    high_mask=(y('repeat_mask')&127)|((~cost_high).astype(xp.int32)<<7)
+    inc=risk&((high_mask&127)==0)&(x('bad')==0)
+    high=inc&cost_high
+    def prev(key):
+        return xp.concatenate((before[key][:,None],z(key)[:,:-1]),axis=1)
+    prior=(prev('ffe_tail_stratum')==2)&(prev('h4_tail_kind')==2)
+    tick=(x('tick_stratum')==2)&(z('h4_tick_kind')==2)
+    alive=tick&(z('h4_tick_survived')==1)
+    same=alive&(x('tick_same')==1)
+    def total(mask,value=1):
+        return xp.sum(xp.where(mask,value,0),axis=1,dtype=xp.int32)
+    bits=xp.zeros_like(k,dtype=xp.int32)
+    for i,a in enumerate(SSRPC_TAIL_AGES):
+        bits=bits|xp.where(z('h4_tick_age')==a,1<<i,0)
+    values=(
+        total(assigned,1+4*x('after_band')+x('after_cell')),
+        total(assigned,x('after_due')+1),total(y('first_due')==1),
+        total(first,k+1),total(first,episode),total(first&(x('terminal')==1)),
+        total(opened),total(fm),total(fm,x('reason')),total(risk),
+        total(risk,xp.where(y('mode_cost')>=0,y('mode_cost')+1,9)),
+        total(risk,high_mask+1),total(high),total(inc),total(rep,k+1),
+        total(rep,episode),total(rep&(x('terminal')==1)),total(rm),
+        total(rm,x('reason')),total(tick),total(alive),total(same),
+        total(tick,bits),total(alive,bits),total(same,bits),
+        total(prior&(z('h4_close_terminal')==1)),total(prior&(z('h4_close_boundary')==1)),
+        total(prior&(z('h4_close_repeat')==1)),total(prior&(z('h4_close_complete')==1)),
+        total(tick&(x('refresh')==1)),total(first&(~opened),x('reason')),
+        total(tick&(x('tick_same')==0)))
+    out=xp.stack(values,axis=1)
+    return xp.where(valid,out,xp.zeros_like(out))
+
+def make_ssrpc_held_source(raw,arm):
+    """Matched generated graph candidate; unconditional HOLD retained."""
+    if arm not in ('ctrl','cand'):
+        raise RuntimeError('SSRPC_ARM')
+    base,original=make_ffe2_held_source(raw)
+    old_guard="  raise RuntimeError('M470_FFE2_GENERATED_EXECUTION_HOLD')\n"
+    hold="  raise RuntimeError('M470_SSRPC_GENERATED_EXECUTION_HOLD')\n"
+    patches=(
+        (old_guard,hold),
+        ("    ffe_bad=ffe2_batch_contract(jnp,data,ffe_before,state.info,ffe_before_done,state.done,ffe2_pre,ffe2_post,ffe2_risk_labels)\n",
+         "    from m463_instrument_brax import ssrpc_batch_contract\n    ffe_bad=ssrpc_batch_contract(jnp,data,ffe_before,state.info,ffe_before_done,state.done,"+repr(arm)+")\n"),
+        ("    coverage.update(ffe2_device_reduce(jnp,ffe_extra,ffe_before,ffe_valid))\n",
+         "    coverage.update(ffe2_device_reduce(jnp,ffe_extra,ffe_before,ffe_valid))\n    from m463_instrument_brax import ssrpc_lane_reduce\n    coverage['ffe2_ssrpc_lane']=ssrpc_lane_reduce(jnp,ffe_extra,ffe_before,ffe_valid)\n"),
+        ("    reduced['ffe2_shadow_last']=jnp.max(metrics['ffe2_shadow_last'],axis=0)\n",
+         "    reduced['ffe2_shadow_last']=jnp.max(metrics['ffe2_shadow_last'],axis=0)\n    reduced['ffe2_ssrpc_lane']=jnp.sum(metrics['ffe2_ssrpc_lane'],axis=0,dtype=jnp.int32)\n"),
+        ("('ffe2_rows','ffe2_lanes','ffe2_hist','ffe2_shadow_last')",
+         "('ffe2_rows','ffe2_lanes','ffe2_hist','ffe2_shadow_last','ffe2_ssrpc_lane')"))
+    s=base
+    for a,b in patches:
+        s=h4c_once(s,a,b)
+    back=s
+    for a,b in reversed(patches):
+        back=h4c_once(back,b,a)
+    if back!=base or s.count(hold)!=1:
+        raise RuntimeError('SSRPC_GENERATOR_PROJECTION')
+    return s,original
+# H4SSRPC_HELD_INSTRUMENT_END
