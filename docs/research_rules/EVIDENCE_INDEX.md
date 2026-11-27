@@ -353,3 +353,6 @@ Each link includes the section until the next heading; ranges are retrieval aids
 
 ## H4-M20-3 one-use PPO authorization
 - [Exact contract and marker](ACTIVE_EXPERIMENT.md#h4-m20-3--ffe-v2-one-use-bounded-ppo-execution--owner-go-2026-11-27); [reviewed base](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/d363299727ff3563affe566a78dd8360974b612b); full-static SHA256 cb824e5830f344e06e7fffd467d93204b258b52304e7f46547dc229be5cc458c, source 492664bafc6aa360bbb6d9671a5ed85f4a1d3596b3f937869ca9d9c58c50ef86, generated 9d20cdd77ac0e3330cb5f3d89df408ba150bc568f1bfa3d4ee2e6399bcba72cf. Runtime receipt expected at m463_runs/m470_h4_m20_ffe_v2; no new empirical evidence yet.
+
+## H4-M20-3 closure and H4-M21-1 held GO
+- [Root-only closure](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/6f802ffc3bc1135822034d0085751b3c8b378ff5); [frozen training authorization](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/8cd304731cd35cd631cc994f424006a0d0e1d3ed). Exact 8 uploaded hashes, remaining local pins, receipt limitations and H4-M21-1 scope in ACTIVE_EXPERIMENT latest section; frozen scientific gates unchanged.
