@@ -908,7 +908,7 @@ class CoverageJoystick(joystick.Joystick):
     boundary for re-sampling push targets and counters.  Tracking `age` also
     supports a direct/unwrapped one-env diagnostic.
     """
-    def __init__(self, *, stage: str, config, task='flat_terrain', h1_m1=False, h1_m2=False, h3_m1=False, h4_arm=None, h4cc_arm=None, h4m6_arm=None, h4m6_tech_capture=False, h4m8_common=False, h4red=False, r11=False, r12=False, ffe=False):
+    def __init__(self, *, stage: str, config, task='flat_terrain', h1_m1=False, h1_m2=False, h3_m1=False, h4_arm=None, h4cc_arm=None, h4m6_arm=None, h4m6_tech_capture=False, h4m8_common=False, h4red=False, r11=False, r12=False, ffe=False, ffe2=False):
         if stage not in STAGES:
             raise ValueError('M463_BAD_STAGE')
         if bool(config.push_config.enable):
@@ -960,6 +960,10 @@ class CoverageJoystick(joystick.Joystick):
             raise ValueError('M470_R11_ENV_CONTRACT')
         if type(r12) is not bool or (r12 and (stage!='easy_repeat_support' or h4_arm!='control' or r11 or h4red or h1_m1 or h1_m2 or h3_m1 or h4cc_arm is not None or h4m6_arm is not None or h4m6_tech_capture or h4m8_common)):
             raise ValueError('M470_R12_ENV_CONTRACT')
+        if type(ffe) is not bool or type(ffe2) is not bool or (ffe2 and ffe):
+            raise ValueError('M470_FFE2_MODE_CONFLICT')
+        self._ffe2 = ffe2
+        ffe = ffe or ffe2
         if type(ffe) is not bool or (ffe and (stage!='easy_repeat_support' or
                 h4_arm!='control' or h4red or r11 or r12 or h1_m1 or h1_m2 or h3_m1 or
                 h4cc_arm is not None or h4m6_arm is not None or h4m6_tech_capture or h4m8_common or
@@ -1140,6 +1144,8 @@ class CoverageJoystick(joystick.Joystick):
             info.update(r12_init(jp))
         if self._ffe:
             info.update(ffe_env_init(jp))
+            if self._ffe2:
+                info.update(ffe2_env_init(jp))
         return state.replace(info=info)
 
     def step(self, state, action):
@@ -1226,7 +1232,8 @@ class CoverageJoystick(joystick.Joystick):
             ffe_coherent=(jp.all(pre_command==0)&
                 jp.all(state.obs['state'][9:12]==pre_command)&
                 jp.all(state.obs['privileged_state'][9:12]==pre_command)&(state.done==0))
-            ffe_prestate,ffe_pick=ffe_pre(jp,ffe_old,hard_draw=ffe_hard,
+            ffe_pre_fn=ffe2_pre if self._ffe2 else ffe_pre
+            ffe_prestate,ffe_pick=ffe_pre_fn(jp,ffe_old,hard_draw=ffe_hard,
                 band_draw=ffe_band,cell_draw=ffe_cell,due_draw=ffe_due,
                 boundary=boundary,nominal=disabled,count=count,coherent=ffe_coherent,
                 source_step=pre_source_step,mode=ffe_mode,cost=ffe_cost,geometry_valid=ffe_geometry)
@@ -1360,12 +1367,13 @@ class CoverageJoystick(joystick.Joystick):
             ffe_post_coherent=(jp.all(out['command']==0)&
                 jp.all(after.obs['state'][9:12]==out['command'])&
                 jp.all(after.obs['privileged_state'][9:12]==out['command']))
-            ffe_new,ffe_result=ffe_post(jp,ffe_prestate,ffe_pick,gap=ffe_gap,
+            ffe_post_fn=ffe2_post if self._ffe2 else ffe_post
+            ffe_new,ffe_result=ffe_post_fn(jp,ffe_prestate,ffe_pick,gap=ffe_gap,
                 post_coherent=ffe_post_coherent,terminal=after.done>0,
                 refresh=pre_source_step>=500)
             # Only an actual first with a coherent, live continuation assigns
             # a hard repeat. A terminal first remains an actual first event.
-            gap=jp.where(ffe_block,ffe_gap,gap)
+            gap=jp.where(ffe_block,30 if self._ffe2 else ffe_gap,gap)
             repeat_allowed=jp.where(ffe_block,
                 ffe_pick['first']&(ffe_new['phase']==FFE_REPEAT),repeat_allowed)
         new_next = jp.where(event & repeat_allowed, age + gap,
@@ -1617,6 +1625,17 @@ class CoverageJoystick(joystick.Joystick):
                 out.update({'ffe_'+prefix+k:jp.asarray(v,jp.int32) for k,v in values.items()})
             out.update(ffe_native=jp.asarray(after.reward,jp.float32),
                        ffe_cost=jp.asarray(ffe_cost,jp.float32))
+            if self._ffe2:
+                shadow=info['ffe2_shadow_gap']
+                shadow_next=jp.where(ffe_pick['first'],ffe_gap,shadow).astype(jp.int32)
+                labels=ffe2_risk_labels(jp,ffe_old,ffe_prestate,ffe_pick,ffe_new,ffe_result,
+                    boundary=boundary,nominal=disabled,count=count,coherent=ffe_coherent,
+                    source_step=pre_source_step,mode=ffe_mode,cost=ffe_cost,geometry_valid=ffe_geometry,
+                    shadow_gap=shadow,terminal=after.done>0,refresh=pre_source_step>=500,
+                    post_coherent=ffe_post_coherent)
+                out.update(ffe2_shadow_gap=shadow_next,ffe2_shadow_before=shadow,
+                           ffe2_shadow_after=shadow_next)
+                out.update({'ffe2_'+k:jp.asarray(v,jp.int32) for k,v in labels.items()})
         return after.replace(info=out)
 
 # H4FFE2_HELD_CORE_BEGIN
@@ -1758,3 +1777,23 @@ def ffe2_risk_labels(xp,old,pre,pick,nxt,result,*,boundary,nominal,count,
         bad=result['bad']|(first_event!=first_eligible)|(repeat_event!=repeat_eligible)|
             (wait&((shadow_gap<30)|(shadow_gap>32))))
 # H4FFE2_HELD_CORE_END
+
+# H4FFE2_ENV_SCHEMA_BEGIN
+# V2-only fields. Stable per-lane carry through natural episode boundaries.
+FFE2_LABEL_KEYS=('assigned','first_due','first_risk','first_eligible','first_event',
+    'first_terminal','first_miss','repeat_opened','repeat_wait','repeat_risk',
+    'repeat_eligible','repeat_event','repeat_miss','repeat_terminal','first_mask',
+    'repeat_mask','first_shadow','first_extended','repeat_shadow','repeat_extended',
+    'gap','mode_cost','pre_reason','post_reason','terminal','refresh','post_coherent','bad')
+FFE2_ROW_FIELDS=tuple('ffe2_'+k for k in FFE2_LABEL_KEYS)+(
+    'ffe2_shadow_before','ffe2_shadow_after')
+FFE2_CARRY_FIELDS=('ffe2_shadow_gap',)
+
+def ffe2_env_init(xp):
+    negative={'first_mask','repeat_mask','gap','mode_cost'}
+    row={'ffe2_'+k:xp.asarray(-1 if k in negative else 0,xp.int32)
+         for k in FFE2_LABEL_KEYS}
+    row.update({k:xp.asarray(-1,xp.int32) for k in (
+        'ffe2_shadow_gap','ffe2_shadow_before','ffe2_shadow_after')})
+    return row
+# H4FFE2_ENV_SCHEMA_END

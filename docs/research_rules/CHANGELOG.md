@@ -12,3 +12,6 @@ Owner-approved offline design only: freeze proposed FFE-V2 timing, risk-set deno
 
 ## 2026-11-27 — H4-M20-1 partial held source (governance v2.0.0 unchanged)
 Owner full held GO; three isolated source blocks added, no executable dispatch or native run. Full integration incomplete; static/runtime HOLD. Source projection verified by connector text readback, no local fixture execution. Frozen gates/authorization/history unchanged. Base 8d7bcbe30e949d6f99694f096861b7e810cd958b.
+
+## 2026-11-27 — H4-M20-1 continuation (governance v2.0.0 unchanged)
+V2 opt-in environment and held generator, device chunk aggregation and host chunk replay drafted; full integration remains incomplete. No fixture execution, runtime authorization or scientific gate change. Base 36cb15f09d2b4459427797132b68e3aec309d805.

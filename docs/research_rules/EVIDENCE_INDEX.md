@@ -326,3 +326,6 @@ Each link includes the section until the next heading; ranges are retrieval aids
 
 ## H4-M20-1 partial held source
 - [Status, exact source blobs, remaining blockers](ACTIVE_EXPERIMENT.md#h4-m20-1--partial-held-source-candidate-2026-11-27). Design parent [8d7bcbe30e949d6f99694f096861b7e810cd958b](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/8d7bcbe30e949d6f99694f096861b7e810cd958b); no empirical result or static receipt. Exact projection to parent verified by connector text comparison.
+
+## H4-M20-1 continuation
+- [Held environment/generator/chunk candidate and blockers](ACTIVE_EXPERIMENT.md#h4-m20-1-continuation--held-environmentgeneratorchunk-wiring-candidate-2026-11-27); base [36cb15f09d2b4459427797132b68e3aec309d805](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/36cb15f09d2b4459427797132b68e3aec309d805). Source-only, no static or empirical receipt.

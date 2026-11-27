@@ -8962,4 +8962,151 @@ def h4ffe2_reference_merge(np,rollouts):
                         lane_bits={k:v.tobytes().hex() for k,v in lanes.items()},hist=hist)
     return out
 # H4FFE2_HELD_TRAINER_END
+
+# H4FFE2_HELD_WIRING_BEGIN
+def h4ffe2_project_state(state,jax,np,*,reset=False):
+    """V2-specific projection before comparing to immutable CTRL state."""
+    from m463_coverage_env import ffe2_env_init
+    schema=ffe2_env_init(np);info=dict(state.info)
+    h4m12_require({k for k in info if k.startswith('ffe2_')}==set(schema),
+                   'FFE2_INFO_SCHEMA')
+    for k,v in schema.items():
+        x=info.pop(k)
+        h4m12_require(x.shape==(1,8192)+v.shape and np.dtype(x.dtype)==v.dtype,
+                       'FFE2_INFO_LEAF_'+k)
+        if reset:
+            a=np.asarray(jax.device_get(x))
+            h4m12_require(np.isfinite(a).all() and np.all(a==v),'FFE2_RESET_'+k)
+    return h4ffe_project_state(state.replace(info=info),jax,np,reset=reset)
+
+# The V2 candidate is not routed from main/worker or supervisor.
+# Exact historical full-file pin checks remain fail-closed at changed HEAD.
+# H4FFE2_HELD_WIRING_END
+
+# H4FFE2_DEVICE_READER_HELD_BEGIN
+def h4ffe2_chunk_payload(np,payload):
+    """Validate device payload at chunk edge; no implicit coercion of counts."""
+    from m463_instrument_brax import FFE2_DEVICE_FLAGS,FFE2_HIST_SIZES,FFE2_LANE_BYTES
+    if set(payload)!={'ffe2_rows','ffe2_lanes','ffe2_hist'}:
+        raise RuntimeError('FFE2_PAYLOAD_KEYS')
+    rows,lanes,hist=(np.asarray(payload[k]) for k in ('ffe2_rows','ffe2_lanes','ffe2_hist'))
+    n=len(FFE2_DEVICE_FLAGS)
+    if rows.shape!=(16,n) or rows.dtype!=np.int32 or lanes.shape!=(16,n,FFE2_LANE_BYTES) or lanes.dtype!=np.uint8 or hist.shape!=(16,sum(FFE2_HIST_SIZES)) or hist.dtype!=np.int32:
+        raise RuntimeError('FFE2_PAYLOAD_SCHEMA')
+    if np.any(rows<0) or np.any(rows>8192*160) or np.any(hist<0) or np.any(hist>8192*160):
+        raise RuntimeError('FFE2_PAYLOAD_RANGE')
+    unique=np.unpackbits(lanes,axis=-1,bitorder='little').sum(axis=-1,dtype=np.int64)
+    if np.any(unique>rows) or np.any(rows>unique*160):
+        raise RuntimeError('FFE2_PAYLOAD_MEMBERSHIP')
+    idx={k:i for i,k in enumerate(FFE2_DEVICE_FLAGS)}
+    for a,b in (('first_event','first_eligible'),('first_eligible','first_risk'),
+                ('repeat_event','repeat_eligible'),('repeat_eligible','repeat_risk'),
+                ('repeat_opened','first_event')):
+        if np.any(rows[:,idx[a]]>rows[:,idx[b]]) or np.any(lanes[:,idx[a]]&(~lanes[:,idx[b]])):
+            raise RuntimeError('FFE2_PAYLOAD_SUBSET')
+    for stage in ('first','repeat'):
+        for what in ('risk','eligible','event'):
+            aa=stage+'_shadow'+('' if what=='risk' else '_'+what)
+            bb=stage+'_extended'+('' if what=='risk' else '_'+what)
+            cc=stage+'_'+what
+            if np.any(rows[:,idx[aa]]+rows[:,idx[bb]]!=rows[:,idx[cc]]) or np.any((lanes[:,idx[aa]]|lanes[:,idx[bb]])!=lanes[:,idx[cc]]):
+                raise RuntimeError('FFE2_PAYLOAD_SHADOW')
+    h=np.split(hist,np.cumsum(FFE2_HIST_SIZES)[:-1],axis=1)
+    targets=('first_risk','repeat_risk','repeat_risk',None,'first_miss','first_miss','repeat_miss','repeat_miss')
+    for v,k in zip(h,targets):
+        if k is not None and np.any(v.sum(axis=1)!=rows[:,idx[k]]):
+            raise RuntimeError('FFE2_PAYLOAD_HIST')
+    if np.any(h[3].sum(axis=1)>rows[:,idx['repeat_risk']]) or np.any(h[0][:,0]!=rows[:,idx['first_eligible']]) or np.any(h[1][:,0]!=rows[:,idx['repeat_eligible']]):
+        raise RuntimeError('FFE2_PAYLOAD_ELIGIBILITY')
+    return dict(rows=rows.tolist(),unique=unique.tolist(),hist=hist.tolist(),
+        lane_bits=[[v.tobytes().hex() for v in group] for group in lanes])
+
+def h4ffe2_check_candidate_projection(root):
+    """Read-only reverse tracked source diff in temporary tree; original
+    checkout untouched. Exact baseline is frozen pre-V2 design commit."""
+    import subprocess,tempfile
+    from pathlib import Path
+    root=Path(root).resolve()
+    names=tuple(H4FFE2_PARENT_BLOBS)
+    diff=subprocess.check_output(['git','diff','--binary','--no-ext-diff',
+        H4FFE2_DESIGN_HEAD,'HEAD','--',*names],cwd=root)
+    with tempfile.TemporaryDirectory(prefix='ffe2_projection_') as d:
+        p=Path(d)
+        for name in names:
+            raw=(root/name).read_bytes()
+            if raw!=subprocess.check_output(['git','show','HEAD:'+name],cwd=root):
+                raise RuntimeError('FFE2_TRACKED_SOURCE '+name)
+            (p/name).write_bytes(raw)
+        subprocess.run(['git','apply','--reverse','--binary','--whitespace=nowarn','-'],
+            cwd=d,input=diff,check=True,capture_output=True)
+        import hashlib
+        for name,pin in H4FFE2_PARENT_BLOBS.items():
+            raw=(p/name).read_bytes()
+            digest=hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()
+            if digest!=pin:raise RuntimeError('FFE2_PROJECTION_PIN '+name)
+    return True
+# H4FFE2_DEVICE_READER_HELD_END
+
+# H4FFE2_CHUNK_REPLAY_HELD_BEGIN
+def h4ffe2_replay_chunk_records(np,records,*,complete=False):
+    """Strict reference replay of persisted committed chunk payloads.
+    This is not a full training report or artifact/provenance reader."""
+    from m463_instrument_brax import FFE2_DEVICE_FLAGS,FFE2_HIST_SIZES,FFE2_LANE_BYTES
+    if type(records) is not list or not 0<=len(records)<=4 or (complete and len(records)!=4):
+        raise RuntimeError('FFE2_RECORD_COUNT')
+    n=len(FFE2_DEVICE_FLAGS);h=sum(FFE2_HIST_SIZES)
+    rows=np.zeros((16,n),np.int64);hist=np.zeros((16,h),np.int64)
+    lanes=np.zeros((16,n,FFE2_LANE_BYTES),np.uint8)
+    def integers(v,width,upper):
+        if type(v) is not list or len(v)!=16 or any(
+                type(row) is not list or len(row)!=width or any(
+                type(x) is not int or not 0<=x<=upper for x in row) for row in v):
+            raise RuntimeError('FFE2_RECORD_INT')
+        return np.asarray(v,dtype=np.int32)
+    for i,record in enumerate(records,1):
+        if type(record) is not dict or set(record)!={'index','payload'} or type(record['index']) is not int or record['index']!=i:
+            raise RuntimeError('FFE2_RECORD_SCHEMA')
+        q=record['payload']
+        if type(q) is not dict or set(q)!={'rows','unique','hist','lane_bits'}:
+            raise RuntimeError('FFE2_RECORD_PAYLOAD')
+        rr=integers(q['rows'],n,8192*160);hh=integers(q['hist'],h,8192*160)
+        uu=integers(q['unique'],n,8192)
+        bb=q['lane_bits']
+        if type(bb) is not list or len(bb)!=16 or any(type(g) is not list or len(g)!=n for g in bb):
+            raise RuntimeError('FFE2_RECORD_BITMAP')
+        packed=np.zeros_like(lanes)
+        for j,group in enumerate(bb):
+            for k,value in enumerate(group):
+                if type(value) is not str or len(value)!=2*FFE2_LANE_BYTES or any(c not in '0123456789abcdef' for c in value):
+                    raise RuntimeError('FFE2_RECORD_HEX')
+                packed[j,k]=np.frombuffer(bytes.fromhex(value),dtype=np.uint8)
+        normalized=h4ffe2_chunk_payload(np,dict(ffe2_rows=rr,ffe2_lanes=packed,ffe2_hist=hh))
+        if normalized!=q or not np.array_equal(uu,np.asarray(normalized['unique'])):
+            raise RuntimeError('FFE2_RECORD_REPLAY')
+        rows+=rr;hist+=hh;lanes|=packed
+    idx={k:i for i,k in enumerate(FFE2_DEVICE_FLAGS)}
+    assigned=rows[:,idx['assigned']]
+    first=rows[:,idx['first_event']];fm=rows[:,idx['first_miss']]
+    opened=rows[:,idx['repeat_opened']]
+    repeat=rows[:,idx['repeat_event']];rm=rows[:,idx['repeat_miss']]
+    if np.any(first+fm>assigned) or np.any(opened>first) or np.any(repeat+rm>opened):
+        raise RuntimeError('FFE2_RECORD_CONSERVATION')
+    if complete and (np.any(first+fm!=assigned) or np.any(repeat+rm!=opened)):
+        raise RuntimeError('FFE2_RECORD_FINAL_PENDING')
+    # Hard assignment fixed across continuation: groups disjoint for assigned lanes.
+    abits=lanes[:,idx['assigned']]
+    if np.any(np.unpackbits(abits,axis=-1,bitorder='little').sum(axis=0)>1):
+        raise RuntimeError('FFE2_RECORD_GROUP_IDENTITY')
+    for name in ('first_event','first_miss','repeat_opened','repeat_event','repeat_miss'):
+        bits=lanes[:,idx[name]]
+        if np.any(bits&(~abits)) or np.any(np.unpackbits(bits,axis=-1,bitorder='little').sum(axis=-1)!=rows[:,idx[name]]):
+            raise RuntimeError('FFE2_RECORD_EVENT_IDENTITY '+name)
+    if np.any(lanes[:,idx['first_event']]&lanes[:,idx['first_miss']]) or np.any(lanes[:,idx['repeat_event']]&lanes[:,idx['repeat_miss']]):
+        raise RuntimeError('FFE2_RECORD_EVENT_MISS_OVERLAP')
+    if np.any(lanes[:,idx['repeat_opened']]&(~lanes[:,idx['first_event']])) or np.any((lanes[:,idx['repeat_event']]|lanes[:,idx['repeat_miss']])&(~lanes[:,idx['repeat_opened']])):
+        raise RuntimeError('FFE2_RECORD_REPEAT_IDENTITY')
+    return dict(rows=rows.tolist(),unique=np.unpackbits(lanes,axis=-1,bitorder='little').sum(axis=-1).tolist(),
+                hist=hist.tolist(),first_pending=(assigned-first-fm).tolist(),
+                repeat_pending=(opened-repeat-rm).tolist())
+# H4FFE2_CHUNK_REPLAY_HELD_END
 if __name__=='__main__': main()
