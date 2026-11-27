@@ -14712,7 +14712,7 @@ def h4m23_post_capture(pre,action,next_state,env,jnp):
     sample=r11_sample(jnp,env.mjx_model,d,env._feet_geom_id,env._floor_geom_id)
     cost,mode,valid=r12_cost(jnp,sample)
     return dict(h4m3_post_capture(pre,action,next_state,env),
-        actor_action=action,sent_action=action,post_air=info['feet_air_time'],
+        actor_action=action,sent_action=action,post_rng=info['rng'],post_air=info['feet_air_time'],
         post_contact=c,post_phase=info['phase'],post_command=info['command'],
         first_contact_derived=fc,reward_air_derived=air,per_foot_air_derived=per,
         phase_z=z,foot_site_xyz=d.site_xpos[env._feet_site_id],post_last_act=info['last_act'],
@@ -14854,19 +14854,22 @@ def h4m23_schedule(lanes):
 def h4m23_check_event(key,expected,p,m,np):
     i,k,t=key
     if k in ('nominal','first','single','double'):
-        h4m23_req(set(p)=={'row','rich'} and p['row']==expected,'EXACT_ROW')
+        h4m23_req(set(p)=={'row','rich'} and len(p['row'])==46
+            and all(type(x) is float and math.isfinite(x) for x in p['row']) and p['row']==expected,'EXACT_ROW')
         if t>=295:h4m23_check_rich(p['rich'],p['row'],m,np)
         else:h4m23_req(p['rich'] is None,'EARLY_RICH')
     elif k in ('kick1','kick2'):
-        h4m23_req(set(p)=={'meta','audit','base_digest','restored_digest'}
-            and p['meta']==expected and p['base_digest']==p['restored_digest'],'KICK_META')
+        h4m23_req(set(p)=={'meta','audit','base_digest','restored_digest','kicked_digest'}
+            and p['meta']==expected and p['base_digest']==p['restored_digest']
+            and all(h4m23_is_digest(p[x]) for x in ('base_digest','restored_digest','kicked_digest')),'KICK_META')
         a=p['audit'];before=np.asarray(a['qvel_before']);after=np.asarray(a['qvel_after'])
-        h4m23_req(a['tick']==t and before.shape==after.shape==(35,) and
+        h4m23_req(set(a)=={'tick','qvel_before','qvel_after'} and a['tick']==t and before.shape==after.shape==(35,) and
             np.isfinite(before).all() and np.isfinite(after).all()
             and np.array_equal(before[2:],after[2:]) and np.array_equal(after[:2]-before[:2],
                 expected['actual_world_dqvel_xy_mps']),'KICK_REPLAY')
     elif k=='fork':
-        h4m23_req(set(p)=={'parent','single','double'} and p['parent']==p['single']==p['double'],'FORK_DIGEST')
+        h4m23_req(set(p)=={'parent','single','double'} and h4m23_is_digest(p['parent'])
+            and p['parent']==p['single']==p['double'],'FORK_DIGEST')
     elif k=='reset':
         h4m23_req(p==dict(seed=H4M23_LANES[i][0],actor_shape=[103],critic_shape=[216],done=False),'RESET_RECORD')
     else:h4m23_req(p=={'boundary':k},'BOUNDARY_RECORD')
@@ -14912,7 +14915,7 @@ def h4m23_read_journal(path,auth,pins,lanes,*,complete=False,ext=None,deadline=N
     h4m23_req(p.is_file() and not p.is_symlink() and p.resolve()==p.absolute()
         and 0<p.stat().st_size<=H4M23_SPEC['report_cap'],'READER_PATH')
     plan=h4m23_schedule(lanes);n=0;pending=None;physical=rich=resets=suffixes=kicks=0
-    fork={};single335={}
+    fork={};single335={};last={};kick_audits={}
     def parse(b):
         h4m23_req(b.endswith(b'\n') and len(b)<=1024**2,'READER_LINE')
         def unique(pairs):
@@ -14938,15 +14941,32 @@ def h4m23_read_journal(path,auth,pins,lanes,*,complete=False,ext=None,deadline=N
             v=obj['payload'];h4m23_check_event(key,expected,v,m,np);i,k,t=key
             if k in ('nominal','first','single','double'):
                 physical+=1;rich+=int(t>=295)
+                if t>=295:
+                    r=v['rich'];track='common' if k in ('nominal','first') else k
+                    prev=last.get((i,track))
+                    if t==335 and k in ('single','double'):prev=last[(i,'common')]
+                    if prev is not None:
+                        for before,after in (('qpos_pre','qpos_post'),('time_pre','time_post'),('rng','post_rng'),
+                            ('info_phase','post_phase'),('pre_air','post_air'),('pre_contact','post_contact'),
+                            ('last_act','post_last_act'),('last_last_act','post_last_last_act')):
+                            h4m23_req(np.array_equal(r[before],prev[after]),'STATE_LINK_'+before)
+                        event='kick1' if t==300 else 'kick2' if k=='double' and t==335 else None
+                        if event:
+                            audit=kick_audits[(i,event)]
+                            h4m23_req(np.array_equal(prev['qvel_post'],audit['qvel_before'])
+                                and np.array_equal(r['qvel_pre'],audit['qvel_after']),'KICK_STATE_LINK')
+                        else:h4m23_req(np.array_equal(r['qvel_pre'],prev['qvel_post']),'QVEL_LINK')
+                    last[(i,track)]=r
                 if t==335 and k=='single':single335[i]=v['rich']
                 if t==335 and k=='double':
-                    for field in ('actor_input','critic_input','rng','actor_action','sent_action','target'):
+                    for field in ('actor_input','critic_input','rng','actor_action','sent_action','target',
+                                  'qpos_pre','info_phase','pre_air','pre_contact','last_act','last_last_act','time_pre'):
                         h4m23_req(np.array_equal(single335[i][field],v['rich'][field]),'FORK_ACTION_'+field)
             elif k=='reset':resets+=1
             elif k.startswith('end_'):suffixes+=1
             elif k=='fork':fork[i]=v['parent']
             elif k.startswith('kick'):
-                kicks+=1
+                kicks+=1;kick_audits[(i,k)]=v['audit']
                 if k=='kick2':h4m23_req(v['base_digest']==fork[i],'SIBLING_DIGEST')
             n+=1;pending=None
     h4m23_req(physical<=1308 and rich<=426 and resets<=3 and suffixes<=6 and kicks<=6,'READER_BUDGET')
@@ -14980,7 +15000,7 @@ def h4m23_native_lane(args,i,env,step_fn,jax,jnp,np):
         key=[i,k,t];j.begin(key);base=dg(st)
         nxt,meta,audit=h4m3_native_kick(st,l['direction'],mag,t,jax,jnp,np)
         restored=nxt.replace(data=nxt.data.replace(qvel=st.data.qvel))
-        j.record(key,dict(meta=meta,audit=audit,base_digest=base,restored_digest=dg(restored)))
+        j.record(key,dict(meta=meta,audit=audit,base_digest=base,restored_digest=dg(restored),kicked_digest=dg(nxt)))
         return nxt
     key=[i,'reset',0];j.begin(key);st=env.reset(jax.random.PRNGKey(l['seed']))
     j.record(key,dict(seed=l['seed'],actor_shape=list(st.obs['state'].shape),
@@ -15073,7 +15093,7 @@ def h4m23_native_schema(raw,m,np):
     shapes.update(contact_pos=(n,3),contact_frame=(n,3,3),contact_dist=(n,),
         contact_includemargin=(n,),contact_friction=(n,5),efc_force=(len(raw['efc_force']),))
     ints=dict(contact_geom=(n,2),contact_dim=(n,),contact_address=(n,),capture_mode=())
-    h4m23_req(set(raw)==set(shapes)|set(ints)|set(H4M23_BOOL_SHAPES)|{'rng','reward'},'NATIVE_KEYS')
+    h4m23_req(set(raw)==set(shapes)|set(ints)|set(H4M23_BOOL_SHAPES)|{'rng','post_rng','reward'},'NATIVE_KEYS')
     for k,shape in shapes.items():
         x=np.asarray(raw[k])
         h4m23_req(x.shape==shape and x.dtype==np.float32,'NATIVE_FLOAT_'+k)
@@ -15082,7 +15102,8 @@ def h4m23_native_schema(raw,m,np):
         x=np.asarray(raw[k]);h4m23_req(x.shape==shape and x.dtype.kind in 'iu','NATIVE_INT_'+k)
     for k,shape in H4M23_BOOL_SHAPES.items():
         x=np.asarray(raw[k]);h4m23_req(x.shape==shape and x.dtype==np.bool_,'NATIVE_BOOL_'+k)
-    h4m23_req(np.asarray(raw['rng']).shape==(2,) and np.asarray(raw['rng']).dtype==np.uint32,'NATIVE_RNG')
+    for k in ('rng','post_rng'):
+        h4m23_req(np.asarray(raw[k]).shape==(2,) and np.asarray(raw[k]).dtype==np.uint32,'NATIVE_RNG_'+k)
     h4m23_req(set(raw['reward'])==set(m['reward_keys']),'NATIVE_REWARD_KEYS')
     for k,v in raw['reward'].items():
         x=np.asarray(v);h4m23_req(x.shape==() and x.dtype==np.float32 and np.isfinite(x),'NATIVE_REWARD_'+k)
@@ -15116,7 +15137,7 @@ def h4m23_capture_host(xi,rects,loads,np):
 
 def h4m23_independent_fields(p,row,m,np):
     floats=dict(H4M23_FLOAT_SHAPES,feet_sensor_velocity=np.asarray(m['feet_sensor_addresses']).shape)
-    core=set(floats)|set(H4M23_BOOL_SHAPES)|{'rng','capture_mode','reward'}
+    core=set(floats)|set(H4M23_BOOL_SHAPES)|{'rng','post_rng','capture_mode','reward'}
     h4m23_req(set(p)==core|set(H4M23_PACK_DERIVED),'PACKED_KEYS')
     dt=p['native_dtype']
     h4m23_req(set(dt)==(core-{'reward'})|set(H4M23_RAW_EXTRA),'DTYPE_KEYS')
@@ -15126,8 +15147,9 @@ def h4m23_independent_fields(p,row,m,np):
             and np.array_equal(x,x.astype(np.float32).astype(x.dtype)),'PACKED_FLOAT_'+k)
     for k,shape in H4M23_BOOL_SHAPES.items():
         x=np.asarray(p[k]);h4m23_req(x.shape==shape and x.dtype==np.bool_ and dt[k]=='bool','PACKED_BOOL_'+k)
-    h4m23_req(dt['rng']=='uint32' and len(p['rng'])==2 and all(type(x) is int and 0<=x<2**32 for x in p['rng'])
-        and dt['capture_mode'] in ('int32','int64') and type(p['capture_mode']) is int,'PACKED_INTEGER')
+    for k in ('rng','post_rng'):
+        h4m23_req(dt[k]=='uint32' and len(p[k])==2 and all(type(x) is int and 0<=x<2**32 for x in p[k]),'PACKED_RNG_'+k)
+    h4m23_req(dt['capture_mode'] in ('int32','int64') and type(p['capture_mode']) is int,'PACKED_INTEGER')
     for k in H4M23_RAW_EXTRA:
         h4m23_req(dt[k] in (('int32','int64') if k in ('contact_geom','contact_dim','contact_address') else ('float32',)),
             'RAW_DTYPE_'+k)
@@ -15206,6 +15228,10 @@ def h4m23_independent_fields(p,row,m,np):
 H4M23_STATIC=Path('m463_runs/m470_h4m23_rich_static_v1.log')
 H4M23_BRANCH='experiment/b1-hardware-scaled'
 H4M23_PARTIAL_READ_S=60
+
+def h4m23_is_digest(s):
+    import re
+    return isinstance(s,str) and re.fullmatch('[0-9a-f]{64}',s) is not None
 
 def h4m23_json_file(path,cap):
     p=Path(path)
@@ -15386,19 +15412,31 @@ def h4m23_check_partial(root,auth,pins,ext,lanes,*,deadline=None,terminal=True):
 
 def h4m23_dispatch(root,child=False):
     import selectors,signal,shutil,time
-    root=Path(root).resolve();auth,pins,ctrl,ext,lanes=h4m23_authorize(root)
+    root=Path(root).resolve()
+    # Missing or conflicting marker is HOLD, before any reservation or native work.
+    auth=h4m23_marker((root/'G1_RESEARCH_RULES.md').read_text('utf8'))
     h4m23_req(os.environ.get('JAX_PLATFORMS')=='cuda'
         and os.environ.get('JAX_DEFAULT_MATMUL_PRECISION')=='highest'
         and os.environ.get('XLA_PYTHON_CLIENT_PREALLOCATE')=='false','CUDA_ENV')
-    if child:return h4m23_worker(root,auth,pins,ctrl,ext,lanes)
+    if child:
+        verified,pins,ctrl,ext,lanes=h4m23_authorize(root)
+        h4m23_req(verified==auth,'CHILD_AUTH')
+        return h4m23_worker(root,auth,pins,ctrl,ext,lanes)
     path=root/H4M23_OUTPUT;out=path.parent
     h4m23_req(shutil.disk_usage(out.parent).free>=H4M23_SPEC['storage_reserve']+
         2*(H4M23_SPEC['report_cap']+H4M23_SPEC['log_cap']),'STORAGE_RESERVE')
     deadline=time.monotonic()+H4M23_SPEC['watchdog_s']
     h4m6_reserve_tech(path,auth)
     h4m6_write_bounded(out/'parent.json',dict(authorization=auth,pid=os.getpid(),deadline=deadline),exclusive=True,cap=8192)
-    proc=None;rc=None;total=0
+    proc=None;rc=None;total=0;pins=ext=lanes=None
+    # Reserve once before full preflight. A valid-marker invocation consumes
+    # the namespace even on provenance failure; no automatic retry.
+    def alarm(signum,frame):raise TimeoutError('M470_H4M23_SUPERVISOR_DEADLINE')
+    old_handler=signal.signal(signal.SIGALRM,alarm)
+    signal.setitimer(signal.ITIMER_REAL,max(.01,deadline-time.monotonic()))
     try:
+        verified,pins,ctrl,ext,lanes=h4m23_authorize(root)
+        h4m23_req(verified==auth,'PARENT_AUTH')
         with (out/'runtime.log').open('xb') as f:
             proc=subprocess.Popen([sys.executable,'-B','-u',str(root/'m463_gate3_cp_eval.py'),'--h4m23-rich','child'],
                 cwd=root,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,start_new_session=True)
@@ -15406,6 +15444,7 @@ def h4m23_dispatch(root,child=False):
                 sel.register(proc.stdout,selectors.EVENT_READ)
                 while True:
                     remaining=deadline-time.monotonic();h4m23_req(remaining>0,'WATCHDOG')
+                    h4m23_req(shutil.disk_usage(out).free>=H4M23_SPEC['storage_reserve'],'SUPERVISOR_STORAGE')
                     if not sel.select(min(remaining,1.)):continue
                     data=os.read(proc.stdout.fileno(),65536)
                     if not data:break
@@ -15420,6 +15459,7 @@ def h4m23_dispatch(root,child=False):
         h4m23_req(result['child_pid']==proc.pid and result['parent_pid']==os.getpid()
             and time.monotonic()<deadline,'SUPERVISOR_RECEIPT')
     except BaseException as exc:
+        signal.setitimer(signal.ITIMER_REAL,0.)
         # Kill only the child process group this supervisor created, never other GPU processes.
         if proc is not None:
             if proc.poll() is None:
@@ -15427,13 +15467,19 @@ def h4m23_dispatch(root,child=False):
                 except ProcessLookupError:pass
             try:rc=proc.wait(timeout=10)
             except subprocess.TimeoutExpired:rc=None
-        try:partial=h4m23_check_partial(root,auth,pins,ext,lanes,deadline=time.monotonic()+H4M23_PARTIAL_READ_S,terminal=False)
+        try:
+            signal.setitimer(signal.ITIMER_REAL,H4M23_PARTIAL_READ_S)
+            partial=h4m23_check_partial(root,auth,pins,ext,lanes,deadline=time.monotonic()+H4M23_PARTIAL_READ_S,terminal=False)
         except Exception as err:
             partial=None;exc=RuntimeError(str(exc)+'; partial rejected: '+repr(err)[:1000])
+        finally:signal.setitimer(signal.ITIMER_REAL,0.)
         h4m6_write_bounded(out/'attempt_result.json',dict(authorization=auth,status='STOP',rc=rc,
             error=repr(exc)[:4096],partial=partial),exclusive=True,cap=1024**2)
         raise RuntimeError('M470_H4M23_STOP_NO_RETRY') from exc
+    finally:
+        signal.setitimer(signal.ITIMER_REAL,0.);signal.signal(signal.SIGALRM,old_handler)
     h4m6_write_bounded(out/'attempt_result.json',result,exclusive=True,cap=1024**2)
+    h4m23_req(h4m23_json_file(out/'attempt_result.json',1024**2)==result,'TERMINAL_WRITE_RECHECK')
     print('H4M23_DIAGNOSTIC_COMPLETE',result['report_sha256'],flush=True)
 
 def h4m23_cli(argv):
