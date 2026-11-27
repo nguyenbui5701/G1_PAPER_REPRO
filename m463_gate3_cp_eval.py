@@ -14725,6 +14725,7 @@ def h4m24_v1_receipts(root):
     return pins
 
 def h4m24_fixture_counts():
+    if H4M26_MODE:return dict(H4M23_FIXTURE_COUNTS,**H4M24_EXTRA_COUNTS,**H4M25_EXTRA_COUNTS,**H4M26_EXTRA_COUNTS)
     if H4M25_MODE:return dict(H4M23_FIXTURE_COUNTS,**H4M24_EXTRA_COUNTS,**H4M25_EXTRA_COUNTS)
     return dict(H4M23_FIXTURE_COUNTS,**H4M24_EXTRA_COUNTS) if H4M24_MODE else H4M23_FIXTURE_COUNTS
 
@@ -14764,7 +14765,7 @@ def h4m24_fixtures(root,b):
     v1='H4M23_RICH_ACTIVE_GO: H4-M23-FFE2-RICH-V1 '+oldout+' '+'a'*64+' '+'b'*64+' '+oldlog+' '+'c'*64
     v1s='H4M23_RICH_STATIC_GO: H4-M23-4-STATIC-V1 '+'a'*40+' '+'b'*40+' '+oldlog
     good('namespace',lambda:h4m23_req(H4M23_OUTPUT.parent!=H4M24_V1_DIR and str(H4M23_STATIC)!=oldlog
-        and H4M23_STATIC_ATTEMPT.name not in H4M24_V1_STATIC and H4M23_CHILD_PREFIX==(['v3'] if H4M25_MODE else ['v2']),'V2_PATHS'))
+        and H4M23_STATIC_ATTEMPT.name not in H4M24_V1_STATIC and H4M23_CHILD_PREFIX==(['v4'] if H4M26_MODE else ['v3'] if H4M25_MODE else ['v2']),'V2_PATHS'))
     bad('namespace',lambda:h4m23_marker(v1),'DISTINCT_MARKER')
     bad('namespace',lambda:h4m23_static_marker(v1s),'STATIC_MARKER')
     bad('namespace',lambda:h4m23_marker(native+'\n'+v1),'HOLD_OR_CONFLICT')
@@ -14859,6 +14860,9 @@ def h4m23_inputs(root):
     if H4M25_MODE:
         pins.update(h4m25_v2_receipts(root))
         ext['h4m25_prior_evaluator_blob']=H4M25_V2_BLOB
+    if H4M26_MODE:
+        pins.update(h4m26_v3_receipts(root))
+        ext['h4m26_prior_evaluator_blob']=H4M26_V3_BLOB
     return pins,ctrl,ext,h4m23_archive_lanes(a)
 
 def h4m23_archive_lanes(a):
@@ -14975,8 +14979,12 @@ def h4m23_check_rich(p,row,m,np):
     co=p['com'];ct=p['contact']
     h4m23_req(co['available'] is True and ct['available'] is True and ct['stage']=='last_forward_solve','COM_CONTACT')
     root=np.asarray(f['body_rootid'])==m['root_body_id'];mass=np.asarray(f['body_mass'])[root]
-    vals=h4m3_com(mass,np.asarray(f['body_inertia'])[root],co['body_xipos'],co['body_ximat'],
-        co['body_cvel'],np.broadcast_to(co['subtree_com'],np.asarray(co['body_xipos']).shape),np)
+    if H4M26_MODE:
+        xp,xm,cv,sc=h4m26_com_operands(co,len(mass),np)
+        vals=h4m3_com(mass,np.asarray(f['body_inertia'])[root],xp,xm,cv,np.broadcast_to(sc,xp.shape),np)
+    else:
+        vals=h4m3_com(mass,np.asarray(f['body_inertia'])[root],co['body_xipos'],co['body_ximat'],
+            co['body_cvel'],np.broadcast_to(co['subtree_com'],np.asarray(co['body_xipos']).shape),np)
     for k,v in zip(('position','velocity','angular_momentum'),vals):
         h4m23_req(np.allclose(v,co[k],atol=2e-5,rtol=0),'COM_REPLAY_'+k)
     loads={'left':0.,'right':0.};seen=set();lf,rf=m['foot_geom_ids'];floor=m['floor_geom_id']
@@ -14984,10 +14992,13 @@ def h4m23_check_rich(p,row,m,np):
         pair=set(s['geom'])
         h4m23_req(s['slot'] not in seen and s['address']>=0 and s['dist']<=s['margin']
             and pair in ({lf,floor},{rf,floor},{lf,rf}),'CONTACT_SLOT')
-        seen.add(s['slot']);w=h4m3_contact_force(s['efc_slice'],0,s['dim'],s['friction'],m['pyramidal'],np)
-        R=np.asarray(s['frame'])
-        h4m23_req(close(w,s['wrench_contact_frame']) and close(R.T@w[:3],s['world_force_on_geom2'])
-            and close(R.T@w[3:],s['world_torque_on_geom2']),'WRENCH_REPLAY')
+        seen.add(s['slot'])
+        if H4M26_MODE:w,R=h4m26_wrench_replay(s,m['pyramidal'],np)
+        else:
+            w=h4m3_contact_force(s['efc_slice'],0,s['dim'],s['friction'],m['pyramidal'],np)
+            R=np.asarray(s['frame'])
+            h4m23_req(close(w,s['wrench_contact_frame']) and close(R.T@w[:3],s['world_force_on_geom2'])
+                and close(R.T@w[3:],s['world_torque_on_geom2']),'WRENCH_REPLAY')
         if floor in pair:
             h4m23_req((R[0,2] if s['geom'][0]==floor else -R[0,2])>.99 and w[0]>=-1e-6,'NORMAL')
             loads['left' if lf in pair else 'right']+=float(w[0])
@@ -15190,7 +15201,11 @@ def h4m23_native_lane(args,i,env,step_fn,jax,jnp,np):
             t=start+offset;key=[i,k,t];j.begin(key)
             result=step_fn(st,placement_capture=t>=295)
             st=result[0];row=h4m3_legacy_row(jax.device_get(result[1]),expected,np)
-            rich=h4m23_pack(jax.device_get(result[2]),row,m,np) if t>=295 else None
+            try:
+                rich=h4m23_pack(jax.device_get(result[2]),row,m,np) if t>=295 else None
+            except RuntimeError as exc:
+                if H4M26_MODE:raise RuntimeError('M470_H4M26_RICH_STOP key='+repr(key)+' '+str(exc)[:240]) from exc
+                raise
             j.record(key,dict(row=row,rich=rich))
         return st
     def kick(st,k,t,mag):
@@ -15683,7 +15698,10 @@ def h4m23_dispatch(root,child=False):
     print('H4M23_DIAGNOSTIC_COMPLETE',result['report_sha256'],flush=True)
 
 def h4m23_cli(argv):
-    if argv[:1]==['v3']:
+    if argv[:1]==['v4']:
+        h4m26_select();argv=argv[1:]
+    elif argv[:1]==['v3']:
+        h4m23_req(argv==['v3','plan'],'V3_PERMANENTLY_CLOSED')
         h4m25_select();argv=argv[1:]
     elif argv[:1]==['v2']:
         h4m23_req(argv==['v2','plan'],'V2_PERMANENTLY_CLOSED')
@@ -16090,6 +16108,7 @@ def h4m23_static_dispatch(root,child=False):
             h4m23_static_fixture_run(root,pins,ext,lanes)
             if H4M24_MODE:h4m24_fixtures(root,boot)
             if H4M25_MODE:h4m25_fixtures(root,pins,ext)
+            if H4M26_MODE:h4m26_fixtures(root,pins,ext)
             after=h4m23_inputs(root)
             h4m23_req(after[0]==pins and after[2]==ext and after[3]==lanes
                 and h4red_eval_source(root)==source and h4m23_static_admit(root)==(auth,head),'STATIC_POST_PROVENANCE')
@@ -16193,6 +16212,7 @@ def h4m25_v2_receipts(root):
     return pins
 
 def h4m25_projection(raw):
+    if b'# H4M26_V4_'+b'BEGIN\n' in raw:raw=h4m26_projection(raw)
     begin=b'# H4M25_V3_'+b'BEGIN\n';end=b'# H4M25_V3_'+b'END\n'
     h4m23_req(raw.count(begin)==raw.count(end)==1,'V3_PROJECTION_BLOCK')
     i=raw.index(begin);j=raw.index(end,i)+len(end)
@@ -16245,7 +16265,7 @@ def h4m25_fixtures(root,pins,ext):
     oldstatic='H4M24_RICH_STATIC_GO: H4-M24-STATIC-V2 '+'a'*40+' '+'b'*40+' '+oldlog
     native=H4M23_ACTIVE_MARKER+' '+H4M23_SPEC['id']+' '+str(H4M23_OUTPUT)+' '+'a'*64+' '+'b'*64+' '+str(H4M23_STATIC)+' '+'c'*64
     good('v3_namespace',lambda:h4m23_req(H4M23_OUTPUT.parent not in (H4M24_V1_DIR,H4M25_V2_DIR)
-        and H4M23_CHILD_PREFIX==['v3'] and H4M23_STATIC_ATTEMPT.name not in H4M25_V2_STATIC
+        and H4M23_CHILD_PREFIX==(['v4'] if H4M26_MODE else ['v3']) and H4M23_STATIC_ATTEMPT.name not in H4M25_V2_STATIC
         and H4M23_STATIC.name not in H4M25_V2_STATIC,'V3_PATHS'))
     bad('v3_namespace',lambda:h4m23_marker(oldnative),'DISTINCT_MARKER')
     bad('v3_namespace',lambda:h4m23_static_marker(oldstatic),'STATIC_MARKER')
@@ -16260,6 +16280,7 @@ def h4m25_fixtures(root,pins,ext):
     good('v2_receipts',lambda:h4m23_req(len(h4m25_v2_receipts(root))==8 and len(h4m24_v1_receipts(root))==8,'PRIOR_RECEIPT_COUNT'))
     good('v2_receipts',lambda:h4m23_req(ext['h4m25_prior_evaluator_blob']==H4M25_V2_BLOB,'V2_BLOB_BINDING'))
     raw=(root/'m463_gate3_cp_eval.py').read_bytes()
+    if H4M26_MODE:raw=h4m26_projection(raw)
     base=subprocess.check_output(['git','show',H4M25_V2_HEAD+':m463_gate3_cp_eval.py'],cwd=root,timeout=30)
     good('v2_projection',lambda:h4m23_req(h4m25_projection(raw)==base,'V2_EXACT_BYTES'))
     bad('v2_projection',lambda:h4m25_projection(raw.replace(b'def h4m23_projection(raw):',b'def h4m23_projection_bad(raw):',1)),'V3_PROJECTION_ANCHOR')
@@ -16269,6 +16290,192 @@ def h4m25_fixtures(root,pins,ext):
 
 H4M25_PATCHES=[["def h4m23_projection(raw):\n    begin=","def h4m23_projection(raw):\n    if b'# H4M25_V3_'+b'BEGIN\\n' in raw:raw=h4m25_projection(raw)\n    begin="],["        ext['bootstrap']=b\n    return pins,ctrl,ext,h4m23_archive_lanes(a)","        ext['bootstrap']=b\n    if H4M25_MODE:\n        pins.update(h4m25_v2_receipts(root))\n        ext['h4m25_prior_evaluator_blob']=H4M25_V2_BLOB\n    return pins,ctrl,ext,h4m23_archive_lanes(a)"],["def h4m24_fixture_counts():\n    return dict(H4M23_FIXTURE_COUNTS,**H4M24_EXTRA_COUNTS) if H4M24_MODE else H4M23_FIXTURE_COUNTS","def h4m24_fixture_counts():\n    if H4M25_MODE:return dict(H4M23_FIXTURE_COUNTS,**H4M24_EXTRA_COUNTS,**H4M25_EXTRA_COUNTS)\n    return dict(H4M23_FIXTURE_COUNTS,**H4M24_EXTRA_COUNTS) if H4M24_MODE else H4M23_FIXTURE_COUNTS"],["and H4M23_CHILD_PREFIX==['v2'],'V2_PATHS'))","and H4M23_CHILD_PREFIX==(['v3'] if H4M25_MODE else ['v2']),'V2_PATHS'))"],["        for k,v in spec.items():h4m23_req(np.allclose(leg[k],v,rtol=0,atol=1e-8),'LEG_'+k)\n","        for k,v in spec.items():\n            if H4M25_MODE and k=='quats':h4m25_validate_quats(leg[k],v,np)\n            else:h4m23_req(np.allclose(leg[k],v,rtol=0,atol=1e-8),'LEG_'+k)\n"],["def h4m23_cli(argv):\n    if argv[:1]==['v2']:\n        h4m24_select();argv=argv[1:]\n    elif argv!=['plan']:","def h4m23_cli(argv):\n    if argv[:1]==['v3']:\n        h4m25_select();argv=argv[1:]\n    elif argv[:1]==['v2']:\n        h4m23_req(argv==['v2','plan'],'V2_PERMANENTLY_CLOSED')\n        h4m24_select();argv=argv[1:]\n    elif argv!=['plan']:"],["        xml_blob=xml['blob'])\n    return m\n\ndef h4m23_static_mock_raw","        xml_blob=xml['blob'])\n    if H4M25_MODE:\n        import numpy as np\n        for leg in m['geometry']['legs'].values():\n            q=np.asarray(leg['quats'],dtype=np.float64)\n            leg['quats']=(q/np.linalg.norm(q,axis=1,keepdims=True)).tolist()\n    return m\n\ndef h4m23_static_mock_raw"],["            if H4M24_MODE:h4m24_fixtures(root,boot)\n            after=h4m23_inputs(root)","            if H4M24_MODE:h4m24_fixtures(root,boot)\n            if H4M25_MODE:h4m25_fixtures(root,pins,ext)\n            after=h4m23_inputs(root)"],["    bad('projection',lambda:h4m23_projection(raw.replace(b'def run(args):',b'def run_bad(args):',1)),'PROJECTION_ANCHOR')","    legacy_input=h4m25_projection(raw) if H4M25_MODE else raw\n    bad('projection',lambda:h4m23_projection(legacy_input.replace(b'def run(args):',b'def run_bad(args):',1)),'PROJECTION_ANCHOR')"]]
 # H4M25_V3_END
+# H4M26_V4_BEGIN
+# Held representation-only repair; no authorization in executable source.
+H4M26_MODE=False
+H4M26_V3_HEAD='22e343e51932b2ef5c572c356901571effa0f4e3'
+H4M26_V3_BLOB='10443f1000a8d51ae81ece3f10e604c42d2d0c62'
+H4M26_V3_DIR=Path('m463_runs/m470_h4_m25_ffe2_rich_v3')
+H4M26_V3_FILES={
+    'attempt.json':(413,'cd527bdcc61b0f49a88b3fde1bee28c9bdcfb9c114309d95a0b41cf285aae5bf'),
+    'attempt_result.json':(1022,'ce7ba87df3e692a64ab5fbb37e709c470f73beb65b49ea2312c8cb1386326e94'),
+    'journal.jsonl':(232549,'17e2eff3d9bd5c1fd689a372345ac74117a45a00637cd035669c3b59bc68c7c6'),
+    'parent.json':(438,'fdba502be0f16346632bdf991dc38a62dd0be0271f6c7c9b2849b917c7f791f2'),
+    'runtime.log':(3608,'5dd308cb52b713e15df1cb3e3e8d6ceeda42384c2e0f87c5ae0e167efba7284b'),
+    'runtime.entered.json':(430,'2e3b060811acc26253fcceb24294ee3a522bdd888793e0a14016f95af4fd76b9')}
+H4M26_V3_STATIC={
+    'm470_h4m25_rich_static_v3.log':(723,'b83bf231f3e739810a874f6a1a0395d35c3d9f52b1057ec42f449e7bebbaec91'),
+    'm470_h4m25_rich_static_v3.attempt.json':(425,'9046013bb45e7c32e34f53cc358db3078f7e900a5d5131f69c684d806dd8a03d')}
+H4M26_EXTRA_COUNTS=dict(wrench_dtype=18,contact_full=2,com_dtype=1,v4_namespace=8,v3_receipts=3,v3_projection=3)
+
+def h4m26_select():
+    global H4M26_MODE,H4M23_ACTIVE_MARKER,H4M23_STATIC_MARKER,H4M23_CHILD_PREFIX
+    global H4M23_OUTPUT,H4M23_STATIC,H4M23_STATIC_ID,H4M23_STATIC_ATTEMPT,H4M23_SPEC
+    h4m23_req(not H4M26_MODE and not H4M25_MODE and not H4M24_MODE,'V4_SELECT_ONCE')
+    h4m25_select()
+    H4M26_MODE=True
+    H4M23_ACTIVE_MARKER='H4M26_RICH_ACTIVE_GO:'
+    H4M23_STATIC_MARKER='H4M26_RICH_STATIC_GO:'
+    H4M23_CHILD_PREFIX=['v4']
+    H4M23_OUTPUT=Path('m463_runs/m470_h4_m26_ffe2_rich_v4/report.json')
+    H4M23_STATIC=Path('m463_runs/m470_h4m26_rich_static_v4.log')
+    H4M23_STATIC_ID='H4-M26-STATIC-V4'
+    H4M23_STATIC_ATTEMPT=Path('m463_runs/m470_h4m26_rich_static_v4.attempt.json')
+    H4M23_SPEC=dict(H4M23_SPEC,id='H4-M26-FFE2-RICH-V4',output=str(H4M23_OUTPUT))
+
+def h4m26_native_f32(value,shape,label,np):
+    # Only packed JSON operands, not native state. Reject lossy casting.
+    try:
+        obj=np.asarray(value,dtype=object)
+        h4m23_req(obj.shape==shape and all(type(x) is float for x in obj.flat),'V4_F32_SCHEMA_'+label)
+        a=np.asarray(value,dtype=np.float64)
+    except (TypeError,ValueError,OverflowError) as exc:
+        raise RuntimeError('M470_H4M23_V4_F32_SCHEMA_'+label) from exc
+    h4m23_req(np.isfinite(a).all() and (np.abs(a)<=np.finfo(np.float32).max).all(),'V4_F32_FINITE_'+label)
+    with np.errstate(under='ignore'):
+        native=a.astype(np.float32)
+    h4m23_req(np.array_equal(native.astype(np.float64),a),'V4_F32_EXACT_'+label)
+    return native
+
+def h4m26_com_operands(co,n,np):
+    return tuple(h4m26_native_f32(co[k],shape,k,np) for k,shape in (
+        ('body_xipos',(n,3)),('body_ximat',(n,3,3)),('body_cvel',(n,6)),('subtree_com',(3,))))
+
+def h4m26_wrench_replay(s,pyramidal,np):
+    d=s['dim']
+    h4m23_req(type(d) is int and d in (1,3,4,6),'V4_CONTACT_DIM')
+    width=2*(d-1) if pyramidal and d>1 else d
+    efc=h4m26_native_f32(s['efc_slice'],(width,),'efc_slice',np)
+    friction=h4m26_native_f32(s['friction'],(5,),'friction',np)
+    R=h4m26_native_f32(s['frame'],(3,3),'frame',np)
+    h4m26_native_f32(s['pos'],(3,),'pos',np)
+    w=h4m3_contact_force(efc,0,d,friction,pyramidal,np)
+    for k,wanted in (('wrench_contact_frame',w),('world_force_on_geom2',R.T@w[:3]),
+                     ('world_torque_on_geom2',R.T@w[3:])):
+        actual=np.asarray(s[k])
+        h4m23_req(actual.shape==wanted.shape and actual.dtype.kind=='f'
+            and np.isfinite(actual).all() and np.isfinite(wanted).all(),'WRENCH_REPLAY_SCHEMA_'+k)
+        if not np.allclose(wanted,actual,rtol=0,atol=2e-6):
+            idx=int(np.argmax(np.abs(wanted-actual)))
+            raise RuntimeError('M470_H4M23_WRENCH_REPLAY slot=%d field=%s component=%d expected=%.17g actual=%.17g'
+                %(s['slot'],k,idx,wanted[idx],actual[idx]))
+    return w,R
+
+def h4m26_receipt(directory,name,size,digest):
+    p=directory/name
+    h4m23_req(p.is_file() and not p.is_symlink() and p.resolve()==p.absolute()
+        and p.stat().st_size==size and sha256(p)==digest,'V3_RECEIPT_'+name)
+    return digest
+
+def h4m26_v3_receipts(root):
+    out=root/H4M26_V3_DIR
+    h4m23_req(out.is_dir() and not out.is_symlink() and out.resolve()==out.absolute()
+        and set(p.name for p in out.iterdir())==set(H4M26_V3_FILES),'V3_NAMESPACE')
+    return {'h4m25_v3/'+name:h4m26_receipt(directory,name,size,digest)
+        for directory,files in ((out,H4M26_V3_FILES),(root/'m463_runs',H4M26_V3_STATIC))
+        for name,(size,digest) in files.items()}
+
+def h4m26_projection(raw):
+    begin=b'# H4M26_V4_'+b'BEGIN\n';end=b'# H4M26_V4_'+b'END\n'
+    h4m23_req(raw.count(begin)==raw.count(end)==1,'V4_PROJECTION_BLOCK')
+    i=raw.index(begin);j=raw.index(end,i)+len(end)
+    s=(raw[:i]+raw[j:]).decode('utf8')
+    for a,b in reversed(H4M26_PATCHES):
+        h4m23_req(s.count(b)==1,'V4_PROJECTION_ANCHOR')
+        s=s.replace(b,a,1)
+    data=s.encode('utf8')
+    h4m23_req(hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()
+        ==H4M26_V3_BLOB,'V4_BASE_BLOB')
+    return data
+
+def h4m26_fixtures(root,pins,ext):
+    # Prospective authorized host-only cases. No native execution.
+    import copy
+    import numpy as np
+    counts={k:0 for k in H4M26_EXTRA_COUNTS}
+    def good(cat,fn):
+        fn();counts[cat]+=1
+    def bad(cat,fn,label):
+        try:fn()
+        except RuntimeError as exc:h4m23_req(label in str(exc),'V4_FIXTURE_WRONG_'+str(exc)[:160])
+        else:raise RuntimeError('M470_H4M26_FIXTURE_ACCEPTED_'+label)
+        counts[cat]+=1
+    def changed(s,k,v):
+        q=copy.deepcopy(s);q[k]=v;return q
+    forces=np.asarray([44.123451232910156,37.45677947998047,21.234560012817383,
+        17.8912296295166,7.13579,3.24681,2.56789,1.23456,8.13579,4.12345],np.float32)
+    fr=np.asarray([.73,.58,.012,.003,.004],np.float32)
+    frame=np.asarray([[0,0,1],[.6,.8,0],[-.8,.6,0]],np.float32)
+    def slot(d,pyramid):
+        width=2*(d-1) if pyramid and d>1 else d
+        w=h4m3_contact_force(forces[:width],0,d,fr,pyramid,np)
+        return dict(slot=0,dim=d,efc_slice=forces[:width].tolist(),friction=fr.tolist(),
+            frame=frame.tolist(),pos=[0.,0.,0.],wrench_contact_frame=w.tolist(),
+            world_force_on_geom2=(frame.T@w[:3]).tolist(),world_torque_on_geom2=(frame.T@w[3:]).tolist())
+    for pyramid in (True,False):
+        for d in (1,3,4,6):
+            good('wrench_dtype',lambda d=d,pyramid=pyramid:h4m26_wrench_replay(slot(d,pyramid),pyramid,np))
+    q=slot(3,True)
+    good('wrench_dtype',lambda:h4m23_req(abs(h4m3_contact_force(q['efc_slice'],0,3,q['friction'],True,np)[0]
+        -q['wrench_contact_frame'][0])>2e-6,'V4_LEGACY_MISMATCH'))
+    q6=slot(6,True)
+    for k in ('wrench_contact_frame','world_force_on_geom2','world_torque_on_geom2'):
+        v=list(q6[k]);v[0]+=1.
+        bad('wrench_dtype',lambda k=k,v=v:h4m26_wrench_replay(changed(q6,k,v),True,np),'WRENCH_REPLAY')
+    for k,v,label in (
+        ('efc_slice',[.1]+q['efc_slice'][1:],'V4_F32_EXACT_efc_slice'),
+        ('friction',[.1]+q['friction'][1:],'V4_F32_EXACT_friction'),
+        ('frame',[[.1,0.,1.],q['frame'][1],q['frame'][2]],'V4_F32_EXACT_frame'),
+        ('efc_slice',[float('inf')]+q['efc_slice'][1:],'V4_F32_FINITE_efc_slice'),
+        ('friction',q['friction'][:-1],'V4_F32_SCHEMA_friction'),
+        ('efc_slice',[True]+q['efc_slice'][1:],'V4_F32_SCHEMA_efc_slice')):
+        bad('wrench_dtype',lambda k=k,v=v:h4m26_wrench_replay(changed(q,k,v),True,np),label)
+    m=h4m23_static_mock_manifest(ext)
+    raw,row=h4m23_static_mock_raw(m,295,np.zeros(2,np.float32),
+        np.full(2,.16,np.float32),np.zeros(35,np.float32),np)
+    h4m23_req(m['pyramidal'] is True,'V4_MOCK_CONE')
+    raw['efc_force'][:4]=forces[:4];raw['contact_friction'][0]=fr
+    raw['contact_frame'][0]=frame
+    bw=float(np.sum(m['fields']['body_mass']))*abs(m['gravity'][2])
+    raw['capture_loads'][0]=np.float32(float(np.sum(forces[:4]))/bw)
+    packed=h4m23_pack(raw,row,m,np)
+    good('contact_full',lambda:h4m23_check_rich(packed,row,m,np))
+    ct=copy.deepcopy(packed['contact']);ct['normal_load_N']['left']+=1.
+    bad('contact_full',lambda:h4m23_check_rich(changed(packed,'contact',ct),row,m,np),'LOAD_REPLAY')
+    co=copy.deepcopy(packed['com']);co['body_cvel'][0][0]=.1
+    bad('com_dtype',lambda:h4m23_check_rich(changed(packed,'com',co),row,m,np),'V4_F32_EXACT_body_cvel')
+    oldout=str(H4M26_V3_DIR/'report.json');oldlog='m463_runs/m470_h4m25_rich_static_v3.log'
+    oldnative='H4M25_RICH_ACTIVE_GO: H4-M25-FFE2-RICH-V3 '+oldout+' '+'a'*64+' '+'b'*64+' '+oldlog+' '+'c'*64
+    oldstatic='H4M25_RICH_STATIC_GO: H4-M25-STATIC-V3 '+'a'*40+' '+'b'*40+' '+oldlog
+    native=H4M23_ACTIVE_MARKER+' '+H4M23_SPEC['id']+' '+str(H4M23_OUTPUT)+' '+'a'*64+' '+'b'*64+' '+str(H4M23_STATIC)+' '+'c'*64
+    good('v4_namespace',lambda:h4m23_req(H4M23_OUTPUT.parent not in (H4M24_V1_DIR,H4M25_V2_DIR,H4M26_V3_DIR)
+        and H4M23_CHILD_PREFIX==['v4'] and H4M23_STATIC.name not in H4M26_V3_STATIC
+        and H4M23_STATIC_ATTEMPT.name not in H4M26_V3_STATIC,'V4_PATHS'))
+    bad('v4_namespace',lambda:h4m23_marker(oldnative),'DISTINCT_MARKER')
+    bad('v4_namespace',lambda:h4m23_static_marker(oldstatic),'STATIC_MARKER')
+    bad('v4_namespace',lambda:h4m23_marker(native+'\n'+oldnative),'HOLD_OR_CONFLICT')
+    bad('v4_namespace',lambda:h4m23_marker(native.replace(str(H4M23_OUTPUT),oldout)),'DISTINCT_MARKER')
+    bad('v4_namespace',lambda:h4m23_marker(native.replace(str(H4M23_STATIC),oldlog)),'DISTINCT_MARKER')
+    lines=h4m23_static_lines('a'*40,'b'*64,'c'*64,'d'*64)
+    prior=list(lines);prior[4]='H4M23_STATIC_FIXTURES '+json.dumps(dict(H4M23_FIXTURE_COUNTS,**H4M24_EXTRA_COUNTS,
+        **H4M25_EXTRA_COUNTS),sort_keys=True,separators=(',',':'))
+    bad('v4_namespace',lambda:h4m23_static_receipt(prior,'b'*64,'c'*64,'d'*64),'STATIC_RECEIPT_EXACT')
+    bad('v4_namespace',lambda:h4m23_cli(['v3','run']),'V3_PERMANENTLY_CLOSED')
+    good('v3_receipts',lambda:h4m23_req(h4m26_v3_receipts(root)=={k:v for k,v in pins.items()
+        if k.startswith('h4m25_v3/')} and len(h4m26_v3_receipts(root))==8,'V3_PROVENANCE'))
+    good('v3_receipts',lambda:h4m23_req(ext['h4m26_prior_evaluator_blob']==H4M26_V3_BLOB,'V3_BLOB_BINDING'))
+    bad('v3_receipts',lambda:h4m26_receipt(root/H4M26_V3_DIR,'runtime.log',3608,'0'*64),'V3_RECEIPT_runtime.log')
+    raw=(root/'m463_gate3_cp_eval.py').read_bytes()
+    base=subprocess.check_output(['git','show',H4M26_V3_HEAD+':m463_gate3_cp_eval.py'],cwd=root,timeout=30)
+    good('v3_projection',lambda:h4m23_req(h4m26_projection(raw)==base,'V3_EXACT_BYTES'))
+    bad('v3_projection',lambda:h4m26_projection(raw.replace(b'def h4m25_projection(raw):',b'def h4m25_projection_bad(raw):',1)),'V4_PROJECTION_ANCHOR')
+    bad('v3_projection',lambda:h4m26_projection(raw.replace(b'H4M25_V2_HEAD=',b'H4M25_V2_HEAD_bad=',1)),'V4_BASE_BLOB')
+    h4m23_req(counts==H4M26_EXTRA_COUNTS,'V4_FIXTURE_COUNT')
+    h4m3_no_runtime_imports()
+    return counts
+
+H4M26_PATCHES=[["def h4m25_projection(raw):\n    begin=","def h4m25_projection(raw):\n    if b'# H4M26_V4_'+b'BEGIN\\n' in raw:raw=h4m26_projection(raw)\n    begin="],["        ext['h4m25_prior_evaluator_blob']=H4M25_V2_BLOB\n    return pins,ctrl,ext,h4m23_archive_lanes(a)","        ext['h4m25_prior_evaluator_blob']=H4M25_V2_BLOB\n    if H4M26_MODE:\n        pins.update(h4m26_v3_receipts(root))\n        ext['h4m26_prior_evaluator_blob']=H4M26_V3_BLOB\n    return pins,ctrl,ext,h4m23_archive_lanes(a)"],["def h4m24_fixture_counts():\n    if H4M25_MODE:","def h4m24_fixture_counts():\n    if H4M26_MODE:return dict(H4M23_FIXTURE_COUNTS,**H4M24_EXTRA_COUNTS,**H4M25_EXTRA_COUNTS,**H4M26_EXTRA_COUNTS)\n    if H4M25_MODE:"],["\n        and H4M23_STATIC_ATTEMPT.name not in H4M24_V1_STATIC and H4M23_CHILD_PREFIX==(['v3'] if H4M25_MODE else ['v2']),'V2_PATHS'))","\n        and H4M23_STATIC_ATTEMPT.name not in H4M24_V1_STATIC and H4M23_CHILD_PREFIX==(['v4'] if H4M26_MODE else ['v3'] if H4M25_MODE else ['v2']),'V2_PATHS'))"],["def h4m23_cli(argv):\n    if argv[:1]==['v3']:\n        h4m25_select();argv=argv[1:]","def h4m23_cli(argv):\n    if argv[:1]==['v4']:\n        h4m26_select();argv=argv[1:]\n    elif argv[:1]==['v3']:\n        h4m23_req(argv==['v3','plan'],'V3_PERMANENTLY_CLOSED')\n        h4m25_select();argv=argv[1:]"],["            if H4M25_MODE:h4m25_fixtures(root,pins,ext)\n            after=h4m23_inputs(root)","            if H4M25_MODE:h4m25_fixtures(root,pins,ext)\n            if H4M26_MODE:h4m26_fixtures(root,pins,ext)\n            after=h4m23_inputs(root)"],["        and H4M23_CHILD_PREFIX==['v3'] and H4M23_STATIC_ATTEMPT.name not in H4M25_V2_STATIC\n","        and H4M23_CHILD_PREFIX==(['v4'] if H4M26_MODE else ['v3']) and H4M23_STATIC_ATTEMPT.name not in H4M25_V2_STATIC\n"],["    base=subprocess.check_output(['git','show',H4M25_V2_HEAD+':m463_gate3_cp_eval.py'],cwd=root,timeout=30)\n    good('v2_projection'","    if H4M26_MODE:raw=h4m26_projection(raw)\n    base=subprocess.check_output(['git','show',H4M25_V2_HEAD+':m463_gate3_cp_eval.py'],cwd=root,timeout=30)\n    good('v2_projection'"],["    vals=h4m3_com(mass,np.asarray(f['body_inertia'])[root],co['body_xipos'],co['body_ximat'],\n        co['body_cvel'],np.broadcast_to(co['subtree_com'],np.asarray(co['body_xipos']).shape),np)","    if H4M26_MODE:\n        xp,xm,cv,sc=h4m26_com_operands(co,len(mass),np)\n        vals=h4m3_com(mass,np.asarray(f['body_inertia'])[root],xp,xm,cv,np.broadcast_to(sc,xp.shape),np)\n    else:\n        vals=h4m3_com(mass,np.asarray(f['body_inertia'])[root],co['body_xipos'],co['body_ximat'],\n            co['body_cvel'],np.broadcast_to(co['subtree_com'],np.asarray(co['body_xipos']).shape),np)"],["        seen.add(s['slot']);w=h4m3_contact_force(s['efc_slice'],0,s['dim'],s['friction'],m['pyramidal'],np)\n        R=np.asarray(s['frame'])\n        h4m23_req(close(w,s['wrench_contact_frame']) and close(R.T@w[:3],s['world_force_on_geom2'])\n            and close(R.T@w[3:],s['world_torque_on_geom2']),'WRENCH_REPLAY')","        seen.add(s['slot'])\n        if H4M26_MODE:w,R=h4m26_wrench_replay(s,m['pyramidal'],np)\n        else:\n            w=h4m3_contact_force(s['efc_slice'],0,s['dim'],s['friction'],m['pyramidal'],np)\n            R=np.asarray(s['frame'])\n            h4m23_req(close(w,s['wrench_contact_frame']) and close(R.T@w[:3],s['world_force_on_geom2'])\n                and close(R.T@w[3:],s['world_torque_on_geom2']),'WRENCH_REPLAY')"],["            rich=h4m23_pack(jax.device_get(result[2]),row,m,np) if t>=295 else None\n            j.record(key,dict(row=row,rich=rich))","            try:\n                rich=h4m23_pack(jax.device_get(result[2]),row,m,np) if t>=295 else None\n            except RuntimeError as exc:\n                if H4M26_MODE:raise RuntimeError('M470_H4M26_RICH_STOP key='+repr(key)+' '+str(exc)[:240]) from exc\n                raise\n            j.record(key,dict(row=row,rich=rich))"]]
+# H4M26_V4_END
 # H4M23_RICH_END
 if __name__=='__main__':
     if len(sys.argv)>1 and sys.argv[1]=='--h4m23-rich':h4m23_cli(sys.argv[2:])
