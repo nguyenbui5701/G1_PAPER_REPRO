@@ -78,3 +78,5 @@ Append one row per task with exact evidence/commit, decision, limitations and ne
 | H4-M24-2 | Owner explicit distinct V2 one-use host-static GO | AUTHORIZATION PREPARED / OWNER RECEIPT PENDING / NATIVE HOLD | a3d1fc9b16e12faefa3694e36f7cb743621e420e; 95 planned, no SA execution; effective only at exact root-only child |
 
 | H4-M24-2 receipt review | Owner log 656B and attempt 425B, independent rehash; 95/95; remote evaluator SHA256 verified | CONSUMED / SCOPED HOST-STATIC PASS / NATIVE HOLD | e8c831c5042e021e9662cc544f940aa540403271; outer-console/local provenance/native unverified; explicit closure and native GO required |
+
+| H4-M24-3 | Owner explicit static closure and distinct native GO, accepted limitations | EDIT-FIRST / ONE-USE NATIVE AUTHORIZATION PREPARED | ada258dee2de6722b2bbcc94139f89e79c5cbb92; effective only exact native marker child, 3 lanes, max1308/426, zero optimizer; receipt pending |

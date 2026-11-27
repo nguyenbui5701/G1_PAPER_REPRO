@@ -443,3 +443,6 @@ Each link includes the section until the next heading; ranges are retrieval aids
 
 ## H4-M24-2 reviewed receipt
 - [Static authorization child](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/e8c831c5042e021e9662cc544f940aa540403271), [documentation parent](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/a2eed642f22751d5f0039cd8fa58798352ced54e), [frozen evaluator](https://github.com/nguyenbui5701/G1_PAPER_REPRO/blob/e8c831c5042e021e9662cc544f940aa540403271/m463_gate3_cp_eval.py). Owner log 656B SHA256 827c39b8e8a051b48e3b763808b9678a568e45480fab1da54d9fb306405e1799; attempt 425B SHA256 a9ffff113c38dc181602c780e84977465af334a70dc5a986afc564bd6b903dc5; uploaded receipts independently rehashed. See ACTIVE_EXPERIMENT for limitations and proposed next scope.
+
+## H4-M24-3 native issuance
+- [Reviewed base](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/ada258dee2de6722b2bbcc94139f89e79c5cbb92), [static child](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/e8c831c5042e021e9662cc544f940aa540403271), frozen evaluator 05ada48c07940c8f1aa6d4402cf95a2f2aa78d8d. See ACTIVE_EXPERIMENT for exact marker, scope and accepted limits; no native result yet.
