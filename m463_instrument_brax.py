@@ -2187,3 +2187,83 @@ def make_ffe_integrated_source(raw):
     return s,original
 
 # H4FFE_GENERATOR_END
+
+# H4FFE2_HELD_LEDGER_BEGIN
+# Host-side reference only; not wired to generated PPO or device collection.
+FFE2_RISK_FLAGS=('assigned','first_due','first_risk','first_eligible',
+    'first_event','first_terminal','first_miss','repeat_opened','repeat_wait',
+    'repeat_risk','repeat_eligible','repeat_event','repeat_miss','repeat_terminal',
+    'first_shadow','first_extended','repeat_shadow','repeat_extended')
+FFE2_LANES=8192
+FFE2_TICKS=32
+# Fixed upper bounds for reference aggregation; full production resource
+# admission must include generated/device buffers and watchdog measurement.
+FFE2_LANE_BYTES=FFE2_LANES//8
+
+def ffe2_reference_batch(xp,data,before,after,before_done,after_done,pre_fn,post_fn):
+    """Reuse unchanged V1 row/legacy/observation/reward identity checks with
+    V2 pure decision functions. Additional V2 shadow/carry validation is
+    required before this can become the complete pre-SGD guard.
+    """
+    return ffe_batch_contract(xp,data,before,after,before_done,after_done,pre_fn,post_fn)
+
+def ffe2_reference_reduce(np,labels,band,cell,*,committed):
+    """One validated rollout reference reducer. No unique-count addition:
+    return packed lane membership so caller can OR across rollouts. This
+    helper is deliberately host-only and not an authorized PPO data path.
+    """
+    if committed is not True:
+        raise RuntimeError('FFE2_UNCOMMITTED_REFERENCE')
+    shape=(FFE2_LANES,FFE2_TICKS)
+    def arr(a):
+        a=np.asarray(a)
+        if a.shape!=shape or a.dtype.kind not in 'biu':
+            raise RuntimeError('FFE2_REFERENCE_SHAPE')
+        return a
+    band=arr(band);cell=arr(cell)
+    if not np.all((band>=0)&(band<4)&(cell>=0)&(cell<4)):
+        raise RuntimeError('FFE2_REFERENCE_ASSIGNMENT')
+    flags={k:arr(labels[k]) for k in FFE2_RISK_FLAGS}
+    if any(not np.isin(a,(0,1)).all() for a in flags.values()) or np.any(arr(labels['bad'])):
+        raise RuntimeError('FFE2_REFERENCE_BAD')
+    flags={k:a.astype(bool) for k,a in flags.items()}
+    def subset(a,b):
+        if np.any(flags[a]&(~flags[b])):
+            raise RuntimeError('FFE2_REFERENCE_SUBSET '+a)
+    for a,b in (('first_event','first_eligible'),('first_eligible','first_risk'),
+                ('repeat_event','repeat_eligible'),('repeat_eligible','repeat_risk'),
+                ('repeat_risk','repeat_wait'),('repeat_opened','first_event'),
+                ('first_terminal','first_event'),('repeat_terminal','repeat_event')):
+        subset(a,b)
+    for prefix in ('first','repeat'):
+        a=flags[prefix+'_shadow'];b=flags[prefix+'_extended']
+        if np.any(a&b) or np.any((a|b)!=flags[prefix+'_risk']):
+            raise RuntimeError('FFE2_REFERENCE_SHADOW')
+        mask=arr(labels[prefix+'_mask'])
+        limit=128 if prefix=='first' else 256
+        risk=flags[prefix+'_risk']
+        if np.any(np.where(risk,(mask<0)|(mask>=limit),mask!=-1)):
+            raise RuntimeError('FFE2_REFERENCE_MASK')
+        if np.any((risk&(mask==0))!=flags[prefix+'_eligible']):
+            raise RuntimeError('FFE2_REFERENCE_ELIGIBILITY')
+    gap=arr(labels['gap']);mc=arr(labels['mode_cost'])
+    if np.any(np.where(flags['repeat_risk'],(gap<30)|(gap>40),gap!=-1)):
+        raise RuntimeError('FFE2_REFERENCE_GAP')
+    if np.any((mc< -1)|(mc>7)|((mc>=0)&(~flags['repeat_risk']))):
+        raise RuntimeError('FFE2_REFERENCE_MODE_COST')
+    def membership(m):
+        return np.packbits(np.any(m,axis=1),bitorder='little').tobytes().hex()
+    out={}
+    for b in range(4):
+        for j in range(4):
+            scope=(band==b)&(cell==j)
+            rows={k:int(np.count_nonzero(scope&a)) for k,a in flags.items()}
+            lanes={k:membership(scope&a) for k,a in flags.items()}
+            hist={}
+            for name,n in (('first_mask',128),('repeat_mask',256)):
+                a=arr(labels[name]); hist[name]=np.bincount(a[scope&(a>=0)],minlength=n).tolist()
+            hist['gap']=np.bincount((gap[scope&(gap>=0)]-30),minlength=11).tolist()
+            hist['mode_cost']=np.bincount(mc[scope&(mc>=0)],minlength=8).tolist()
+            out[f'{b}:{j}']=dict(rows=rows,lanes=lanes,hist=hist)
+    return out
+# H4FFE2_HELD_LEDGER_END

@@ -9,3 +9,6 @@ Owner explicitly authorizes documentation-only modularization. Mandatory reading
 
 ## 2026-11-27 — H4-M20-0 task update (governance remains v2.0.0)
 Owner-approved offline design only: freeze proposed FFE-V2 timing, risk-set denominators, passive shadow labels, tail/censor and static verification contract in ACTIVE_EXPERIMENT. No scientific threshold or governance policy change, no executable changes, no runtime authorization. H4-M20-1 integration HELD. Base 25dc1e6cb3c44aeb1eadb48d87ae949d7efbe92d.
+
+## 2026-11-27 — H4-M20-1 partial held source (governance v2.0.0 unchanged)
+Owner full held GO; three isolated source blocks added, no executable dispatch or native run. Full integration incomplete; static/runtime HOLD. Source projection verified by connector text readback, no local fixture execution. Frozen gates/authorization/history unchanged. Base 8d7bcbe30e949d6f99694f096861b7e810cd958b.

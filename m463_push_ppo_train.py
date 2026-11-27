@@ -8886,4 +8886,80 @@ def h4ffe_static_main(argv):
     print('H4FFE_FULL_STATIC_PASS',flush=True)
 
 # H4FFE_TRAINER_END
+
+# H4FFE2_HELD_TRAINER_BEGIN
+# Partial source candidate only. No dispatch, CLI mode, output reservation,
+# or generated V2 execution permission is provided in H4-M20-1.
+H4FFE2_DESIGN_HEAD='8d7bcbe30e949d6f99694f096861b7e810cd958b'
+H4FFE2_PARENT_BLOBS={
+    'm463_coverage_env.py':'86919b3edc2594dbdb29dbaf49d3071737d92ed4',
+    'm463_instrument_brax.py':'abc017e9daa0c3c82a8ae46e2e477a950cc875f7',
+    'm463_push_ppo_train.py':'c45894f5021e3880f2ef5c8f14244bea673f8aa5'}
+H4FFE2_PROPOSED_OUTPUT='m463_runs/m470_h4_m20_ffe_v2'
+H4FFE2_PROPOSED_ID='H4-M20-FFE-V2'
+
+def h4ffe2_execution_hold(*args,**kwargs):
+    raise RuntimeError('M470_FFE2_INTEGRATION_INCOMPLETE_HOLD')
+
+def h4ffe2_project_held_sources(root):
+    """Check reversible candidate blocks against exact design-parent Git blobs.
+    Read-only, no imports of environment or native runtime.
+    """
+    import hashlib
+    from pathlib import Path
+    root=Path(root)
+    labels=('CORE','LEDGER','TRAINER')
+    for (name,pin),label in zip(H4FFE2_PARENT_BLOBS.items(),labels):
+        raw=(root/name).read_bytes()
+        a=b'\n# H4FFE2_HELD_'+label.encode()+b'_BEGIN\n'
+        b=b'# H4FFE2_HELD_'+label.encode()+b'_END\n'
+        if raw.count(a)!=1 or raw.count(b)!=1:
+            raise RuntimeError('FFE2_PROJECTION_SENTINEL '+name)
+        i=raw.index(a);j=raw.index(b,i)+len(b)
+        old=raw[:i]+raw[j:]
+        digest=hashlib.sha1(b'blob '+str(len(old)).encode()+b'\0'+old).hexdigest()
+        if digest!=pin:
+            raise RuntimeError('FFE2_PROJECTION_PIN '+name)
+    return True
+
+def h4ffe2_reference_merge(np,rollouts):
+    """Reference merge of bounded host summaries; not the final report reader.
+    Preserve lane identity via OR and separately add exact row counts.
+    """
+    from m463_instrument_brax import FFE2_RISK_FLAGS,FFE2_LANE_BYTES
+    if type(rollouts) is not list or not 1<=len(rollouts)<=20:
+        raise RuntimeError('FFE2_REFERENCE_ROLLOUT_COUNT')
+    groups={f'{b}:{j}' for b in range(4) for j in range(4)}
+    hist_sizes={'first_mask':128,'repeat_mask':256,'gap':11,'mode_cost':8}
+    out={}
+    for group in sorted(groups):
+        rows={k:0 for k in FFE2_RISK_FLAGS}
+        lanes={k:np.zeros(FFE2_LANE_BYTES,dtype=np.uint8) for k in FFE2_RISK_FLAGS}
+        hist={k:[0]*n for k,n in hist_sizes.items()}
+        for roll in rollouts:
+            if set(roll)!=groups or set(roll[group])!={'rows','lanes','hist'}:
+                raise RuntimeError('FFE2_REFERENCE_GROUP')
+            q=roll[group]
+            if set(q['rows'])!=set(rows) or set(q['lanes'])!=set(lanes) or set(q['hist'])!=set(hist):
+                raise RuntimeError('FFE2_REFERENCE_KEYS')
+            for k in rows:
+                n=q['rows'][k];h=q['lanes'][k]
+                if type(n) is not int or not 0<=n<=8192*32 or type(h) is not str or len(h)!=2*FFE2_LANE_BYTES:
+                    raise RuntimeError('FFE2_REFERENCE_COUNT')
+                v=np.frombuffer(bytes.fromhex(h),dtype=np.uint8)
+                unique=int(np.unpackbits(v,bitorder='little').sum())
+                if not unique<=n<=unique*32:
+                    raise RuntimeError('FFE2_REFERENCE_LANE_COUNT')
+                rows[k]+=n;lanes[k]|=v
+            for k,n in hist_sizes.items():
+                v=q['hist'][k]
+                if type(v) is not list or len(v)!=n or any(type(x) is not int or x<0 or x>8192*32 for x in v):
+                    raise RuntimeError('FFE2_REFERENCE_HIST')
+                hist[k]=[x+y for x,y in zip(hist[k],v)]
+        if sum(hist['first_mask'])!=rows['first_risk'] or sum(hist['repeat_mask'])!=rows['repeat_risk'] or sum(hist['gap'])!=rows['repeat_risk'] or sum(hist['mode_cost'])>rows['repeat_risk']:
+            raise RuntimeError('FFE2_REFERENCE_HIST_TOTAL')
+        out[group]=dict(rows=rows,unique={k:int(np.unpackbits(v,bitorder='little').sum()) for k,v in lanes.items()},
+                        lane_bits={k:v.tobytes().hex() for k,v in lanes.items()},hist=hist)
+    return out
+# H4FFE2_HELD_TRAINER_END
 if __name__=='__main__': main()
