@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.274  
+**Version:** 1.2.275  
 **Ngày cập nhật:** 2026-11-27 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -3481,6 +3481,16 @@ Owner actual static: 1000 randomized hulls, 7 edge cases, 4 loaded modes, 100 re
 
 Decision H4-M16-1 CLOSED/FULL_STATIC_ACCEPTED, H4-M16-2 one-use bounded R12 PPO READY_PENDING_EXPLICIT_OWNER_GO. Next only on distinct Owner authorization: use frozen source/generated/static pins, separate exclusive output m463_runs/m470_h4_m16_r12_v1, existing supervisor/worker/typed restore/pre-SGD abort/strict reader; verify receipt and namespace before one bounded continuation. Start immutable Official CTRL reset-edge fullstate9b19312d, seed1, 5242880 training transitions/800 optimizer updates/2000 diagnostic eval, 20 rollouts/4 chunks, Adam1600->2400, original M12 curriculum and PPO config, R12 only, no R11 stacking, all24 native terms unchanged. Preserve exposure thresholds >=10000 total nonzero actual rows, >=1000 each half, left/right/both nonzero, none reported, nominal>=80% of1145928 and all original gates. Insufficient exposure INCONCLUSIVE, no auto extension/retry/tuning; controlled DEV separately authorized only after report review. No active marker, no execution/budget allocated in this review, no source edits, no holdout/promotion/standalone diagnostic or failure-focused curriculum implementation. Branch A ACTIVE, B HOLD.
 
+### H4-M16-2 — R12-DCR-V1 bounded dense capture recovery PPO / distinct one-use runtime GO (v1.2.275; 2026-11-27)
+
+Owner explicit distinct GO received after H4-M16-1B accepted static. SA reread complete Rules1.2.274 blob04fd8790c7853eee8ff714e36d663cfa94be17c7 at verified HEADf746e16fd5385a6572a5f1fa03c8af806df571ac and rehashed exact uploaded 2416-byte Owner receipt m470_h4r12_static_20261127_122847_262258696.log SHA2566c414d24cbb7cf070741d0a6f9d91b1871c998b257ebbcb05b3e05779c81e205. Unique FULL_STATIC_PASS, source/generated pins, matched-control hashes, zero native and both exit codes0 unchanged. Reviewed existing trainer blob918372c3d0b35fb92fdaa4abfca1e54ed3850765 and h4r12_auth/parse_marker/parent_preflight, h4m12_main/worker/generated_guard/check_complete/read_final. Reuse existing bounded parent/child supervisor, exclusive mkdir and attempt/worker/dispatch receipts, exact typed restore, immutable input checks, pre-SGD guard, final host ledger and strict reader; no executable edit or fresh static/native run. One active marker binds receipt/source/generated and exclusive namespace:
+
+H4R12_ACTIVE_GO: H4-M16-R12-DCR-V1 m463_runs/m470_h4_m16_r12_v1 91d72382142965414176ae4812b8b89c041dc3ddf1f70f31c03730b43f02a46e b1aebfb7b51a80816064abc4ac99227a07d259cf57026ab46c741682a1c1a8e7 m463_runs/m470_h4r12_static_20261127_122847_262258696.log 6c414d24cbb7cf070741d0a6f9d91b1871c998b257ebbcb05b3e05779c81e205
+
+Authorize exactly one Owner parent supervisor invocation (--h4r12-continuation, never direct --worker). Official CTRL immutable reset-edge fullstate m463_runs/m470_h4_m1_2r_control_v1/m470_fullstate_step_010485760.msgpack SHA2569b19312da08d71513ad8fa6638c632401bec20e09399fdf4a9f6f6e2b2619c80, seed1. Original M12 CTRL scheduler/easy_repeat_support, 24 native rewards, config, physics/PD/termination, obs/action, network, DR, Adam and RNG continuation unchanged; R12 only, R11 OFF. Start10485760 Adam1600 end15728640 Adam2400; 8192x32, 20 rollouts, 4 chunks of5, 5242880 train + 2000 diagnostic eval physical transitions = 5244880 total, 800 optimizer updates; original reset lane budgets24576 train/2 eval. C401M checkpoint, typed restore report and reward-report CLI inputs remain provenance pins, not the actual resume state. Archived M12 and Official CTRL DEV remain immutable, no comparator rerun. Material exposure exact frozen gates total>=10000 actual nonzero consumed rows, each half>=1000, left/right/both nonzero, no support reported, nominal>=80% archived1145928 and original gates; insufficient exposure EXPOSURE_INCONCLUSIVE, no tuning, budget extension, retry or next-stage automatic GO. Preserve signed reward conservation and invalid-batch fail-closed guard; technical PASS separate from exposure and recovery efficacy.
+
+Existing 3600s supervisor watchdog, internal worker log16MiB, total output512MiB, 2GiB disk reserve, sampled peak<95%12288MiB and original strict final/receipt reader. Owner shell validates exact newly authorized HEAD, clean tracked worktree, accepted local static hash, unused output and exclusive external supervisor log m463_runs/m470_h4r12_runtime_v1.log, existing g1_m463 and no concurrent compute GPU process. External capture capped at16MiB, preserve full output and exit status; STOP if cap reached, nonzero exit, receipt mismatch, any preflight/technical failure or incomplete report. No retry until SA reviews; never remove reservation/log or change authorization to reuse this run. Native/local checkpoint and dependency bytes are checked by existing runtime, not independently regenerated by SA; this authorization is not technical, safety or efficacy PASS. Return supervisor log, report.json, attempt.json, worker.started.json, dispatch.started.json, attempt_result.json, worker.log, checkpoint manifest and hashes of actual artifacts; on STOP return whatever exists, not checkpoint binaries for initial review. SA will close consumed marker upon report review. No standalone diagnostic, failure-focused curriculum change, controlled DEV, holdout or promotion; separate GO required for any future evaluation. Branch A ACTIVE, B HOLD.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -3742,6 +3752,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-26)
+
+**H4-M16-2 R12-DCR-V1 DISTINCT ONE-USE PPO GO / OWNER EXECUTION PENDING (v1.2.275):** exact receipt6c414d24/source91d72382/generatedb1aebfb7; exclusive m463_runs/m470_h4_m16_r12_v1; one active H4R12 marker; no executable edits. Frozen 5242880 train/800 optimizer/2000 diagnostic eval, original CTRL fullstate and M12 curriculum, signed reward and exposure gates unchanged. Native and efficacy untested. STOP/no retry, no controlled DEV/holdout/promotion, B HOLD.
 
 **H4-M16-1B EXACT OWNER FULL STATIC ACCEPTED (v1.2.274):** log6c414d24, four remote SHA256 exact matches, source91d72382/generatedb1aebfb7, integrated static/reader/CLI HOLD PASS, native0. H4-M16-2 bounded R12 PPO ready pending separate explicit Owner GO; no active marker or source edits. B HOLD.
 
@@ -4643,6 +4655,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-27 | H4-M16-2 R12 one-use bounded PPO authorization | exact static6c414d24/source91d72382/generatedb1aebfb7; explicit Owner GO | ONE-USE GO / Owner execution pending / no DEV | 1.2.275 |
+
 | 2026-11-27 | H4-M16-1B exact R12 full static review | log6c414d24; four exact remote SHA256 matches; static0/tee0; integrated fixtures PASS | FULL_STATIC_ACCEPTED / H4-M16-2 explicit GO pending / zero native | 1.2.274 |
 
 | 2026-11-27 | H4-M16-1A Owner static STOP and local provenance correction | log75a16860; Git-tracked vs local SHA256 pins; 3/9 host pin fixture | STATIC STOP recorded / corrected held source / Owner static pending | 1.2.273 |
@@ -5253,6 +5267,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.275 — 2026-11-27:** Owner explicit R12 one-use bounded PPO GO; bind accepted static/source/generated to exclusive namespace, retain existing M12-based guarded supervisor/reader and frozen training/exposure gates. Rules-only, no runtime by SA, no retry/DEV/holdout/promotion, Branch B HOLD.
 
 - **v1.2.274 — 2026-11-27:** Accept exact R12 full static Owner receipt and remote byte hash match; close held integration static gate, next bounded PPO pending distinct explicit Owner authorization. No executable changes or active runtime marker. Branch B HOLD.
 
