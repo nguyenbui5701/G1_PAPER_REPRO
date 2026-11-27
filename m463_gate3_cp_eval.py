@@ -15062,8 +15062,12 @@ def h4m23_schedule(lanes):
 def h4m23_check_event(key,expected,p,m,np):
     i,k,t=key
     if k in ('nominal','first','single','double'):
-        h4m23_req(set(p)=={'row','rich'} and len(p['row'])==46
-            and all(type(x) is float and math.isfinite(x) for x in p['row']) and p['row']==expected,'EXACT_ROW')
+        if H4M27_MODE:
+            h4m23_req(set(p)=={'row','rich'},'V5_ROW_SCHEMA')
+            h4m27_compare_row(p['row'],expected,key,np)
+        else:
+            h4m23_req(set(p)=={'row','rich'} and len(p['row'])==46
+                and all(type(x) is float and math.isfinite(x) for x in p['row']) and p['row']==expected,'EXACT_ROW')
         if t>=295:h4m23_check_rich(p['rich'],p['row'],m,np)
         else:h4m23_req(p['rich'] is None,'EARLY_RICH')
     elif k in ('kick1','kick2'):
@@ -15123,6 +15127,7 @@ def h4m23_read_journal(path,auth,pins,lanes,*,complete=False,ext=None,deadline=N
     h4m23_req(p.is_file() and not p.is_symlink() and p.resolve()==p.absolute()
         and 0<p.stat().st_size<=H4M23_SPEC['report_cap'],'READER_PATH')
     plan=h4m23_schedule(lanes);n=0;pending=None;physical=rich=resets=suffixes=kicks=0
+    reward_nonexact=reward_max_ulp=0;reward_max_abs=0.
     fork={};single335={};last={};kick_audits={}
     def parse(b):
         h4m23_req(b.endswith(b'\n') and len(b)<=1024**2,'READER_LINE')
@@ -15149,6 +15154,10 @@ def h4m23_read_journal(path,auth,pins,lanes,*,complete=False,ext=None,deadline=N
             v=obj['payload'];h4m23_check_event(key,expected,v,m,np);i,k,t=key
             if k in ('nominal','first','single','double'):
                 physical+=1;rich+=int(t>=295)
+                if H4M27_MODE:
+                    ulp,delta=h4m27_compare_row(v['row'],expected,key,np)
+                    reward_nonexact+=int(ulp>0);reward_max_ulp=max(reward_max_ulp,ulp)
+                    reward_max_abs=max(reward_max_abs,delta)
                 if t>=295:
                     r=v['rich'];track='common' if k in ('nominal','first') else k
                     prev=last.get((i,track))
@@ -15181,13 +15190,17 @@ def h4m23_read_journal(path,auth,pins,lanes,*,complete=False,ext=None,deadline=N
     if complete:h4m23_req(n==len(plan) and pending is None and
         (physical,rich,resets,suffixes,kicks)==(1295,413,3,6,6),'FINAL_LEDGER')
     pk=None if pending is None else pending[1]
-    return dict(events_recorded=n,pending=pending,physical_recorded=physical,rich_recorded=rich,
+    verification=dict(events_recorded=n,pending=pending,physical_recorded=physical,rich_recorded=rich,
         physical_attempted=physical+int(pk in ('nominal','first','single','double')),
         rich_attempted=rich+int(pk in ('nominal','first','single','double') and pending[2]>=295),
         resets_recorded=resets,resets_attempted=resets+int(pk=='reset'),
         suffixes_recorded=suffixes,suffixes_attempted=sum(k[1].startswith('begin_') for k,_ in plan[:n])+int(pk in ('begin_single','begin_double')),
         kicks_recorded=kicks,kicks_attempted=kicks+int(pk in ('kick1','kick2')),
         journal_sha256=sha256(p),complete=complete)
+    if H4M27_MODE:verification.update(reward_total_nonexact_rows=reward_nonexact,
+        reward_total_max_ulp=reward_max_ulp,reward_total_max_abs=reward_max_abs,
+        recorded_archive_rows_exact=(reward_nonexact==0))
+    return verification
 
 def h4m23_native_lane(args,i,env,step_fn,jax,jnp,np):
     h4m23_enter(args)  # repeat independent worker admission
@@ -15200,7 +15213,9 @@ def h4m23_native_lane(args,i,env,step_fn,jax,jnp,np):
         for offset,expected in enumerate(l['rows'][k]):
             t=start+offset;key=[i,k,t];j.begin(key)
             result=step_fn(st,placement_capture=t>=295)
-            st=result[0];row=h4m3_legacy_row(jax.device_get(result[1]),expected,np)
+            st=result[0]
+            if H4M27_MODE:row=h4m27_native_row(jax.device_get(result[1]),expected,key,np)
+            else:row=h4m3_legacy_row(jax.device_get(result[1]),expected,np)
             try:
                 rich=h4m23_pack(jax.device_get(result[2]),row,m,np) if t>=295 else None
             except RuntimeError as exc:
@@ -15476,12 +15491,13 @@ def h4m23_marker(rules):
     h4m23_req(len(active)==1,'HOLD_OR_CONFLICT')
     a=active[0].split()
     h4m23_req(len(a)==7 and a[:3]==[H4M23_ACTIVE_MARKER,H4M23_SPEC['id'],str(H4M23_OUTPUT)]
-        and a[5]==str(H4M23_STATIC) and all(re.fullmatch('[0-9a-f]{64}',a[i]) for i in (3,4,6)),
-        'DISTINCT_MARKER')
+        and a[5]==str(H4M23_STATIC) and re.fullmatch('[0-9a-f]{40}' if H4M27_MODE else '[0-9a-f]{64}',a[3])
+        and all(re.fullmatch('[0-9a-f]{64}',a[i]) for i in (4,6)),'DISTINCT_MARKER')
     return dict(id=a[1],output=a[2],source=a[3],provenance=a[4],static_path=a[5],static_sha=a[6])
 
 def h4m23_authorize(root):
     """Host only. Held HEAD has no active marker; fail before any native import."""
+    if H4M27_MODE:return h4m27_authorize(root)
     import re
     h4m3_no_runtime_imports();root=Path(root).resolve()
     rules=(root/'G1_RESEARCH_RULES.md').read_text('utf8');auth=h4m23_marker(rules)
@@ -15698,7 +15714,11 @@ def h4m23_dispatch(root,child=False):
     print('H4M23_DIAGNOSTIC_COMPLETE',result['report_sha256'],flush=True)
 
 def h4m23_cli(argv):
-    if argv[:1]==['v4']:
+    if argv[:1]==['v5']:
+        h4m23_req(argv[1:] in (['plan'],['run'],['child']),'V5_DIRECT_NATIVE_ONLY')
+        h4m27_select();argv=argv[1:]
+    elif argv[:1]==['v4']:
+        h4m23_req(argv==['v4','plan'],'V4_PERMANENTLY_CLOSED')
         h4m26_select();argv=argv[1:]
     elif argv[:1]==['v3']:
         h4m23_req(argv==['v3','plan'],'V3_PERMANENTLY_CLOSED')
@@ -16376,6 +16396,7 @@ def h4m26_v3_receipts(root):
         for name,(size,digest) in files.items()}
 
 def h4m26_projection(raw):
+    if b'# H4M27_V5_'+b'BEGIN\n' in raw:raw=h4m27_projection(raw)
     begin=b'# H4M26_V4_'+b'BEGIN\n';end=b'# H4M26_V4_'+b'END\n'
     h4m23_req(raw.count(begin)==raw.count(end)==1,'V4_PROJECTION_BLOCK')
     i=raw.index(begin);j=raw.index(end,i)+len(end)
@@ -16476,6 +16497,142 @@ def h4m26_fixtures(root,pins,ext):
 
 H4M26_PATCHES=[["def h4m25_projection(raw):\n    begin=","def h4m25_projection(raw):\n    if b'# H4M26_V4_'+b'BEGIN\\n' in raw:raw=h4m26_projection(raw)\n    begin="],["        ext['h4m25_prior_evaluator_blob']=H4M25_V2_BLOB\n    return pins,ctrl,ext,h4m23_archive_lanes(a)","        ext['h4m25_prior_evaluator_blob']=H4M25_V2_BLOB\n    if H4M26_MODE:\n        pins.update(h4m26_v3_receipts(root))\n        ext['h4m26_prior_evaluator_blob']=H4M26_V3_BLOB\n    return pins,ctrl,ext,h4m23_archive_lanes(a)"],["def h4m24_fixture_counts():\n    if H4M25_MODE:","def h4m24_fixture_counts():\n    if H4M26_MODE:return dict(H4M23_FIXTURE_COUNTS,**H4M24_EXTRA_COUNTS,**H4M25_EXTRA_COUNTS,**H4M26_EXTRA_COUNTS)\n    if H4M25_MODE:"],["\n        and H4M23_STATIC_ATTEMPT.name not in H4M24_V1_STATIC and H4M23_CHILD_PREFIX==(['v3'] if H4M25_MODE else ['v2']),'V2_PATHS'))","\n        and H4M23_STATIC_ATTEMPT.name not in H4M24_V1_STATIC and H4M23_CHILD_PREFIX==(['v4'] if H4M26_MODE else ['v3'] if H4M25_MODE else ['v2']),'V2_PATHS'))"],["def h4m23_cli(argv):\n    if argv[:1]==['v3']:\n        h4m25_select();argv=argv[1:]","def h4m23_cli(argv):\n    if argv[:1]==['v4']:\n        h4m26_select();argv=argv[1:]\n    elif argv[:1]==['v3']:\n        h4m23_req(argv==['v3','plan'],'V3_PERMANENTLY_CLOSED')\n        h4m25_select();argv=argv[1:]"],["            if H4M25_MODE:h4m25_fixtures(root,pins,ext)\n            after=h4m23_inputs(root)","            if H4M25_MODE:h4m25_fixtures(root,pins,ext)\n            if H4M26_MODE:h4m26_fixtures(root,pins,ext)\n            after=h4m23_inputs(root)"],["        and H4M23_CHILD_PREFIX==['v3'] and H4M23_STATIC_ATTEMPT.name not in H4M25_V2_STATIC\n","        and H4M23_CHILD_PREFIX==(['v4'] if H4M26_MODE else ['v3']) and H4M23_STATIC_ATTEMPT.name not in H4M25_V2_STATIC\n"],["    base=subprocess.check_output(['git','show',H4M25_V2_HEAD+':m463_gate3_cp_eval.py'],cwd=root,timeout=30)\n    good('v2_projection'","    if H4M26_MODE:raw=h4m26_projection(raw)\n    base=subprocess.check_output(['git','show',H4M25_V2_HEAD+':m463_gate3_cp_eval.py'],cwd=root,timeout=30)\n    good('v2_projection'"],["    vals=h4m3_com(mass,np.asarray(f['body_inertia'])[root],co['body_xipos'],co['body_ximat'],\n        co['body_cvel'],np.broadcast_to(co['subtree_com'],np.asarray(co['body_xipos']).shape),np)","    if H4M26_MODE:\n        xp,xm,cv,sc=h4m26_com_operands(co,len(mass),np)\n        vals=h4m3_com(mass,np.asarray(f['body_inertia'])[root],xp,xm,cv,np.broadcast_to(sc,xp.shape),np)\n    else:\n        vals=h4m3_com(mass,np.asarray(f['body_inertia'])[root],co['body_xipos'],co['body_ximat'],\n            co['body_cvel'],np.broadcast_to(co['subtree_com'],np.asarray(co['body_xipos']).shape),np)"],["        seen.add(s['slot']);w=h4m3_contact_force(s['efc_slice'],0,s['dim'],s['friction'],m['pyramidal'],np)\n        R=np.asarray(s['frame'])\n        h4m23_req(close(w,s['wrench_contact_frame']) and close(R.T@w[:3],s['world_force_on_geom2'])\n            and close(R.T@w[3:],s['world_torque_on_geom2']),'WRENCH_REPLAY')","        seen.add(s['slot'])\n        if H4M26_MODE:w,R=h4m26_wrench_replay(s,m['pyramidal'],np)\n        else:\n            w=h4m3_contact_force(s['efc_slice'],0,s['dim'],s['friction'],m['pyramidal'],np)\n            R=np.asarray(s['frame'])\n            h4m23_req(close(w,s['wrench_contact_frame']) and close(R.T@w[:3],s['world_force_on_geom2'])\n                and close(R.T@w[3:],s['world_torque_on_geom2']),'WRENCH_REPLAY')"],["            rich=h4m23_pack(jax.device_get(result[2]),row,m,np) if t>=295 else None\n            j.record(key,dict(row=row,rich=rich))","            try:\n                rich=h4m23_pack(jax.device_get(result[2]),row,m,np) if t>=295 else None\n            except RuntimeError as exc:\n                if H4M26_MODE:raise RuntimeError('M470_H4M26_RICH_STOP key='+repr(key)+' '+str(exc)[:240]) from exc\n                raise\n            j.record(key,dict(row=row,rich=rich))"]]
 # H4M26_V4_END
+# H4M27_V5_BEGIN
+# Direct native diagnostic only; V4 static receipt remains historical.
+H4M27_MODE=False
+H4M27_V4_BLOB='0010704c36c9bf9b884267029f9d0485fe8cca12'
+H4M27_V4_SHA='fafec1f01bdbb5bf9cc900cee539c30fd64a9637dbce286c61ab1d3db763a525'
+H4M27_V4_HEAD='4cc6f8f0e221ce20783507fd0f5d113a40f5628b'
+H4M27_V4_ROOT='e09c35a82f06a97fe5406ba36bb3fd9664913583'
+H4M27_V4_SOURCE='c07961c0d3dbc16dd86c98ee4254246e8d8412d119ec2f38ddb9fc302cdde5ef'
+H4M27_V4_PROVENANCE='5ff44656bf8f14d4239a4a6ace23296246c44ee4215fd79d4a486f043ab420b3'
+H4M27_V4_DIR=Path('m463_runs/m470_h4_m26_ffe2_rich_v4')
+H4M27_V4_STATIC_SHA='4259924e2eed3714960bd0946115de72a002d37382dc2cf9a3dd638201386dd2'
+H4M27_V4_FILES={
+    'attempt.json':(413,'b508f458d7a9f4a6218f3a99a1798544b44c9d21d3103564fdec271756a91139'),
+    'attempt_result.json':(1025,'7a82812a3533de883807b6ec1973c99f10f22821916fcea40ca875409a229fad'),
+    'journal.jsonl':(6149434,'1a81267748eecbc2754b5f014aae5d002f1c19d7298f0a8a679d915d8de02b11'),
+    'parent.json':(438,'4540c9114de64e676525449e5f6933cabc37b2d9d6f6ad3124a3740ba74c27c8'),
+    'runtime.log':(3875,'2c1bd3b7d0eef379cd866864974e7c52390fab2a17119d5ba1b204aab5e70c55'),
+    'runtime.entered.json':(430,'97004bd45a8385ad2715d0946df1fc449a6f22f0b266a2ee05cf7e342796e25b')}
+H4M27_V4_STATIC={
+    'm470_h4m26_rich_static_v4.log':(823,H4M27_V4_STATIC_SHA),
+    'm470_h4m26_rich_static_v4.attempt.json':(425,'4dfba95c047d81ea446f549d2cb77497ef6a4a2e07d88c1929143dafbef8adaf')}
+
+def h4m27_select():
+    global H4M27_MODE,H4M23_ACTIVE_MARKER,H4M23_CHILD_PREFIX,H4M23_OUTPUT,H4M23_SPEC
+    h4m23_req(not H4M27_MODE and not H4M26_MODE,'V5_SELECT_ONCE')
+    h4m26_select()
+    H4M27_MODE=True
+    H4M23_ACTIVE_MARKER='H4M27_RICH_ACTIVE_GO:'
+    H4M23_CHILD_PREFIX=['v5']
+    H4M23_OUTPUT=Path('m463_runs/m470_h4_m27_ffe2_rich_v5/report.json')
+    H4M23_SPEC=dict(H4M23_SPEC,id='H4-M27-FFE2-RICH-V5',output=str(H4M23_OUTPUT),
+        archive_replay_contract='REWARD_TOTAL_ONLY_4_FP32_ULP_ABS_1E-6_DIAGNOSTIC',
+        new_full_static_verified=False,exact_replay_claim_authorized=False)
+
+def h4m27_compare_row(row,expected,key,np):
+    h4m23_req(type(row) is list and len(row)==len(expected)==len(H4M3_COLUMNS)==46
+        and all(type(x) is float and math.isfinite(x) for x in row),'V5_ROW_SCHEMA')
+    ulp=0;delta=0.
+    for k,a,b in zip(H4M3_COLUMNS,row,expected):
+        if a==b:continue
+        ok=False
+        if k=='reward_total' and math.isfinite(b) and math.copysign(1.,a)==math.copysign(1.,b):
+            if max(abs(a),abs(b))<=float(np.finfo(np.float32).max):
+                aa=np.asarray(a,dtype=np.float32);bb=np.asarray(b,dtype=np.float32)
+                if float(aa)==a and float(bb)==b:
+                    ulp=abs(int(aa.view(np.uint32).item())-int(bb.view(np.uint32).item()))
+                    delta=abs(a-b)
+                    ok=0<ulp<=4 and delta<=1e-6
+        if not ok:
+            raise RuntimeError('M470_H4M27_ARCHIVE_MISMATCH '+json.dumps(
+                dict(key=key,field=k,expected=b,actual=a),allow_nan=False))
+    return ulp,delta
+
+def h4m27_native_row(raw,expected,key,np):
+    h4m3_require(tuple(sorted(raw))==H4M3_COLUMNS,'FRAME_SCHEMA')
+    for k,v in raw.items():
+        a=np.asarray(v)
+        h4m3_require(a.ndim==0 and np.isfinite(a).all(),'NONFINITE_OR_NONSCALAR_'+k)
+    row=[float(raw[k]) for k in H4M3_COLUMNS]
+    ulp,delta=h4m27_compare_row(row,expected,key,np)
+    if ulp:
+        print('H4M27_REWARD_NONEXACT',json.dumps(dict(key=key,ulp=ulp,abs_delta=delta,
+            actual=row[H4M3_COLUMNS.index('reward_total')],
+            archive=expected[H4M3_COLUMNS.index('reward_total')]),allow_nan=False),flush=True)
+    return row
+
+def h4m27_projection(raw):
+    begin=b'# H4M27_V5_'+b'BEGIN\n';end=b'# H4M27_V5_'+b'END\n'
+    h4m23_req(raw.count(begin)==raw.count(end)==1,'V5_PROJECTION_BLOCK')
+    i=raw.index(begin);j=raw.index(end,i)+len(end)
+    s=(raw[:i]+raw[j:]).decode('utf8')
+    for a,b in reversed(H4M27_PATCHES):
+        h4m23_req(s.count(b)==1,'V5_PROJECTION_ANCHOR')
+        s=s.replace(b,a,1)
+    data=s.encode('utf8')
+    h4m23_req(hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==H4M27_V4_BLOB
+        and hashlib.sha256(data).hexdigest()==H4M27_V4_SHA,'V5_BASE_BLOB')
+    return data
+
+def h4m27_receipts(root):
+    out=root/H4M27_V4_DIR
+    h4m23_req(out.is_dir() and not out.is_symlink() and out.resolve()==out.absolute()
+        and set(p.name for p in out.iterdir())==set(H4M27_V4_FILES),'V4_NAMESPACE')
+    result={}
+    for directory,files in ((out,H4M27_V4_FILES),(root/'m463_runs',H4M27_V4_STATIC)):
+        for name,(size,digest) in files.items():
+            p=directory/name
+            h4m23_req(p.is_file() and not p.is_symlink() and p.resolve()==p.absolute()
+                and p.stat().st_size==size and sha256(p)==digest,'V4_RECEIPT_'+name)
+            result['h4m26_v4/'+name]=digest
+    return result
+
+def h4m27_authorize(root):
+    import re
+    h4m3_no_runtime_imports();root=Path(root).resolve()
+    rules=(root/'G1_RESEARCH_RULES.md').read_text('utf8');auth=h4m23_marker(rules)
+    def git(*argv):return subprocess.check_output(['git',*argv],cwd=root,text=True,timeout=30).strip()
+    parent=git('rev-parse','HEAD^')
+    h4m23_req(git('branch','--show-current')==H4M23_BRANCH
+        and git('status','--porcelain','--untracked-files=no')==''
+        and git('diff','--name-only',parent,'HEAD')=='G1_RESEARCH_RULES.md','V5_ROOT_ONLY_AUTH_CHILD')
+    prior=subprocess.check_output(['git','show',parent+':G1_RESEARCH_RULES.md'],cwd=root,timeout=30).decode('utf8')
+    line=next(l for l in rules.splitlines() if l.startswith(H4M23_ACTIVE_MARKER))
+    h4m23_req(git('rev-parse',parent+':G1_RESEARCH_RULES.md')==H4M27_V4_ROOT
+        and not any(re.match(r'^[A-Z0-9_]+_GO:',l) for l in prior.splitlines())
+        and rules==h4m23_append_marker(prior,line),'V5_EXACT_ROOT_APPEND')
+    p=root/'m463_gate3_cp_eval.py'
+    h4m23_req(h4m3_git_blob(p)==auth['source']
+        and git('rev-parse','HEAD:m463_gate3_cp_eval.py')==auth['source']
+        and auth['provenance']==H4M27_V4_PROVENANCE and auth['static_sha']==H4M27_V4_STATIC_SHA,
+        'V5_REVIEWED_SOURCE_BINDING')
+    h4m23_req(h4m27_projection(p.read_bytes())==subprocess.check_output(
+        ['git','show',H4M27_V4_HEAD+':m463_gate3_cp_eval.py'],cwd=root,timeout=30),'V5_V4_EXACT_BYTES')
+    pins,ctrl,ext,lanes=h4m23_inputs(root)
+    historical=dict(pins);historical['source/m463_gate3_cp_eval.py']=H4M27_V4_SHA
+    current_sources={k.split('/',1)[1]:v for k,v in pins.items() if k.startswith('source/')}
+    historical_sources={k.split('/',1)[1]:v for k,v in historical.items() if k.startswith('source/')}
+    h4m23_req(len(current_sources)==len(historical_sources)==9
+        and h4red_eval_source(root)==h4m3_digest(current_sources)
+        and h4m3_digest(historical_sources)==H4M27_V4_SOURCE
+        and h4m3_digest([historical,ext])==H4M27_V4_PROVENANCE,'V5_V4_PROVENANCE_RECONSTRUCT')
+    receipts=h4m27_receipts(root)
+    with (root/H4M27_V4_DIR/'journal.jsonl').open('rb') as f:
+        raw=f.readline(1024**2+1)
+    h4m23_req(len(raw)<=1024**2 and raw.endswith(b'\n'),'V5_V4_HEADER_BOUND')
+    header=json.loads(raw)['header']
+    h4m23_req(header['input_sha256']==historical and header['authorization']['id']=='H4-M26-FFE2-RICH-V4'
+        and header['authorization']['provenance']==H4M27_V4_PROVENANCE,'V5_V4_HEADER_PIN')
+    pins.update(receipts)
+    ext=dict(ext,h4m27_prior_evaluator_blob=H4M27_V4_BLOB,
+        h4m27_historical_static_only=True,h4m27_current_source=h4m3_digest(current_sources))
+    h4m3_no_runtime_imports()
+    return auth,pins,ctrl,ext,lanes
+
+H4M27_PATCHES=[["def h4m26_projection(raw):\n    begin=","def h4m26_projection(raw):\n    if b'# H4M27_V5_'+b'BEGIN\\n' in raw:raw=h4m27_projection(raw)\n    begin="],["            st=result[0];row=h4m3_legacy_row(jax.device_get(result[1]),expected,np)\n            try:\n                rich=h4m23_pack","            st=result[0]\n            if H4M27_MODE:row=h4m27_native_row(jax.device_get(result[1]),expected,key,np)\n            else:row=h4m3_legacy_row(jax.device_get(result[1]),expected,np)\n            try:\n                rich=h4m23_pack"],["        h4m23_req(set(p)=={'row','rich'} and len(p['row'])==46\n            and all(type(x) is float and math.isfinite(x) for x in p['row']) and p['row']==expected,'EXACT_ROW')","        if H4M27_MODE:\n            h4m23_req(set(p)=={'row','rich'},'V5_ROW_SCHEMA')\n            h4m27_compare_row(p['row'],expected,key,np)\n        else:\n            h4m23_req(set(p)=={'row','rich'} and len(p['row'])==46\n                and all(type(x) is float and math.isfinite(x) for x in p['row']) and p['row']==expected,'EXACT_ROW')"],["    plan=h4m23_schedule(lanes);n=0;pending=None;physical=rich=resets=suffixes=kicks=0\n    fork={};single335={};last={};kick_audits={}","    plan=h4m23_schedule(lanes);n=0;pending=None;physical=rich=resets=suffixes=kicks=0\n    reward_nonexact=reward_max_ulp=0;reward_max_abs=0.\n    fork={};single335={};last={};kick_audits={}"],["                physical+=1;rich+=int(t>=295)\n                if t>=295:","                physical+=1;rich+=int(t>=295)\n                if H4M27_MODE:\n                    ulp,delta=h4m27_compare_row(v['row'],expected,key,np)\n                    reward_nonexact+=int(ulp>0);reward_max_ulp=max(reward_max_ulp,ulp)\n                    reward_max_abs=max(reward_max_abs,delta)\n                if t>=295:"],["    return dict(events_recorded=n,pending=pending,physical_recorded=physical,rich_recorded=rich,\n        physical_attempted=physical+int(pk in ('nominal','first','single','double')),","    verification=dict(events_recorded=n,pending=pending,physical_recorded=physical,rich_recorded=rich,\n        physical_attempted=physical+int(pk in ('nominal','first','single','double')),"],["        journal_sha256=sha256(p),complete=complete)\n\ndef h4m23_native_lane","        journal_sha256=sha256(p),complete=complete)\n    if H4M27_MODE:verification.update(reward_total_nonexact_rows=reward_nonexact,\n        reward_total_max_ulp=reward_max_ulp,reward_total_max_abs=reward_max_abs,\n        recorded_archive_rows_exact=(reward_nonexact==0))\n    return verification\n\ndef h4m23_native_lane"],["        and a[5]==str(H4M23_STATIC) and all(re.fullmatch('[0-9a-f]{64}',a[i]) for i in (3,4,6)),\n        'DISTINCT_MARKER')","        and a[5]==str(H4M23_STATIC) and re.fullmatch('[0-9a-f]{40}' if H4M27_MODE else '[0-9a-f]{64}',a[3])\n        and all(re.fullmatch('[0-9a-f]{64}',a[i]) for i in (4,6)),'DISTINCT_MARKER')"],["def h4m23_authorize(root):\n    \"\"\"Host only. Held HEAD has no active marker; fail before any native import.\"\"\"\n    import re","def h4m23_authorize(root):\n    \"\"\"Host only. Held HEAD has no active marker; fail before any native import.\"\"\"\n    if H4M27_MODE:return h4m27_authorize(root)\n    import re"],["def h4m23_cli(argv):\n    if argv[:1]==['v4']:\n        h4m26_select();argv=argv[1:]","def h4m23_cli(argv):\n    if argv[:1]==['v5']:\n        h4m23_req(argv[1:] in (['plan'],['run'],['child']),'V5_DIRECT_NATIVE_ONLY')\n        h4m27_select();argv=argv[1:]\n    elif argv[:1]==['v4']:\n        h4m23_req(argv==['v4','plan'],'V4_PERMANENTLY_CLOSED')\n        h4m26_select();argv=argv[1:]"]]
+# H4M27_V5_END
 # H4M23_RICH_END
 if __name__=='__main__':
     if len(sys.argv)>1 and sys.argv[1]=='--h4m23-rich':h4m23_cli(sys.argv[2:])
