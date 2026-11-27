@@ -10844,7 +10844,7 @@ def ssrpc_replay_lane_chunks(np,records,arm,*,complete):
     close=sum(v(x) for x in ('close_terminal','close_boundary','close_repeat','close_complete'))
     require((close<=tail_open)&(same<=alive)&(alive<=ticks)&(ticks<=250*tail_open),'TAIL_CONSERVATION')
     require(v('tail_refresh')<=ticks,'REFRESH')
-    require(v('tail_incoherent')<=ticks,'NOT_SAME')
+    require(v('tail_not_same')<=ticks,'NOT_SAME')
     eb=v('executed_bits');sb=v('survived_bits');mb=v('same_alive_bits')
     require((sb&~eb)==0,'SURVIVED_BITS')
     require((mb&~sb)==0,'SAME_BITS')
@@ -10856,6 +10856,8 @@ def ssrpc_replay_lane_chunks(np,records,arm,*,complete):
     # Tails are contiguous by the separately replayed device tail-clock contract.
     for j,a in enumerate(arrays,1):
         start=(j-1)*160+1;end=j*160
+        g35=v('first_k1')+35
+        require((a[:,ix['gap35_seen']]==0)|((g35>=start)&(g35<=end)), 'RISK_CHUNK')
         for column,n in (('tail_ticks',ticks),('tail_alive',alive),('tail_same_alive',same)):
             lo=np.maximum(start,v('repeat_k1')+1)
             hi=np.minimum(end,v('repeat_k1')+n)
@@ -10885,5 +10887,79 @@ def ssrpc_replay_lane_chunks(np,records,arm,*,complete):
         tail_pending_or_final_censor=int((tail_open-close).sum()),
         candidate_exposure_screen=bool(complete and arm=='cand' and opportunity and low_gate and tail_gate),
         promotion_authorized=False,runtime_authorized=False)
+
+def ssrpc_prepare_chunk(np,payload,index,tail_pending):
+    """Split live device payload; never call this evidence committed by itself."""
+    legacy_keys={'ffe2_rows','ffe2_lanes','ffe2_hist','ffe2_shadow_last'}
+    if set(payload)!=legacy_keys|{'ffe2_ssrpc_lane'}:
+        raise RuntimeError('SSRPC_PAYLOAD_KEYS')
+    legacy=h4ffe2_chunk_payload(np,{k:payload[k] for k in legacy_keys})
+    lane=ssrpc_encode_lane_chunk(np,np.asarray(payload['ffe2_ssrpc_lane']),index)
+    return dict(index=index,payload=legacy,tail_pending=tail_pending,ssrpc_lane=lane)
+
+def ssrpc_replay_joint_chunks(np,records,arm,*,complete):
+    """Cross-check supplemental per-lane identity against common risk/tail payloads.
+    Does not prove optimizer commitment, supervisor terminal status or provenance.
+    """
+    from m463_instrument_brax import FFE2_DEVICE_FLAGS,SSRPC_LANE_FIELDS,SSRPC_TAIL_AGES
+    if type(records) is not list or len(records)>4:
+        raise RuntimeError('SSRPC_JOINT_LENGTH')
+    for j,r in enumerate(records,1):
+        if type(r) is not dict or set(r)!={'index','payload','tail_pending','ssrpc_lane'} or (
+            type(r['index']) is not int or r['index']!=j):
+            raise RuntimeError('SSRPC_JOINT_SCHEMA')
+    lane_records=[r['ssrpc_lane'] for r in records]
+    screen=ssrpc_replay_lane_chunks(np,lane_records,arm,complete=complete)
+    legacy=[{k:r[k] for k in ('index','payload','tail_pending')} for r in records]
+    # Reuse structural conservation only; no historical material verdict or
+    # old FFE2 authentication is invoked. Predicate 7 means arm eligibility.
+    common=h4ffe2_replay_chunk_records(np,legacy,complete=complete)
+    if not records:
+        return dict(common=common,screen=screen)
+    fields={k:i for i,k in enumerate(SSRPC_LANE_FIELDS)}
+    flags={k:i for i,k in enumerate(FFE2_DEVICE_FLAGS)}
+    arrays=[np.frombuffer(bytes.fromhex(r['data']),dtype='<i4').reshape(8192,32)
+            for r in lane_records]
+    group=arrays[0][:,fields['group1']]
+    def require(ok,label):
+        if not bool(np.all(ok)):
+            raise RuntimeError('SSRPC_JOINT_'+label)
+    for a,record in zip(arrays,legacy):
+        rows=np.asarray(record['payload']['rows'],dtype=np.int64)
+        packed=record['payload']['lane_bits']
+        v=lambda k:a[:,fields[k]]
+        for g in range(16):
+            scope=group==g+1
+            def match(flag,values):
+                values=np.where(scope,values,0)
+                require(int(values.sum())==rows[g,flags[flag]],'COUNT_'+flag)
+                observed=np.unpackbits(np.frombuffer(bytes.fromhex(packed[g][flags[flag]]),
+                                         dtype=np.uint8),bitorder='little').astype(bool)
+                require(observed==(values>0),'MEMBERSHIP_'+flag)
+            for flag,key in (('first_due','first_due'),('first_terminal','first_terminal'),
+                    ('repeat_opened','repeat_opened'),('first_miss','first_miss'),
+                    ('repeat_risk','gap35_seen'),('repeat_terminal','repeat_terminal'),
+                    ('repeat_miss','repeat_miss'),('tail_2_ticks','tail_ticks'),
+                    ('tail_2_close_terminal','close_terminal'),('tail_2_close_boundary','close_boundary'),
+                    ('tail_2_close_repeat','close_repeat'),('tail_2_close_complete','close_complete'),
+                    ('tail_2_refresh','tail_refresh')):
+                match(flag,v(key))
+            match('assigned',v('group1')>0)
+            match('first_event',v('first_k1')>0)
+            match('repeat_event',v('repeat_k1')>0)
+            match('repeat_eligible',v('eligible_high' if arm=='ctrl' else 'eligible_inclusive'))
+            for gap in range(30,41):
+                match('repeat_gap_'+str(gap),v('gap35_seen') if gap==35 else np.zeros(8192,np.int32))
+            for mode_cost in range(8):
+                match('repeat_mode_cost_'+str(mode_cost),v('mode_cost1')==mode_cost+1)
+            for j,age in enumerate(SSRPC_TAIL_AGES):
+                for key,column in (('executed','executed_bits'),('survived','survived_bits')):
+                    match('tail_2_'+str(age)+'_'+key,(v(column)&(1<<j))!=0)
+                def membership(flag):
+                    return np.unpackbits(np.frombuffer(bytes.fromhex(packed[g][flags[flag]]),
+                                             dtype=np.uint8),bitorder='little').astype(bool)
+                expected=membership('tail_2_'+str(age)+'_same')&membership('tail_2_'+str(age)+'_survived')
+                require(expected==(scope&((v('same_alive_bits')&(1<<j))!=0)),'SAME_ALIVE')
+    return dict(common=common,screen=screen)
 # H4SSRPC_HELD_TRAINER_END
 if __name__=='__main__': main()

@@ -2542,7 +2542,7 @@ SSRPC_LANE_FIELDS=(
     'repeat_terminal','repeat_miss','repeat_reason','tail_ticks','tail_alive',
     'tail_same_alive','executed_bits','survived_bits','same_alive_bits',
     'close_terminal','close_boundary','close_repeat','close_complete',
-    'tail_refresh','nonopened_reason','tail_incoherent')
+    'tail_refresh','nonopened_reason','tail_not_same')
 SSRPC_TAIL_AGES=(1,10,25,50,100,250)
 
 def ssrpc_batch_contract(xp,data,before,after,before_done,after_done,arm):
