@@ -347,3 +347,6 @@ Each link includes the section until the next heading; ranges are retrieval aids
 
 ## H4-M20-2B full host-static authorization
 - [Exact authorization and bounded launcher](ACTIVE_EXPERIMENT.md#h4-m20-2b--ffe-v2-bounded-full-host-static-verification--one-use-owner-go-2026-11-27); [reviewed final source](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/29a9208d8e68250f9489ceec07b20a3369e0437c); accepted candidate log rehash2032B SHA256 58a07796561115d3c570258684043fc994bd037761bcd44db0fc5ebc9d1902c5. Expected distinct log m463_runs/m470_h4ffe2_static_final_oneuse_v1.log; no final receipt or native evidence yet.
+
+## H4-M20-2B accepted full host-static receipt
+- [Exact log review and limits](ACTIVE_EXPERIMENT.md#h4-m20-2b--owner-exact-full-host-static-receipt-review-2026-11-27); [authorization](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/0aafef0da3fa6c7d80dbb6c1fcbeb233b26d796a); m463_runs/m470_h4ffe2_static_final_oneuse_v1.log 1841B SHA256 cb824e5830f344e06e7fffd467d93204b258b52304e7f46547dc229be5cc458c; Owner final aggregate 492664bafc6aa360bbb6d9671a5ed85f4a1d3596b3f937869ca9d9c58c50ef86, generated 9d20cdd77ac0e3330cb5f3d89df408ba150bc568f1bfa3d4ee2e6399bcba72cf. Host-only evidence, no native resource admission or efficacy.
