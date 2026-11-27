@@ -64,3 +64,5 @@ Historical complete ledger: [v1.2.294 L5191–5841](https://github.com/nguyenbui
 | H4-M23-5 closure and issuance | Owner explicit distinct closure and one-use host-static GO | EDIT-FIRST / AUTHORIZATION EFFECTIVE ONLY AT ROOT-ONLY CHILD | Base fd55c9c9ef64023898287f77913aa7771f83689f; exact frozen evaluator,73 fixtures, separate marker closure then issuance; owner receipt pending |
 
 Append one row per task with exact evidence/commit, decision, limitations and next scope. Do not rewrite previous entries or imply authorization.
+
+| H4-M23-5 receipt / H4-M23-6 | Owner explicit acceptance and one-use bounded native diagnostic GO; exact uploaded log/attempt rehashed | STATIC CLOSED/CONSUMED / FULL HOST-STATIC PASS / EDIT-FIRST / NATIVE GO EFFECTIVE ONLY AT SEPARATE ROOT-ONLY CHILD | Base cb6d4bf09fce263d2d3ae6922ac22573f889c8e7; 73/73; log626B b03ebe9c8484d82016741a42b9755e97eb1d214bcf8bff75fbd2fd8ca7f01388; attempt429B 52f277e1414aa618b1cd3826b3ccd5c576697ade15b0eba797041b01311216df; owner accepts verification limits; no SA runtime; max1308/426/3/6/6; immutable NO_GO/EXPOSURE_INCONCLUSIVE/NO_PROMOTE |

@@ -108,3 +108,6 @@ Exact frozen evaluator and historical hashes matched. Complete root blob reveals
 
 ## 2026-11-27 — H4-M23-5 explicit closure and static GO
 Owner explicitly permits exact historical marker closure followed by distinct root-only static issuance. No executable modification or SA static/native execution. Owner receipt pending at authorized child only.
+
+## 2026-11-27 — H4-M23-5 receipt acceptance / H4-M23-6 EDIT-FIRST
+Accept exact uploaded static log and attempt (2/2 SHA256 matched, 73/73 host fixtures). Owner explicit separate static closure and bounded native diagnostic GO; root-only closure then distinct root-only issuance, unchanged evaluator and gates. No governance version change, no executable edit or SA native execution. Native receipt pending.
