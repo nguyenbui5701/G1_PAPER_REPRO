@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.272  
+**Version:** 1.2.273  
 **Ngày cập nhật:** 2026-11-27 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -3467,6 +3467,12 @@ Actual SA local NumPy host rerun of the previously pinned external core/ledger d
 
 Frozen future budget remains5242880 training/800 optimizer/2000 diagnostic eval, 20 rollouts/4 chunks, original seed1 fullstate reset-edge and all native/safety gates. Exposure total>=10000 actual nonzero, >=1000 each half, left/right/both support nonzero, report none, nominal>=80% archived M12 1145928 and original minimum nominal/coverage gates. No budget allocated. Only next Owner action: exact local held static via pinned g1_m463 -B -u m463_push_ppo_train.py --h4r12-static --checkpoint m430_seed1/checkpoint_pilot_20261114_120515_1722937_step_401080320.msgpack --restore-report m462_runs/typed_restore_20261120_162901.json --reward-report m463_runs/m470_h3_m1_2_independent_10M_20261124_183319_225465810/report.json. Return full log with both producer and tee exit footer; require static receipt review before any distinct explicit runtime GO. No active marker. No standalone diagnostic, PPO runtime, holdout, promotion or new treatment. Branch A active, Branch B HOLD.
 
+### H4-M16-1A — Owner exact static STOP / local dependency provenance correction (v1.2.273; 2026-11-27)
+
+Reviewed actual Owner log m470_h4r12_static_20261127_122522_124745235.log (2355 bytes, SHA256 75a168600548b31dc6f516fd7c36fa06bb6d18ec67db258dbbbd8688174b1068), HEAD140c9b64297f727f6b84968e5cebff842e32005c, Rules1.2.272. Log reports Rules780e1436, env9ab50f62, generatorc647e67c, trainer74a5e2ee SHA256 prefixes; source compile and preceding reverse projections passed by control flow. STOP at h4r12_project_sources line7937, git show fcb6b5a294adbd50e74ed7bbb726bd8b7847b3cf:m462_ppo_warmstart_run.py exit128 (file exists on disk, absent historical tree); STATIC_EXIT_CODE=1 TEE_EXIT_CODE=0. No actual generated Brax build, archive preflight, integrated fixtures or native execution reached. No scientific inference.
+
+Root cause SA wrongly applied Git-tracked historical comparison to local-only dependencies instead of reusing accepted R11 h4x_file_pin. EDIT-FIRST minimal correction in existing m463_push_ppo_train.py h4r12_project_sources only, new trainer blob918372c3d0b35fb92fdaa4abfca1e54ed3850765: three tracked files retain exact historical byte comparison against the unchanged R12_BASE_HEAD (tracked blobs train b36b69a3, paper config 6dc390de, evaluator12ad4860; evaluator differs from older R11 historical pin and must not be reverted or repinned to that older version). Local warmstart/typed restore/config use existing H4R_LOCAL_SHA and H4R_CONFIG_SHA, fail on absent/symlink/mismatch, no recomputed expected hashes, no skip or tolerance. SA checked exact three historical tracked blob identities via connector, exact inverse replacement and unchanged source outside R12 trainer block. Host synthetic file-pin fixture 3 valid files/9 negative (changed, missing, symlink each) PASS using transcribed existing h4x_file_pin predicate, not actual Owner dependency rehash or whole-source compilation. Env/generator/geometry/reward/physics/curriculum/PPO/authorization/reader/budget unchanged; no new file. Correct the prior mistaken assumption permanently: distinguish Git-tracked immutable source and SHA256-pinned local dependencies in future source projection, use accepted historical provenance mechanisms rather than treating local files as tracked or re-pinning observed bytes. Actual new full static remains pending; Owner may run same exact --h4r12-static command on corrected HEAD once, preserve prior failed log and use fresh timestamped receipt. No auto retry, no native/PPO/holdout/promotion; zero physical transitions/reset/inference/optimizer by SA. Branch B HOLD.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -3728,6 +3734,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-26)
+
+**H4-M16-1A OWNER STATIC STOP / LOCAL PIN CORRECTION (v1.2.273):** actual log75a16860, git show local warmstart absent in historical commit, static1/tee0 before generated source. Minimal trainer-only provenance fix, original SHA256 pins restored and tracked byte checks retained; host pin fixture3/9 PASS, new Owner static pending, no active runtime GO, B HOLD.
 
 **H4-M16-1 R12-DCR-V1 HELD SOURCE INTEGRATION CANDIDATE / OWNER FULL STATIC PENDING (v1.2.272):** three existing executable files, exact R11 reverse projections (5 env/48 trainer + blocks), actual draft host reruns PASS, new integrated static fixtures and pinned full static not yet executed. Distinct namespace/source receipt/typed restore/reader path, no active marker, native0, Branch B HOLD.
 
@@ -4625,6 +4633,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-27 | H4-M16-1A Owner static STOP and local provenance correction | log75a16860; Git-tracked vs local SHA256 pins; 3/9 host pin fixture | STATIC STOP recorded / corrected held source / Owner static pending | 1.2.273 |
+
 | 2026-11-27 | H4-M16-1 held source integration candidate | three source blobs, reverse projections exact, draft host rerun PASS, actual integrated static pending | HELD SOURCE CANDIDATE / Owner full static pending / zero native | 1.2.272 |
 
 | 2026-11-27 | H4-M16-1 signed ledger/wiring continuation | 262144 synthetic rows / 26 negatives / 4 exposure cases, adapter host PASS | HOST DRAFT PASS / full held integration incomplete / zero native | 1.2.271 |
@@ -5231,6 +5241,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.273 — 2026-11-27:** Record Owner R12 static STOP at incorrect Git lookup of local dependency; correct only R12 projection to established original local SHA256 pins and preserve exact tracked byte checks. No native/runtime authorization. Branch B HOLD.
 
 - **v1.2.272 — 2026-11-27:** Integrate R12 held source in existing environment/instrumenter/trainer with exact reverse projections and distinct M12-based continuation/reader/static paths; record actual draft host rerun and pending Owner full static. No active runtime marker, no native work, Branch B HOLD.
 

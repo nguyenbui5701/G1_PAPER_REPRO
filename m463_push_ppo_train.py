@@ -7933,8 +7933,14 @@ def h4r12_project_sources(root):
         j=i+1+after.start() if after else len(t)
         t=t[:i]+h4red_once(t[i:j],b,a)+t[j:]
     h4m12_require(t.encode('utf8')==old('m463_push_ppo_train.py'),'R12_TRAINER_BYTES')
-    for name in ('train.py','paper_config.py','m463_gate3_cp_eval.py','m462_ppo_warmstart_run.py','m462_typed_orbax_stage.py','paper_config_preflight.json'):
+    # Tracked sources use exact historical Git bytes; local-only dependencies
+    # retain the established R11 SHA256 pins (never re-pin current disk bytes).
+    for name in ('train.py','paper_config.py','m463_gate3_cp_eval.py'):
         h4m12_require((root/name).read_bytes()==old(name),'R12_UNCHANGED_'+name)
+    for name,sha in (('m462_ppo_warmstart_run.py',H4R_LOCAL_SHA['m462_ppo_warmstart_run']),
+                     ('m462_typed_orbax_stage.py',H4R_LOCAL_SHA['m462_typed_orbax_stage']),
+                     ('paper_config_preflight.json',H4R_CONFIG_SHA)):
+        h4x_file_pin(root/name,sha)
     return True
 
 
