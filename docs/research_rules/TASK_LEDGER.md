@@ -74,3 +74,5 @@ Append one row per task with exact evidence/commit, decision, limitations and ne
 | H4-M24-1 | Owner explicit held source scope | EDIT-FIRST / HELD | Base 05632be604b7fa3464cb4ae51c62ebc4197589b0; zero execution, no authorization |
 
 | H4-M24-1 held source completion | Distinct V2 CLI/identity, bootstrap/provenance guard and 22 new planned cases | HELD SOURCE IMPLEMENTED / STATIC GO REQUIRED | 2d96add1bce3d1e23b6504561114f7cff29a16da; 95 planned, zero execution; V1 immutable |
+
+| H4-M24-2 | Owner explicit distinct V2 one-use host-static GO | AUTHORIZATION PREPARED / OWNER RECEIPT PENDING / NATIVE HOLD | a3d1fc9b16e12faefa3694e36f7cb743621e420e; 95 planned, no SA execution; effective only at exact root-only child |

@@ -437,3 +437,6 @@ Each link includes the section until the next heading; ranges are retrieval aids
 
 ## H4-M24-1 held source completion
 - [EDIT-FIRST](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/7f98679b66f894b87cb87fb023b96bcc0a9f7951), [source](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/2d96add1bce3d1e23b6504561114f7cff29a16da), blob 05ada48c07940c8f1aa6d4402cf95a2f2aa78d8d. Exact outside-block and hook list text readback; no execution. See ACTIVE_EXPERIMENT for fixed paths and planned95 cases.
+
+## H4-M24-2 one-use static issuance
+- [Exact held base](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/a3d1fc9b16e12faefa3694e36f7cb743621e420e), evaluator blob 05ada48c07940c8f1aa6d4402cf95a2f2aa78d8d; root-only marker child required. No empirical result yet; see ACTIVE_EXPERIMENT.
