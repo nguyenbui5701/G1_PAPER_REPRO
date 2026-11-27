@@ -344,3 +344,6 @@ Each link includes the section until the next heading; ranges are retrieval aids
 
 ## H4-M20-2 held final source candidate
 - [Final guard, accepted evidence reuse, exact trainer blob and full-static contract](ACTIVE_EXPERIMENT.md#h4-m20-2--ffe-v2-final-held-source-freeze-and-full-static-preparation-2026-11-27); base [a240e7e41959643494e6e1fa9df30cbfe65922b1](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/a240e7e41959643494e6e1fa9df30cbfe65922b1); no new fixture or native receipt.
+
+## H4-M20-2B full host-static authorization
+- [Exact authorization and bounded launcher](ACTIVE_EXPERIMENT.md#h4-m20-2b--ffe-v2-bounded-full-host-static-verification--one-use-owner-go-2026-11-27); [reviewed final source](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/29a9208d8e68250f9489ceec07b20a3369e0437c); accepted candidate log rehash2032B SHA256 58a07796561115d3c570258684043fc994bd037761bcd44db0fc5ebc9d1902c5. Expected distinct log m463_runs/m470_h4ffe2_static_final_oneuse_v1.log; no final receipt or native evidence yet.

@@ -5,7 +5,7 @@ Governance v2.0.0 — 2026-11-27 — documentation only. Historical research sta
 ## Workstream A: FFE-V1 closed; prospective FFE-V2 HELD
 No active runtime authorization. H4-M19-2 CLOSED / technical COMPLETE / scientific NO_GO / EXPOSURE_INCONCLUSIVE / NO_PROMOTE. No retry or continuation of consumed invocation. INFRA-RULES-01 is closed; Owner approved H4-M20-0 offline design only. Branch B HOLD.
 
-Current decision: H4-M20-0 held design complete; Owner GO H4-M20-1 received, end-to-end held candidate source reviewed and corrected; one-use host-static candidate CLOSED / CONSUMED / PASS accepted; H4-M20-2 final held candidate frozen, full static not authorized; native runtime HOLD. See latest final preparation. See latest H4-M20-1 section; no PPO, diagnostic, retry, holdout or promotion.
+Current decision: H4-M20-0 held design complete; Owner GO H4-M20-1 received, end-to-end held candidate source reviewed and corrected; one-use host-static candidate CLOSED / CONSUMED / PASS accepted; H4-M20-2 final held candidate frozen; H4-M20-2B distinct one-use full host-static ISSUED, Owner receipt pending; native runtime HOLD. See latest final preparation. See latest H4-M20-1 section; no PPO, diagnostic, retry, holdout or promotion.
 
 ## Exact prospective design (historical proposal, not authorization)
 Prospective FFE-V2 opportunity-window hypothesis HELD (one fixed curriculum treatment; no implementation/runtime authorization): more actual eligible first and repeat opportunities within each assigned chronological band can improve both-loaded visitation without forced commands or modifying physical/reward semantics. Retain fixed p1/8 cohort, four fixed band/cell draws, original independent20% nominal and untouched ordinary branch, original direction/magnitude, max2/episode, natural reset/closure and absolute clock, exact actual load and capture thresholds, causal standing coherence and no fallback. Candidate timing only: retain due T in original [40,80]+160*b, extend first search from T through 112+160*b inclusive; repeat search all gaps30..40 inclusive (instead of 9-tick window starting at gap30..32), last possible repeat152+160*b (< chunk boundary160+160*b; last k632, only7 subsequent epoch ticks, explicitly censor tails). Existing independent gap RNG key may be retained unused in V2 only; no extra native RNG split. No extra reset, command forcing/holding, action override, reward shaping, replay, state teleport or proxy relaxation. This is a prospective engineering proposal, not selected numerical optimum. Longer hard blocking/tail censor may impair ordinary exposure or learning; same frozen floors and tail accounting must reveal this. If later evidence shows no useful both-loaded joint occupancy, do not automatically widen gaps, increase cohort/budget or adjust load/capture thresholds. Do not conflate additional first events with adequate target repeats.
@@ -236,3 +236,139 @@ Full-static plan (distinct GO required): existing trainer new --h4ffe2-final-sta
 Resource strategy: unchanged accepted 180 flags/575 bins/30 raw int32 fields; risk JSON bound32005376 B and atomic risk+external log80787968 B under other_cap134217728 B. h4ffe2_resource_bound now also called in supervisor and worker before native worker work. Existing h4x_storage checks actual bytes including atomic temporary write plus log reserve, 512MiB overall and 2GiB disk reserve; actual 12GiB GPU/sampled used and peak <95%, sampler errors0, finite, watchdog, no extra native diagnostic or pilot. peak_xla_verified=false remains explicit. Full static is host-only technical acceptance, not actual device resource admission; any future distinct PPO GO must explicitly accept remaining first-compile resource uncertainty and stop fail-closed on OOM/timeout/storage/VRAM or other guard violation, no retry, no adaptive cap. No scientific gate or budget changes (5242880 train/800 optimizer/2000 eval/20 rollouts/4 chunks; frozen material and DEV gates unchanged).
 
 Next only: separate one-use H4-M20-2 bounded final host-static authorization after Owner GO. Do not issue runtime marker, native/diagnostic/PPO, retry or promotion now. No new experimental evidence. All current decisions above supersede older held/issued historical prose.
+
+## H4-M20-2B — FFE-V2 bounded full host-static verification — ONE-USE OWNER GO (2026-11-27)
+
+Owner explicit GO at 29a9208d8e68250f9489ceec07b20a3369e0437c. SA issues **H4-M20-2B-FFE2-FULL-HOST-STATIC-V1 / ISSUED / OWNER RECEIPT PENDING / NATIVE RUNTIME HOLD**. Final held source candidate accepted for this host-static invocation only, not final static PASS or scientific/runtime acceptance. Remote branch HEAD matched reviewed base; compared accepted candidate authorization 5954499880367c1f3c5275c73343b3478b4b7099 to base: only trainer plus five governance docs changed. Exact final blobs: env efe71d850746f07c42f5d1e0256399d2b963da21, instrumenter 6b28d055e068f9a36f7b58f852167fbc113a8b54, trainer 2f7ef6a387c205bfee8f3b500a06490b817f9f12, root 7d5961158420ad2053ed00cc1342aa2a54a12ce9. No executable edit or new native marker. Archive and frozen gates unchanged. A ACTIVE/B HOLD; FFE-V1 EXPOSURE_INCONCLUSIVE/NO_PROMOTE and historical missing terminal supervisor receipt immutable.
+
+SA independently materialized and rehashed exact Owner candidate log 2032 B SHA256 58a07796561115d3c570258684043fc994bd037761bcd44db0fc5ebc9d1902c5, body1876 bytes, footer CANDIDATE_COMPLETE/static_rc0/overflow false/error null; accepted closed one-use retained. Child final entry rechecks local log, projected historical aggregate a36598f76e5405de20c0677f5d9606dbbfc5d81c35f36c701f7d94d9842e76bc and identical generated PPO SHA256 9d20cdd77ac0e3330cb5f3d89df408ba150bc568f1bfa3d4ee2e6399bcba72cf before reuse; aggregate includes local-only files and generator depends on installed Brax, so SA cannot claim independent actual Owner aggregate/generated byte recomputation before invocation. STOP on mismatch. Reuse accepted 136 core,3 synthetic batches/786432 rows,19 batch negatives,reader2/19,terminal1/7 only on exact identity; no repetition. Only scoped source compilation/reverse projection, provenance/bootstrap and dependency pins, generator identity, new receipt1/13 and marker1/5, typed mock2/5, resource schema, two CLI HOLD negatives. No native import/physical transitions/resets/optimizer updates/inference. No PPO, retry, standalone diagnostic, holdout or promotion. No fixtures executed by SA; expected counts not observed.
+
+One Owner invocation of existing --h4ffe2-final-static using g1_m463 -B -u - and exact checkpoint/restore/reward inputs. Clean tracked branch experiment/b1-hardware-scaled, ff-only pull, exact authorization HEAD (direct child of reviewed base), extract exact embedded launcher. Distinct fixed exclusive log m463_runs/m470_h4ffe2_static_final_oneuse_v1.log; claim consumed on creation, never delete/rename/reuse. Watchdog3600s operational maximum (not duration estimate), 16MiB inclusive of 4096B reserved footer, disk >=2GiB+512MiB+16MiB; no GPU occupancy gate/prompt, no package changes. Stop only own spawned process group on failure/timeout/overflow. No automatic retry even preclaim STOP; return exact log and printed byte size/SHA or exact preflight failure. Required terminal H4FFE2_FULL_STATIC_PASS, exact candidate/generated/source binding, zero receipt, strict fixture/resource/control sections and FULL_STATIC_COMPLETE footer with exact accounting. Source aggregate emitted on Owner machine. No new empirical exposure or efficacy evidence; typed mocks are not native restore; peak_xla_verified=false; no actual device resource admission. Await SA review of exact full-static bytes before any further decision, no automatic runtime GO.
+
+```python
+# H4FFE2_FINAL_STATIC_OWNER_BEGIN
+import hashlib, json, os, selectors, shutil, signal, subprocess, sys, time
+from pathlib import Path
+
+root = Path.cwd().resolve()
+runs = root / "m463_runs"
+log = runs / "m470_h4ffe2_static_final_oneuse_v1.log"
+out = runs / "m470_h4_m20_ffe_v2"
+cap = 16 * 1024**2
+footer_reserve = 4096
+def require(ok, msg):
+    if not ok:
+        raise RuntimeError(msg)
+def git(*args):
+    return subprocess.check_output(["git", *args], cwd=root).decode().strip()
+require(git("branch", "--show-current") == "experiment/b1-hardware-scaled", "BRANCH")
+require(git("status", "--porcelain", "--untracked-files=no") == "", "TRACKED_DIRTY")
+require(git("rev-parse", "HEAD^") == "29a9208d8e68250f9489ceec07b20a3369e0437c", "REVIEW_PARENT")
+for name, blob in (
+    ("m463_coverage_env.py", "efe71d850746f07c42f5d1e0256399d2b963da21"),
+    ("m463_instrument_brax.py", "6b28d055e068f9a36f7b58f852167fbc113a8b54"),
+    ("m463_push_ppo_train.py", "2f7ef6a387c205bfee8f3b500a06490b817f9f12"),
+    ("G1_RESEARCH_RULES.md", "7d5961158420ad2053ed00cc1342aa2a54a12ce9")):
+    require(git("hash-object", name) == blob, "SOURCE_PIN " + name)
+require(runs.is_dir() and not runs.is_symlink(), "RUNS_PATH")
+require(not out.exists() and not out.is_symlink(), "RUNTIME_OUTPUT_PRESENT")
+candidate = runs / "m470_h4ffe2_static_candidate_oneuse_v1.log"
+candidate_sha = "58a07796561115d3c570258684043fc994bd037761bcd44db0fc5ebc9d1902c5"
+generated_sha = "9d20cdd77ac0e3330cb5f3d89df408ba150bc568f1bfa3d4ee2e6399bcba72cf"
+require(candidate.is_file() and not candidate.is_symlink() and candidate.stat().st_size == 2032, "CANDIDATE_LOG")
+require(hashlib.sha256(candidate.read_bytes()).hexdigest() == candidate_sha, "CANDIDATE_SHA")
+require(not log.exists() and not log.is_symlink(), "FINAL_ONE_USE_ALREADY_CLAIMED")
+require(shutil.disk_usage(runs).free >= 2*1024**3 + 512*1024**2 + cap, "DISK")
+head = git("rev-parse", "HEAD")
+argv = [sys.executable, "-B", "-u", str(root/"m463_push_ppo_train.py"),
+    "--h4ffe2-final-static",
+    "--checkpoint", "m430_seed1/checkpoint_pilot_20261114_120515_1722937_step_401080320.msgpack",
+    "--restore-report", "m462_runs/typed_restore_20261120_162901.json",
+    "--reward-report", "m463_runs/m470_h3_m1_2_independent_10M_20261124_183319_225465810/report.json"]
+rc = None
+error = None
+overflow = False
+stored = 0
+child = None
+deadline = time.monotonic() + 3600
+# Exclusive fixed log is the one-use claim. Never remove/rename/reuse.
+with log.open("xb") as stream:
+    def emit(data):
+        global stored, overflow
+        room = cap - footer_reserve - stored
+        keep = data[:max(0, room)]
+        if keep:
+            stream.write(keep)
+            stream.flush()
+            stored += len(keep)
+        if len(keep) != len(data):
+            overflow = True
+            raise RuntimeError("LOG_CAP")
+    try:
+        emit(("H4FFE2_FINAL_STATIC_HEAD " + head + "\n").encode())
+        child = subprocess.Popen(argv, cwd=root, stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True, bufsize=0)
+        with selectors.DefaultSelector() as sel:
+            sel.register(child.stdout, selectors.EVENT_READ)
+            while True:
+                left = deadline - time.monotonic()
+                require(left > 0, "WATCHDOG")
+                if not sel.select(timeout=min(1, left)):
+                    continue
+                data = os.read(child.stdout.fileno(), 65536)
+                if not data:
+                    break
+                emit(data)
+        rc = child.wait(timeout=max(.01, deadline-time.monotonic()))
+        require(rc == 0, "STATIC_RC")
+        require(git("rev-parse", "HEAD") == head and git("status", "--porcelain", "--untracked-files=no") == "", "POST_SOURCE")
+        require(not out.exists() and not out.is_symlink(), "POST_RUNTIME_OUTPUT")
+        lines = log.read_text(encoding="utf8").splitlines()
+        require(lines[0] == "H4FFE2_FINAL_STATIC_HEAD " + head, "FINAL_HEAD")
+        require(lines[-1:] == ["H4FFE2_FULL_STATIC_PASS"] and lines.count("H4FFE2_FULL_STATIC_PASS") == 1, "FINAL_RECEIPT")
+        require(lines.count("H4FFE2_STATIC_ZERO physical_transitions=0 resets=0 optimizer_updates=0 native_inference=0") == 1, "ZERO_RECEIPT")
+        require("H4FFE2_HELD_STATIC_CANDIDATE_PASS" not in lines, "UNEXPECTED_CANDIDATE")
+        require(lines.count("H4FFE2_ACCEPTED_CANDIDATE " + candidate_sha) == 1, "CANDIDATE_BINDING")
+        require(lines.count("H4FFE2_GENERATED " + generated_sha) == 1, "GENERATED_BINDING")
+        require(lines.count("H4FFE2_REVERSE_SOURCE_PASS") == 1, "REVERSE_BINDING")
+        import re
+        sources = [x for x in lines if x.startswith("H4FFE2_SOURCE ")]
+        require(len(sources) == 1 and re.fullmatch(r"H4FFE2_SOURCE [0-9a-f]{64}", sources[0]) is not None, "SOURCE_BINDING")
+        for tag, expected in (
+            ("H4FFE2_FINAL_GUARD_FIXTURES ", dict(receipt_positive=1, receipt_negative=13, marker_positive=1, marker_negative=5, native_calls=0)),
+            ("H4FFE2_TYPED_FIXTURES ", dict(positive=2, negative=5, native_calls=0, typed_mock_only=True)),
+            ("H4FFE2_RESOURCE_SCHEMA ", dict(atomic_risk_plus_external_bytes=80787968, flags=180, hist=575, other_cap=134217728, payload_bytes=3062976, peak_xla_verified=False, raw_extra_bytes=31457280, risk_json_upper_bytes=32005376)),
+            ("H4FFE2_MATCHED_CONTROL ", dict(archived_broad=[1569,1577,1700,1620,1679], minimum_broad=[1256,1262,1360,1296,1344], nominal=916743))):
+            hits = [x[len(tag):] for x in lines if x.startswith(tag)]
+            require(len(hits) == 1, "FINAL_SECTION " + tag)
+            obj = json.loads(hits[0])
+            require(type(obj) is dict and set(obj) == set(expected) and all(type(obj[k]) is type(expected[k]) for k in expected) and obj == expected, "FINAL_SECTION_VALUE " + tag)
+        require(not any(x.startswith(("H4FFE2_CORE_FIXTURES ", "H4FFE2_BATCH_FIXTURES ", "H4FFE2_READER_FIXTURES ", "H4FFE2_TERMINAL_FIXTURES ")) for x in lines), "UNAUTHORIZED_CANDIDATE_FIXTURE_REPEAT")
+    except BaseException as exc:
+        error = repr(exc)[:1024]
+        if child is not None and child.poll() is None:
+            try:
+                os.killpg(child.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            rc = child.wait(timeout=10)
+        elif child is not None:
+            rc = child.returncode
+    finally:
+        status = dict(decision="FULL_STATIC_COMPLETE" if rc == 0 and error is None and not overflow else "STOP",
+            static_rc=rc, overflow=overflow, error=error, stored_child_and_header_bytes=stored)
+        footer = ("\nH4FFE2_FINAL_STATIC_STATUS " + json.dumps(status, ensure_ascii=True, sort_keys=True) + "\n").encode()
+        require(len(footer) <= footer_reserve, "FOOTER_CAP")
+        stream.write(footer)
+        stream.flush()
+        os.fsync(stream.fileno())
+    require(stream.tell() <= cap, "FINAL_LOG_CAP")
+print("===== STATIC RECEIPT TAIL =====", flush=True)
+with log.open("rb") as f:
+    f.seek(max(0, log.stat().st_size-16384))
+    print(f.read().decode("utf8", errors="replace"), end="", flush=True)
+print("H4FFE2_FINAL_STATIC_LOG", str(log), log.stat().st_size,
+      hashlib.sha256(log.read_bytes()).hexdigest(), flush=True)
+sys.exit(0 if status["decision"] == "FULL_STATIC_COMPLETE" else 1)
+# H4FFE2_FINAL_STATIC_OWNER_END
+```

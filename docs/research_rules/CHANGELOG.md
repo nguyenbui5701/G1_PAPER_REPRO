@@ -30,3 +30,6 @@ Owner uploaded exact log2032B SHA256 58a07796561115d3c570258684043fc994bd037761b
 
 ## 2026-11-27 — H4-M20-2 final held preparation
 Trainer-only final guard and distinct full-static entry, accepted-candidate aggregate projection, typed mock and ledger edge/resource checks. No marker issued; no full static or native execution; candidate evidence reused under exact identity. Frozen science unchanged. Base a240e7e41959643494e6e1fa9df30cbfe65922b1.
+
+## 2026-11-27 — H4-M20-2B one-use full host-static GO (governance v2.0.0 unchanged)
+Owner explicit GO at 29a9208d8e68250f9489ceec07b20a3369e0437c; distinct bounded static authorization, accepted candidate log rehashed; unchanged executable/root/archive/scientific gates. Scoped final fixtures only, no native or PPO; Owner receipt pending. Fixed final log and exact launcher in ACTIVE_EXPERIMENT.
