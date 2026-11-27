@@ -413,3 +413,6 @@ Each link includes the section until the next heading; ranges are retrieval aids
 
 ## H4-M23-4 held static preparation
 - [Rules base](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/eb130925f163af4f7450e2616ffdda96a7020c43); [held evaluator](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/9c126231e1666c99c6f3a66a849e0cce13540c50). No new empirical results.
+
+## H4-M23-4 held freeze receipt
+- [EDIT-FIRST](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/565475f081b11f215ebf821cdf81735ff3224ed5), [frozen source](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/61794fc3f7c6876d747cf40ea458ead3e537590f), evaluator blob a65d2a1731b63b250f57836d011ecee7a5cda998. Five actual uploaded SHA256 matches; exact planned counts and receipt contract in ACTIVE_EXPERIMENT, no static or native result.
