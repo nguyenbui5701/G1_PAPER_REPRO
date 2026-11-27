@@ -6447,3 +6447,149 @@ PY
 ---
 
 **Nguyên tắc bảo trì:** File này được phép tiến hóa có kiểm soát. Khi thông số, mục tiêu hay quy tắc thay đổi: **bump semantic version, ghi lý do + bằng chứng + ngày vào CHANGELOG, cập nhật CURRENT STATE, và commit vào đúng nhánh**. Các task phải khai báo version đã đọc. Nếu kết quả mới chỉ thay đổi số liệu, cập nhật CURRENT STATE/TASK LEDGER, không cần đổi khái niệm hoặc mục tiêu. Nếu thiếu file hoặc SHA, dừng kết luận và yêu cầu đúng bằng chứng thiếu.
+
+H4FFE2_TRAINING_APPROVED: 397ff894aabf42ad73ff842985142a997dcf31d7047585057b20821f14985230 1e30539f8163f6348f95e64b07ab47f02d76bb1469133263066d802c43a91036 1abe29a3f235e76b53053ca1602db24456a030c20ed16bffda08487ff54d6ea9 318671ef35794c028e69d3a16dd4c1155611aa30d8bc5a7ccd2421e17d2e0584
+# H4FFE2_DEV_OWNER_LAUNCHER_BEGIN
+import hashlib, json, os, selectors, shutil, signal, subprocess, sys, time, traceback
+from pathlib import Path
+
+root = Path.cwd().resolve()
+runs = root / "m463_runs"
+out = runs / "m470_h4_m21_1_ffe2_dev_v1" / "report.json"
+log = runs / "m470_h4ffe2_dev_runtime_v1.log"
+cap = 16 * 1024**2
+deadline = time.monotonic() + 5400
+stored = 0
+producer_rc = None
+reader_rc = None
+partial_rc = None
+overflow = False
+error = None
+def require(ok, msg):
+    if not ok:
+        raise RuntimeError(msg)
+def digest(p):
+    with p.open("rb") as f:
+        return hashlib.file_digest(f, "sha256").hexdigest() if hasattr(hashlib, "file_digest") else digest_stream(f)
+def digest_stream(f):
+    h = hashlib.sha256()
+    for chunk in iter(lambda: f.read(1024**2), b""):
+        h.update(chunk)
+    return h.hexdigest()
+def emit(f, data):
+    global stored, overflow
+    room = cap - stored
+    keep = data[:room]
+    if keep:
+        f.write(keep)
+        stored += len(keep)
+        f.flush()
+    if len(data) > room:
+        overflow = True
+        raise RuntimeError("LOG_CAP")
+def stop_group(p):
+    try:
+        os.killpg(p.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    p.wait(timeout=10)
+def child(f, argv):
+    require(time.monotonic() < deadline, "WATCHDOG")
+    p = subprocess.Popen(argv, cwd=root, stdin=subprocess.DEVNULL,
+                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                         start_new_session=True, bufsize=0)
+    try:
+        with selectors.DefaultSelector() as sel:
+            sel.register(p.stdout, selectors.EVENT_READ)
+            while True:
+                left = deadline - time.monotonic()
+                require(left > 0, "WATCHDOG")
+                events = sel.select(min(left, 1.0))
+                if not events:
+                    continue
+                data = os.read(p.stdout.fileno(), 65536)
+                if not data:
+                    break
+                emit(f, data)
+        left = deadline - time.monotonic()
+        require(left > 0, "WATCHDOG")
+        return p.wait(timeout=left)
+    except BaseException:
+        stop_group(p)
+        raise
+    finally:
+        p.stdout.close()
+
+require(runs.is_dir() and not runs.is_symlink(), "RUNS_PATH")
+# Auth before exclusive claim; held static only compiles this block.
+import m463_gate3_cp_eval as e
+e.h4m3_no_runtime_imports()
+auth = e.h4m12_eval_auth(root,red='ffe2')
+e.h4m3_no_runtime_imports()
+# Exclusive fixed log is the outer one-use claim, even if native reservation never occurs.
+# Never remove or rename either the log or the native attempt directory to retry.
+with log.open("xb") as f:
+    print("H4FFE2_DEV_LAUNCH_LOG", log, flush=True)
+    try:
+        require(not out.parent.exists() and not out.parent.is_symlink(), "OUTPUT_USED")
+        require(shutil.disk_usage(runs).free >= 2*1024**3 + 2*128*1024**2 + cap, "STORAGE")
+        require(e.h4red_eval_source(root)==auth['source_sha256'], "SOURCE_SHA")
+        static = root/auth['static_path']
+        require(static.is_file() and not static.is_symlink() and digest(static)==auth['static_sha256'], "STATIC_SHA")
+        emit(f, ("H4FFE2_DEV_AUTH "+json.dumps(auth,sort_keys=True)+"\n").encode())
+        os.environ['H4FFE2_DEV_SUPERVISOR_PID']=str(os.getpid())
+        for k,v in {"JAX_PLATFORMS":"cuda", "JAX_DEFAULT_MATMUL_PRECISION":"highest",
+                    "XLA_PYTHON_CLIENT_PREALLOCATE":"false"}.items():
+            require(os.environ.get(k)==v, "ENV_"+k)
+        require(not any(k.split(".")[0] in ("jax","jaxlib","brax","mujoco","mujoco_playground")
+                        for k in sys.modules), "LAUNCHER_NATIVE_PREIMPORT")
+        emit(f, ("H4FFE2_DEV_LAUNCH "+json.dumps({"interpreter":sys.executable,
+                 "head":subprocess.check_output(["git","rev-parse","HEAD"],text=True,cwd=root).strip(),
+                 "watchdog_s":5400,"log_cap":cap,"output":str(out)})+"\n").encode())
+        producer_rc = child(f, [sys.executable,"-B","-u",str(root/"m463_gate3_cp_eval.py"),
+                                 "--mode","run","--h4ffe2-eval","--output",str(out)])
+        if producer_rc != 0 and out.is_file() and not overflow and time.monotonic()<deadline:
+            # Host-only partial reader; never treat its output as completion.
+            partial = (
+                "import json;from pathlib import Path;import m463_gate3_cp_eval as e;"
+                "r=Path.cwd();a=e.h4m12_eval_auth(r,red='ffe2');"
+                "print('H4FFE2_DEV_PARTIAL_READER',json.dumps(e.h4red_eval_read_partial(r,a,red='ffe2'),sort_keys=True),flush=True)"
+            )
+            partial_rc = child(f,[sys.executable,"-B","-u","-c",partial])
+        require(producer_rc == 0, "PRODUCER_RC")
+        # Clean host-only final reader, no additional evaluation/inference.
+        reader = (
+            "import json;from pathlib import Path;import m463_gate3_cp_eval as e;"
+            "r=Path.cwd();e.h4m3_no_runtime_imports();p=r/e.H4FFE2_DEV_OUTPUT;"
+            "a=e.h4m12_eval_auth(r,red='ffe2');s=e.h4m12_read_eval_final(r,e.sha256(p),a,red='ffe2');"
+            "e.h4m3_no_runtime_imports();"
+            "print('H4FFE2_DEV_FINAL_READER_PASS',e.sha256(p),"
+            "json.dumps({'decision':s['decision']['decision'],'scientific_gate_result':s['decision']['scientific_gate_result'],'training_exposure':s['decision']['training_exposure'],'ledger':s['ledger']},sort_keys=True),flush=True)"
+        )
+        reader_rc = child(f, [sys.executable,"-B","-u","-c",reader])
+        require(reader_rc == 0, "FINAL_READER_RC")
+    except BaseException as exc:
+        error = repr(exc)[:1024]
+        if not overflow:
+            try:
+                emit(f, traceback.format_exc().encode())
+            except BaseException:
+                pass
+    finally:
+        try:
+            f.flush()
+            os.fsync(f.fileno())
+        except OSError as exc:
+            error = repr(exc)[:1024]
+ok = error is None and producer_rc == reader_rc == 0 and not overflow
+print("H4FFE2_DEV_BOUNDED_STATUS", json.dumps({
+    "decision":"COMPLETE" if ok else "STOP","producer_rc":producer_rc,
+    "reader_rc":reader_rc,"partial_reader_rc":partial_rc,"overflow":overflow,"stored_bytes":stored,
+    "error":error,"log":str(log),"log_sha256":digest(log)
+}), flush=True)
+for name in ("report.json","attempt.json","dispatch.started.json","attempt_result.json"):
+    p = out.parent/name
+    if p.is_file() and not p.is_symlink():
+        print("H4FFE2_DEV_ARTIFACT",str(p),p.stat().st_size,digest(p),flush=True)
+raise SystemExit(0 if ok else 1)
+# H4FFE2_DEV_OWNER_LAUNCHER_END

@@ -10790,7 +10790,20 @@ def main():
     p.add_argument('--h4r12-eval-static',action='store_true')
     p.add_argument('--h4ffe-eval',action='store_true')
     p.add_argument('--h4ffe-eval-static',action='store_true')
+    p.add_argument('--h4ffe2-eval',action='store_true')
+    p.add_argument('--h4ffe2-eval-static',action='store_true')
     args=p.parse_args()
+    if args.h4ffe2_eval:
+        allowed={'mode','output','h4ffe2_eval','h4ffe2_eval_static'}
+        h4m12_req(all(getattr(args,k)==p.get_default(k) for k in vars(args) if k not in allowed),'FFE2_FLAG_CONFLICT')
+        h4m12_req(args.output.absolute()==args.output.resolve()==H4_EVAL_ROOT/H4FFE2_DEV_OUTPUT,'FFE2_OUTPUT')
+        if args.mode=='run':
+            h4m12_req(not args.h4ffe2_eval_static,'FFE2_MODE_CONFLICT')
+            args.h4red_eval='ffe2'
+            return h4m12_dispatch(args,red='ffe2')
+        if args.h4ffe2_eval_static:return h4ffe2_dev_static(H4_EVAL_ROOT)
+        print('H4FFE2_DEV_PLAN',json.dumps(H4FFE2_DEV_SPEC,sort_keys=True));return
+    if args.h4ffe2_eval_static:p.error('H4FFE2_EVAL_FLAG_REQUIRED')
     if args.h4ffe_eval:
         allowed={'mode','output','h4ffe_eval','h4ffe_eval_static'}
         h4m12_req(all(getattr(args,k)==p.get_default(k) for k in vars(args) if k not in allowed),'FFE_FLAG_CONFLICT')
@@ -11240,7 +11253,7 @@ def h4m12_eval_auth(root,*,red=False):
     h4m12_req(not any((H4_EVAL_EXECUTION_AUTHORIZED,H4CC_EVAL_EXECUTION_AUTHORIZED,
         t.H4_EXECUTION_AUTHORIZED,t.H4R_EXECUTION_AUTHORIZED,t.H4C_EXECUTION_AUTHORIZED,
         t.H4CC_EXECUTION_AUTHORIZED,t.H4M8_EXECUTION_AUTHORIZED)),'LEGACY_HOLD')
-    auth=(h4ffe_dev_marker if red=='ffe' else h4r12_dev_marker if red=='r12' else h4r11_dev_marker if red=='r11' else h4red_eval_marker if red else h4m12_parse_eval_marker)((root/'G1_RESEARCH_RULES.md').read_text('utf8'))
+    auth=(h4ffe2_dev_marker if red=='ffe2' else h4ffe_dev_marker if red=='ffe' else h4r12_dev_marker if red=='r12' else h4r11_dev_marker if red=='r11' else h4red_eval_marker if red else h4m12_parse_eval_marker)((root/'G1_RESEARCH_RULES.md').read_text('utf8'))
     h4m12_req((h4red_eval_source if red else h4m12_source)(root)==auth['source_sha256'],'SOURCE')
     p=root/auth['static_path']
     t.h4x_file_pin(p,auth['static_sha256'])
@@ -11256,6 +11269,8 @@ def h4m12_eval_auth(root,*,red=False):
         h4m12_req(lines[-2:]==['H4R11_DEV_FULL_STATIC_PASS','STATIC_EXIT_CODE=0 TEE_EXIT_CODE=0'],'R11_STATIC_FOOTER')
     if red=='r12':
         h4m12_req(lines[-2:]==['H4R12_DEV_FULL_STATIC_PASS','STATIC_EXIT_CODE=0 TEE_EXIT_CODE=0'],'R12_STATIC_FOOTER')
+    if red=='ffe2':
+        h4m12_req(lines[-2:]==['H4FFE2_DEV_FULL_STATIC_PASS','STATIC_EXIT_CODE=0 TEE_EXIT_CODE=0'],'FFE2_STATIC_FOOTER')
     if red=='ffe':
         h4m12_req(lines[-2:]==['H4FFE_DEV_FULL_STATIC_PASS','STATIC_EXIT_CODE=0 TEE_EXIT_CODE=0'],'FFE_STATIC_FOOTER')
     return auth
@@ -11265,18 +11280,20 @@ def h4m12_inputs(root,*,red=False):
     import m463_push_ppo_train as t
     root=Path(root).resolve()
     out=root/h4r11_dev_train_dir(red)
-    training_pins=H4FFE_DEV_TRAIN_PINS if red=='ffe' else H4R12_DEV_TRAIN_PINS if red=='r12' else H4R11_DEV_TRAIN_PINS if red=='r11' else H4RED_EVAL_TRAIN_PINS if red else H4M12_TRAIN_PINS
-    if red in ('r12','ffe'):h4m12_req(out.is_dir() and not out.is_symlink() and not out.parent.is_symlink(),'R12_TRAIN_PATH')
+    training_pins=H4FFE2_DEV_TRAIN_PINS if red=='ffe2' else H4FFE_DEV_TRAIN_PINS if red=='ffe' else H4R12_DEV_TRAIN_PINS if red=='r12' else H4R11_DEV_TRAIN_PINS if red=='r11' else H4RED_EVAL_TRAIN_PINS if red else H4M12_TRAIN_PINS
+    if red in ('r12','ffe','ffe2'):h4m12_req(out.is_dir() and not out.is_symlink() and not out.parent.is_symlink(),'R12_TRAIN_PATH')
     pins={}
     for name,expected in training_pins.items():
         t.h4x_file_pin(out/name,expected);pins['training/'+name]=expected
     r=json.loads((out/'report.json').read_bytes())
     auth=r['authorization']
-    h4m12_req(t.h4m12_read_final(root,training_pins['report.json'],auth,red=(red is True),r11=(red=='r11'),r12=(red=='r12'),ffe=(red=='ffe'))==r,'TRAIN_READER')
+    if red=='ffe2':h4ffe2_dev_training_contract(root,r)
+    else:
+        h4m12_req(t.h4m12_read_final(root,training_pins['report.json'],auth,red=(red is True),r11=(red=='r11'),r12=(red=='r12'),ffe=(red=='ffe'))==r,'TRAIN_READER')
     if red:
-        (h4ffe_dev_training_contract if red=='ffe' else h4r12_dev_training_contract if red=='r12' else h4r11_dev_training_contract if red=='r11' else h4red_eval_training_contract)(root,r)
+        if red!='ffe2':(h4ffe_dev_training_contract if red=='ffe' else h4r12_dev_training_contract if red=='r12' else h4r11_dev_training_contract if red=='r11' else h4red_eval_training_contract)(root,r)
         pins.update(h4red_eval_archive_pins(root))
-    approved=('H4FFE_TRAINING_APPROVED: ' if red=='ffe' else 'H4R12_TRAINING_APPROVED: ' if red=='r12' else 'H4R11_TRAINING_APPROVED: ' if red=='r11' else 'H4RED_TRAINING_APPROVED: ' if red else 'H4M12_TRAINING_APPROVED: ')+' '.join(training_pins[n] for n in
+    approved=('H4FFE2_TRAINING_APPROVED: ' if red=='ffe2' else 'H4FFE_TRAINING_APPROVED: ' if red=='ffe' else 'H4R12_TRAINING_APPROVED: ' if red=='r12' else 'H4R11_TRAINING_APPROVED: ' if red=='r11' else 'H4RED_TRAINING_APPROVED: ' if red else 'H4M12_TRAINING_APPROVED: ')+' '.join(training_pins[n] for n in
         ('report.json',H4M12_POLICY,'m470_fullstate_step_015728640.msgpack','m470_fullstate_step_015728640.json'))
     h4m12_req((root/'G1_RESEARCH_RULES.md').read_text('utf8').splitlines().count(approved)==1,'TRAIN_APPROVAL')
     archive=h4cc_read_archive(root/H4_EVAL_OUTPUT)
@@ -11309,7 +11326,7 @@ def h4m12_inputs(root,*,red=False):
     ext=h4m3_external_sources(root)
     if red:
         pins['source/paper_config_preflight.json']=t.H4R_CONFIG_SHA
-        pins['training/static.log']=(H4FFE_DEV_TRAIN_AUTH if red=='ffe' else H4R12_DEV_TRAIN_AUTH if red=='r12' else H4R11_DEV_TRAIN_AUTH if red=='r11' else H4RED_EVAL_TRAIN_AUTH)['static_sha256']
+        pins['training/static.log']=(H4FFE2_DEV_TRAIN_AUTH if red=='ffe2' else H4FFE_DEV_TRAIN_AUTH if red=='ffe' else H4R12_DEV_TRAIN_AUTH if red=='r12' else H4R11_DEV_TRAIN_AUTH if red=='r11' else H4RED_EVAL_TRAIN_AUTH)['static_sha256']
     if red=='r12':pins['training/runtime.log']=H4R12_DEV_TRAIN_RUNTIME_SHA
     return pins,archive,ext
 
@@ -11429,7 +11446,7 @@ def h4m12_final_check(root,session,auth,pins,archive,*,red=False):
 def h4m12_read_eval_final(root,expected_sha,auth,*,red=False):
     import m463_push_ppo_train as t
     path=root/h4r11_dev_output(red)
-    if red in ('r12','ffe'):
+    if red in ('r12','ffe','ffe2'):
         h4m12_req(path.is_file() and not path.is_symlink() and not path.parent.is_symlink()
             and path.stat().st_size<=h4r11_dev_spec(red)['report_cap'],'R12_FFE_FINAL_FILE')
     t.h4x_file_pin(path,expected_sha)
@@ -11731,6 +11748,7 @@ def h4red_eval_decide(root,archive,fresh,*,red=True):
     result['secondary']=h4red_eval_descriptive(m12,fresh,red=red)
     if red=='r12':h4r12_dev_disposition(result)
     if red=='ffe':h4ffe_dev_disposition(result)
+    if red=='ffe2':h4ffe2_dev_disposition(result)
     return result
 
 
@@ -13736,8 +13754,8 @@ H4R11_DEV_TRAIN_AUTH=dict(id='H4-M15-R11-NSTR-V1',output=str(H4R11_DEV_TRAIN_DIR
     static_sha256='f4eb7c23e9f48141f454e21a6dfb9e2bd1e5b0457f3a40ab89ab988e29c6d978')
 
 def h4r11_dev_label(red):
-    h4m12_req(type(red) is bool or red in ('r11','r12','ffe'),'R11_MODE')
-    return 'FFE' if red=='ffe' else 'R12' if red=='r12' else 'R11' if red=='r11' else 'RED' if red else 'M12'
+    h4m12_req(type(red) is bool or red in ('r11','r12','ffe','ffe2'),'R11_MODE')
+    return 'FFE2' if red=='ffe2' else 'FFE' if red=='ffe' else 'R12' if red=='r12' else 'R11' if red=='r11' else 'RED' if red else 'M12'
 
 def h4r11_dev_prefix(red):
     return 'H4'+h4r11_dev_label(red)+'_DEV'
@@ -13746,16 +13764,16 @@ def h4r11_dev_status(red,suffix):
     return 'M470_'+h4r11_dev_prefix(red)+'_'+suffix
 
 def h4r11_dev_train_dir(red):
-    return H4FFE_DEV_TRAIN_DIR if red=='ffe' else H4R12_DEV_TRAIN_DIR if red=='r12' else H4R11_DEV_TRAIN_DIR if red=='r11' else H4RED_EVAL_TRAIN_DIR if red else H4M12_TRAIN_DIR
+    return H4FFE2_DEV_TRAIN_DIR if red=='ffe2' else H4FFE_DEV_TRAIN_DIR if red=='ffe' else H4R12_DEV_TRAIN_DIR if red=='r12' else H4R11_DEV_TRAIN_DIR if red=='r11' else H4RED_EVAL_TRAIN_DIR if red else H4M12_TRAIN_DIR
 
 def h4r11_dev_output(red):
-    return H4FFE_DEV_OUTPUT if red=='ffe' else H4R12_DEV_OUTPUT if red=='r12' else H4R11_DEV_OUTPUT if red=='r11' else H4RED_EVAL_OUTPUT if red else H4M12_EVAL_OUTPUT
+    return H4FFE2_DEV_OUTPUT if red=='ffe2' else H4FFE_DEV_OUTPUT if red=='ffe' else H4R12_DEV_OUTPUT if red=='r12' else H4R11_DEV_OUTPUT if red=='r11' else H4RED_EVAL_OUTPUT if red else H4M12_EVAL_OUTPUT
 
 def h4r11_dev_spec(red):
-    return H4FFE_DEV_SPEC if red=='ffe' else H4R12_DEV_SPEC if red=='r12' else H4R11_DEV_SPEC if red=='r11' else H4RED_EVAL_SPEC if red else H4M12_EVAL_SPEC
+    return H4FFE2_DEV_SPEC if red=='ffe2' else H4FFE_DEV_SPEC if red=='ffe' else H4R12_DEV_SPEC if red=='r12' else H4R11_DEV_SPEC if red=='r11' else H4RED_EVAL_SPEC if red else H4M12_EVAL_SPEC
 
 def h4r11_dev_log(red):
-    return H4FFE_DEV_LOG if red=='ffe' else H4R12_DEV_LOG if red=='r12' else Path('m463_runs/m470_h4r11_dev_runtime_v1.log' if red=='r11' else 'm463_runs/m470_h4red_dev_runtime_v1.log')
+    return H4FFE2_DEV_LOG if red=='ffe2' else H4FFE_DEV_LOG if red=='ffe' else H4R12_DEV_LOG if red=='r12' else Path('m463_runs/m470_h4r11_dev_runtime_v1.log' if red=='r11' else 'm463_runs/m470_h4red_dev_runtime_v1.log')
 
 def h4r11_dev_marker(rules):
     import re
@@ -14144,6 +14162,7 @@ def h4ffe_dev_marker(rules):
         provenance_sha256=provenance,static_path=log,static_sha256=digest)
 
 def h4ffe_dev_projection(raw):
+    if b'# H4FFE2_DEV_'+b'BEGIN\n' in raw:raw=h4ffe2_dev_projection(raw)
     begin=b'# H4FFE_DEV_'+b'BEGIN\n';end=b'# H4FFE_DEV_'+b'END\n'
     h4m12_req(raw.count(begin)==raw.count(end)==1,'FFE_PROJECTION_BLOCK')
     i=raw.index(begin);j=raw.index(end,i)+len(end)
@@ -14310,6 +14329,242 @@ def h4ffe_dev_static(root):
 
 H4FFE_DEV_PATCHES=[["    args=p.parse_args()\n    if args.h4r12_eval:","    p.add_argument('--h4ffe-eval',action='store_true')\n    p.add_argument('--h4ffe-eval-static',action='store_true')\n    args=p.parse_args()\n    if args.h4ffe_eval:\n        allowed={'mode','output','h4ffe_eval','h4ffe_eval_static'}\n        h4m12_req(all(getattr(args,k)==p.get_default(k) for k in vars(args) if k not in allowed),'FFE_FLAG_CONFLICT')\n        h4m12_req(args.output.absolute()==args.output.resolve()==H4_EVAL_ROOT/H4FFE_DEV_OUTPUT,'FFE_OUTPUT')\n        if args.mode=='run':\n            h4m12_req(not args.h4ffe_eval_static,'FFE_MODE_CONFLICT')\n            args.h4red_eval='ffe'\n            return h4m12_dispatch(args,red='ffe')\n        if args.h4ffe_eval_static:return h4ffe_dev_static(H4_EVAL_ROOT)\n        print('H4FFE_DEV_PLAN',json.dumps(H4FFE_DEV_SPEC,sort_keys=True));return\n    if args.h4ffe_eval_static:p.error('H4FFE_EVAL_FLAG_REQUIRED')\n    if args.h4r12_eval:"],["auth=(h4r12_dev_marker if red=='r12' else","auth=(h4ffe_dev_marker if red=='ffe' else h4r12_dev_marker if red=='r12' else"],["    return auth\n\n\ndef h4m12_inputs","    if red=='ffe':\n        h4m12_req(lines[-2:]==['H4FFE_DEV_FULL_STATIC_PASS','STATIC_EXIT_CODE=0 TEE_EXIT_CODE=0'],'FFE_STATIC_FOOTER')\n    return auth\n\n\ndef h4m12_inputs"],["training_pins=H4R12_DEV_TRAIN_PINS if red=='r12' else","training_pins=H4FFE_DEV_TRAIN_PINS if red=='ffe' else H4R12_DEV_TRAIN_PINS if red=='r12' else"],["if red=='r12':h4m12_req(out.is_dir()","if red in ('r12','ffe'):h4m12_req(out.is_dir()"],["r11=(red=='r11'),r12=(red=='r12'))==r,'TRAIN_READER')","r11=(red=='r11'),r12=(red=='r12'),ffe=(red=='ffe'))==r,'TRAIN_READER')"],["(h4r12_dev_training_contract if red=='r12' else","(h4ffe_dev_training_contract if red=='ffe' else h4r12_dev_training_contract if red=='r12' else"],["approved=('H4R12_TRAINING_APPROVED: ' if red=='r12' else","approved=('H4FFE_TRAINING_APPROVED: ' if red=='ffe' else 'H4R12_TRAINING_APPROVED: ' if red=='r12' else"],["(H4R12_DEV_TRAIN_AUTH if red=='r12' else H4R11_DEV_TRAIN_AUTH","(H4FFE_DEV_TRAIN_AUTH if red=='ffe' else H4R12_DEV_TRAIN_AUTH if red=='r12' else H4R11_DEV_TRAIN_AUTH"],["    if red=='r12':h4r12_dev_disposition(result)","    if red=='r12':h4r12_dev_disposition(result)\n    if red=='ffe':h4ffe_dev_disposition(result)"],["    if red=='r12':\n        h4m12_req(path.is_file()","    if red in ('r12','ffe'):\n        h4m12_req(path.is_file()"],["and path.stat().st_size<=H4R12_DEV_SPEC['report_cap'],'R12_FINAL_FILE')","and path.stat().st_size<=h4r11_dev_spec(red)['report_cap'],'R12_FFE_FINAL_FILE')"],["red in ('r11','r12'),'R11_MODE'","red in ('r11','r12','ffe'),'R11_MODE'"],["return 'R12' if red=='r12' else","return 'FFE' if red=='ffe' else 'R12' if red=='r12' else"],["return H4R12_DEV_TRAIN_DIR if red=='r12' else","return H4FFE_DEV_TRAIN_DIR if red=='ffe' else H4R12_DEV_TRAIN_DIR if red=='r12' else"],["return H4R12_DEV_OUTPUT if red=='r12' else","return H4FFE_DEV_OUTPUT if red=='ffe' else H4R12_DEV_OUTPUT if red=='r12' else"],["return H4R12_DEV_SPEC if red=='r12' else","return H4FFE_DEV_SPEC if red=='ffe' else H4R12_DEV_SPEC if red=='r12' else"],["return H4R12_DEV_LOG if red=='r12' else","return H4FFE_DEV_LOG if red=='ffe' else H4R12_DEV_LOG if red=='r12' else"],["def h4r12_dev_projection(raw):\n    begin=","def h4r12_dev_projection(raw):\n    if b'# H4FFE_DEV_'+b'BEGIN\\n' in raw:raw=h4ffe_dev_projection(raw)\n    begin="]]
 # H4FFE_DEV_END
+# H4FFE2_DEV_BEGIN
+H4FFE2_DEV_BASE='8cd304731cd35cd631cc994f424006a0d0e1d3ed'
+H4FFE2_DEV_BASE_BLOB='7efb74e89a141f768ca2b41f5bf3408b0079fea4'
+H4FFE2_DEV_TRAIN_DIR=Path('m463_runs/m470_h4_m20_ffe_v2')
+H4FFE2_DEV_OUTPUT=Path('m463_runs/m470_h4_m21_1_ffe2_dev_v1/report.json')
+H4FFE2_DEV_LOG=Path('m463_runs/m470_h4ffe2_dev_runtime_v1.log')
+H4FFE2_DEV_RECEIPT='TRAINING_TERMINAL_COMPLETE_OUTER_CONSOLE_NOT_SUPPLIED_OWNER_ACCEPTED'
+H4FFE2_DEV_SPEC=dict(H4RED_EVAL_SPEC,id='H4-M21-FFE2-DEV-V1',output=str(H4FFE2_DEV_OUTPUT),
+    new_policy='FFE2',training_exposure='EXPOSURE_INCONCLUSIVE',overall_disposition='NO_PROMOTE',
+    training_receipt_limitation=H4FFE2_DEV_RECEIPT,holdout_authorized=False)
+H4FFE2_DEV_TRAIN_PINS={
+    "report.json": "397ff894aabf42ad73ff842985142a997dcf31d7047585057b20821f14985230",
+    "m463_easy_repeat_support_longtrain_step_015728640.msgpack": "1e30539f8163f6348f95e64b07ab47f02d76bb1469133263066d802c43a91036",
+    "m470_fullstate_step_015728640.msgpack": "1abe29a3f235e76b53053ca1602db24456a030c20ed16bffda08487ff54d6ea9",
+    "m470_fullstate_step_015728640.json": "318671ef35794c028e69d3a16dd4c1155611aa30d8bc5a7ccd2421e17d2e0584",
+    "attempt.json": "3ce0ead92ca56d4d3ebcaa041c3e46d1352b2dea71c0348b5c9202048f76616c",
+    "worker.started.json": "e2f6d133463a51cb2c13468b927723e440bcbb5c1ed7b97cee2593fcbc8188fa",
+    "dispatch.started.json": "b47bf95f0a9fb9d68f048715a3786ee6c74635946f1af064aefdbce8d590d7fa",
+    "attempt_result.json": "180519848944e9c7d1c78e532194b867e48aca4763021e224082a45f16eab8cb",
+    "supervisor.terminal.json": "8c05cdeba4899af7074be36ac06a43bd064a2165e92f8e1d9d49ae576d17e54f",
+    "worker.log": "1260b68cce1b637a5ab9997cae5f5dbe273d3897494c9acfbb2e97c37cf0d284",
+    "m463_brax_ppo_instrumented.py": "9d20cdd77ac0e3330cb5f3d89df408ba150bc568f1bfa3d4ee2e6399bcba72cf"
+}
+H4FFE2_DEV_TRAIN_AUTH=dict(id='H4-M20-FFE-V2',output=str(H4FFE2_DEV_TRAIN_DIR),
+    source_sha256='492664bafc6aa360bbb6d9671a5ed85f4a1d3596b3f937869ca9d9c58c50ef86',
+    generated_sha256=H4FFE2_DEV_TRAIN_PINS['m463_brax_ppo_instrumented.py'],
+    static_path='m463_runs/m470_h4ffe2_static_final_oneuse_v1.log',
+    static_sha256='cb824e5830f344e06e7fffd467d93204b258b52304e7f46547dc229be5cc458c')
+
+def h4ffe2_dev_marker(rules):
+    import re
+    lines=[x for x in rules.splitlines() if re.match(r'^[A-Z0-9_]+_GO:',x)]
+    h4m12_req(len(lines)==1,'HOLD_OR_CONFLICT')
+    m=re.fullmatch(r'H4FFE2_EVAL_ACTIVE_GO: H4-M21-FFE2-DEV-V1 m463_runs/m470_h4_m21_1_ffe2_dev_v1/report.json '
+        r'([0-9a-f]{64}) ([0-9a-f]{64}) (m463_runs/m470_h4ffe2_dev_static_[A-Za-z0-9_]+\.log) ([0-9a-f]{64})',lines[0])
+    h4m12_req(m is not None,'FFE2_MARKER')
+    source,provenance,log,digest=m.groups()
+    return dict(id=H4FFE2_DEV_SPEC['id'],output=str(H4FFE2_DEV_OUTPUT),source_sha256=source,
+        provenance_sha256=provenance,static_path=log,static_sha256=digest)
+
+def h4ffe2_dev_projection(raw):
+    begin=b'# H4FFE2_DEV_'+b'BEGIN\n';end=b'# H4FFE2_DEV_'+b'END\n'
+    h4m12_req(raw.count(begin)==raw.count(end)==1,'FFE2_PROJECTION_BLOCK')
+    i=raw.index(begin);j=raw.index(end,i)+len(end)
+    s=(raw[:i]+raw[j:]).decode('utf8')
+    for before,after in reversed(H4FFE2_DEV_PATCHES):
+        h4m12_req(s.count(after)==1,'FFE2_REVERSE_ANCHOR')
+        s=s.replace(after,before,1)
+    data=s.encode('utf8')
+    h4m12_req(hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==H4FFE2_DEV_BASE_BLOB,
+        'FFE2_HISTORICAL_EVALUATOR')
+    return data
+
+def h4ffe2_dev_project(root):
+    import ast
+    raw=(root/'m463_gate3_cp_eval.py').read_bytes()
+    compile(raw,'<FFE DEV evaluator>','exec')
+    prev=h4ffe2_dev_projection(raw)
+    old=subprocess.check_output(['git','show',H4FFE2_DEV_BASE+':m463_gate3_cp_eval.py'],cwd=root)
+    h4m12_req(prev==old,'FFE2_EXACT_BYTE_PROJECTION')
+    a,b=ast.parse(old),ast.parse(raw)
+    def top(tree,name):
+        return next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name==name)
+    def step(tree):
+        return next(n for n in ast.walk(top(tree,'run')) if isinstance(n,ast.FunctionDef) and n.name=='one_step')
+    h4m12_req(ast.dump(step(a),include_attributes=False)==ast.dump(step(b),include_attributes=False),'FFE2_STEP_GRAPH')
+    for n in ('h3_group','h3_decode','h3_summary','h3_decide','h4_shared_frozen_loader'):
+        h4m12_req(ast.dump(top(a,n),include_attributes=False)==ast.dump(top(b,n),include_attributes=False),'FFE2_UNCHANGED_'+n)
+
+def h4ffe2_dev_disposition(result):
+    scientific=result['decision']
+    h4m12_req(scientific in ('NO_GO','INCONCLUSIVE','DEV_PASS')
+        and scientific==result['official']['decision'],'FFE2_SCIENTIFIC_RESULT')
+    result.update(scientific_gate_result=scientific,decision='NO_PROMOTE',
+                  training_exposure='EXPOSURE_INCONCLUSIVE',holdout_authorized=False,
+                  training_receipt_limitation=H4FFE2_DEV_RECEIPT)
+
+def h4ffe2_dev_exposure_contract(r):
+    import m463_push_ppo_train as t
+    import numpy as np
+    e=r['ffe_exposure']
+    h4m12_req(r['status']=='TECHNICAL_PASS' and r['promotion_authorized'] is False
+        and e==t.h4ffe_exposure_replay(r) and e['decision']=='EXPOSURE_INCONCLUSIVE'
+        and e['checks']==dict(half_cell=False,chunk=True,nominal=True,ordinary=True)
+        and e['chunk_cell']==[[5,5,1,2],[0,4,1,0],[3,2,0,0],[0,4,1,0]]
+        and e['half_cell']==[[5,9,2,2],[3,6,1,0]] and e['qualified']==28
+        and e['nominal']==1128243 and e['ordinary_broad']==[1394,1390,1497,1465,1432]
+        and t.h4ffe2_replay_full_ledger(np,r,complete=True)==r['ffe2_ledger'],
+        'FFE2_EXPOSURE_LOCK')
+
+def h4ffe2_dev_training_contract(root,r):
+    """Replay accepted historical FFE-V2 evidence, never execute its trainer."""
+    import m463_push_ppo_train as t
+    a=H4FFE2_DEV_TRAIN_AUTH
+    out=root/H4FFE2_DEV_TRAIN_DIR
+    p=H4FFE2_DEV_TRAIN_PINS
+    h4m12_req(r['authorization']==a
+        and r['artifacts'][H4M12_POLICY]==p[H4M12_POLICY]
+        and r['parent']['matched_control']['ctrl_dev_sha256']==H4CC_ARCHIVE_SHA
+        and r['parent']['matched_control']['m12_dev_sha256']==H4RED_EVAL_M12_PINS['report.json'],
+        'FFE2_TRAIN_APPROVAL')
+    for name,expected in p.items():t.h4x_file_pin(out/name,expected)
+    h4m12_req(not (out/'supervisor.failed.json').exists() and not (out/'supervisor.failed.json').is_symlink(),
+        'FFE2_TRAIN_FAILED_RECEIPT')
+    previous=h4ffe2_dev_projection((root/'m463_gate3_cp_eval.py').read_bytes())
+    names=(*t.H4_FILES,'m463_gate3_cp_eval.py','paper_config_preflight.json')
+    h4m12_req(len(names)==len(set(names))==9,'FFE2_SOURCE_SET')
+    payload={n:(hashlib.sha256(previous).hexdigest() if n=='m463_gate3_cp_eval.py' else sha256(root/n)) for n in names}
+    h4m12_req(h4m3_digest(payload)==a['source_sha256'],'FFE2_HISTORICAL_TRAIN_SOURCE')
+    historical=subprocess.check_output(['git','show',t.H4FFE2_ACCEPTED_CANDIDATE_HEAD+':m463_push_ppo_train.py'],cwd=root)
+    h4m12_req(hashlib.sha1(b'blob '+str(len(historical)).encode()+b'\0'+historical).hexdigest()
+        =='7a4c95ab00b072ab00764f86e0b7221561b97dad','FFE2_CANDIDATE_TRAINER_PIN')
+    candidate=dict(payload)
+    candidate['m463_push_ppo_train.py']=hashlib.sha256(historical).hexdigest()
+    h4m12_req(h4m3_digest(candidate)==t.H4FFE2_ACCEPTED_SOURCE_SHA,'FFE2_CANDIDATE_SOURCE')
+    cl=root/t.H4FFE2_ACCEPTED_CANDIDATE_LOG
+    t.h4x_file_pin(cl,t.H4FFE2_ACCEPTED_CANDIDATE_SHA)
+    h4m12_req(cl.stat().st_size==2032,'FFE2_CANDIDATE_SIZE')
+    static=root/a['static_path']
+    t.h4x_file_pin(static,a['static_sha256'])
+    head=t.h4ffe2_check_final_static_receipt(static.read_bytes(),a['source_sha256'],a['generated_sha256'])
+    for ancestor in (head,t.H4FFE2_ACCEPTED_CANDIDATE_HEAD,H4FFE2_DEV_BASE):
+        h4m12_req(subprocess.run(['git','merge-base','--is-ancestor',ancestor,'HEAD'],cwd=root).returncode==0,
+            'FFE2_TRAIN_ANCESTRY')
+    h4m12_req(subprocess.run(['git','diff','--quiet',head,H4FFE2_DEV_BASE,'--',*names],cwd=root).returncode==0,
+        'FFE2_STATIC_TRAIN_SOURCE_ANCESTRY')
+    for name,key in (('attempt.json','parent_pid'),('worker.started.json','pid')):
+        v=json.loads((out/name).read_bytes())
+        h4m12_req(set(v)=={'authorization',key} and v['authorization']==a
+            and type(v[key]) is int and v[key]>0,'FFE2_TRAIN_RECEIPT')
+    h4m12_req(json.loads((out/'dispatch.started.json').read_bytes())=={'authorization':a}
+        and json.loads((out/'attempt_result.json').read_bytes())==dict(status='COMPLETE',authorization=a,
+            report_sha256=p['report.json'],producer_rc=0),'FFE2_TRAIN_FINAL_RECEIPT')
+    h4m12_req(t.h4ffe2_parent_preflight(root,require_unused=False)==r['parent'],'FFE2_PARENT')
+    t.h4ffe2_check_complete(out,r,a)
+    t.h4ffe2_terminal_receipt(out,p['report.json'],a)
+    h4ffe2_dev_exposure_contract(r)
+
+def h4ffe2_dev_static(root):
+    root=Path(root).resolve()
+    h4m3_no_runtime_imports()
+    path=root/H4FFE2_DEV_OUTPUT
+    log=root/'m463_runs/m470_h4ffe2_dev_runtime_v1.log'
+    h4m12_req(not path.parent.exists() and not path.parent.is_symlink()
+        and not log.exists() and not log.is_symlink(),'RED_STATIC_USED')
+    h4ffe2_dev_project(root)
+    h4red_eval_project(root)
+    launcher_sha=h4red_eval_launcher_source(root,red='ffe2')
+    pins,archive,ext=h4m12_inputs(root,red='ffe2')
+    source=h4red_eval_source(root);prov=h4m3_digest([pins,ext])
+    marker='H4FFE2_EVAL_ACTIVE_GO: '+H4FFE2_DEV_SPEC['id']+' '+str(H4FFE2_DEV_OUTPUT)+' '+source+' '+prov+' m463_runs/m470_h4ffe2_dev_static_fixture.log '+'a'*64
+    auth=h4ffe2_dev_marker(marker)
+    def rejects(fn):
+        try:fn()
+        except (RuntimeError,ValueError,KeyError,TypeError):return
+        raise RuntimeError('M470_H4FFE2_DEV_STATIC_NEGATIVE_ACCEPTED')
+    for bad in ('',marker+'\n'+marker,marker+'\nH4RED_ACTIVE_GO: bad',marker[:-1],
+                marker.replace(str(H4FFE2_DEV_OUTPUT),str(H4M12_EVAL_OUTPUT))):
+        rejects(lambda:h4ffe2_dev_marker(bad))
+    try:h4m12_eval_auth(root,red='ffe2')
+    except RuntimeError as exc:h4m12_req('HOLD_OR_CONFLICT' in str(exc),'RED_STATIC_HOLD_REASON')
+    else:raise RuntimeError('M470_H4FFE2_DEV_STATIC_HOLD_OPEN')
+    # Archived rows copied as host fixtures, not a new policy observation.
+    m12=h4red_eval_secondary(root,archive)
+    fresh={k:archive[k] for k in H4M12_PROTOCOL}
+    fresh.update(groups=[dict(g,policy='FFE2') for g in m12['groups']],
+        physical_transitions_attempted=42246,physical_transitions_recorded=42246,
+        logical_trajectories_completed=60,reset_lanes_attempted=12,reset_lanes_recorded=12)
+    d=h4red_eval_decide(root,archive,fresh,red='ffe2')
+    h4m12_req(d['official']==m12['decision']['official'] and d['decision']=='NO_PROMOTE' and d['scientific_gate_result']=='NO_GO'
+        and d['training_exposure']=='EXPOSURE_INCONCLUSIVE' and d['holdout_authorized'] is False
+        and d['training_receipt_limitation']==H4FFE2_DEV_RECEIPT
+        and all(v['gain']==0 for v in d['secondary']['primary_stand_double'].values())
+        and 'decision' not in d['secondary'],'RED_ARCHIVE_CLONE')
+    fresh.update(status='M470_H4FFE2_DEV_COMPLETE',authorization=auth,spec=H4FFE2_DEV_SPEC,input_sha256=pins,
+        evaluator_sha256=pins['source/m463_gate3_cp_eval.py'],promotion_authorized=False,
+        further_training_authorized=False,ledger=h4m12_ledger(fresh,red='ffe2'),
+        decision=d,gpu={'total_mib':12288,'peak_used_mib':1000,'samples':1,'sampler_errors':[]})
+    h4m12_final_check(root,fresh,auth,pins,archive,red='ffe2')
+    for change in (dict(training_exposure='EXPOSURE_PASS'),dict(decision='GO'),
+                   dict(scientific_gate_result='GO'),dict(holdout_authorized=True),
+                   dict(training_receipt_limitation='ACCEPTED')):
+        rejects(lambda:h4m12_final_check(root,dict(fresh,decision=dict(d,**change)),auth,pins,archive,red='ffe2'))
+    for scientific in ('NO_GO','INCONCLUSIVE','DEV_PASS'):
+        z=dict(decision=scientific,official=dict(decision=scientific))
+        h4ffe2_dev_disposition(z)
+        h4m12_req(z['decision']=='NO_PROMOTE' and z['scientific_gate_result']==scientific
+            and z['official']['decision']==scientific and z['training_exposure']=='EXPOSURE_INCONCLUSIVE'
+            and z['holdout_authorized'] is False,'FFE_DISPOSITION_FIXTURE')
+    train=json.loads((root/H4FFE2_DEV_TRAIN_DIR/'report.json').read_bytes())
+    h4ffe2_dev_exposure_contract(train)
+    for e in (dict(train['ffe_exposure'],decision='EXPOSURE_PASS'),
+              dict(train['ffe_exposure'],half_cell=[[5,9,3,3],[5,6,3,3]])):
+        rejects(lambda:h4ffe2_dev_exposure_contract(dict(train,ffe_exposure=e)))
+    for k,v in (('physical_transitions_attempted',44809),('reset_lanes_recorded',13),
+                ('logical_trajectories_completed',55),('decision',dict(d,secondary={})),
+                ('promotion_authorized',True),('evaluator_sha256','0'*64)):
+        rejects(lambda:h4m12_final_check(root,dict(fresh,**{k:v}),auth,pins,archive,red='ffe2'))
+    bad=dict(fresh,groups=fresh['groups'][:-1]+[fresh['groups'][0]])
+    rejects(lambda:h4m12_ledger(bad,red='ffe2'))
+    bad=dict(fresh,groups=[dict(fresh['groups'][0],policy='M12')]+fresh['groups'][1:])
+    rejects(lambda:h4m12_ledger(bad,red='ffe2'))
+    # Partial ledger accepts one outstanding attempted step, never two.
+    part=dict(fresh,groups=fresh['groups'][:1])
+    n=part['groups'][0]['physical_transitions']
+    part.update(physical_transitions_attempted=n,physical_transitions_recorded=n,
+                logical_trajectories_completed=5,reset_lanes_attempted=1,reset_lanes_recorded=1)
+    part['status']='M470_H4FFE2_DEV_IN_PROGRESS'
+    h4m12_req(h4red_eval_partial_check(part,auth,pins,red='ffe2')['complete_groups']==1,'RED_PARTIAL')
+    rejects(lambda:h4red_eval_partial_check(dict(part,physical_transitions_attempted=n+2),auth,pins,red='ffe2'))
+    rejects(lambda:h4red_eval_partial_check(dict(part,authorization={}),auth,pins,red='ffe2'))
+    rejects(lambda:h4red_eval_partial_check(dict(part,partial_ledger={}),auth,pins,red='ffe2'))
+    rejects(lambda:h4red_eval_launcher_guard(root,auth,red='ffe2'))
+    for flag,out,reason in (('--h4ffe2-eval',H4FFE2_DEV_OUTPUT,'HOLD_OR_CONFLICT'),
+                            ('--h4r12-eval',H4R12_DEV_OUTPUT,'HOLD_OR_CONFLICT'),
+                            ('--h4r11-eval',H4R11_DEV_OUTPUT,'HOLD_OR_CONFLICT'),
+                            ('--h4m12-eval',H4M12_EVAL_OUTPUT,'HOLD_OR_CONFLICT'),
+                            ('--h4red-eval',H4RED_EVAL_OUTPUT,'HOLD_OR_CONFLICT')):
+        proc=subprocess.run([sys.executable,'-B',str(root/'m463_gate3_cp_eval.py'),'--mode','run',
+            flag,'--output',str(root/out)],cwd=root,capture_output=True,text=True,timeout=30)
+        h4m12_req(proc.returncode!=0 and reason in proc.stderr,'RED_CLI_HOLD')
+    h4m3_no_runtime_imports()
+    h4m12_req(not path.parent.exists() and not log.exists(),'RED_STATIC_RESERVED')
+    print('H4FFE2_DEV_SOURCE',source,flush=True)
+    print('H4FFE2_DEV_PROVENANCE',prov,flush=True)
+    print('H4FFE2_DEV_LAUNCHER',launcher_sha,flush=True)
+    print('H4FFE2_DEV_STATIC_FIXTURES',json.dumps(dict(archive_clone='NO_GO',secondary_identity=True,
+        marker_negatives=5,reader_negatives=13,training_exposure_negatives=2,disposition_fixtures=3,partial_positive=1,partial_negatives=3,
+        launcher_negative=1,byte_projection=True,step_graph=True,
+        cli_hold=5,physical_transitions=0,resets=0,optimizer_updates=0,inference=0)),flush=True)
+    print('H4FFE2_DEV_FULL_STATIC_PASS',flush=True)
+
+
+
+H4FFE2_DEV_PATCHES=[["\n    args=p.parse_args()\n    if args.h4ffe_eval:\n","\n    p.add_argument('--h4ffe2-eval',action='store_true')\n    p.add_argument('--h4ffe2-eval-static',action='store_true')\n    args=p.parse_args()\n    if args.h4ffe2_eval:\n        allowed={'mode','output','h4ffe2_eval','h4ffe2_eval_static'}\n        h4m12_req(all(getattr(args,k)==p.get_default(k) for k in vars(args) if k not in allowed),'FFE2_FLAG_CONFLICT')\n        h4m12_req(args.output.absolute()==args.output.resolve()==H4_EVAL_ROOT/H4FFE2_DEV_OUTPUT,'FFE2_OUTPUT')\n        if args.mode=='run':\n            h4m12_req(not args.h4ffe2_eval_static,'FFE2_MODE_CONFLICT')\n            args.h4red_eval='ffe2'\n            return h4m12_dispatch(args,red='ffe2')\n        if args.h4ffe2_eval_static:return h4ffe2_dev_static(H4_EVAL_ROOT)\n        print('H4FFE2_DEV_PLAN',json.dumps(H4FFE2_DEV_SPEC,sort_keys=True));return\n    if args.h4ffe2_eval_static:p.error('H4FFE2_EVAL_FLAG_REQUIRED')\n    if args.h4ffe_eval:\n"],["\n    auth=(h4ffe_dev_marker if red=='ffe' else","\n    auth=(h4ffe2_dev_marker if red=='ffe2' else h4ffe_dev_marker if red=='ffe' else"],["\n    if red=='ffe':\n        h4m12_req(lines[-2:]==['H4FFE_DEV_FULL_STATIC_PASS','STATIC_EXIT_CODE=0 TEE_EXIT_CODE=0'],'FFE_STATIC_FOOTER')","\n    if red=='ffe2':\n        h4m12_req(lines[-2:]==['H4FFE2_DEV_FULL_STATIC_PASS','STATIC_EXIT_CODE=0 TEE_EXIT_CODE=0'],'FFE2_STATIC_FOOTER')\n    if red=='ffe':\n        h4m12_req(lines[-2:]==['H4FFE_DEV_FULL_STATIC_PASS','STATIC_EXIT_CODE=0 TEE_EXIT_CODE=0'],'FFE_STATIC_FOOTER')"],["\n    training_pins=H4FFE_DEV_TRAIN_PINS if red=='ffe' else","\n    training_pins=H4FFE2_DEV_TRAIN_PINS if red=='ffe2' else H4FFE_DEV_TRAIN_PINS if red=='ffe' else"],["\n    if red in ('r12','ffe'):h4m12_req(out.is_dir()","\n    if red in ('r12','ffe','ffe2'):h4m12_req(out.is_dir()"],["\n    h4m12_req(t.h4m12_read_final(root,training_pins['report.json'],auth,red=(red is True),r11=(red=='r11'),r12=(red=='r12'),ffe=(red=='ffe'))==r,'TRAIN_READER')\n","\n    if red=='ffe2':h4ffe2_dev_training_contract(root,r)\n    else:\n        h4m12_req(t.h4m12_read_final(root,training_pins['report.json'],auth,red=(red is True),r11=(red=='r11'),r12=(red=='r12'),ffe=(red=='ffe'))==r,'TRAIN_READER')\n"],["\n        (h4ffe_dev_training_contract if red=='ffe' else","\n        if red!='ffe2':(h4ffe_dev_training_contract if red=='ffe' else"],["\n    approved=('H4FFE_TRAINING_APPROVED: ' if red=='ffe' else","\n    approved=('H4FFE2_TRAINING_APPROVED: ' if red=='ffe2' else 'H4FFE_TRAINING_APPROVED: ' if red=='ffe' else"],["\n        pins['training/static.log']=(H4FFE_DEV_TRAIN_AUTH if red=='ffe' else","\n        pins['training/static.log']=(H4FFE2_DEV_TRAIN_AUTH if red=='ffe2' else H4FFE_DEV_TRAIN_AUTH if red=='ffe' else"],["\n    if red in ('r12','ffe'):\n        h4m12_req(path.is_file()","\n    if red in ('r12','ffe','ffe2'):\n        h4m12_req(path.is_file()"],["\n    if red=='ffe':h4ffe_dev_disposition(result)","\n    if red=='ffe':h4ffe_dev_disposition(result)\n    if red=='ffe2':h4ffe2_dev_disposition(result)"],["\n    h4m12_req(type(red) is bool or red in ('r11','r12','ffe'),'R11_MODE')","\n    h4m12_req(type(red) is bool or red in ('r11','r12','ffe','ffe2'),'R11_MODE')"],["\n    return 'FFE' if red=='ffe' else","\n    return 'FFE2' if red=='ffe2' else 'FFE' if red=='ffe' else"],["\n    return H4FFE_DEV_TRAIN_DIR if red=='ffe' else","\n    return H4FFE2_DEV_TRAIN_DIR if red=='ffe2' else H4FFE_DEV_TRAIN_DIR if red=='ffe' else"],["\n    return H4FFE_DEV_OUTPUT if red=='ffe' else","\n    return H4FFE2_DEV_OUTPUT if red=='ffe2' else H4FFE_DEV_OUTPUT if red=='ffe' else"],["\n    return H4FFE_DEV_SPEC if red=='ffe' else","\n    return H4FFE2_DEV_SPEC if red=='ffe2' else H4FFE_DEV_SPEC if red=='ffe' else"],["\n    return H4FFE_DEV_LOG if red=='ffe' else","\n    return H4FFE2_DEV_LOG if red=='ffe2' else H4FFE_DEV_LOG if red=='ffe' else"],["\ndef h4ffe_dev_projection(raw):\n","\ndef h4ffe_dev_projection(raw):\n    if b'# H4FFE2_DEV_'+b'BEGIN\\n' in raw:raw=h4ffe2_dev_projection(raw)\n"]]
+# H4FFE2_DEV_END
 if __name__=='__main__':
     if len(sys.argv)>1 and sys.argv[1]=='--h4absd':h4absd_cli(sys.argv[2:])
     elif len(sys.argv)>1 and sys.argv[1]=='--h4abs':h4abs_cli(sys.argv[2:])
