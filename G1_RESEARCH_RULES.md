@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.265  
+**Version:** 1.2.266  
 **Ngày cập nhật:** 2026-11-27 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -3401,6 +3401,12 @@ raise SystemExit(0 if ok else 1)
 # H4R11_DEV_OWNER_LAUNCHER_END
 ```
 
+### H4-M15-3A — exact Owner full static accepted / distinct R11 controlled DEV runtime GO pending (v1.2.266; 2026-11-27)
+
+SA accepted actual Owner m463_runs/m470_h4r11_dev_static_20261127_104759_498592197.log (1221 bytes, independently rehashed SHA256 db15ba012d9a9dc21de55b410f6a193921ff46ac7296e81c4d18c5f36ada5766), exact HEAD6a81f70c976eb7d855b450f3b7bd4011067bfcc3, Rules1.2.265. Independently retrieved and recalculated remote Rules44485f7b465746f42a7a50f34b47ba578a86615ae01cb5ae7692c0dc6598f5b1, evaluator b74e135db68975cc3dba9c58456ad8119a39893ef5fafd7e543da569ce06fd53, trainer9be45729e8bc2f2829919e564b9bb408d90298412bd1af96d2c43205ee43e1f1, instrumenter f3dcaea811da437e37e9b6d855d5402059ad35e1aeddac237a26a075d34cad40, env028cdecd08a1267d064e59bdcc0deada24b642d0e73d8e02f9fd014f79d6da96 and launcher3d62f42159400f421e9eee337d296a1cbe5507bdfe7e94ad6755eeff9da5a3f8; all six match Owner receipt. Source e9e24a50c78419b90fc88d5d9fb7226d0f9be5bacfbfcacccadf798db8edaf79 and provenance ece0cdc8892dd8d558bd8efe90a1c7bac278066eb40fd328ce2cf75d61c233c6 accepted from actual full static (local helpers/installed sources/archive/checkpoint binaries not independently available to SA; owner strict reader verified them, runtime must recheck). Exact archive clone NO_GO, secondary_identity true, marker negatives5, reader negatives8, partial positive1/negative3, launcher negative1, byte projection true, step graph true, CLI HOLD3, zero transitions/resets/inference/optimizer, H4R11_DEV_FULL_STATIC_PASS and both exit codes0. Archive clone is a fixture, NOT a new R11 scientific result. Static also requires unused fixed log/output and no native imports. No executable edits, no repeated static/diagnostic, no active marker, no native runtime by SA. Technical native evaluation and scientific efficacy remain untested.
+
+NEXT H4-M15-4 distinct one-use controlled DEV execution only upon explicit Owner GO. Freeze exactly the accepted source/provenance/launcher/receipt above; bind sole H4R11_EVAL_ACTIVE_GO to H4-M15-R11-DEV-V1 m463_runs/m470_h4_m15_3_dev_v1/report.json; use existing frozen bounded launcher, no direct producer launch, fixed exclusive m463_runs/m470_h4r11_dev_runtime_v1.log and native attempt namespace; 5400s watchdog, 16MiB log, 128MiB report, 2GiB reserve plus headroom, GPU peak<95%12288MiB and strict clean final/partial readers. Candidate R11 only 12 groups/60 logical/max44808 physical/12 resets; archived Official CTRL primary and M12 descriptive secondary, original +2/8 survival and recovery5 plus unchanged nominal/moving/safety criteria. No retry, no comparator rerun, no PPO, no standalone diagnostic, no holdout/promotion; preserve STOP evidence. Branch A active, B HOLD.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -3662,6 +3668,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-26)
+
+**H4-M15-3A R11 OWNER FULL STATIC ACCEPTED / DISTINCT CONTROLLED DEV GO PENDING (v1.2.266):** receipt db15ba01, source e9e24a50, provenance ece0cdc8, launcher3d62f421, six independent remote hash matches, all fixtures and zero runtime/footer PASS. Native/efficacy UNTESTED. Next only H4-M15-4 distinct one-use candidate-only evaluation on explicit Owner GO, frozen 12/60/44808/12; no active marker, Branch B HOLD.
 
 **H4-M15-3 R11 HELD CONTROLLED DEV INTEGRATION CANDIDATE / OWNER FULL STATIC PENDING (v1.2.265):** exact training approval, isolated R11 evaluator and bounded launcher, existing 12/60/44808/12 protocol and Official CTRL/M12 archive pins. Exact reverse-byte structural check PASS; actual full static pending, no active runtime marker. No PPO/diagnostic/holdout/promotion, B HOLD.
 
@@ -4545,6 +4553,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-27 | H4-M15-3A R11 Owner full static acceptance | receipt db15ba01, source e9e24a50, provenance ece0cdc8, launcher3d62f421, exact fixtures | FULL STATIC ACCEPTED / distinct DEV GO pending | 1.2.266 |
+
 | 2026-11-27 | H4-M15-3 R11 held controlled DEV integration | exact training pins, shared evaluator, historical reverse projection, bounded launcher | HELD SOURCE CANDIDATE / full static pending | 1.2.265 |
 
 | 2026-11-27 | H4-M15-2A R11 bounded PPO acceptance | report88af0258, policy04828dee, +5242880/800/2000, positive91, nominal99.8402%, GPU8975MiB | TECHNICAL_PASS / EXPOSURE_PASS / consumed GO / efficacy UNTESTED | 1.2.264 |
@@ -5137,6 +5147,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.266 — 2026-11-27:** Accept exact Owner R11 DEV full static receipt, verify six remote hashes and frozen launcher, no executable change/active marker/runtime. Next distinct one-use R11 controlled DEV only on explicit Owner GO. Branch B HOLD.
 
 - **v1.2.265 — 2026-11-27:** Held R11 candidate-only DEV integration, exact R11 training/CTRL/M12 pins and existing scientific gates, bounded launcher and reader/static fixtures. No active runtime marker; full static pending; Branch B HOLD.
 
