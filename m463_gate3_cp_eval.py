@@ -14825,6 +14825,7 @@ def h4m23_pack(raw,row,m,np):
         dist=float(raw['contact_dist'][i]),margin=float(raw['contact_includemargin'][i]))
         for i,g in enumerate(raw['contact_geom']) if set(map(int,g)) in relevant]
     p['contact_slot_count']=len(raw['contact_geom']);p['efc_count']=len(raw['efc_force'])
+    p['all_slot_geom']=np.asarray(raw['contact_geom'])
     p['foot_pair_distance']=row[H4M3_COLUMNS.index('foot_pair_signed_dist_m')] if row[H4M3_COLUMNS.index('foot_pair_present')] else None
     corners=np.asarray([[x,y,z] for x in (-1,1) for y in (-1,1) for z in (-1,1)])
     p['lowest_corner_z']=[float(np.min(np.asarray(p[s+'_geom_pos'])[2]+
@@ -15046,7 +15047,7 @@ H4M23_RAW_EXTRA=('xipos','ximat','cvel','subtree_com','contact_geom','contact_po
 H4M23_PACK_DERIVED=('derived_effective_ctrl','effective_ctrl_semantics','joint_margin_post',
     'raw_ctrl_margin','force_margin_last_solve','joint_actuation_margin_last_solve',
     'target_minus_post_joint','actor_phase_features','previous_action','inference_key','sample_stage',
-    'com','contact','native_dtype','native_reward_dtype','slot_inventory','contact_slot_count','efc_count',
+    'com','contact','native_dtype','native_reward_dtype','slot_inventory','contact_slot_count','efc_count','all_slot_geom',
     'foot_pair_distance','lowest_corner_z','target_minus_last_solve_joint','actual_touchdown',
     'gait_operand_semantics','capture_semantics')
 
@@ -15199,14 +15200,23 @@ def h4m23_independent_fields(p,row,m,np):
         and close(co['position'],co['subtree_com']),'COM_CONTACT_KEYS')
     n=p['contact_slot_count'];ne=p['efc_count'];lf,rf=m['foot_geom_ids'];floor=m['floor_geom_id']
     h4m23_req(type(n) is int and n>=0 and type(ne) is int and ne>=0,'SLOT_COUNT')
+    geom=np.asarray(p['all_slot_geom'])
+    h4m23_req(geom.shape==(n,2) and geom.dtype.kind in 'iu','FULL_SLOT_GEOM')
+    relevant=({lf,floor},{rf,floor},{lf,rf})
+    required=[i for i,g in enumerate(geom) if set(map(int,g)) in relevant]
+    h4m23_req([s['slot'] for s in p['slot_inventory']]==required,'COMPLETE_RELEVANT_SLOTS')
     active=[];prev=-1
     for s in p['slot_inventory']:
         h4m23_req(set(s)=={'slot','geom','address','dim','dist','margin'} and type(s['slot']) is int
-            and prev<s['slot']<n and set(s['geom']) in ({lf,floor},{rf,floor},{lf,rf})
+            and prev<s['slot']<n and s['geom']==geom[s['slot']].tolist()
+            and set(s['geom']) in ({lf,floor},{rf,floor},{lf,rf})
             and type(s['address']) is int and type(s['dim']) is int
             and math.isfinite(s['dist']) and math.isfinite(s['margin']),'SLOT_INVENTORY')
         prev=s['slot']
         if s['address']>=0 and s['dist']<=s['margin']:active.append(s)
+    pair_dist=[s['dist'] for s in p['slot_inventory'] if set(s['geom'])=={lf,rf}]
+    h4m23_req(bool(pair_dist)==bool(row[ix['foot_pair_present']])
+        and (not pair_dist or min(pair_dist)==row[ix['foot_pair_signed_dist_m']]),'PAIR_SLOT_REPLAY')
     h4m23_req(len(active)==len(ct['slots']),'ACTIVE_SLOT_COUNT')
     for a,s in zip(active,ct['slots']):
         h4m23_req(set(s)==set(a)|{'pos','frame','friction','wrench_contact_frame','efc_slice','world_force_on_geom2','world_torque_on_geom2'}
