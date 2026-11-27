@@ -43,4 +43,6 @@ Historical complete ledger: [v1.2.294 L5191–5841](https://github.com/nguyenbui
 
 | H4-M22-2 | Owner-approved prospective offline CCOA and tail feasibility | OFFLINE COMPLETE / STOP DESIGN HOLD | Base 3abd5c76ab53ce1833e226f7b111d3f7426a6e93; four exact report hashes and five both-loaded terminal closures; no execution; proposed H4-M23-1 separate GO |
 
+| H4-M23-1 | Owner-approved offline gait reward source and matched trajectory audit | OFFLINE COMPLETE / STOP DESIGN HOLD | Base 9c974bd9d92b7c07c91823969aeb907431c85cfb; five exact report hashes, 120556 relevant frames; no causal reward selection or runtime; proposed H4-M23-2 offline design separate GO |
+
 Append one row per task with exact evidence/commit, decision, limitations and next scope. Do not rewrite previous entries or imply authorization.

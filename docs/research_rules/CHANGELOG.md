@@ -78,3 +78,6 @@ Exact FFE2 training/DEV reports rehashed and read-only analyzed; consolidated si
 
 ## 2026-11-27 — H4-M22-2 offline feasibility (governance v2.0.0 unchanged)
 Four exact train/DEV reports rehashed; source/ledger audit establishes five V2 both-loaded repeat terminal closures before50 ticks. CCOA held untested, feasibility not established; STOP DESIGN HOLD. Proposed offline gait signal audit only, separate Owner GO. No executable/root/archive change or runtime.
+
+## 2026-11-27 — H4-M23-1 gait signal conflict audit (governance v2.0.0 unchanged)
+Five reports rehashed, matched CTRL/FFE1/FFE2 raw trajectories and pinned gait formulas audited; source-derived proxies labeled distinct from actual reward and PPO advantage. Late/no touchdown and prior limits observed, no sufficient causal conflict or training exposure; STOP DESIGN HOLD. No executable/root/archive changes or runtime.
