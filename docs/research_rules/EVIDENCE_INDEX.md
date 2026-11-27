@@ -462,3 +462,7 @@ Each link includes the section until the next heading; ranges are retrieval aids
 
 ## H4-M25-2 pre-authorization source review
 - [Exact frozen source and negative fixture](https://github.com/nguyenbui5701/G1_PAPER_REPRO/blob/1281ff89100b759b751b7afc4c07f7ea67ffd90b/m463_gate3_cp_eval.py#L15874-L15876), [outer V3 projection](https://github.com/nguyenbui5701/G1_PAPER_REPRO/blob/1281ff89100b759b751b7afc4c07f7ea67ffd90b/m463_gate3_cp_eval.py#L16194-L16205). Independent reverse text comparison, no runtime/fixture evidence, no marker issued. See ACTIVE_EXPERIMENT.
+
+
+## H4-M25-2A held scope
+- [Owner-approved exact base](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/3b5eef9eb8479111af485dd215df5410b457a658); source fda4c2c2eb0117f56d3c613d6f1abcbf458d0f04; no new empirical evidence.

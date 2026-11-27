@@ -92,3 +92,6 @@ Append one row per task with exact evidence/commit, decision, limitations and ne
 
 
 | H4-M25-2 pre-authorization review | exact frozen source/root verified; original projection negative blocked by V3 outer exact blob guard before expected legacy label | STOP / NOT ISSUED / NO ATTEMPT | 1281ff89100b759b751b7afc4c07f7ea67ffd90b; no source change or execution; held repair separate GO required |
+
+
+| H4-M25-2A | Owner approved minimal held fixture routing and reverse metadata | EDIT-FIRST / HELD | 3b5eef9eb8479111af485dd215df5410b457a658; 122 planned; no execution or marker |
