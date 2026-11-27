@@ -5,7 +5,7 @@ Governance v2.0.0 — 2026-11-27 — documentation only. Historical research sta
 ## Workstream A: FFE-V1 closed; prospective FFE-V2 HELD
 No active runtime authorization. H4-M19-2 CLOSED / technical COMPLETE / scientific NO_GO / EXPOSURE_INCONCLUSIVE / NO_PROMOTE. No retry or continuation of consumed invocation. INFRA-RULES-01 is closed; Owner approved H4-M20-0 offline design only. Branch B HOLD.
 
-Current decision: H4-M20-0 held design complete; Owner GO H4-M20-1 received, end-to-end held candidate source reviewed and corrected; bounded host-static candidate check recommended, not authorized; full static/runtime HOLD. See latest review receipt. See latest H4-M20-1 section; no PPO, diagnostic, retry, holdout or promotion.
+Current decision: H4-M20-0 held design complete; Owner GO H4-M20-1 received, end-to-end held candidate source reviewed and corrected; distinct one-use host-static candidate GO issued, Owner receipt pending; full static/runtime HOLD. See latest authorization. See latest H4-M20-1 section; no PPO, diagnostic, retry, holdout or promotion.
 
 ## Exact prospective design (historical proposal, not authorization)
 Prospective FFE-V2 opportunity-window hypothesis HELD (one fixed curriculum treatment; no implementation/runtime authorization): more actual eligible first and repeat opportunities within each assigned chronological band can improve both-loaded visitation without forced commands or modifying physical/reward semantics. Retain fixed p1/8 cohort, four fixed band/cell draws, original independent20% nominal and untouched ordinary branch, original direction/magnitude, max2/episode, natural reset/closure and absolute clock, exact actual load and capture thresholds, causal standing coherence and no fallback. Candidate timing only: retain due T in original [40,80]+160*b, extend first search from T through 112+160*b inclusive; repeat search all gaps30..40 inclusive (instead of 9-tick window starting at gap30..32), last possible repeat152+160*b (< chunk boundary160+160*b; last k632, only7 subsequent epoch ticks, explicitly censor tails). Existing independent gap RNG key may be retained unused in V2 only; no extra native RNG split. No extra reset, command forcing/holding, action override, reward shaping, replay, state teleport or proxy relaxation. This is a prospective engineering proposal, not selected numerical optimum. Longer hard blocking/tail censor may impair ordinary exposure or learning; same frozen floors and tail accounting must reveal this. If later evidence shows no useful both-loaded joint occupancy, do not automatically widen gaps, increase cohort/budget or adjust load/capture thresholds. Do not conflate additional first events with adequate target repeats.
@@ -97,3 +97,116 @@ EDIT-FIRST exact source changes:
 - Typed restore/worker/supervisor reviewed at source level: parent Official CTRL, exact model/RNG/counters, worker exclusive reservation, original budget and dependency pins, sampled VRAM/storage/watchdog; no GPU occupancy gate/interactive prompt. No assertion of native wrapper/state runtime compatibility or resource admission. In particular, V1 pre-coherence replay uses observation zero and native command and relies on pinned wrapper clearing done before the env step; leave shared V1 verifier unchanged pending exact local dependency and wrapper review rather than inventing new eligibility. 
 - Resource arithmetic: 180 flags, 575 hist bins, 30 added int32 row fields. Conservative risk-ledger JSON bound 32005376 bytes incl four records and aggregate; atomic double risk serialization +16MiB external log =80787968 bytes, leaving 53429760 bytes within other_cap134217728 for other data. This is only the schema component bound (including provisional as one of max four records); actual report/legacy artifacts and peak device/compiler allocations remain unmeasured. No cap increase. Held static candidate must check actual pinned inputs/dependencies, source projection, generated anchors/guards and fixtures, with no native import and no output reservation. 
 - Host-static candidate receipt remains H4FFE2_HELD_STATIC_CANDIDATE_PASS, never H4FFE2_FULL_STATIC_PASS. Hard incomplete HOLD remains. No new fixture evidence. Next separately approved bounded host-only candidate check: exact reviewed HEAD, existing --h4ffe2-static, one process, no native imports or execution, no PPO/resume/diagnostic; use existing pinned launcher paths and inputs, bounded log/watchdog, no GPU occupancy check and no interactive prompt. Review receipt and resolve any failures before full static freeze or runtime authorization. No automatic retry. Exact command must be authored only after that distinct authorization. This source review does not claim every integration issue found/fixed; remaining blockers include actual full generated anchor uniqueness/reversal, NumPy fixture execution, actual wrapper schema and local pin validation, resource admission and full frozen static contract. No scientific result.
+
+## H4-M20-1 — FFE-V2 bounded host-static candidate verification — ONE-USE OWNER GO (2026-11-27)
+
+Owner explicit GO on reviewed commit ee1f7eeeae560ecccfa19f9157a1ba8b4da34bc2. SA issues **distinct host-only authorization H4-M20-1-FFE2-STATIC-CANDIDATE-V1 / ISSUED, OWNER RECEIPT PENDING**. Not full static or runtime authorization. Exact source blobs unchanged: environment efe71d850746f07c42f5d1e0256399d2b963da21, instrumenter 6b28d055e068f9a36f7b58f852167fbc113a8b54, trainer 7a4c95ab00b072ab00764f86e0b7221561b97dad. All executable files, legacy root/markers, historical archive, science and frozen controls unchanged. Hard incomplete execution HOLD retained. No local execution by SA.
+
+One Owner invocation only, exact authorization commit (child of reviewed commit), clean tracked branch experiment/b1-hardware-scaled, ff-only pull and exact HEAD check; extract the exact inline launcher below via existing g1_m463 -B -u - with pinned interpreter/overlays, not alternate Python. It runs existing --h4ffe2-static once, using historical V1 static inputs from immutable root L3744; internal two CLI HOLD negative subprocesses are part of the existing static suite, not native runs or retries. The static entry checks pinned sources/dependencies, reverse projection, generated anchors/compile, scheduler/batch/reducer/readers/terminal fixtures, resource schema and zero native imports at entry/exit. No native physical transitions/resets/inference/optimizer steps, no training output directory, no runtime marker. Candidate PASS token only H4FFE2_HELD_STATIC_CANDIDATE_PASS plus exact zero receipt, child rc0 and supervisor CANDIDATE_COMPLETE; no H4FFE2_FULL_STATIC_PASS. Review exact log bytes before any next decision.
+
+Operational bounds selected for this authorization: one top-level static invocation, watchdog3600s (operational maximum, not duration estimate), exclusive fixed log m463_runs/m470_h4ffe2_static_candidate_oneuse_v1.log (claim consumed on creation; never delete/rename/reuse), total log cap16MiB inclusive of 4096-byte reserved footer, bounded reads, stop own spawned process group only on failure/timeout/overflow, retain partial receipt. Initial free disk >=2GiB+512MiB+16MiB; unchanged existing artifact caps; no GPU occupancy gate, no prompt, no package changes. Launcher uses direct capped log writer rather than tee, so no fabricated TEE_EXIT_CODE; status records child static_rc, overflow/error, stored bytes and wrapper exit; SHA256/size printed outside log. No automatic retry even if preflight STOP before claim. Return exact fixed log if created and console receipt (or exact preflight error if no log). This is a candidate host-static check only, not evidence of peak XLA/VRAM, native typed restore, policy efficacy, or full integration PASS. A ACTIVE/B HOLD. All historical FFE-V1 dispositions unchanged.
+
+```python
+# H4FFE2_CANDIDATE_STATIC_OWNER_BEGIN
+import hashlib, json, os, selectors, shutil, signal, subprocess, sys, time
+from pathlib import Path
+
+root = Path.cwd().resolve()
+runs = root / "m463_runs"
+log = runs / "m470_h4ffe2_static_candidate_oneuse_v1.log"
+out = runs / "m470_h4_m20_ffe_v2"
+cap = 16 * 1024**2
+footer_reserve = 4096
+def require(ok, msg):
+    if not ok:
+        raise RuntimeError(msg)
+def git(*args):
+    return subprocess.check_output(["git", *args], cwd=root).decode().strip()
+require(git("branch", "--show-current") == "experiment/b1-hardware-scaled", "BRANCH")
+require(git("status", "--porcelain", "--untracked-files=no") == "", "TRACKED_DIRTY")
+require(git("rev-parse", "HEAD^") == "ee1f7eeeae560ecccfa19f9157a1ba8b4da34bc2", "REVIEW_PARENT")
+for name, blob in (
+    ("m463_coverage_env.py", "efe71d850746f07c42f5d1e0256399d2b963da21"),
+    ("m463_instrument_brax.py", "6b28d055e068f9a36f7b58f852167fbc113a8b54"),
+    ("m463_push_ppo_train.py", "7a4c95ab00b072ab00764f86e0b7221561b97dad"),
+    ("G1_RESEARCH_RULES.md", "7d5961158420ad2053ed00cc1342aa2a54a12ce9")):
+    require(git("hash-object", name) == blob, "SOURCE_PIN " + name)
+require(runs.is_dir() and not runs.is_symlink(), "RUNS_PATH")
+require(not out.exists() and not out.is_symlink(), "RUNTIME_OUTPUT_PRESENT")
+require(shutil.disk_usage(runs).free >= 2*1024**3 + 512*1024**2 + cap, "DISK")
+head = git("rev-parse", "HEAD")
+argv = [sys.executable, "-B", "-u", str(root/"m463_push_ppo_train.py"),
+    "--h4ffe2-static",
+    "--checkpoint", "m430_seed1/checkpoint_pilot_20261114_120515_1722937_step_401080320.msgpack",
+    "--restore-report", "m462_runs/typed_restore_20261120_162901.json",
+    "--reward-report", "m463_runs/m470_h3_m1_2_independent_10M_20261124_183319_225465810/report.json"]
+rc = None
+error = None
+overflow = False
+stored = 0
+child = None
+deadline = time.monotonic() + 3600
+# Exclusive fixed log is the one-use claim. Never remove/rename/reuse.
+with log.open("xb") as stream:
+    def emit(data):
+        global stored, overflow
+        room = cap - footer_reserve - stored
+        keep = data[:max(0, room)]
+        if keep:
+            stream.write(keep)
+            stream.flush()
+            stored += len(keep)
+        if len(keep) != len(data):
+            overflow = True
+            raise RuntimeError("LOG_CAP")
+    try:
+        emit(("H4FFE2_CANDIDATE_STATIC_HEAD " + head + "\n").encode())
+        child = subprocess.Popen(argv, cwd=root, stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True, bufsize=0)
+        with selectors.DefaultSelector() as sel:
+            sel.register(child.stdout, selectors.EVENT_READ)
+            while True:
+                left = deadline - time.monotonic()
+                require(left > 0, "WATCHDOG")
+                if not sel.select(timeout=min(1, left)):
+                    continue
+                data = os.read(child.stdout.fileno(), 65536)
+                if not data:
+                    break
+                emit(data)
+        rc = child.wait(timeout=max(.01, deadline-time.monotonic()))
+        require(rc == 0, "STATIC_RC")
+        require(git("rev-parse", "HEAD") == head and git("status", "--porcelain", "--untracked-files=no") == "", "POST_SOURCE")
+        require(not out.exists() and not out.is_symlink(), "POST_RUNTIME_OUTPUT")
+        lines = log.read_text(encoding="utf8").splitlines()
+        require(lines[-1:] == ["H4FFE2_HELD_STATIC_CANDIDATE_PASS"] and lines.count("H4FFE2_HELD_STATIC_CANDIDATE_PASS") == 1, "CANDIDATE_RECEIPT")
+        require("H4FFE2_STATIC_ZERO physical_transitions=0 resets=0 optimizer_updates=0 native_inference=0" in lines, "ZERO_RECEIPT")
+        require("H4FFE2_FULL_STATIC_PASS" not in lines, "UNEXPECTED_FULL_STATIC")
+    except BaseException as exc:
+        error = repr(exc)[:1024]
+        if child is not None and child.poll() is None:
+            try:
+                os.killpg(child.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            rc = child.wait(timeout=10)
+        elif child is not None:
+            rc = child.returncode
+    finally:
+        status = dict(decision="CANDIDATE_COMPLETE" if rc == 0 and error is None and not overflow else "STOP",
+            static_rc=rc, overflow=overflow, error=error, stored_child_and_header_bytes=stored)
+        footer = ("\nH4FFE2_CANDIDATE_STATIC_STATUS " + json.dumps(status, ensure_ascii=True, sort_keys=True) + "\n").encode()
+        require(len(footer) <= footer_reserve, "FOOTER_CAP")
+        stream.write(footer)
+        stream.flush()
+        os.fsync(stream.fileno())
+    require(stream.tell() <= cap, "FINAL_LOG_CAP")
+print("===== STATIC RECEIPT TAIL =====", flush=True)
+with log.open("rb") as f:
+    f.seek(max(0, log.stat().st_size-16384))
+    print(f.read().decode("utf8", errors="replace"), end="", flush=True)
+print("H4FFE2_CANDIDATE_STATIC_LOG", str(log), log.stat().st_size,
+      hashlib.sha256(log.read_bytes()).hexdigest(), flush=True)
+sys.exit(0 if status["decision"] == "CANDIDATE_COMPLETE" else 1)
+# H4FFE2_CANDIDATE_STATIC_OWNER_END
+```

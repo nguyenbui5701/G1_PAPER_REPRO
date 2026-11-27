@@ -21,3 +21,6 @@ Expanded device risk/tail ledger, isolated worker/supervisor, strict reader/term
 
 ## 2026-11-27 — H4-M20-1 candidate review (governance v2.0.0 unchanged)
 Legacy target replay, histogram/tail membership checks, partial/final/terminal reader corrections and resource schema bounds authored. Source-template review and unchanged legacy prefix verification only; no local compile or fixtures. Recommend distinct bounded host-static candidate check. Hard runtime HOLD; gates unchanged. Base 58320914cb042c9f8a008abd2be664df064a74a0.
+
+## 2026-11-27 — H4-M20-1 one-use host-static candidate GO (governance v2.0.0 unchanged)
+Owner explicitly authorized one bounded existing static candidate invocation, exact source ee1f7eeeae560ecccfa19f9157a1ba8b4da34bc2, fixed exclusive log and embedded capped launcher. No executable edits, no runtime marker, no full static PASS, Owner receipt pending. Frozen gates unchanged.

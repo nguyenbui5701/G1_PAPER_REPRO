@@ -335,3 +335,6 @@ Each link includes the section until the next heading; ranges are retrieval aids
 
 ## H4-M20-1 review
 - [Candidate source review, exact source blobs, corrections, bounded schema and evidence limits](ACTIVE_EXPERIMENT.md#h4-m20-1--end-to-end-candidate-source-review--held-host-static-preparation-2026-11-27); base [58320914cb042c9f8a008abd2be664df064a74a0](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/58320914cb042c9f8a008abd2be664df064a74a0). No empirical/static receipt.
+
+## H4-M20-1-FFE2-STATIC-CANDIDATE-V1 authorization
+- [One-use host-static authorization and exact embedded launcher](ACTIVE_EXPERIMENT.md#h4-m20-1--ffe-v2-bounded-host-static-candidate-verification--one-use-owner-go-2026-11-27); reviewed source [ee1f7eeeae560ecccfa19f9157a1ba8b4da34bc2](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/ee1f7eeeae560ecccfa19f9157a1ba8b4da34bc2). Expected log m463_runs/m470_h4ffe2_static_candidate_oneuse_v1.log. No receipt yet.
