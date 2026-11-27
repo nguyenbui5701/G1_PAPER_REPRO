@@ -656,6 +656,227 @@ def r12_range_flags(xp,m,d):
 
 # H4R12_CORE_END
 
+# H4FFE_CORE_BEGIN
+# HELD HOST CORE ONLY: not called by CoverageJoystick or any trainer.
+# No runtime authorization. The inputs are the actual pre-injection sample
+# and existing scheduler draws at future integration; never binary contacts.
+FFE_STATE_FIELDS=('k','hard','band','cell','due','phase','repeat_due','block')
+FFE_FIRST=1
+FFE_REPEAT=2
+FFE_CLOSED=3
+FFE_MISS_BOUNDARY=1
+FFE_MISS_NOMINAL=2
+FFE_MISS_EXPIRED=3
+FFE_MISS_COHERENCE=4
+FFE_MISS_TERMINAL=5
+FFE_MISS_INVALID=6
+
+def ffe_init(xp):
+    # Unassigned until the first real transition at the restored host edge.
+    return {name:xp.asarray(0 if name in ('k','hard','phase','block') else -1,
+                            xp.int32) for name in FFE_STATE_FIELDS}
+
+def ffe_pre(xp,old,*,hard_draw,band_draw,cell_draw,due_draw,boundary,nominal,
+            count,coherent,source_step,mode,cost,geometry_valid):
+    """Pure pre-injection candidate decision; no RNG/physics/reward calls.
+
+    Caller must use independent fold_in subkeys and preserve original draws.
+    coherent means exact zero native/actor/critic command and live prestate.
+    mode is actual r12_cost loaded support: 0/1/2/3, not binary contact.
+    All input shapes/dtypes and actual transition conservation need a separate
+    batch guard. This function alone is NOT a production scheduler.
+    """
+    i=xp.int32
+    k=old['k'];initial=k==0
+    hard=xp.where(initial,hard_draw,old['hard']).astype(i)
+    band=xp.where(initial,band_draw,old['band']).astype(i)
+    cell=xp.where(initial,cell_draw,old['cell']).astype(i)
+    due=xp.where(initial,due_draw,old['due']).astype(i)
+    phase=xp.where(initial,FFE_FIRST,old['phase']).astype(i)
+    repeat_due=old['repeat_due']
+    target_mode=xp.where(cell<2,cell+1,3).astype(i)
+    direction=(2+cell%2).astype(i)
+    # Hard assignment remains fixed; original broad can return only at a
+    # natural boundary strictly after closure of this opportunity.
+    block=(hard>0)&xp.where(initial,True,xp.where(
+        boundary&(phase==FFE_CLOSED),False,old['block']>0))
+    active=block&(phase!=FFE_CLOSED)
+    first=active&(phase==FFE_FIRST)
+    wait=active&(phase==FFE_REPEAT)
+    at_due=k>=due
+    geometry_ok=geometry_valid&xp.isfinite(cost)&(cost>=0)&(cost<=1)&(mode>=0)&(mode<=3)
+    assignment_ok=((hard==0)|(hard==1))&(band>=0)&(band<4)&(cell>=0)&(cell<4)&(
+        due>=40+160*band)&(due<=80+160*band)
+    bad=(k<0)|(k>=640)|(~assignment_ok)|(
+        active&(~geometry_ok)&((first&at_due)|wait))
+    # Reset before T retains slot; reset at/after T or during repeat closes.
+    boundary_miss=active&boundary&((first&at_due)|wait)
+    nominal_miss=active&nominal&((first&at_due)|wait)
+    coherence_miss=wait&(~coherent | (source_step>=500))
+    expired=(first&(k>due+8))|(wait&(k>repeat_due+8))
+    eligible=active&(~boundary)&(~nominal)&coherent&geometry_ok&(source_step<=459)&(~bad)
+    first_event=first&at_due&(k<=due+8)&eligible&(count==0)&(mode>0)
+    # Repeat clock source limit is the command refresh boundary, not the
+    # first-event <=459 guard; at most 40 ticks after the first event.
+    repeat_event=wait&(k>=repeat_due)&(k<=repeat_due+8)&(~boundary)&(~nominal)&(
+        coherent)&(source_step<500)&geometry_ok&(~bad)&(count==1)&(
+        mode==target_mode)&(cost>=xp.asarray(.5,xp.float32))
+    reason=xp.where(bad,FFE_MISS_INVALID,xp.where(boundary_miss,FFE_MISS_BOUNDARY,
+        xp.where(nominal_miss,FFE_MISS_NOMINAL,xp.where(coherence_miss,FFE_MISS_COHERENCE,
+        xp.where(expired,FFE_MISS_EXPIRED,0))))).astype(i)
+    first_event=first_event&(reason==0)
+    repeat_event=repeat_event&(reason==0)
+    # On the final allowed tick, a miss closes immediately, not a tick late.
+    deadline_miss=(first&(k==due+8)&(~first_event))|(wait&(k==repeat_due+8)&(~repeat_event))
+    reason=xp.where((reason==0)&deadline_miss,FFE_MISS_EXPIRED,reason).astype(i)
+    phase=xp.where((reason>0)|repeat_event,FFE_CLOSED,phase).astype(i)
+    state=dict(k=k,hard=hard,band=band,cell=cell,due=due,phase=phase,
+               repeat_due=repeat_due,block=block.astype(i))
+    return state,dict(first=first_event,repeat=repeat_event,direction=direction,
+                      block=block,bad=bad,reason=reason,target_mode=target_mode)
+
+def ffe_post(xp,state,pre,*,gap,post_coherent,terminal,refresh):
+    """Advance once per actual action; preserve actual event even if terminal."""
+    i=xp.int32
+    k=state['k'];first=pre['first'];repeat=pre['repeat']
+    first_or_wait=first|(state['phase']==FFE_REPEAT)
+    gap_bad=first&((gap<30)|(gap>32))
+    closure=first_or_wait&(terminal|refresh|(~post_coherent))
+    # A terminal first event still counts but never opens a repeat.
+    reason=xp.where(gap_bad,FFE_MISS_INVALID,xp.where(closure,
+        xp.where(terminal,FFE_MISS_TERMINAL,FFE_MISS_COHERENCE),pre['reason'])).astype(i)
+    phase=xp.where(closure|gap_bad|repeat,FFE_CLOSED,
+        xp.where(first,FFE_REPEAT,state['phase'])).astype(i)
+    # If a hard slot is due but terminal occurred on its non-event row, close.
+    due_terminal=(state['hard']>0)&(phase==FFE_FIRST)&(k>=state['due'])&terminal
+    reason=xp.where(due_terminal,FFE_MISS_TERMINAL,reason).astype(i)
+    phase=xp.where(due_terminal,FFE_CLOSED,phase).astype(i)
+    out=dict(state,k=(k+1).astype(i),phase=phase,
+             repeat_due=xp.where(first,k+gap,state['repeat_due']).astype(i))
+    return out,dict(reason=reason,bad=pre['bad']|gap_bad)
+
+
+def ffe_exposure_gate(chunk_cell,nominal,ordinary,archived):
+    """Host engineering screen only; inputs must later be ledger-replayed.
+
+    chunk_cell: 4 chronological chunks x 4 mutually exclusive qualified
+    actual repeat cells. ordinary/archived: motion IDs 1..5, no hard events.
+    No legacy audit, reward or scientific gate is replaced by this helper.
+    """
+    def integer(x):
+        if type(x) is not int or x<0:
+            raise RuntimeError('M470_FFE_EXPOSURE_INTEGER')
+        return x
+    if (len(chunk_cell)!=4 or any(len(r)!=4 for r in chunk_cell) or
+            len(ordinary)!=5 or len(archived)!=5):
+        raise RuntimeError('M470_FFE_EXPOSURE_SHAPE')
+    rows=[[integer(x) for x in row] for row in chunk_cell]
+    nominal=integer(nominal)
+    broad=[integer(x) for x in ordinary]
+    old=[integer(x) for x in archived]
+    if nominal>5242880 or sum(map(sum,rows))>5242880 or any(x<=0 for x in old):
+        raise RuntimeError('M470_FFE_EXPOSURE_RANGE')
+    half=[[rows[2*h][j]+rows[2*h+1][j] for j in range(4)] for h in range(2)]
+    checks=dict(half_cell=all(x>=3 for row in half for x in row),
+                chunk=all(sum(row)>=1 for row in rows),
+                nominal=nominal>=916743 and 100*nominal>=15*5242880,
+                ordinary=all(5*n>=4*o for n,o in zip(broad,old)))
+    return dict(checks=checks,half_cell=half,qualified=sum(map(sum,rows)),
+                decision='EXPOSURE_PASS' if all(checks.values()) else 'EXPOSURE_INCONCLUSIVE')
+
+def ffe_core_fixtures(np):
+    """Synthetic scalar host fixtures, no native/JAX import or calls."""
+    def require(ok,label):
+        if not bool(ok):
+            raise RuntimeError('M470_FFE_CORE_FIXTURE '+label)
+    def pre(s,**kw):
+        a=dict(hard_draw=1,band_draw=0,cell_draw=0,due_draw=40,
+               boundary=False,nominal=False,count=0,coherent=True,
+               source_step=40,mode=1,cost=np.float32(.5),geometry_valid=True)
+        a.update(kw)
+        return ffe_pre(np,s,**a)
+    def post(s,p,**kw):
+        a=dict(gap=30,post_coherent=True,terminal=False,refresh=False)
+        a.update(kw)
+        return ffe_post(np,s,p,**a)
+    tested=0
+    for band in range(4):
+        for cell in range(4):
+            due=40+160*band
+            s=ffe_init(np)
+            for k in range(640):
+                require(int(s['k'])==k,'CLOCK')
+                repeat=due+30
+                # A natural episode boundary before due and after closure;
+                # pass different later draws to prove slot is not resampled.
+                q,p=pre(s,band_draw=band if k==0 else (band+1)%4,
+                        cell_draw=cell if k==0 else (cell+1)%4,
+                        due_draw=due if k==0 else 40,
+                        boundary=k in (0,10,repeat+2),
+                        count=int(due<k<=repeat),
+                        mode=cell+1 if cell<2 else 3)
+                require(int(q['band'])==band and int(q['cell'])==cell and
+                        int(q['due'])==due,'FIXED_ASSIGNMENT')
+                require(bool(p['first'])==(k==due),'FIRST_TIME')
+                require(bool(p['repeat'])==(k==repeat),'REPEAT_TIME')
+                require(int(p['direction'])==2+cell%2,'DIRECTION')
+                require(bool(p['block'])==(k<repeat+2),'BROAD_BLOCK')
+                require(not p['bad'],'VALID_ROW')
+                s,z=post(q,p)
+                require(not z['bad'],'VALID_POST')
+            require(int(s['k'])==640 and int(s['phase'])==FFE_CLOSED,'FINAL_CLOCK')
+            tested+=1
+    # Fixture helper starts from a known assigned phase; no production
+    # state synthesis or actual transition is performed.
+    q,p=pre(ffe_init(np),boundary=True)
+    s,_=post(q,p)
+    s=dict(s,k=np.int32(40))
+    for change,reason in [
+        (dict(boundary=True),FFE_MISS_BOUNDARY),
+        (dict(nominal=True),FFE_MISS_NOMINAL),
+        (dict(geometry_valid=False),FFE_MISS_INVALID),
+    ]:
+        q,p=pre(s,**change)
+        require(not p['first'] and not p['repeat'] and int(p['reason'])==reason,'FIRST_REJECT')
+        tested+=1
+    q,p=pre(dict(s,k=np.int32(48)),coherent=False)
+    require(not p['first'] and p['reason']==FFE_MISS_EXPIRED,'FIRST_DEADLINE');tested+=1
+    q,p=pre(s)
+    require(p['first'],'FIRST_EVENT')
+    for change,reason in [
+        (dict(terminal=True),FFE_MISS_TERMINAL),
+        (dict(refresh=True),FFE_MISS_COHERENCE),
+        (dict(post_coherent=False),FFE_MISS_COHERENCE),
+        (dict(gap=29),FFE_MISS_INVALID),
+    ]:
+        z,a=post(q,p,**change)
+        require(z['phase']==FFE_CLOSED and a['reason']==reason,'POST_REJECT')
+        tested+=1
+    z,a=post(q,p,gap=32)
+    require(z['repeat_due']==72,'GAP32');tested+=1
+    for change in (dict(mode=3),dict(mode=0),dict(cost=np.float32(.499)),
+                   dict(coherent=False),dict(source_step=500),dict(nominal=True),
+                   dict(boundary=True),dict(geometry_valid=False)):
+        q,p=pre(dict(z,k=np.int32(72)),count=1,**change)
+        require(not p['repeat'],'REPEAT_REJECT');tested+=1
+    q,p=pre(dict(z,k=np.int32(80)),count=1)
+    require(p['repeat'],'GAP40');tested+=1
+    q,p=pre(dict(z,k=np.int32(80)),count=1,mode=2)
+    require(not p['repeat'] and p['reason']==FFE_MISS_EXPIRED,'NO_FALLBACK');tested+=1
+    q,p=pre(ffe_init(np),hard_draw=0,boundary=True)
+    require(not p['block'] and not p['first'] and not p['repeat'],'ORDINARY_UNTOUCHED');tested+=1
+    rows=[[1]*4,[2]*4,[1]*4,[2]*4]
+    good=ffe_exposure_gate(rows,916743,[8]*5,[10]*5)
+    require(good['decision']=='EXPOSURE_PASS' and good['qualified']==24,'EXPOSURE_PASS');tested+=1
+    for rr,n,b in (([[0]*4,[3]*4,[1]*4,[2]*4],916743,[8]*5),
+                   (rows,916742,[8]*5),(rows,916743,[7,8,8,8,8]),
+                   ([[1]*4,[1]*4,[2]*4,[2]*4],916743,[8]*5)):
+        require(ffe_exposure_gate(rr,n,b,[10]*5)['decision']=='EXPOSURE_INCONCLUSIVE','EXPOSURE_REJECT');tested+=1
+    return dict(fixtures=tested,physical_transitions=0,resets=0,
+                optimizer_updates=0,native_inference=0)
+
+# H4FFE_CORE_END
+
 class CoverageJoystick(joystick.Joystick):
     """JAX-compatible source G1 subclass, independent of pinned checkout.
 

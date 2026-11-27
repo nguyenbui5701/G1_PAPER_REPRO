@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.281  
+**Version:** 1.2.282  
 **Ngày cập nhật:** 2026-11-27 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -3707,6 +3707,18 @@ Paired official counts CTRL/M12/R12: nominal survival12/12/12 of12, push surviva
 
 Decision H4-M17-2 CLOSED / TECH COMPLETE / scientific NO_GO / R12 NO_PROMOTE / EXPOSURE_INCONCLUSIVE immutable. R12 no retry, resume, reward tuning or combined arm. Recommended next H4-M18-1 FFE-V1 held curriculum-only integration under exact frozen v1.2.277 design, from Official CTRL, original24 reward, no R12 reward, unchanged PPO budget/physical/obs/action/PD/network/DR, no new training or runtime until separate Owner GO and full static gates; must verify native clock persistence and actual load/proxy eligibility, no fallback or weakening gates. Recommendation only, FFE implementation remains HELD until explicit Owner approval. No new source edits, runtime, standalone diagnostics, holdout, promotion. Branch A ACTIVE / B HOLD.
 
+### H4-M18-1 — FFE-V1 curriculum-only partial held core / full integration NOT COMPLETE (v1.2.282; 2026-11-27)
+
+Owner explicitly approved full held integration only; no runtime. SA retrieved complete Rules1.2.281 blobfc65b2c02a15e992f46e34b11f8001b933632884 at verified HEAD6710885f9991449f7e5b91d0b420c18033aec02f, AGENTS, operative frozen v1.2.277 specification, exact current envad0d9651acee6a338f603d141485361da1ed3fe3 (reset/step/r11_sample/r12_cost), instrumenter967d9d35c15b178b8ec5abc67b1cfe78f4ab293e (M12/R11/R12 generator/reducer), trainer918372c3d0b35fb92fdaa4abfca1e54ed3850765 (parent/worker/envcheck/restore/reader/projectors). Reopened upstream Playground AutoReset blob62e2823b80b692befe29e4640d0b7a816e52271c and Brax EpisodeWrapper blob2c09c8268a29d14c832dd07050575e4541ee98af. Source-level feasibility: AutoReset resets steps/done at entry, calls underlying step, selects initial data/obs on done, returns state.replace(data=data,obs=obs) without restoring info; EpisodeWrapper scans action_repeat and sets steps/truncation/done/reward, so distinct info clock can survive natural reset when action_repeat1. Not native/compiled proof, no local dependency rehash yet, no wrapper modification. Source-level finding does not establish typed carry/projection or exact native transition alignment.
+
+Exact archived M12 report134302B recovered from Library, SHA256 independently rehashed a28ebc6f5dd3fda5fc78c9bac60d6441b67e09081683a485a3c296e44ce2872e. exposure.counts broad motion1..5 exact1569/1577/1700/1620/1679; ceil80%1256/1262/1360/1296/1344. Nominal1145928 -> floor916743 (also >=15% training). These are exact integer engineering floors, not tuning or new efficacy thresholds.
+
+EDIT-FIRST partial implementation: only m463_coverage_env.py executable file changed, candidate blob9b729487388dc3c8a1cb7fe719135401563007db. Inserted isolated H4FFE_CORE block before CoverageJoystick, 11413B excluding leading separator, Git blobc34d3c45de85b6fcf98afc5aec2733dc2bbafd12 SHA256a75d3c52d08ee77ed3af4cae49bdb98bea741f6d50f763caf7829a18c91ffb65. Existing file reverse projection by removing exact block plus separator returns byte-identical baseline, no other code touched. Helpers ffe_init/ffe_pre/ffe_post and ffe_exposure_gate, ffe_core_fixtures. Pure scalar clock/assignment/deadline/first-repeat decision, four target cells and loaded-support mode/cost inputs, no fallback, closure reasons, frozen material screens. NOT wired into CoverageJoystick.__init__/reset/step, no RNG draws or actual geometry/injection/reward/Transition changes; pre/post inputs currently synthetic, actual schema/range and event-terminal telemetry need integrated checks. Actual SA local Python compile and NumPy 41 fixtures PASS (16 band/cell trajectories each640 synthetic ticks, fixed assignment, pre-due reset/after-close broad unblock, deadline and gap endpoints, first/repeat miss/terminal/refresh/invalid, ordinary path and material gates). Local block Git hash compared against connector-created exact block blob, matches; zero native physical/reset/inference/optimizer calls. Not full-file compile or JAX/native verification. Historical R12 executable/static receipts remain pinned to original commits; do not rerun closed R12 or interpret its historical projector on this new head as FFE acceptance.
+
+Frozen design unchanged: hard p1/8, original independent20% no-push at every episode boundary, four bands40..80/200..240/360..400/520..560, four target cells, max2 actual pushes, first<=459 source clock, repeat gap30..40, actual loaded >=.05 and D>=.10 or C>=.5, exact original24 reward, original Official CTRL fullstate9b19312d, budget5242880/800/2000 eval/20 rollouts/4 chunks, no added reset/forced command/reward. No binary fallback, no combined R12 reward. Core screen requires >=3 qualified repeats each half each cell and >=1 per chunk, exact broad/nominal floors. Actual event/visit counts and exposure remain UNTESTED. Missing integration: fixed fold_in RNG draws and opt-in environment injection with original scheduler/legacy conservation; native reward identity and exact typed reset/carry projection; actual Transition extras/reducer, pre-SGD fail closed with optimizer/normalizer unchanged on invalid batch; actual per-cell/half/chunk and post-event safety/tail ledger; distinct namespace/auth, generated-source provenance, bounded supervisor/GPU/storage, strict final/partial reader and full static. Clock guard must be demonstrated before runtime, if not feasible HOLD, do not alter native wrappers or add resets. No automatic relaxation or retry.
+
+Decision H4-M18-1 PARTIAL_HELD_CORE / full integration NOT COMPLETE / Owner component static pending (not full static). Owner may perform only read-only host component compile/extraction/41 fixtures, exact local wrapper/archive and reverse-byte checks with zero native calls, no output reservation or runtime marker. This receipt is not a training authorization. Next continue existing held implementation after review; preserve frozen specification and all historical source/artifacts. No new repository file; rollback by separately reviewed revert only. No PPO, native/standalone diagnostic, retry, holdout or promotion. Branch A ACTIVE, Branch B HOLD.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -3968,6 +3980,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-27)
+
+**H4-M18-1 FFE-V1 PARTIAL HELD CORE (v1.2.282):** exact frozen design, upstream wrapper source feasibility, archiveM12 SHA exact/broad floors1256/1262/1360/1296/1344, pure scheduler/material gate 41 host fixtures PASS, byte-reversible env helper block only. No native wiring, actual PPO batch or typed carry proof yet; full integration and full static NOT COMPLETE. Owner host component receipt only; no active marker or runtime, no PPO/diagnostic/retry/combined reward/holdout/promotion; Branch B HOLD.
 
 **H4-M17-2A R12 CONTROLLED DEV CLOSED (v1.2.281):** five artifact SHA256 exact; TECH COMPLETE, 12/60/42240/12, finite raw rows, strict reader PASS, scientific NO_GO; stand double survival/recovery5 both6/8 unchanged, push recovery5 41/48 vs CTRL34 and M1239, safety30 entries. R12 EXPOSURE_INCONCLUSIVE/NO_PROMOTE, marker consumed/disabled. FFE-V1 curriculum-only held implementation recommended pending explicit Owner GO; no active runtime, no PPO/diagnostic/retry/holdout/promotion, Branch B HOLD.
 
@@ -4883,6 +4897,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-27 | H4-M18-1 FFE-V1 partial held host core | exact archived M12 floor, pinned wrapper source review, 41 synthetic fixtures, reverse-byte env core | PARTIAL HELD / full integration NOT COMPLETE / no runtime | 1.2.282 |
+
 | 2026-11-27 | H4-M17-2A exact R12 DEV evidence review | 5 SHA matches; report516b0d3a; 12/60/42240/12; stand double6/8 both; safety30 entries | TECH COMPLETE / scientific NO_GO / NO_PROMOTE / authorization consumed | 1.2.281 |
 
 | 2026-11-27 | H4-M17-2 R12 existing checkpoint one-use DEV authorization | exact accepted receipt33994e61; sourceee5372f1/provenance97754ba1/launcher8ffb97ae; unique active marker | ONE-USE GO / Owner execution pending / scientific UNTESTED / NO_PROMOTE | 1.2.280 |
@@ -5507,6 +5523,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.282 — 2026-11-27:** Record FFE-V1 partial held core, exact M12 broad and nominal floors, pinned AutoReset source feasibility and41 host fixtures; explicitly not full integration or full static. One isolated env block, no runtime wiring/marker/native execution, no PPO/retry/combined arm/holdout/promotion, Branch B HOLD.
 
 - **v1.2.281 — 2026-11-27:** Accept exact five R12 DEV artifacts and raw ledger/finite audit, close one-use authorization and scientific NO_GO without exposure waiver; R12 NO_PROMOTE. Recommend separately approved held FFE-V1 curriculum-only integration; no source changes or runtime, no retry/PPO/combined arm/holdout/promotion, Branch B HOLD.
 
