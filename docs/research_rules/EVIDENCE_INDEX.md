@@ -401,3 +401,6 @@ Each link includes the section until the next heading; ranges are retrieval aids
 
 ## H4-M23-3 held integration scope
 - [Design base](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/3758f03eaf3e2dfdaf4c57831e849f393778fd8b); exact FFE2 report/receipts as latest ACTIVE_EXPERIMENT. No new empirical results.
+
+## H4-M23-3 source candidate receipt
+- [EDIT-FIRST](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/65002da688a87afd07d746850594e61234cb36b8); [held source](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/3c964122c95a7d866a3abc70c8ed2e67c53b6679), evaluator blob851eca851902fe88bd9961935c007f985c66bc4e. Reverse content comparison only; no static/native execution. Remaining blockers in ACTIVE_EXPERIMENT.
