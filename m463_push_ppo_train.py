@@ -12295,12 +12295,13 @@ def ssrpc_contract_fixture():
     # predicates; no fake receipt enters the real authorization namespace.
     auth=dict(id=SSRPC_STATIC_ID,source_head='a'*40,output=SSRPC_STATIC_OUTPUT,authorization_head='b'*40)
     generated=dict(ctrl='c'*64,cand='d'*64);source='e'*64
-    r=ssrpc_static_expected_report(auth,source,generated,ssrpc_static_manifest())
-    h4m12_require(ssrpc_static_report_check(r,auth,source)==r,'SSRPC_STATIC_SCHEMA_POSITIVE')
+    bootstrap='1'*64
+    r=ssrpc_static_expected_report(auth,source,generated,ssrpc_static_manifest(),bootstrap)
+    h4m12_require(ssrpc_static_report_check(r,auth,source,bootstrap)==r,'SSRPC_STATIC_SCHEMA_POSITIVE')
     for field,value in (('physical_transitions',False),('optimizer_updates',1),('native_imports',1),
         ('generated_sha256',dict(ctrl='c'*64,cand='c'*64)),('source_sha256','f'*64),
-        ('fixtures',{}),('resource',{}),('promotion_authorized',True)):
-        ssrpc_expect_reject(lambda:ssrpc_static_report_check(dict(r,**{field:value}),auth,source),'static_schema_'+field)
+        ('fixtures',{}),('resource',{}),('promotion_authorized',True),('bootstrap_sha256','2'*64)):
+        ssrpc_expect_reject(lambda:ssrpc_static_report_check(dict(r,**{field:value}),auth,source,bootstrap),'static_schema_'+field)
     ctrl=dict(arm='ctrl',source_sha256=source)
     cand=dict(arm='cand',source_sha256=source)
     report=dict(status='TECHNICAL_PASS',authorization=ctrl,
@@ -12319,7 +12320,7 @@ def ssrpc_contract_fixture():
         dict(abort,metrics=dict(abort['metrics'],ffe_batch_rejected=2)),
         dict(abort,metrics=dict(abort['metrics'],ffe_collected=True))):
         ssrpc_expect_reject(lambda:ssrpc_abort_check(bad,1),'abort_contract')
-    return dict(static_schema_positive=1,static_schema_negative=8,control_positive=1,
+    return dict(static_schema_positive=1,static_schema_negative=9,control_positive=1,
         control_negative=5,abort_positive=2,abort_negative=6)
 
 def ssrpc_cross_chunk_fixture():
@@ -12373,7 +12374,7 @@ def ssrpc_static_manifest():
         receipts=dict(json_positive=1,json_negative=6,terminal_positive=1,terminal_negative=7),
         marker=dict(positive=2,negative=6,static_positive=1,static_negative=4),
         cross_chunk=dict(positive=3,negative=5),
-        contracts=dict(static_schema_positive=1,static_schema_negative=8,control_positive=1,
+        contracts=dict(static_schema_positive=1,static_schema_negative=9,control_positive=1,
             control_negative=5,abort_positive=2,abort_negative=6),
         typed=dict(positive=2,negative=5,native_calls=0,typed_mock_only=True),
         generator=dict(arms=2,invalid_arm_rejected=1,held_runtime_rejected=2))
@@ -12440,6 +12441,53 @@ def ssrpc_static_write(path,value):
     with path.open('xb') as f:
         f.write(raw);f.flush();os.fsync(f.fileno())
 
+
+def ssrpc_bootstrap_identity(root):
+    """Read-only launcher/environment/dependency identity; no package imports."""
+    import subprocess
+    from importlib.machinery import PathFinder
+    from m463_instrument_brax import h4c_git_blob
+    root=Path(root).resolve();base=root.parent
+    paths=[Path(x).resolve() for x in os.environ.get('PYTHONPATH','').split(os.pathsep)]
+    expected=[
+        base/'G1_M3_11E_PPO_CLOUDPICKLE_OVERLAY_V1/overlays/cloudpickle_20261107_111524_3962615',
+        base/'G1_M3_11D_PPO_GYM_ISOLATED_REPAIR_V1/overlays/wheels_20261107_111000_3952924',
+        base/'G1_M3_11C_PPO_MANIFEST_REPAIR_V1/overlays/wheels_20261107_110316_3940764',
+        base/'G1_M3_7_G1_MJX_GPU_ONE_STEP_V1/source/mujoco_playground_2025',root]
+    h4m12_require(paths==[p.resolve() for p in expected] and all(p.is_dir() for p in paths),
+        'SSRPC_BOOT_PATHS')
+    venv=base/'G1_M3_7_G1_MJX_GPU_ONE_STEP_V1/.venv_m37_jax0435_mjx327'
+    h4m12_require(Path(sys.executable)==venv/'bin/python' and Path(sys.prefix).resolve()==venv.resolve(),
+        'SSRPC_BOOT_PYTHON')
+    env=dict(JAX_PLATFORMS='cuda',JAX_DEFAULT_MATMUL_PRECISION='highest',
+        XLA_PYTHON_CLIENT_PREALLOCATE='false',PYTHONNOUSERSITE='1',LD_LIBRARY_PATH=None,PYTHONHOME=None)
+    h4m12_require({k:os.environ.get(k) for k in env}==env,'SSRPC_BOOT_ENV')
+    play=paths[3]
+    h4m12_require(subprocess.check_output(['git','-C',str(play),'rev-parse','HEAD'],timeout=30).decode().strip()==PIN
+        and not subprocess.check_output(['git','-C',str(play),'status','--porcelain'],timeout=30).strip(),
+        'SSRPC_BOOT_PLAYGROUND')
+    roles={'cloudpickle':paths[0],'gym':paths[1],'dm_env':paths[2],'mujoco_playground':play}
+    modules={}
+    for name in ('cloudpickle','gym','dm_env','mujoco_playground','jax','brax','mujoco','flax','optax','numpy'):
+        spec=PathFinder.find_spec(name)
+        h4m12_require(spec is not None and spec.origin is not None,'SSRPC_BOOT_MODULE_'+name)
+        p=Path(spec.origin).resolve()
+        h4m12_require(p.is_file() and p.is_relative_to(roles.get(name,venv.resolve())),
+            'SSRPC_BOOT_ORIGIN_'+name)
+        modules[name]=dict(path=str(p),sha256=digest(p))
+    brax=Path(modules['brax']['path']).parent
+    dependencies={}
+    for name,blob in H4C_BRAX_BLOBS.items():
+        p=brax.joinpath(*name.split('.')[1:]).with_suffix('.py')
+        h4m12_require(p.is_file() and h4c_git_blob(p.read_bytes())==blob,'SSRPC_BOOT_DEPENDENCY_'+name)
+        dependencies[name]=dict(path=str(p),blob=blob)
+    historical=json.loads((root/H4M12_PARENT/'report.json').read_bytes())
+    h4x_file_pin(root/H4M12_PARENT/'report.json',H4M12_PARENT_PINS['report.json'])
+    h4m12_require(dependencies==historical['h4x_brax_dependencies'],'SSRPC_BOOT_HISTORICAL_DEPENDENCIES')
+    identity=dict(python=str(Path(sys.executable)),prefix=str(Path(sys.prefix)),paths=[str(p) for p in paths],
+        env=env,playground_head=PIN,modules=modules,dependencies=dependencies)
+    return hashlib.sha256(json.dumps(identity,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+
 def ssrpc_static_preflight(root,args):
     import subprocess
     from importlib import metadata
@@ -12472,19 +12520,20 @@ def ssrpc_static_preflight(root,args):
     h4m12_require(ssrpc_static_no_native(),'SSRPC_STATIC_NATIVE_AFTER_PREFLIGHT')
     return parent,raw
 
-def ssrpc_static_expected_report(auth,source,generated,fixtures):
+def ssrpc_static_expected_report(auth,source,generated,fixtures,bootstrap):
     return dict(status='FULL_STATIC_COMPLETE',authorization=auth,source_head=auth['source_head'],
-        source_sha256=source,generated_sha256=generated,fixtures=fixtures,
+        source_sha256=source,generated_sha256=generated,fixtures=fixtures,bootstrap_sha256=bootstrap,
         resource=ssrpc_lane_resource_bound(),physical_transitions=0,optimizer_updates=0,
         resets=0,native_inference=0,native_imports=0,promotion_authorized=False)
 
-def ssrpc_static_report_check(r,auth,source):
+def ssrpc_static_report_check(r,auth,source,bootstrap):
     import re
     h4m12_require(type(r) is dict and type(r.get('generated_sha256')) is dict,'SSRPC_STATIC_REPORT_SCHEMA')
     g=r['generated_sha256']
     h4m12_require(set(g)=={'ctrl','cand'} and all(type(x) is str and re.fullmatch('[0-9a-f]{64}',x)
         for x in g.values()) and g['ctrl']!=g['cand'],'SSRPC_STATIC_GENERATED')
-    expected=ssrpc_static_expected_report(auth,source,g,ssrpc_static_manifest())
+    h4m12_require(type(bootstrap) is str and re.fullmatch('[0-9a-f]{64}',bootstrap),'SSRPC_STATIC_BOOTSTRAP_SHA')
+    expected=ssrpc_static_expected_report(auth,source,g,ssrpc_static_manifest(),bootstrap)
     # Canonical JSON comparison distinguishes bool from int recursively.
     h4m12_require(json.dumps(r,sort_keys=True,allow_nan=False)==json.dumps(expected,sort_keys=True,allow_nan=False),
                   'SSRPC_STATIC_MANIFEST')
@@ -12512,7 +12561,7 @@ def ssrpc_read_static(root,expected_sha,*,terminal_required=True):
     h4m12_require(subprocess.run(['git','merge-base','--is-ancestor',auth['source_head'],'HEAD'],cwd=root).returncode==0
         and subprocess.run(['git','diff','--quiet',auth['source_head'],'HEAD','--',*names],cwd=root).returncode==0,
         'SSRPC_STATIC_SOURCE_ANCESTRY')
-    r=ssrpc_static_report_check(ssrpc_read_json(p,SSRPC_STATIC_REPORT_CAP),auth,source)
+    r=ssrpc_static_report_check(ssrpc_read_json(p,SSRPC_STATIC_REPORT_CAP),auth,source,ssrpc_bootstrap_identity(root))
     if terminal_required:
         log=out/'worker.log'
         h4m12_require(log.is_file() and not log.is_symlink() and 0<log.stat().st_size<=SSRPC_STATIC_LOG_CAP,
@@ -12534,6 +12583,8 @@ def ssrpc_static_worker(root,args,auth,out):
     attempt=ssrpc_read_json(out/'attempt.json',SSRPC_STATIC_REPORT_CAP)
     h4m12_require(attempt==dict(authorization=auth,parent_pid=os.getppid()),'SSRPC_STATIC_RESERVED')
     ssrpc_static_write(out/'worker.started.json',dict(authorization=auth,pid=os.getpid(),parent_pid=os.getppid()))
+    bootstrap=ssrpc_bootstrap_identity(root)
+    h4m12_require(os.environ.get('SSRPC_STATIC_BOOTSTRAP_SHA256')==bootstrap,'SSRPC_STATIC_PARENT_BOOTSTRAP')
     parent,raw=ssrpc_static_preflight(root,args)
     src={};generated={}
     for arm in ('ctrl','cand'):
@@ -12559,8 +12610,9 @@ def ssrpc_static_worker(root,args,auth,out):
         all(not (root/p).exists() and not (root/p).is_symlink() for p in SSRPC_ARM_OUTPUT.values()),
         'SSRPC_STATIC_FINAL_HOLD')
     source=h4x_source_digest(root)
-    r=ssrpc_static_expected_report(auth,source,generated,fixtures)
-    ssrpc_static_report_check(r,auth,source)
+    h4m12_require(ssrpc_bootstrap_identity(root)==bootstrap,'SSRPC_STATIC_BOOTSTRAP_CHANGED')
+    r=ssrpc_static_expected_report(auth,source,generated,fixtures,bootstrap)
+    ssrpc_static_report_check(r,auth,source,bootstrap)
     ssrpc_static_write(out/'report.json',r)
     print('H4SSRPC_FULL_STATIC_PASS',digest(out/'report.json'),flush=True)
 
@@ -12582,13 +12634,15 @@ def ssrpc_static_main(argv):
     args.h4_exploratory_reward_report=args.reward_report
     ssrpc_bootstrap(args,h4m12=True,ffe=True)
     ssrpc_parent_preflight(root)
+    h4m12_require('SSRPC_STATIC_BOOTSTRAP_SHA256' not in os.environ,'SSRPC_STATIC_PARENT_ENV')
+    bootstrap=ssrpc_bootstrap_identity(root)
     out.mkdir(exist_ok=False)
     ssrpc_static_write(out/'attempt.json',dict(authorization=auth,parent_pid=os.getpid()))
     child=None;rc=None;total=0
     try:
         child=subprocess.Popen([sys.executable,'-B','-u',str(Path(__file__).resolve()),
             '--h4ssrpc-full-static',*argv,'--worker'],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,
-            start_new_session=True)
+            start_new_session=True,env=dict(os.environ,SSRPC_STATIC_BOOTSTRAP_SHA256=bootstrap))
         deadline=time.monotonic()+SSRPC_STATIC_WATCHDOG
         with selectors.DefaultSelector() as sel,(out/'worker.log').open('xb') as log:
             sel.register(child.stdout,selectors.EVENT_READ)
