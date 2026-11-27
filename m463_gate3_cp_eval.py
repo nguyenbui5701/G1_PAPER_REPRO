@@ -14725,6 +14725,7 @@ def h4m24_v1_receipts(root):
     return pins
 
 def h4m24_fixture_counts():
+    if H4M25_MODE:return dict(H4M23_FIXTURE_COUNTS,**H4M24_EXTRA_COUNTS,**H4M25_EXTRA_COUNTS)
     return dict(H4M23_FIXTURE_COUNTS,**H4M24_EXTRA_COUNTS) if H4M24_MODE else H4M23_FIXTURE_COUNTS
 
 def h4m24_fixtures(root,b):
@@ -14763,7 +14764,7 @@ def h4m24_fixtures(root,b):
     v1='H4M23_RICH_ACTIVE_GO: H4-M23-FFE2-RICH-V1 '+oldout+' '+'a'*64+' '+'b'*64+' '+oldlog+' '+'c'*64
     v1s='H4M23_RICH_STATIC_GO: H4-M23-4-STATIC-V1 '+'a'*40+' '+'b'*40+' '+oldlog
     good('namespace',lambda:h4m23_req(H4M23_OUTPUT.parent!=H4M24_V1_DIR and str(H4M23_STATIC)!=oldlog
-        and H4M23_STATIC_ATTEMPT.name not in H4M24_V1_STATIC and H4M23_CHILD_PREFIX==['v2'],'V2_PATHS'))
+        and H4M23_STATIC_ATTEMPT.name not in H4M24_V1_STATIC and H4M23_CHILD_PREFIX==(['v3'] if H4M25_MODE else ['v2']),'V2_PATHS'))
     bad('namespace',lambda:h4m23_marker(v1),'DISTINCT_MARKER')
     bad('namespace',lambda:h4m23_static_marker(v1s),'STATIC_MARKER')
     bad('namespace',lambda:h4m23_marker(native+'\n'+v1),'HOLD_OR_CONFLICT')
@@ -14784,6 +14785,7 @@ def h4m23_req(ok,label):
     if not ok:raise RuntimeError('M470_H4M23_'+label)
 
 def h4m23_projection(raw):
+    if b'# H4M25_V3_'+b'BEGIN\n' in raw:raw=h4m25_projection(raw)
     begin=b'# H4M23_RICH_'+b'BEGIN\n';end=b'# H4M23_RICH_'+b'END\n'
     h4m23_req(raw.count(begin)==raw.count(end)==1,'PROJECTION_BLOCK')
     i=raw.index(begin);j=raw.index(end,i)+len(end)
@@ -14854,6 +14856,9 @@ def h4m23_inputs(root):
         pins.update(h4m24_v1_receipts(root))
         pins['bootstrap/launcher']=h4m3_digest(b)
         ext['bootstrap']=b
+    if H4M25_MODE:
+        pins.update(h4m25_v2_receipts(root))
+        ext['h4m25_prior_evaluator_blob']=H4M25_V2_BLOB
     return pins,ctrl,ext,h4m23_archive_lanes(a)
 
 def h4m23_archive_lanes(a):
@@ -15265,7 +15270,9 @@ def h4m23_validate_manifest(m,ext,np):
     for side in ('left','right'):
         leg=geo['legs'][side];spec=h4m4_leg_spec(side)
         h4m23_req(set(leg)==set(spec),'LEG_KEYS')
-        for k,v in spec.items():h4m23_req(np.allclose(leg[k],v,rtol=0,atol=1e-8),'LEG_'+k)
+        for k,v in spec.items():
+            if H4M25_MODE and k=='quats':h4m25_validate_quats(leg[k],v,np)
+            else:h4m23_req(np.allclose(leg[k],v,rtol=0,atol=1e-8),'LEG_'+k)
 
 def h4m23_runtime_manifest(args,env,np):
     from mujoco_playground._src import gait
@@ -15676,7 +15683,10 @@ def h4m23_dispatch(root,child=False):
     print('H4M23_DIAGNOSTIC_COMPLETE',result['report_sha256'],flush=True)
 
 def h4m23_cli(argv):
-    if argv[:1]==['v2']:
+    if argv[:1]==['v3']:
+        h4m25_select();argv=argv[1:]
+    elif argv[:1]==['v2']:
+        h4m23_req(argv==['v2','plan'],'V2_PERMANENTLY_CLOSED')
         h4m24_select();argv=argv[1:]
     elif argv!=['plan']:
         raise RuntimeError('M470_H4M23_V1_PERMANENTLY_CLOSED')
@@ -15748,6 +15758,11 @@ def h4m23_static_mock_manifest(ext):
     m['geometry']=dict(legs={s:h4m4_leg_spec(s) for s in ('left','right')},
         scene_path=scene['path'],scene_sha256=scene['sha256'],xml_path=xml['path'],xml_sha256=xml['sha256'],
         xml_blob=xml['blob'])
+    if H4M25_MODE:
+        import numpy as np
+        for leg in m['geometry']['legs'].values():
+            q=np.asarray(leg['quats'],dtype=np.float64)
+            leg['quats']=(q/np.linalg.norm(q,axis=1,keepdims=True)).tolist()
     return m
 
 def h4m23_static_mock_raw(m,t,phase,postphase,qvel,np):
@@ -16073,6 +16088,7 @@ def h4m23_static_dispatch(root,child=False):
             source=h4red_eval_source(root);prov=h4m3_digest([pins,ext])
             h4m23_static_fixture_run(root,pins,ext,lanes)
             if H4M24_MODE:h4m24_fixtures(root,boot)
+            if H4M25_MODE:h4m25_fixtures(root,pins,ext)
             after=h4m23_inputs(root)
             h4m23_req(after[0]==pins and after[2]==ext and after[3]==lanes
                 and h4red_eval_source(root)==source and h4m23_static_admit(root)==(auth,head),'STATIC_POST_PROVENANCE')
@@ -16113,6 +16129,145 @@ def h4m23_static_dispatch(root,child=False):
     print('H4M23_STATIC_RECEIPT_SHA256',sha256(log),flush=True)
 
 H4M23_PATCHES=[["def run(args):\n    abs_mode=","def run(args):\n    m23=bool(getattr(args,'h4m23_rich',False))\n    if m23:h4m23_enter(args)\n    abs_mode="],["    m12=bool(getattr(args,'h4m12_eval',False))\n    h4_mode=","    m12=bool(getattr(args,'h4m12_eval',False)) or m23\n    h4_mode="],["    if m12:\n        h4m12_enter(args,red=getattr(args,'h4red_eval',False))","    if m12 and not m23:\n        h4m12_enter(args,red=getattr(args,'h4red_eval',False))\n    elif m23:\n        pass  # separate held entry, never use historical DEV authorization"],["        h4m3_runtime_model_source(env,args.h3_session)\n    if m6:","        h4m3_runtime_model_source(env,args.h3_session)\n        if m23:\n            args.h4m23_manifest=h4m3_manifest(env,np)\n            args.h4m23_manifest['geometry']=h4m4_model_geometry(env,args.h4m23_manifest,np)\n            h4m23_runtime_manifest(args,env,np)\n            args.h4m23_journal.header(args.h4m23_manifest)\n    if m6:"],["                if placement_capture:\n                    pre_placement=h4m3_pre_capture(state)","                if placement_capture:\n                    pre_placement=(h4m23_pre_capture(state) if m23 else h4m3_pre_capture(state))"],["                    return next_state,diag,h4m3_post_capture(pre_placement,action,next_state,env)\n                return next_state,diag","                    return next_state,diag,(h4m23_post_capture(pre_placement,action,next_state,env,jnp)\n                        if m23 else h4m3_post_capture(pre_placement,action,next_state,env))\n                return next_state,diag"],["if placement or m6 else jax.jit(one_step))\n            if abs_mode:","if placement or m6 or m23 else jax.jit(one_step))\n            if m23:\n                h4m23_native_lane(args,lane_index,env,step_fn,jax,jnp,np)\n                continue\n            if abs_mode:"],["    if placement:\n        return\n    if h3_mode:\n        if m12:","    if placement or m23:\n        return\n    if h3_mode:\n        if m12:"],["def h4ffe2_dev_projection(raw):\n    begin=","def h4ffe2_dev_projection(raw):\n    if b'# H4M23_RICH_'+b'BEGIN\\n' in raw:raw=h4m23_projection(raw)\n    begin="],["def h4ffe2_dev_project(root):\n    import ast\n    raw=(root/'m463_gate3_cp_eval.py').read_bytes()","def h4ffe2_dev_project(root):\n    import ast\n    raw=(root/'m463_gate3_cp_eval.py').read_bytes()\n    if b'# H4M23_RICH_'+b'BEGIN\\n' in raw:raw=h4m23_projection(raw)"],["    if len(sys.argv)>1 and sys.argv[1]=='--h4absd':h4absd_cli(sys.argv[2:])\n    elif len(sys.argv)>1 and sys.argv[1]=='--h4abs':h4abs_cli(sys.argv[2:])\n    else:main()\n","    if len(sys.argv)>1 and sys.argv[1]=='--h4m23-rich':h4m23_cli(sys.argv[2:])\n    elif len(sys.argv)>1 and sys.argv[1]=='--h4absd':h4absd_cli(sys.argv[2:])\n    elif len(sys.argv)>1 and sys.argv[1]=='--h4abs':h4abs_cli(sys.argv[2:])\n    else:main()\n"]]
+# H4M25_V3_BEGIN
+# H4-M25-1 held V3: representation-only validation and distinct admission.
+H4M25_MODE=False
+H4M25_V2_HEAD='30eb954b80ef3489c04e8518fc3106c7465622de'
+H4M25_V2_BLOB='05ada48c07940c8f1aa6d4402cf95a2f2aa78d8d'
+H4M25_V2_DIR=Path('m463_runs/m470_h4_m24_ffe2_rich_v2')
+H4M25_V2_FILES={
+    'attempt.json':(413,'7e6f8960f509659aa396c4bdbd6194027ea8ff4d5c6b5b87bcd936dfe9815b75'),
+    'parent.json':(437,'72e1bf53b9c77ac999681aa01b9743d253da54d18de833283e663030f07eb1ee'),
+    'runtime.entered.json':(430,'bcb9c3c6120137b0546b1d03922f10d7497985389b36ee1350852dbd10c123f6'),
+    'runtime.log':(2106,'fcad7266c6b4c280f503d23f43377b0dcc31d38b144de474ffa07f53cad27932'),
+    'journal.jsonl':(0,'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'),
+    'attempt_result.json':(672,'9fc65dffc98174e296919aea1dc966a2d10ce8cf74ea8195cebd1efaada4c04f')}
+H4M25_V2_STATIC={
+    'm470_h4m24_rich_static_v2.log':(656,'827c39b8e8a051b48e3b763808b9678a568e45480fab1da54d9fb306405e1799'),
+    'm470_h4m24_rich_static_v2.attempt.json':(425,'a9ffff113c38dc181602c780e84977465af334a70dc5a986afc564bd6b903dc5')}
+H4M25_EXTRA_COUNTS=dict(quaternion=14,v3_namespace=8,v2_receipts=3,v2_projection=2)
+
+def h4m25_select():
+    global H4M25_MODE,H4M23_ACTIVE_MARKER,H4M23_STATIC_MARKER,H4M23_CHILD_PREFIX
+    global H4M23_OUTPUT,H4M23_STATIC,H4M23_STATIC_ID,H4M23_STATIC_ATTEMPT,H4M23_SPEC
+    h4m23_req(not H4M25_MODE and not H4M24_MODE,'V3_SELECT_ONCE')
+    h4m24_select()
+    H4M25_MODE=True
+    H4M23_ACTIVE_MARKER='H4M25_RICH_ACTIVE_GO:'
+    H4M23_STATIC_MARKER='H4M25_RICH_STATIC_GO:'
+    H4M23_CHILD_PREFIX=['v3']
+    H4M23_OUTPUT=Path('m463_runs/m470_h4_m25_ffe2_rich_v3/report.json')
+    H4M23_STATIC=Path('m463_runs/m470_h4m25_rich_static_v3.log')
+    H4M23_STATIC_ID='H4-M25-STATIC-V3'
+    H4M23_STATIC_ATTEMPT=Path('m463_runs/m470_h4m25_rich_static_v3.attempt.json')
+    H4M23_SPEC=dict(H4M23_SPEC,id='H4-M25-FFE2-RICH-V3',output=str(H4M23_OUTPUT))
+
+def h4m25_validate_quats(actual,reference,np):
+    # Compiled mjModel quaternion is double precision and unit length.
+    # Keep raw manifest untouched; use the same rotation check as the producer.
+    try:
+        q=np.asarray(actual)
+    except (TypeError,ValueError) as exc:
+        raise RuntimeError('M470_H4M23_LEG_quats_SCHEMA') from exc
+    h4m23_req(q.shape==(6,4) and q.dtype.kind in 'iuf','LEG_quats_SCHEMA')
+    q=q.astype(np.float64)
+    h4m23_req(np.isfinite(q).all(),'LEG_quats_FINITE')
+    h4m23_req(np.all(np.abs(np.linalg.norm(q,axis=1)-1.)<=1e-12),'LEG_quats_UNIT')
+    for row,wanted in zip(q,reference):
+        h4m23_req(np.allclose(h4m4_quat_matrix(row,np),
+            h4m4_quat_matrix(wanted,np),rtol=0,atol=1e-7),'LEG_quats_ROTATION')
+
+def h4m25_v2_receipts(root):
+    # Owner-reported empty journal is verified here on the actual local bytes.
+    out=root/H4M25_V2_DIR
+    h4m23_req(out.is_dir() and not out.is_symlink() and out.resolve()==out.absolute()
+        and set(p.name for p in out.iterdir())==set(H4M25_V2_FILES),'V2_NAMESPACE')
+    pins={}
+    for directory,files in ((out,H4M25_V2_FILES),(root/'m463_runs',H4M25_V2_STATIC)):
+        for name,(size,digest) in files.items():
+            p=directory/name
+            h4m23_req(p.is_file() and not p.is_symlink() and p.resolve()==p.absolute()
+                and p.stat().st_size==size and sha256(p)==digest,'V2_RECEIPT_'+name)
+            pins['h4m24_v2/'+name]=digest
+    return pins
+
+def h4m25_projection(raw):
+    begin=b'# H4M25_V3_'+b'BEGIN\n';end=b'# H4M25_V3_'+b'END\n'
+    h4m23_req(raw.count(begin)==raw.count(end)==1,'V3_PROJECTION_BLOCK')
+    i=raw.index(begin);j=raw.index(end,i)+len(end)
+    s=(raw[:i]+raw[j:]).decode('utf8')
+    for a,b in reversed(H4M25_PATCHES):
+        h4m23_req(s.count(b)==1,'V3_PROJECTION_ANCHOR')
+        s=s.replace(b,a,1)
+    data=s.encode('utf8')
+    h4m23_req(hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()
+        ==H4M25_V2_BLOB,'V3_BASE_BLOB')
+    return data
+
+def h4m25_fixtures(root,pins,ext):
+    # Authorized host-static child only. No native model load or reset/step.
+    import copy
+    import numpy as np
+    counts={k:0 for k in H4M25_EXTRA_COUNTS}
+    def good(cat,fn):
+        fn();counts[cat]+=1
+    def bad(cat,fn,label):
+        try:fn()
+        except RuntimeError as exc:h4m23_req(label in str(exc),'V3_FIXTURE_WRONG_'+str(exc)[:120])
+        else:raise RuntimeError('M470_H4M25_FIXTURE_ACCEPTED_'+label)
+        counts[cat]+=1
+    m=h4m23_static_mock_manifest(ext)
+    def edit(side,value):
+        q=copy.deepcopy(m);q['geometry']['legs'][side]['quats']=value;return q
+    def check(q):h4m23_validate_manifest(q,ext,np)
+    L=np.asarray(m['geometry']['legs']['left']['quats']);R=np.asarray(m['geometry']['legs']['right']['quats'])
+    def changed(q,i,v):
+        a=q.copy();a[i]=v;return a.tolist()
+    good('quaternion',lambda:check(m))
+    good('quaternion',lambda:check(edit('left',changed(L,1,-L[1]))))
+    good('quaternion',lambda:check(edit('right',(-R).tolist())))
+    bad('quaternion',lambda:check(edit('left',h4m4_leg_spec('left')['quats'])),'LEG_quats_UNIT')
+    bad('quaternion',lambda:check(edit('right',h4m4_leg_spec('right')['quats'])),'LEG_quats_UNIT')
+    bad('quaternion',lambda:check(edit('right',(R*.99).tolist())),'LEG_quats_UNIT')
+    bad('quaternion',lambda:check(edit('left',changed(L,0,[0.,0.,0.,0.]))),'LEG_quats_UNIT')
+    bad('quaternion',lambda:check(edit('left',changed(L,0,[np.nan,0.,0.,0.]))),'LEG_quats_FINITE')
+    bad('quaternion',lambda:check(edit('right',changed(R,0,[np.inf,0.,0.,0.]))),'LEG_quats_FINITE')
+    bad('quaternion',lambda:check(edit('left',L[:-1].tolist())),'LEG_quats_SCHEMA')
+    bad('quaternion',lambda:check(edit('right',R.astype(str).tolist())),'LEG_quats_SCHEMA')
+    bad('quaternion',lambda:check(edit('left',changed(L,1,[1.,0.,0.,0.]))),'LEG_quats_ROTATION')
+    angle=1e-5
+    bad('quaternion',lambda:check(edit('right',changed(R,0,[np.cos(angle),np.sin(angle),0.,0.]))),'LEG_quats_ROTATION')
+    q=copy.deepcopy(m);q['geometry']['legs']['right']['halfsize'][0]=.5
+    bad('quaternion',lambda:check(q),'LEG_halfsize')
+    oldout=str(H4M25_V2_DIR/'report.json');oldlog='m463_runs/m470_h4m24_rich_static_v2.log'
+    oldnative='H4M24_RICH_ACTIVE_GO: H4-M24-FFE2-RICH-V2 '+oldout+' '+'a'*64+' '+'b'*64+' '+oldlog+' '+'c'*64
+    oldstatic='H4M24_RICH_STATIC_GO: H4-M24-STATIC-V2 '+'a'*40+' '+'b'*40+' '+oldlog
+    native=H4M23_ACTIVE_MARKER+' '+H4M23_SPEC['id']+' '+str(H4M23_OUTPUT)+' '+'a'*64+' '+'b'*64+' '+str(H4M23_STATIC)+' '+'c'*64
+    good('v3_namespace',lambda:h4m23_req(H4M23_OUTPUT.parent not in (H4M24_V1_DIR,H4M25_V2_DIR)
+        and H4M23_CHILD_PREFIX==['v3'] and H4M23_STATIC_ATTEMPT.name not in H4M25_V2_STATIC
+        and H4M23_STATIC.name not in H4M25_V2_STATIC,'V3_PATHS'))
+    bad('v3_namespace',lambda:h4m23_marker(oldnative),'DISTINCT_MARKER')
+    bad('v3_namespace',lambda:h4m23_static_marker(oldstatic),'STATIC_MARKER')
+    bad('v3_namespace',lambda:h4m23_marker(native+'\n'+oldnative),'HOLD_OR_CONFLICT')
+    bad('v3_namespace',lambda:h4m23_marker(native.replace(str(H4M23_OUTPUT),oldout)),'DISTINCT_MARKER')
+    bad('v3_namespace',lambda:h4m23_marker(native.replace(str(H4M23_STATIC),oldlog)),'DISTINCT_MARKER')
+    lines=h4m23_static_lines('a'*40,'b'*64,'c'*64,'d'*64)
+    prior=list(lines);prior[4]='H4M23_STATIC_FIXTURES '+json.dumps(dict(H4M23_FIXTURE_COUNTS,**H4M24_EXTRA_COUNTS),sort_keys=True,separators=(',',':'))
+    bad('v3_namespace',lambda:h4m23_static_receipt(prior,'b'*64,'c'*64,'d'*64),'STATIC_RECEIPT_EXACT')
+    bad('v3_namespace',lambda:h4m23_cli(['v2','run']),'V2_PERMANENTLY_CLOSED')
+    good('v2_receipts',lambda:h4m23_req(h4m25_v2_receipts(root)=={k:v for k,v in pins.items() if k.startswith('h4m24_v2/')},'V2_PROVENANCE'))
+    good('v2_receipts',lambda:h4m23_req(len(h4m25_v2_receipts(root))==8 and len(h4m24_v1_receipts(root))==8,'PRIOR_RECEIPT_COUNT'))
+    good('v2_receipts',lambda:h4m23_req(ext['h4m25_prior_evaluator_blob']==H4M25_V2_BLOB,'V2_BLOB_BINDING'))
+    raw=(root/'m463_gate3_cp_eval.py').read_bytes()
+    base=subprocess.check_output(['git','show',H4M25_V2_HEAD+':m463_gate3_cp_eval.py'],cwd=root,timeout=30)
+    good('v2_projection',lambda:h4m23_req(h4m25_projection(raw)==base,'V2_EXACT_BYTES'))
+    bad('v2_projection',lambda:h4m25_projection(raw.replace(b'def h4m23_projection(raw):',b'def h4m23_projection_bad(raw):',1)),'V3_PROJECTION_ANCHOR')
+    h4m23_req(counts==H4M25_EXTRA_COUNTS,'V3_FIXTURE_COUNT')
+    h4m3_no_runtime_imports()
+    return counts
+
+H4M25_PATCHES=[["def h4m23_projection(raw):\n    begin=","def h4m23_projection(raw):\n    if b'# H4M25_V3_'+b'BEGIN\\n' in raw:raw=h4m25_projection(raw)\n    begin="],["        ext['bootstrap']=b\n    return pins,ctrl,ext,h4m23_archive_lanes(a)","        ext['bootstrap']=b\n    if H4M25_MODE:\n        pins.update(h4m25_v2_receipts(root))\n        ext['h4m25_prior_evaluator_blob']=H4M25_V2_BLOB\n    return pins,ctrl,ext,h4m23_archive_lanes(a)"],["def h4m24_fixture_counts():\n    return dict(H4M23_FIXTURE_COUNTS,**H4M24_EXTRA_COUNTS) if H4M24_MODE else H4M23_FIXTURE_COUNTS","def h4m24_fixture_counts():\n    if H4M25_MODE:return dict(H4M23_FIXTURE_COUNTS,**H4M24_EXTRA_COUNTS,**H4M25_EXTRA_COUNTS)\n    return dict(H4M23_FIXTURE_COUNTS,**H4M24_EXTRA_COUNTS) if H4M24_MODE else H4M23_FIXTURE_COUNTS"],["and H4M23_CHILD_PREFIX==['v2'],'V2_PATHS'))","and H4M23_CHILD_PREFIX==(['v3'] if H4M25_MODE else ['v2']),'V2_PATHS'))"],["        for k,v in spec.items():h4m23_req(np.allclose(leg[k],v,rtol=0,atol=1e-8),'LEG_'+k)\n","        for k,v in spec.items():\n            if H4M25_MODE and k=='quats':h4m25_validate_quats(leg[k],v,np)\n            else:h4m23_req(np.allclose(leg[k],v,rtol=0,atol=1e-8),'LEG_'+k)\n"],["def h4m23_cli(argv):\n    if argv[:1]==['v2']:\n        h4m24_select();argv=argv[1:]\n    elif argv!=['plan']:","def h4m23_cli(argv):\n    if argv[:1]==['v3']:\n        h4m25_select();argv=argv[1:]\n    elif argv[:1]==['v2']:\n        h4m23_req(argv==['v2','plan'],'V2_PERMANENTLY_CLOSED')\n        h4m24_select();argv=argv[1:]\n    elif argv!=['plan']:"],["        xml_blob=xml['blob'])\n    return m\n\ndef h4m23_static_mock_raw","        xml_blob=xml['blob'])\n    if H4M25_MODE:\n        import numpy as np\n        for leg in m['geometry']['legs'].values():\n            q=np.asarray(leg['quats'],dtype=np.float64)\n            leg['quats']=(q/np.linalg.norm(q,axis=1,keepdims=True)).tolist()\n    return m\n\ndef h4m23_static_mock_raw"],["            if H4M24_MODE:h4m24_fixtures(root,boot)\n            after=h4m23_inputs(root)","            if H4M24_MODE:h4m24_fixtures(root,boot)\n            if H4M25_MODE:h4m25_fixtures(root,pins,ext)\n            after=h4m23_inputs(root)"]]
+# H4M25_V3_END
 # H4M23_RICH_END
 if __name__=='__main__':
     if len(sys.argv)>1 and sys.argv[1]=='--h4m23-rich':h4m23_cli(sys.argv[2:])
