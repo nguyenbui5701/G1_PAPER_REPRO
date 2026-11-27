@@ -1,0 +1,67 @@
+# Core Rules — mandatory
+
+Governance v2.0.0 — 2026-11-27 — documentation only. Historical research state pinned to a2a1056075f4a41e9f05115b30e2a50144b34154.
+
+## Authority and reading contract
+Owner explicit instruction controls scope; latest explicit Owner operational override and accepted state supersede historical instructions. Preserve all frozen scientific contracts and their exact historical source. Read this file, CURRENT_STATE.md and ACTIVE_EXPERIMENT.md before every task, plus the applicable exact Scientific Gates, Runtime Protocol and evidence ranges for the requested task. No mandatory full historical read. If unclear, contradictory, missing or stale, STOP/HOLD and resolve exact evidence; no inferred authorization. This replaces only the full-read and maintenance routing requirement in legacy rule 0 and AGENTS; no research or runtime permission change. Historical prose is not fresh GO. Legacy root is a machine compatibility surface, not the human reading entrypoint. See README.
+ 
+## Locked research objective and baseline
+## 1. North Star — mục tiêu nghiên cứu đã khóa
+
+**G1 phải (A) thực hiện lệnh đi/đứng/xoay bình thường; (B) chịu push thực sự trong dữ liệu huấn luyện, giữ thăng bằng và phục hồi bám lệnh; (C) khi đã ngã, tự đứng dậy bằng điều khiển vận động, ổn định lại và tiếp tục lệnh trước đó.**
+
+**Chuỗi hành vi cần chứng minh:** `FOLLOW_COMMAND → PUSHED → RECOVER_UPRIGHT` **hoặc** `FALLEN → GET_UP → REORIENT → RESUME_COMMAND`. Không được tính reset episode, teleport pose, đặt lại root `qpos`, hoặc xuất hiện robot đứng sẵn ở episode mới là một lần tự đứng dậy thành công.
+
+**Ưu tiên nghiên cứu:** push exposure thật → push recovery → phát hiện ngã chính xác → học get-up → nối get-up với locomotion và resume. Không tiếp tục tối ưu reward cho gait bình thường như mục tiêu độc lập; vẫn phải bảo toàn gait đã đạt. Paper fidelity (source/original) và *hardware-scaled robustness extension* phải báo cáo thành hai dòng riêng.
+
+### Current workstream lock — A ONLY (2026-11-21, user-directed)
+
+**Nhánh A ACTIVE, ưu tiên duy nhất:** phát triển locomotion G1 giữ gait, tăng actual PPO push exposure đa chiều và cải thiện stability/command-tracking recovery dưới push (đặc biệt xoay, tốc độ cao, push liên tiếp/đang mất cân bằng). Tập trung kiểm tra thực nghiệm có thông tin cao: chỉnh curriculum khi có dữ liệu, bounded PPO training và đánh giá C/P đúng thước đo; tránh lặp nhiều thử nghiệm hình thức hay tạo script mới khi không cần.
+
+**Nhánh B ON HOLD đến khi người dùng chủ động nói chuyển:** KHÔNG khởi tạo task F0/F1/F2/F3/F4 theo hướng get-up/fallen-state sandbox, không viết code, train, thiết kế implementation, benchmark hay thay đổi roadmap ưu tiên cho fall detection, get-up, reorient, resume. Giữ tài liệu yêu cầu của B làm mục tiêu dài hạn nhưng không chủ động đưa vào NEXT TASK. Khi người dùng yêu cầu chuyển mới tiếp tục B và thực hiện các gate liên quan.
+
+**Phân biệt với safety/telemetry trong A:** vẫn đo termination, instability, root height/contact nếu hữu ích để hiểu *failure của push recovery*, nhưng không coi đó là mở nhánh B hoặc cấp phép get-up implementation. Baseline/checkpoint PIN và quy tắc ghi bằng chứng không thay đổi. **Một thử nghiệm khám phá A có thể CONDITIONAL GO** với ngân sách/tiêu chí dừng khóa trước; chỉ công bố robustness PASS khi có nominal gait + matched-OFF + held-out đáng tin. Không làm các vòng lặp tái lập không cần thiết nếu không làm thay đổi quyết định quan trọng, nhưng phải công khai uncertainty về evaluator.
+
+### Active research objective — Failure-mechanism-driven PPO training (v1.2.74; owner-directed 2026-11-24)
+
+**Mục tiêu ưu tiên từ thời điểm này:** tìm hiểu cơ chế thất bại của locomotion/push recovery G1, rồi lựa chọn cách huấn luyện PPO phù hợp với chính những cơ chế thất bại đó. Failure mechanism → evidence → falsifiable hypothesis → PPO training design → controlled evaluation. Không coi việc thêm reward, đổi threshold, tăng độ khó, tăng budget hay thay neural architecture là mục tiêu tự thân. PPO vẫn là phương pháp nghiên cứu chính trong Workstream A; không chuyển sang H2C hoặc Branch B. North Star, paper/source fidelity distinction, RTX3060 12GiB, frozen C401M/OLD10M references, pinned source và toàn bộ safety/provenance/EDIT-FIRST gates vẫn giữ nguyên.
+
+**Mandatory decision sequence for the next A tasks:**
+1. Failure mechanism research (H3-R1, offline first): reuse existing H3-M1-3 report/log and prior H1/RC1/H2/coverage evidence. Compare failed and successful matched cases (including both-fail, both-success, and discordant cases); align trajectories to push1, push2 and termination. Analyze nominal pre-push differences, velocity/yaw, root height/tilt, support/contact phase, foot placement/separation, joint/control/force excess and recovery onset/tail. Distinguish initiating deviation, propagation, terminal flag and possible contributing factors; compare competing explanations. Do not infer that foot-foot contact initiated a fall merely because it triggered termination. Label OBSERVED / INFERRED / UNTESTED and explicitly identify missing per-joint, action, contact-force/CoM, reward/advantage/gradient or state data. Reused development seeds are not independent holdout. Use the existing 117480 raw physical frames before requesting new data.
+2. Select a PPO strategy only after the failure evidence is reviewed: evaluate whether the identified bottleneck concerns (a) insufficient exposure to specific failure states or recovery tails → targeted balanced curriculum/sampling; (b) conflicting or missing task-learning signals → specific reward shaping/credit signal; (c) delayed consequences/rollout/GAE or optimization behavior → temporal credit/optimization design; (d) insufficient policy-observable state/context → observation or architecture changes only if the simpler alternatives cannot address the demonstrated deficiency. These are candidate categories, NOT approved modifications or established diagnoses. Preserve on-policy PPO semantics; no arbitrary replay of old transitions as fresh PPO samples. Keep nominal training exposure and avoid catastrophic forgetting. Compare alternatives against prior NO-GO evidence rather than repeating failed ideas with new names.
+3. For the selected hypothesis, define the mechanism-to-training link, expected measurable improvement, falsifier, independent variable and matched control, source/config/initial-state provenance, actual joint exposure/post-push action metrics, bounded budget and stop criteria before observing new outcomes. Prefer one independently attributable change per experiment. If existing evidence cannot distinguish mechanisms, propose the smallest decision-relevant diagnostic with explicit justification and separate GO before any new simulation. Do not force a speculative reward or training modification merely to keep progressing.
+4. Only after owner approval of the research conclusion and training design, apply EDIT-FIRST/SOURCE-ON-GIT, static and actual technical gates, then a separately authorized bounded PPO experiment within 12GiB. Use frozen matched reference and budget, retain nominal gait and safety, count actual PPO exposure, distinguish technical training success from controlled recovery efficacy. No larger budget, hyperparameter sweep, checkpoint promotion, independent holdout or new seed campaign without their appropriate predeclared gates and separate approval. If hypothesis fails, record why, return to mechanism analysis and preserve evidence; do not auto-retry or tune thresholds after data.
+
+**Immediate next task:** H3-R1 offline Failure Mechanism Research and evidence-based PPO strategy selection/design recommendation. H3-M1 remains CLOSED / NO-PROMOTE / holdout ineligible; both stand primary gains0, 35 hard-failure entries and three lost foot-foot survivals remain accepted historical outcomes, not grounds for automatic H3-M2/M3/H4/H5 activation. User has approved the research direction, NOT a particular reward/curriculum/network, code modification, GPU simulation, PPO run or budget. This rules update does not execute H3-R1 analysis; it defines the scope of the next research task. H2C and B HOLD.
+
+## 2. Baseline bất biến, môi trường, provenance
+
+- Pin MuJoCo Playground source: commit `9bcbe736177472ba35d60773e3030a36e37962b7`.
+- Pin Brax PPO `train.py` SHA-256: `e20613d42bf0868a13003e0312998816cc8d3593bb5ccaf9f1d070fd09c44bd7`.
+- Checkpoint tham chiếu **C**: PPO seed 1, **401,080,320** steps, SHA-256 `1ccf579ea35d4518713b00ea20d77db8463bc469b7de903b8f10f457b3dc90b8`.
+- Checkpoint push-coverage **P (M4.63 easy smoke)**: **262,144 bước PPO bổ sung từ trọng số C**, SHA-256 `cd2cebe1d1b2ef74050d366814ee8d19259939f45612db67ae60a8a58e3003f0`. Khởi tạo Adam mới; **KHÔNG phải full optimizer resume**.
+- Bộ train hardware-scaled đã smoke: 8,192 env × 32 steps/env = 262,144 steps/rollout, batch 1,024, 8 minibatches, 5 updates/batch ⇒ **40 minibatch optimizer updates/rollout**. Source/paper-exact `num_envs=32,768` không phù hợp GPU này; không gọi bản scaled là paper-exact.
+- Tiếp tục dùng venv JAX/CUDA và các `PYTHONPATH` overlay đã chứng minh chạy được; `nvcc_compat.apply()` phải xảy ra **trước khi import JAX**. Không tự ý `pip install`/đổi package, source, PD, reward, phase, termination, action scale, randomizer hay mạng PPO.
+- Không tạo training seed mới khi chưa có lý do được ghi rõ. Các **reset seeds 7301, 7331, 7357** đã dùng để development, **không gọi là final holdout**. Tái sử dụng evaluator, danh sách seed/command/push và các checkpoint đã có; không bắt người dùng chạy lại thí nghiệm đủ bằng chứng.
+- Sửa trực tiếp code hiện hữu khi hợp lý, tránh mọc nhiều script. Những thay đổi để có get-up chỉ được thực hiện trong **môi trường/nhánh thí nghiệm riêng**, có diff, ablation và mô tả rõ, không sửa âm thầm code nguồn paper.
+
+## 3. Các trạng thái và biên nghiên cứu bắt buộc
+
+| Trạng thái | Mục tiêu & dấu hiệu | Điều KHÔNG được giả định |
+|---|---|---|
+| `UPRIGHT_TRACKING` | Đứng, đi/lùi/đi ngang, xoay theo command | Reward tốt = gait tốt |
+| `PUSH_RECOVERY` | Push làm lệch trạng thái; robot phục hồi và tiếp tục lệnh | Không ngã = đã phục hồi bám lệnh |
+| `FALL_DETECTED` | Xác định ngã từ tín hiệu đo phù hợp (root height/orientation/contact, không chỉ một ngưỡng tùy tiện) | `done=true` luôn có nghĩa đã ngã; terminate có thể vì nguyên nhân khác |
+| `GET_UP` | Chính policy/controller tạo hành động nâng robot từ **trạng thái đã ngã** | Reset/teleport hoặc khởi tạo tư thế đứng là get-up |
+| `REORIENT` | Ổn định trục thân, chân/chân chống, hướng vận động | Root height tăng một lần = đứng ổn định |
+| `RESUME_COMMAND` | Nhận lại đúng command hoặc command cập nhật và thực hiện liên tục | Đứng dậy xong mà đứng im = hoàn thành nhiệm vụ |
+
+**Kiến trúc nghiên cứu ban đầu (đề xuất, chưa được xác minh):** Giai đoạn 1 giữ frozen/được huấn luyện tiếp `locomotion-PPO`; giai đoạn 2 phát triển **get-up policy/controller riêng** với fallen-state initializations đúng vật lý; giai đoạn 3 nối bằng supervisory state machine, sau đó mới thử single-policy/hierarchical RL nếu có bằng chứng. Dùng phiên bản tách biệt để tránh catastrophically forgetting gait cũ. **Không giả định checkpoint locomotion hiện tại có thể đứng dậy**: pinned joystick mặc định terminate/reset, nên phải thiết kế môi trường get-up cho phép roll out **sau ngã** và kiểm chứng đổi trạng thái thực, không phá nguồn baseline.
+
+Các tư thế nghiên cứu get-up: ngã sấp, ngã ngửa, nằm nghiêng trái/phải, quỳ/thân thấp, nhiều góc yaw và sai lệch khớp hợp lệ. Chú ý self-collision, giới hạn khớp/mô-men, contact/ma sát, actuator dynamics và tính chính xác mô phỏng. Thử nghiệm trên MuJoCo/MJX trước; không suy khả năng triển khai phần cứng thật từ kết quả mô phỏng.
+
+ 
+The historical H3-R1 "Immediate next task" and prior proposed architectures quoted above are historical, not actionable; CURRENT_STATE and ACTIVE_EXPERIMENT take precedence. Branch A ACTIVE only; Branch B HOLD. Existing C401M, Official CTRL/M12, source, physics, checkpoints and recorded results immutable. No experimental change without explicit scope, EDIT-FIRST and SOURCE-ON-GIT; prioritize existing scripts, only one attributable change; separately approve held design, static and native/runtime steps. Record hypothesis, exact inputs/SHAs, independent variable, controls, falsifier, budget, evidence, uncertainty and GO/NO-GO. Distinguish technical, exposure, nominal, recovery and safety gates; development not independent holdout; no promotion without appropriate independent gates. Never use reset/teleport as get-up. Full original task rules: [v1.2.294 L4016–4249](https://github.com/nguyenbui5701/G1_PAPER_REPRO/blob/a2a1056075f4a41e9f05115b30e2a50144b34154/G1_RESEARCH_RULES.md#L4016-L4249). Exact original source constraints and experiment-specific overrides must be retrieved as needed; summaries do not substitute for frozen numeric contracts.
+
+## Maintenance
+Update CURRENT_STATE and ACTIVE_EXPERIMENT when scope/status changes; append TASK_LEDGER and CHANGELOG (semantic version for governance changes), add immutable commit/line pointers to EVIDENCE_INDEX. Retain legacy root's parser-required authorization/approval lines and embedded launcher blocks verbatim except explicit, separately approved legacy marker issuance/closure; future root-only authorization commits must preserve exact diff scope and pins. Never rewrite archive. No force push; reviewed revert only. Report exact commit and actual vs untested validation. No local simulation/training permission from documentation work.

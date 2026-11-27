@@ -1,0 +1,8 @@
+# Changelog — append only
+
+Governance v2.0.0 — 2026-11-27 — documentation only. Historical research state pinned to a2a1056075f4a41e9f05115b30e2a50144b34154.
+
+Historical complete changelog v1.0.0–v1.2.294: [v1.2.294 L5842–6450](https://github.com/nguyenbui5701/G1_PAPER_REPRO/blob/a2a1056075f4a41e9f05115b30e2a50144b34154/G1_RESEARCH_RULES.md#L5842-L6450) (immutable).
+
+## v2.0.0 — 2026-11-27 — INFRA-RULES-01
+Owner explicitly authorizes documentation-only modularization. Mandatory reading changes to Core/Current/Active + applicable exact gates/protocol/evidence. Original root and full archive retain identical Git blob; AGENTS routes humans/agents to v2.0. No executable, source, checkpoint, scientific gate, reward, curriculum, PPO, physics or authorization change; A ACTIVE/B HOLD. No runtime/retry/promotion. New governance docs are navigational and operational, not independent scientific evidence. Historical statements retained verbatim in immutable archive. Review via Git tree identity and compare, rollback via reviewed revert (not force/reset).

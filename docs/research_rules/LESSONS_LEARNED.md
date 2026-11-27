@@ -1,0 +1,11 @@
+# Lessons Learned — reusable, not new findings
+
+Governance v2.0.0 — 2026-11-27 — documentation only. Historical research state pinned to a2a1056075f4a41e9f05115b30e2a50144b34154.
+
+- Distinguish configured push vs actual PPO-consumed exposure; marginal coverage not joint coverage; tail and eligible risk-set matter. See [v1.2.294 L68–76](https://github.com/nguyenbui5701/G1_PAPER_REPRO/blob/a2a1056075f4a41e9f05115b30e2a50144b34154/G1_RESEARCH_RULES.md#L68-L76), [v1.2.294 L3778–3791](https://github.com/nguyenbui5701/G1_PAPER_REPRO/blob/a2a1056075f4a41e9f05115b30e2a50144b34154/G1_RESEARCH_RULES.md#L3778-L3791).
+- FFE-V1: time allocation feasible, both-loaded joint eligibility not sufficient; aggregate expiry does not identify causative predicate; terminal collision association not initiation. DEV NO_GO with safety trade-offs; no inferred both-loaded learning. [v1.2.294 L3778–3791](https://github.com/nguyenbui5701/G1_PAPER_REPRO/blob/a2a1056075f4a41e9f05115b30e2a50144b34154/G1_RESEARCH_RULES.md#L3778-L3791), [v1.2.294 L3980–3989](https://github.com/nguyenbui5701/G1_PAPER_REPRO/blob/a2a1056075f4a41e9f05115b30e2a50144b34154/G1_RESEARCH_RULES.md#L3980-L3989).
+- Do not equate technical PASS, material exposure PASS and scientific efficacy; frozen failed gates cannot be waived by a different test. Historical training terminal receipt limitation retained.
+- Matched ON/OFF from same state within policy; common seeds across policies do not make physical states identical. Development seeds not holdout. [v1.2.294 L4004–4015](https://github.com/nguyenbui5701/G1_PAPER_REPRO/blob/a2a1056075f4a41e9f05115b30e2a50144b34154/G1_RESEARCH_RULES.md#L4004-L4015).
+- NVCC pre-import, CUDA-only runtime, fresh process where needed, correct state.info/scheduler and exact source SHA; avoid repeated harness failures. [v1.2.294 L4077–4249](https://github.com/nguyenbui5701/G1_PAPER_REPRO/blob/a2a1056075f4a41e9f05115b30e2a50144b34154/G1_RESEARCH_RULES.md#L4077-L4249).
+- Owner override v1.2.287 supersedes GPU occupancy and interactive confirmation checks; preserve actual resource limits and one-use guards.
+- Historical failed hypotheses, controls and evidence: see EVIDENCE_INDEX; retrieve exact task before proposing a variation. Do not rerun adequate evidence, rename failed ideas, or change thresholds post hoc. Append future evidence-backed lessons with SHA/range.
