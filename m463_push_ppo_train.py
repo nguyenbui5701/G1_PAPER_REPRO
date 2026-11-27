@@ -5934,6 +5934,8 @@ def h4m8_integration_static(root,brax_train_path):
 
 
 def main():
+    if sys.argv[1:2]==['--h4ffe2-final-static']:
+        return h4ffe2_final_static_main(sys.argv[2:])
     if sys.argv[1:2]==['--h4ffe2-static']:
         return h4ffe2_static_main(sys.argv[2:])
     if sys.argv[1:2]==['--h4ffe2-continuation']:
@@ -8971,7 +8973,12 @@ def h4ffe2_reference_merge(np,rollouts):
 def h4ffe2_project_state(state,jax,np,*,reset=False):
     """V2-specific projection before comparing to immutable CTRL state."""
     from m463_coverage_env import ffe2_env_init
-    schema=ffe2_env_init(np);info=dict(state.info)
+    projected=h4ffe2_project_info(state,np,ffe2_env_init(np),jax.device_get,reset=reset)
+    return h4ffe_project_state(projected,jax,np,reset=reset)
+
+def h4ffe2_project_info(state,np,schema,device_get,*,reset=False):
+    """Pure typed V2 projection; no JAX import, no mutation of input info."""
+    info=dict(state.info)
     h4m12_require({k for k in info if k.startswith('ffe2_')}==set(schema),
                    'FFE2_INFO_SCHEMA')
     for k,v in schema.items():
@@ -8979,11 +8986,11 @@ def h4ffe2_project_state(state,jax,np,*,reset=False):
         h4m12_require(x.shape==(1,8192)+v.shape and np.dtype(x.dtype)==v.dtype,
                        'FFE2_INFO_LEAF_'+k)
         if reset:
-            a=np.asarray(jax.device_get(x))
+            a=np.asarray(device_get(x))
             h4m12_require(np.isfinite(a).all() and np.all(a==v),'FFE2_RESET_'+k)
-    return h4ffe_project_state(state.replace(info=info),jax,np,reset=reset)
+    return state.replace(info=info)
 
-# The V2 candidate is not routed from main/worker or supervisor.
+# V2 routing remains guarded by exact final-static evidence and a distinct runtime marker.
 # Exact historical full-file pin checks remain fail-closed at changed HEAD.
 # H4FFE2_HELD_WIRING_END
 
@@ -9232,30 +9239,104 @@ def h4ffe2_parse_marker(rules):
     return dict(id=H4FFE2_SPEC['id'],output=str(H4FFE2_OUTPUT),source_sha256=a,
         generated_sha256=b,static_path=c,static_sha256=d)
 
+# Accepted H4-M20-1 evidence, immutable; not a full-static authorization.
+H4FFE2_ACCEPTED_CANDIDATE_HEAD='5954499880367c1f3c5275c73343b3478b4b7099'
+H4FFE2_ACCEPTED_CANDIDATE_LOG='m463_runs/m470_h4ffe2_static_candidate_oneuse_v1.log'
+H4FFE2_ACCEPTED_CANDIDATE_SHA='58a07796561115d3c570258684043fc994bd037761bcd44db0fc5ebc9d1902c5'
+H4FFE2_ACCEPTED_GENERATED_SHA='9d20cdd77ac0e3330cb5f3d89df408ba150bc568f1bfa3d4ee2e6399bcba72cf'
+H4FFE2_ACCEPTED_SOURCE_SHA='a36598f76e5405de20c0677f5d9606dbbfc5d81c35f36c701f7d94d9842e76bc'
+H4FFE2_FINAL_STATIC_LOG='m463_runs/m470_h4ffe2_static_final_oneuse_v1.log'
+
+def h4ffe2_require_candidate_evidence(root):
+    import subprocess
+    root=Path(root).resolve()
+    p=root/H4FFE2_ACCEPTED_CANDIDATE_LOG
+    h4x_file_pin(p,H4FFE2_ACCEPTED_CANDIDATE_SHA)
+    h4m12_require(p.stat().st_size==2032,'FFE2_ACCEPTED_CANDIDATE_SIZE')
+    for name,pin in (('m463_coverage_env.py','efe71d850746f07c42f5d1e0256399d2b963da21'),
+                     ('m463_instrument_brax.py','6b28d055e068f9a36f7b58f852167fbc113a8b54')):
+        raw=(root/name).read_bytes()
+        h4m12_require(hashlib.sha1(('blob '+str(len(raw))+'\0').encode()+raw).hexdigest()==pin,
+                       'FFE2_ACCEPTED_COMPONENT '+name)
+    h4m12_require(subprocess.run(['git','merge-base','--is-ancestor',
+        H4FFE2_ACCEPTED_CANDIDATE_HEAD,'HEAD'],cwd=root).returncode==0,'FFE2_CANDIDATE_ANCESTRY')
+    # Bind every input of the old aggregate, including Owner-local files.
+    # Substitute only the exact historical trainer bytes, since this final
+    # revision deliberately changes that file. Other source must be identical.
+    names=(*H4_FILES,'m463_gate3_cp_eval.py','paper_config_preflight.json')
+    payload={name:digest(root/name) for name in names if name!='m463_push_ppo_train.py'}
+    raw=subprocess.check_output(['git','show',H4FFE2_ACCEPTED_CANDIDATE_HEAD+':m463_push_ppo_train.py'],cwd=root)
+    h4m12_require(hashlib.sha1(('blob '+str(len(raw))+'\0').encode()+raw).hexdigest()==
+        '7a4c95ab00b072ab00764f86e0b7221561b97dad','FFE2_CANDIDATE_TRAINER_PIN')
+    payload['m463_push_ppo_train.py']=hashlib.sha256(raw).hexdigest()
+    projected=hashlib.sha256(json.dumps(payload,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+    h4m12_require(projected==H4FFE2_ACCEPTED_SOURCE_SHA,'FFE2_CANDIDATE_AGGREGATE_PROJECTION')
+    return H4FFE2_ACCEPTED_CANDIDATE_SHA
+
+def h4ffe2_check_final_static_receipt(raw,source,generated):
+    """Exact full-static footer/byte accounting; never accept candidate receipt."""
+    import re
+    h4m12_require(type(raw) is bytes and 0<len(raw)<=H4FFE2_SPEC['external_log_reserve'],
+                   'FFE2_FINAL_STATIC_SIZE')
+    prefix=b'\nH4FFE2_FINAL_STATIC_STATUS '
+    h4m12_require(raw.count(prefix)==1 and raw.endswith(b'\n'),'FFE2_FINAL_STATIC_FOOTER')
+    body,footer=raw.split(prefix)
+    value=json.loads(footer)
+    expected=dict(decision='FULL_STATIC_COMPLETE',static_rc=0,overflow=False,error=None,
+                  stored_child_and_header_bytes=len(body))
+    h4m12_require(type(value) is dict and set(value)==set(expected) and
+        all(type(value[k]) is type(expected[k]) for k in expected) and value==expected,
+        'FFE2_FINAL_STATIC_STATUS')
+    lines=body.decode('utf8').splitlines()
+    h4m12_require(bool(lines) and re.fullmatch(r'H4FFE2_FINAL_STATIC_HEAD [0-9a-f]{40}',lines[0]) is not None
+        and lines[-1:]==['H4FFE2_FULL_STATIC_PASS'] and lines.count('H4FFE2_FULL_STATIC_PASS')==1
+        and 'H4FFE2_HELD_STATIC_CANDIDATE_PASS' not in lines,'FFE2_FINAL_STATIC_TOKEN')
+    for line in ('H4FFE2_ACCEPTED_CANDIDATE '+H4FFE2_ACCEPTED_CANDIDATE_SHA,
+                 'H4FFE2_SOURCE '+source,'H4FFE2_GENERATED '+generated,
+                 'H4FFE2_STATIC_ZERO physical_transitions=0 resets=0 optimizer_updates=0 native_inference=0'):
+        h4m12_require(lines.count(line)==1,'FFE2_FINAL_STATIC_BINDING '+line.split()[0])
+    h4m12_require(lines.count('H4FFE2_REVERSE_SOURCE_PASS')==1,'FFE2_FINAL_STATIC_REVERSE')
+    for tag,expected in (
+        ('H4FFE2_FINAL_GUARD_FIXTURES ',dict(receipt_positive=1,receipt_negative=13,
+            marker_positive=1,marker_negative=5,native_calls=0)),
+        ('H4FFE2_TYPED_FIXTURES ',dict(positive=2,negative=5,native_calls=0,typed_mock_only=True)),
+        ('H4FFE2_RESOURCE_SCHEMA ',h4ffe2_resource_bound())):
+        hits=[x[len(tag):] for x in lines if x.startswith(tag)]
+        h4m12_require(len(hits)==1,'FFE2_FINAL_STATIC_SECTION '+tag)
+        data=json.loads(hits[0])
+        h4m12_require(type(data) is dict and set(data)==set(expected) and
+            all(type(data[k]) is type(expected[k]) for k in expected) and data==expected,
+            'FFE2_FINAL_STATIC_SECTION_VALUE '+tag)
+    h4m12_require(generated==H4FFE2_ACCEPTED_GENERATED_SHA,'FFE2_GENERATED_CHANGED')
+    return lines[0].split()[1]
+
 def h4ffe2_validate_auth_evidence(root,a):
+    import subprocess
     root=Path(root).resolve()
     h4m12_require(not any((H4_EXECUTION_AUTHORIZED,H4R_EXECUTION_AUTHORIZED,
         H4C_EXECUTION_AUTHORIZED,H4CC_EXECUTION_AUTHORIZED,H4M8_EXECUTION_AUTHORIZED)),'FFE2_LEGACY_HOLD')
-    h4m12_require(type(a) is dict and set(a)=={'id','output','source_sha256','generated_sha256','static_path','static_sha256'},'FFE2_AUTH_KEYS')
+    h4m12_require(type(a) is dict and set(a)=={'id','output','source_sha256','generated_sha256','static_path','static_sha256'}
+        and all(type(v) is str for v in a.values()),'FFE2_AUTH_KEYS')
     marker='H4FFE2_ACTIVE_GO: '+a['id']+' '+a['output']+' '+a['source_sha256']+' '+a['generated_sha256']+' '+a['static_path']+' '+a['static_sha256']
     h4m12_require(h4ffe2_parse_marker(marker)==a,'FFE2_AUTH_IDENTITY')
+    h4m12_require(a['static_path']==H4FFE2_FINAL_STATIC_LOG,'FFE2_FULL_STATIC_PATH')
     h4m12_require(h4x_source_digest(root)==a['source_sha256'],'FFE2_SOURCE')
+    h4ffe2_require_candidate_evidence(root)
     log=root/a['static_path'];h4x_file_pin(log,a['static_sha256'])
     h4m12_require(log.stat().st_size<=H4FFE2_SPEC['external_log_reserve'],'FFE2_STATIC_SIZE')
-    lines=log.read_text('utf8').splitlines()
-    h4m12_require(lines[-2:]==['H4FFE2_FULL_STATIC_PASS','STATIC_EXIT_CODE=0 TEE_EXIT_CODE=0']
-        and lines.count('H4FFE2_FULL_STATIC_PASS')==1
-        and lines.count('H4FFE2_SOURCE '+a['source_sha256'])==1
-        and lines.count('H4FFE2_GENERATED '+a['generated_sha256'])==1,'FFE2_STATIC_RECEIPT')
+    head=h4ffe2_check_final_static_receipt(log.read_bytes(),a['source_sha256'],a['generated_sha256'])
+    h4m12_require(subprocess.run(['git','merge-base','--is-ancestor',head,'HEAD'],cwd=root).returncode==0
+        and subprocess.run(['git','diff','--quiet',head,'HEAD','--',*H4_FILES,
+            'm463_gate3_cp_eval.py','paper_config_preflight.json'],cwd=root).returncode==0,
+        'FFE2_FINAL_STATIC_SOURCE_ANCESTRY')
     return a
 
 def h4ffe2_auth(root):
     root=Path(root).resolve()
     a=h4ffe2_parse_marker((root/'G1_RESEARCH_RULES.md').read_text('utf8'))
-    h4ffe2_validate_auth_evidence(root,a)
-    # Hard incomplete HOLD remains even with a correctly shaped marker.
-    h4ffe2_execution_hold()
-
+    # No active marker issued in H4-M20-2. Future runtime needs separately
+    # authorized marker, exact final-static receipt and existing reservation.
+    return h4ffe2_validate_auth_evidence(root,a)
 
 def h4ffe2_tail_pending(state,jax,np):
     def get(k,allowed):
@@ -9620,6 +9701,7 @@ def h4ffe2_worker(a,auth,root,out):
     """One authorized worker only; no generic longtrain or warmstart fallback."""
     red=r11=r12=False;ffe=True
     h4m12_require(h4ffe2_auth(root)==auth and out==root/H4FFE2_OUTPUT,'FFE2_WORKER_AUTH')
+    h4ffe2_resource_bound()
     import inspect
     import importlib.util
     from m463_instrument_brax import make_h4m12_integrated_source,h4c_git_blob
@@ -9778,7 +9860,8 @@ def h4ffe2_worker(a,auth,root,out):
             row=dict(finite=True,environment_schema=parent['edge']['environment_schema'])
             if ffe:
                 if event=='reset_after':
-                    h4m12_require(len(r['ffe_chunks'])==4,'FFE_FINAL_RESET_CHUNKS')
+                    h4m12_require(len(r['ffe_chunks'])==len(r['ffe2_chunks'])==4
+                        and 'ffe2_pending_chunk' not in r,'FFE_FINAL_RESET_CHUNKS')
                     row['ffe_host_reset_closed']=r['ffe_chunks'][-1]['after']
                 else:
                     row['ffe_host_reset_closed']=h4ffe_empty_pending()
@@ -9846,7 +9929,8 @@ def h4ffe2_worker(a,auth,root,out):
             row=dict(**counters(carry[0],n+1),key=keylist(carry[2]),finite=True)
         elif event=='chunk_ledger':
             h4m12_require(v['index']==n+1 and len(r['h4_chunks'])==n+1 and
-                r['h4_chunks'][-1]['passed'] is True,'CHUNK_LEDGER')
+                r['h4_chunks'][-1]['passed'] is True and len(r['ffe2_chunks'])==n+1
+                and 'ffe2_pending_chunk' not in r,'CHUNK_LEDGER')
             row=dict(chunk=n+1)
         elif event=='eval_before':
             same(v['key'],eval_key,'EVAL_BEFORE')
@@ -9990,6 +10074,7 @@ def h4ffe2_main(argv):
     if a.worker:
         return h4ffe2_worker(a,auth,root,out)
     parent_check(root)
+    h4ffe2_resource_bound()
     h4x_file_pin(a.checkpoint,SEED1_SHA)
     h4x_file_pin(a.restore_report,H3_CAUSAL_RESTORE_SHA)
     h4x_file_pin(a.reward_report,H4R_REWARD_SHA)
@@ -10486,4 +10571,133 @@ def h4ffe2_static_main(argv):
     print('H4FFE2_HELD_STATIC_CANDIDATE_PASS',flush=True)
 
 # H4FFE2_STATIC_CANDIDATE_END
+
+# H4FFE2_FINAL_STATIC_BEGIN
+def h4ffe2_final_guard_fixture():
+    """Pure receipt/marker fixtures; no real marker or filesystem auth grant."""
+    src='a'*64;gen=H4FFE2_ACCEPTED_GENERATED_SHA
+    lines=['H4FFE2_FINAL_STATIC_HEAD '+'b'*40,'H4FFE2_REVERSE_SOURCE_PASS',
+        'H4FFE2_ACCEPTED_CANDIDATE '+H4FFE2_ACCEPTED_CANDIDATE_SHA,
+        'H4FFE2_FINAL_GUARD_FIXTURES '+json.dumps(dict(receipt_positive=1,receipt_negative=13,
+            marker_positive=1,marker_negative=5,native_calls=0)),
+        'H4FFE2_TYPED_FIXTURES '+json.dumps(dict(positive=2,negative=5,native_calls=0,typed_mock_only=True)),
+        'H4FFE2_RESOURCE_SCHEMA '+json.dumps(h4ffe2_resource_bound()),
+        'H4FFE2_SOURCE '+src,'H4FFE2_GENERATED '+gen,
+        'H4FFE2_STATIC_ZERO physical_transitions=0 resets=0 optimizer_updates=0 native_inference=0',
+        'H4FFE2_FULL_STATIC_PASS']
+    body=('\n'.join(lines)+'\n').encode()
+    def receipt(b,**changes):
+        value=dict(decision='FULL_STATIC_COMPLETE',static_rc=0,overflow=False,error=None,
+                   stored_child_and_header_bytes=len(b))
+        value.update(changes)
+        return b+b'\nH4FFE2_FINAL_STATIC_STATUS '+json.dumps(value).encode()+b'\n'
+    good=receipt(body)
+    h4m12_require(h4ffe2_check_final_static_receipt(good,src,gen)=='b'*40,'FFE2_FINAL_FIXTURE_POSITIVE')
+    negatives=(body,receipt(body,static_rc=False),receipt(body,static_rc=1),
+        receipt(body,overflow=True),receipt(body,error='STOP'),
+        receipt(body,stored_child_and_header_bytes=len(body)+1),
+        receipt(body.replace(b'H4FFE2_FULL_STATIC_PASS',b'H4FFE2_HELD_STATIC_CANDIDATE_PASS')),
+        receipt(body.replace(b'H4FFE2_SOURCE '+src.encode(),b'H4FFE2_SOURCE '+b'c'*64)),
+        receipt(body.replace(gen.encode(),b'c'*64)),
+        receipt(body.replace(H4FFE2_ACCEPTED_CANDIDATE_SHA.encode(),b'c'*64)),
+        receipt(body.replace(b'physical_transitions=0',b'physical_transitions=1')),
+        receipt(body+b'H4FFE2_FULL_STATIC_PASS\n'),
+        receipt(body.replace(b'"typed_mock_only": true',b'"typed_mock_only": false')))
+    for raw in negatives:
+        try:h4ffe2_check_final_static_receipt(raw,src,gen)
+        except (RuntimeError,ValueError,TypeError):pass
+        else:raise RuntimeError('FFE2_FINAL_STATIC_NEGATIVE_ACCEPTED')
+    marker='H4FFE2_ACTIVE_GO: '+H4FFE2_SPEC['id']+' '+str(H4FFE2_OUTPUT)+' '+src+' '+gen+' '+H4FFE2_FINAL_STATIC_LOG+' '+'d'*64
+    a=h4ffe2_parse_marker(marker)
+    h4m12_require(a['static_path']==H4FFE2_FINAL_STATIC_LOG,'FFE2_FINAL_MARKER_POSITIVE')
+    for bad in ('',marker+'\n'+marker,marker+'\nH4M12_ACTIVE_GO: bad',marker[:-1],
+                marker.replace(str(H4FFE2_OUTPUT),str(H4M12_OUTPUT))):
+        try:h4ffe2_parse_marker(bad)
+        except RuntimeError:pass
+        else:raise RuntimeError('FFE2_FINAL_MARKER_NEGATIVE_ACCEPTED')
+    return dict(receipt_positive=1,receipt_negative=len(negatives),marker_positive=1,marker_negative=5,native_calls=0)
+
+def h4ffe2_typed_fixture(root):
+    """Host-only typed mock projection; never deserialize a native checkpoint."""
+    import numpy as np
+    from types import SimpleNamespace
+    ns=h4ffe2_core_scope(root);schema=ns['ffe2_env_init'](np)
+    class State(SimpleNamespace):
+        def replace(self,**changes):return State(**dict(vars(self),**changes))
+    original=np.zeros((1,8192,3),np.float32)
+    info={'original':original,**{k:np.full((1,8192)+v.shape,v,dtype=v.dtype) for k,v in schema.items()}}
+    state=State(info=info)
+    project=lambda x,reset=True:h4ffe2_project_info(x,np,schema,lambda y:y,reset=reset)
+    result=project(state)
+    h4m12_require(set(result.info)=={'original'} and result.info['original'] is original
+        and set(state.info)==set(info),'FFE2_TYPED_FIXTURE_POSITIVE')
+    key='ffe2_shadow_gap';changed=dict(info,**{key:np.full((1,8192),31,np.int32)})
+    h4m12_require(project(State(info=changed),False).info['original'] is original,'FFE2_TYPED_CARRY_POSITIVE')
+    cases=[{k:v for k,v in info.items() if k!=key},
+           dict(info,ffe2_unknown=np.zeros((1,8192),np.int32)),
+           dict(info,**{key:np.zeros((8192,),np.int32)}),
+           dict(info,**{key:np.full((1,8192),-1,np.int64)}),changed]
+    for case in cases:
+        try:project(State(info=case))
+        except RuntimeError:pass
+        else:raise RuntimeError('FFE2_TYPED_NEGATIVE_ACCEPTED')
+    return dict(positive=2,negative=len(cases),native_calls=0,typed_mock_only=True)
+
+def h4ffe2_final_static_main(argv):
+    import subprocess
+    from importlib import metadata
+    from importlib.machinery import PathFinder
+    from m463_instrument_brax import make_ffe2_held_source,make_ffe2_integrated_source,h4c_git_blob
+    p=argparse.ArgumentParser(description='FFE-V2 final held static; reuse accepted candidate fixtures')
+    p.add_argument('--checkpoint',type=Path,required=True)
+    p.add_argument('--restore-report',type=Path,required=True)
+    p.add_argument('--reward-report',type=Path,required=True)
+    a=p.parse_args(argv);root=Path(__file__).resolve().parent
+    h4m12_require(Path.cwd().resolve()==root,'FFE2_FINAL_STATIC_WORKDIR')
+    no_native=lambda:not any(k.split('.')[0] in ('jax','jaxlib','mujoco','brax','mujoco_playground') for k in sys.modules)
+    h4m12_require(no_native(),'FFE2_FINAL_STATIC_NATIVE')
+    print('H4FFE2_ACCEPTED_CANDIDATE',h4ffe2_require_candidate_evidence(root),flush=True)
+    h4x_file_pin(root/H4FFE_CORE_LOG,H4FFE_CORE_SHA)
+    h4ffe2_check_candidate_projection(root);print('H4FFE2_REVERSE_SOURCE_PASS',flush=True)
+    parent=h4ffe2_parent_preflight(root)
+    a.h4_exploratory_reward_report=a.reward_report
+    h4ffe2_bootstrap(a,h4m12=True,ffe=True)
+    for pkg,relative,expected in (
+        ('mujoco_playground','_src/wrapper.py','62e2823b80b692befe29e4640d0b7a816e52271c'),
+        ('brax','envs/wrappers/training.py','2c09c8268a29d14c832dd07050575e4541ee98af'),
+        ('mujoco_playground','_src/locomotion/g1/joystick.py','561a18948e3467ab924468eaf362150dadb9d4a6')):
+        spec=PathFinder.find_spec(pkg)
+        h4m12_require(spec is not None and spec.submodule_search_locations is not None,'FFE2_DEPENDENCY')
+        q=Path(next(iter(spec.submodule_search_locations)))/relative;raw=q.read_bytes()
+        h4m12_require(h4c_git_blob(raw)==expected,'FFE2_DEPENDENCY_PIN')
+        compile(raw,str(q),'exec')
+        print('H4FFE2_DEPENDENCY_PIN',str(q),expected,flush=True)
+    raw=Path(metadata.distribution('brax').locate_file('brax/training/agents/ppo/train.py')).read_bytes()
+    held,original=make_ffe2_held_source(raw);src,original2=make_ffe2_integrated_source(raw)
+    generated=hashlib.sha256(src.encode('utf8')).hexdigest()
+    h4m12_require(original==original2=='e20613d42bf0868a13003e0312998816cc8d3593bb5ccaf9f1d070fd09c44bd7'
+        and generated==H4FFE2_ACCEPTED_GENERATED_SHA and held.count('M470_FFE2_GENERATED_EXECUTION_HOLD')==1,
+        'FFE2_FINAL_GENERATED_IDENTITY')
+    # Generated bytes, env and instrumenter unchanged: accepted 136 core,
+    # 3 batch, 19 row negatives and ledger fixtures reused, not rerun.
+    source=h4x_source_digest(root)
+    print('H4FFE2_FINAL_GUARD_FIXTURES',json.dumps(h4ffe2_final_guard_fixture(),sort_keys=True),flush=True)
+    print('H4FFE2_TYPED_FIXTURES',json.dumps(h4ffe2_typed_fixture(root),sort_keys=True),flush=True)
+    print('H4FFE2_RESOURCE_SCHEMA',json.dumps(h4ffe2_resource_bound(),sort_keys=True),flush=True)
+    try:h4ffe2_auth(root)
+    except RuntimeError as exc:h4m12_require('FFE2_EXECUTION_HOLD_OR_CONFLICT' in str(exc),'FFE2_FINAL_STATIC_HOLD')
+    else:raise RuntimeError('FFE2_FINAL_STATIC_AUTH_OPEN')
+    for worker in ([],['--worker']):
+        proc=subprocess.run([sys.executable,'-B',str(root/'m463_push_ppo_train.py'),'--h4ffe2-continuation',
+            '--checkpoint','unused','--restore-report','unused','--reward-report','unused',*worker],
+            cwd=root,capture_output=True,text=True,timeout=30)
+        h4m12_require(proc.returncode!=0 and 'FFE2_EXECUTION_HOLD_OR_CONFLICT' in proc.stderr,'FFE2_FINAL_CLI_HOLD')
+    h4m12_require(no_native() and not (root/H4FFE2_OUTPUT).exists() and not (root/H4FFE2_OUTPUT).is_symlink(),
+        'FFE2_FINAL_NATIVE_OR_RESERVED')
+    print('H4FFE2_SOURCE',source,flush=True)
+    print('H4FFE2_GENERATED',generated,flush=True)
+    print('H4FFE2_MATCHED_CONTROL',json.dumps(parent['ffe_floors'],sort_keys=True),flush=True)
+    print('H4FFE2_STATIC_ZERO physical_transitions=0 resets=0 optimizer_updates=0 native_inference=0',flush=True)
+    print('H4FFE2_FULL_STATIC_PASS',flush=True)
+# H4FFE2_FINAL_STATIC_END
 if __name__=='__main__': main()

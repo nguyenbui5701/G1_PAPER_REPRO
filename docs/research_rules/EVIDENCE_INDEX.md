@@ -341,3 +341,6 @@ Each link includes the section until the next heading; ranges are retrieval aids
 
 ## H4-M20-1-FFE2-STATIC-CANDIDATE-V1 accepted receipt
 - [Exact receipt review and limitations](ACTIVE_EXPERIMENT.md#h4-m20-1--owner-exact-bounded-host-static-candidate-receipt-review-2026-11-27); [authorization commit](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/5954499880367c1f3c5275c73343b3478b4b7099); uploaded m470_h4ffe2_static_candidate_oneuse_v1.log 2032B SHA256 58a07796561115d3c570258684043fc994bd037761bcd44db0fc5ebc9d1902c5; Owner reported source a36598f76e5405de20c0677f5d9606dbbfc5d81c35f36c701f7d94d9842e76bc, generated 9d20cdd77ac0e3330cb5f3d89df408ba150bc568f1bfa3d4ee2e6399bcba72cf. No native evidence.
+
+## H4-M20-2 held final source candidate
+- [Final guard, accepted evidence reuse, exact trainer blob and full-static contract](ACTIVE_EXPERIMENT.md#h4-m20-2--ffe-v2-final-held-source-freeze-and-full-static-preparation-2026-11-27); base [a240e7e41959643494e6e1fa9df30cbfe65922b1](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/a240e7e41959643494e6e1fa9df30cbfe65922b1); no new fixture or native receipt.

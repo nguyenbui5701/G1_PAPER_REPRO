@@ -3,6 +3,8 @@
 Governance v2.0.0 — 2026-11-27 — documentation only. Historical research state pinned to a2a1056075f4a41e9f05115b30e2a50144b34154.
 
 ## Current decision
+**H4-M20-2 — FINAL HELD SOURCE CANDIDATE FROZEN ON GIT / FULL STATIC PREPARED, NOT AUTHORIZED OR EXECUTED / NATIVE RUNTIME HOLD.** Trainer-only final guard, candidate aggregate projection, typed mock and scoped final-static entry drafted; unchanged environment/instrumenter/generated identity required. Accepted H4-M20-1 one-use remains closed. Next distinct Owner GO for bounded full host-static only; no PPO. Base a240e7e41959643494e6e1fa9df30cbfe65922b1.
+
 **H4-M20-1-FFE2-STATIC-CANDIDATE-V1 CLOSED / CONSUMED / HOST-STATIC CANDIDATE PASS ACCEPTED / FULL STATIC & NATIVE RUNTIME HOLD.** Owner log2032B SHA256 58a07796561115d3c570258684043fc994bd037761bcd44db0fc5ebc9d1902c5; exact authorization HEAD 5954499880367c1f3c5275c73343b3478b4b7099; supervisor complete/rc0/no overflow/error; 136 core, 3 synthetic batches, 19 row negatives, readers2/19, terminal1/7, zero native. No retry. Next recommendation only: distinct held H4-M20-2 final source freeze/full-static preparation; no full PASS or PPO authorization.
 
 **Historical issuance (closed by receipt above) — H4-M20-1-FFE2-STATIC-CANDIDATE-V1.** Exact reviewed source unchanged from ee1f7eeeae560ecccfa19f9157a1ba8b4da34bc2. One top-level existing --h4ffe2-static via bounded fixed-log launcher in ACTIVE_EXPERIMENT; zero native execution, no retry. Await exact log/receipt; no H4-M20-2 full PASS or PPO.

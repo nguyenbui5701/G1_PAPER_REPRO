@@ -27,3 +27,6 @@ Owner explicitly authorized one bounded existing static candidate invocation, ex
 
 ## 2026-11-27 — H4-M20-1 bounded host-static candidate closure
 Owner uploaded exact log2032B SHA256 58a07796561115d3c570258684043fc994bd037761bcd44db0fc5ebc9d1902c5. Accepted candidate PASS/supervisor COMPLETE; one-use consumed. No full static/runtime authorization, no source or frozen gate changes. Next held final freeze preparation recommendation only.
+
+## 2026-11-27 — H4-M20-2 final held preparation
+Trainer-only final guard and distinct full-static entry, accepted-candidate aggregate projection, typed mock and ledger edge/resource checks. No marker issued; no full static or native execution; candidate evidence reused under exact identity. Frozen science unchanged. Base a240e7e41959643494e6e1fa9df30cbfe65922b1.
