@@ -75,3 +75,6 @@ Native actuator/reward semantics and historical H4-M3/M9 evidence reviewed; prov
 
 ## 2026-11-27 — H4-M22-1 offline synthesis (governance v2.0.0 unchanged)
 Exact FFE2 training/DEV reports rehashed and read-only analyzed; consolidated six-case hypotheses, prior decisions, verified risk-set bottlenecks, recovery window and absolute control/joint observations. Proposed H4-M22-2 command-coherent exposure feasibility design pending separate Owner GO. No executable/root/archive change or runtime.
+
+## 2026-11-27 — H4-M22-2 offline feasibility (governance v2.0.0 unchanged)
+Four exact train/DEV reports rehashed; source/ledger audit establishes five V2 both-loaded repeat terminal closures before50 ticks. CCOA held untested, feasibility not established; STOP DESIGN HOLD. Proposed offline gait signal audit only, separate Owner GO. No executable/root/archive change or runtime.
