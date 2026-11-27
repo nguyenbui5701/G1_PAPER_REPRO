@@ -39,4 +39,6 @@ Historical complete ledger: [v1.2.294 L5191–5841](https://github.com/nguyenbui
 
 | Owner sequential failure-case discussion / Case 2.6 | Offline source and historical evidence review | HELD / all six documented / Owner agreement and synthesis pending | Base 00db71ecdf692ca33cf472551f0ca7058b08afb0; M3/M9 evidence, raw-target vs torque audit; no execution |
 
+| H4-M22-1 | Owner-approved offline six-case synthesis, exact FFE2 training and DEV report analysis | OFFLINE COMPLETE / DESIGN HOLD; proposed H4-M22-2 pending separate GO | Base 81a8caca02c1487ede19c230b8bf9cc068af7bad; training SHA397ff894aabf42ad73ff842985142a997dcf31d7047585057b20821f14985230, DEV SHA3ecbf7363566f89f037097599be748fe6e302e54cd7e4c339ea9175c3adabc3d; no native execution |
+
 Append one row per task with exact evidence/commit, decision, limitations and next scope. Do not rewrite previous entries or imply authorization.

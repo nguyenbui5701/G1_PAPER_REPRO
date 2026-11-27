@@ -72,3 +72,6 @@ Prior forward-fast DEV and pinned native gait, linear tracking and observation s
 
 ## 2026-11-27 — Sequential failure-case discussion Case 2.6 (governance v2.0.0 unchanged)
 Native actuator/reward semantics and historical H4-M3/M9 evidence reviewed; provisional feasibility, motor, action and exploration hypotheses HELD. All six cases documented, unresolved questions retained; Owner review and offline synthesis pending. No executable/root/archive changes or new empirical results.
+
+## 2026-11-27 — H4-M22-1 offline synthesis (governance v2.0.0 unchanged)
+Exact FFE2 training/DEV reports rehashed and read-only analyzed; consolidated six-case hypotheses, prior decisions, verified risk-set bottlenecks, recovery window and absolute control/joint observations. Proposed H4-M22-2 command-coherent exposure feasibility design pending separate Owner GO. No executable/root/archive change or runtime.
