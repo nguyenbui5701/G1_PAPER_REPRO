@@ -6447,3 +6447,4 @@ PY
 ---
 
 **Nguyên tắc bảo trì:** File này được phép tiến hóa có kiểm soát. Khi thông số, mục tiêu hay quy tắc thay đổi: **bump semantic version, ghi lý do + bằng chứng + ngày vào CHANGELOG, cập nhật CURRENT STATE, và commit vào đúng nhánh**. Các task phải khai báo version đã đọc. Nếu kết quả mới chỉ thay đổi số liệu, cập nhật CURRENT STATE/TASK LEDGER, không cần đổi khái niệm hoặc mục tiêu. Nếu thiếu file hoặc SHA, dừng kết luận và yêu cầu đúng bằng chứng thiếu.
+H4FFE2_ACTIVE_GO: H4-M20-FFE-V2 m463_runs/m470_h4_m20_ffe_v2 492664bafc6aa360bbb6d9671a5ed85f4a1d3596b3f937869ca9d9c58c50ef86 9d20cdd77ac0e3330cb5f3d89df408ba150bc568f1bfa3d4ee2e6399bcba72cf m463_runs/m470_h4ffe2_static_final_oneuse_v1.log cb824e5830f344e06e7fffd467d93204b258b52304e7f46547dc229be5cc458c
