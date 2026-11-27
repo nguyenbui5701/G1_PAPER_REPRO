@@ -474,3 +474,7 @@ Each link includes the section until the next heading; ranges are retrieval aids
 
 ## H4-M25-2B authorization review
 - [Owner-approved frozen base](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/49484e834b8f1019bc7ef717f72c1e5cb49709d0), [exact evaluator](https://github.com/nguyenbui5701/G1_PAPER_REPRO/blob/49484e834b8f1019bc7ef717f72c1e5cb49709d0/m463_gate3_cp_eval.py); Git blob 10443f1000a8d51ae81ece3f10e604c42d2d0c62. Source-only review; no static result yet.
+
+
+## H4-M25-2B — exact static receipt review and native decision HOLD
+- [Static authorization HEAD](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/1d651b5d0f8b888a281d458b5a299b43fcfa0af0), [EDIT-FIRST parent](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/bb3e85dbe146265f2a9cbbf577de4f37e66b81f2), [exact frozen evaluator](https://github.com/nguyenbui5701/G1_PAPER_REPRO/blob/1d651b5d0f8b888a281d458b5a299b43fcfa0af0/m463_gate3_cp_eval.py). Owner-uploaded receipts independently rehashed: log 723 bytes `b83bf231f3e739810a874f6a1a0395d35c3d9f52b1057ec42f449e7bebbaec91`; attempt 425 bytes `9046013bb45e7c32e34f53cc358db3078f7e900a5d5131f69c684d806dd8a03d`. Full host-static PASS only; native HOLD.

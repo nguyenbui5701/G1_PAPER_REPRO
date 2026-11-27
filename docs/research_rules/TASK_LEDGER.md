@@ -101,3 +101,5 @@ Append one row per task with exact evidence/commit, decision, limitations and ne
 
 
 | H4-M25-2B | Owner explicit one-use V3 full host-static GO; exact frozen repaired blob and nine anchors reviewed | EDIT-FIRST / effective at root-only child / receipt pending | 49484e834b8f1019bc7ef717f72c1e5cb49709d0; 122 planned; zero native/optimizer; no SA execution |
+
+| H4-M25-2B receipt review | 122/122; exact uploaded log and attempt rehashed; independent frozen source SHA256 match | FULL HOST-STATIC PASS / CONSUMED / NATIVE HOLD | 1d651b5d0f8b888a281d458b5a299b43fcfa0af0; 723/425 bytes; outer console and local aggregate unverified; explicit closure/native GO required |
