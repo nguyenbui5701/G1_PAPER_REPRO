@@ -10961,5 +10961,840 @@ def ssrpc_replay_joint_chunks(np,records,arm,*,complete):
                 expected=membership('tail_2_'+str(age)+'_same')&membership('tail_2_'+str(age)+'_survived')
                 require(expected==(scope&((v('same_alive_bits')&(1<<j))!=0)),'SAME_ALIVE')
     return dict(common=common,screen=screen)
+
+# SSRPC_4B_WORKER_BEGIN
+# Held integration: runtime entry fails before reservation. A separate source
+# review/full-static authorization must complete the activation contract.
+SSRPC_RUNTIME_READY=False
+SSRPC_STATIC_PREFIX='m463_runs/m470_h4_m28_ssrpc_'
+def ssrpc_spec(arm):
+    h4m12_require(type(arm) is str and arm in SSRPC_ARM_OUTPUT,'SSRPC_ARM')
+    return dict(H4M12_SPEC,id='H4-M28-SSRPC-'+arm.upper()+'-V1',arm=arm,
+                repeat_gap=35,repeat_cost='high_only' if arm=='ctrl' else 'inclusive',
+                promotion_authorized=False)
+
+def ssrpc_parent_preflight(root,*,require_unused=False):
+    # Exact historical parent and M12/DEV pin validation; no old run invoked.
+    return h4ffe_parent_preflight(root,require_unused=False)
+
+def ssrpc_parse_marker(rules):
+    import re
+    lines=[v for v in rules.splitlines() if re.match(r'^[A-Z0-9_]+_GO:',v)]
+    h4m12_require(len(lines)==1,'SSRPC_ACTIVE_MARKER_COUNT')
+    m=re.fullmatch(r'H4SSRPC_ACTIVE_GO: (ctrl|cand) ([0-9a-f]{64}) ([0-9a-f]{64}) ([0-9a-f]{64}) ([0-9a-f]{40})',lines[0])
+    h4m12_require(m is not None,'SSRPC_MARKER')
+    arm,source,generated,static_sha,source_head=m.groups()
+    return dict(id=ssrpc_spec(arm)['id'],arm=arm,output=SSRPC_ARM_OUTPUT[arm],
+                source_sha256=source,generated_sha256=generated,
+                static_path=SSRPC_STATIC_PREFIX+arm+'_static_v1.json',
+                static_sha256=static_sha,source_head=source_head)
+
+def ssrpc_validate_auth_evidence(root,auth):
+    import re,subprocess
+    root=Path(root).resolve()
+    keys={'id','arm','output','source_sha256','generated_sha256','static_path','static_sha256','source_head'}
+    h4m12_require(type(auth) is dict and set(auth)==keys and
+        all(type(v) is str for v in auth.values()),'SSRPC_AUTH_SCHEMA')
+    arm=auth['arm']
+    marker='H4SSRPC_ACTIVE_GO: '+arm+' '+auth['source_sha256']+' '+auth['generated_sha256']+' '+auth['static_sha256']+' '+auth['source_head']
+    h4m12_require(ssrpc_parse_marker(marker)==auth,'SSRPC_AUTH_IDENTITY')
+    h4m12_require(not any((H4_EXECUTION_AUTHORIZED,H4R_EXECUTION_AUTHORIZED,
+        H4C_EXECUTION_AUTHORIZED,H4CC_EXECUTION_AUTHORIZED,H4M8_EXECUTION_AUTHORIZED)),'SSRPC_LEGACY_HOLD')
+    h4m12_require(h4x_source_digest(root)==auth['source_sha256'],'SSRPC_SOURCE')
+    ssrpc_source_projection(root)
+    names=(*H4_FILES,'m463_gate3_cp_eval.py','paper_config_preflight.json')
+    h4m12_require(subprocess.run(['git','merge-base','--is-ancestor',auth['source_head'],'HEAD'],cwd=root).returncode==0
+        and subprocess.run(['git','diff','--quiet',auth['source_head'],'HEAD','--',*names],cwd=root).returncode==0,
+        'SSRPC_SOURCE_ANCESTRY')
+    # Draft full-static receipt schema: fixture manifest/count pins and
+    # exclusive static supervisor still require separate held completion.
+    p=root/auth['static_path'];h4x_file_pin(p,auth['static_sha256'])
+    h4m12_require(p.stat().st_size<=65536,'SSRPC_STATIC_CAP')
+    r=json.loads(p.read_bytes())
+    expected=dict(status='FULL_STATIC_COMPLETE',arm=arm,source_head=auth['source_head'],
+        source_sha256=auth['source_sha256'],generated_sha256=auth['generated_sha256'],
+        physical_transitions=0,optimizer_updates=0,resets=0,native_inference=0)
+    h4m12_require(type(r) is dict and r==expected and
+        all(type(r[k]) is type(expected[k]) for k in expected),'SSRPC_STATIC_RECEIPT_DRAFT')
+    return auth
+
+def ssrpc_auth(root,arm):
+    # No runtime authorization, reservation, or native access in M28-4B.
+    h4m12_require(SSRPC_RUNTIME_READY is True,'SSRPC_RUNTIME_HELD')
+    root=Path(root).resolve()
+    a=ssrpc_parse_marker((root/'G1_RESEARCH_RULES.md').read_text('utf8'))
+    h4m12_require(a['arm']==arm,'SSRPC_ACTIVE_ARM')
+    return ssrpc_validate_auth_evidence(root,a)
+
+def ssrpc_generated_guard(audit,generated_file,environment,resume,arm,abort,prepare,commit):
+    root=Path(__file__).resolve().parent
+    auth=ssrpc_auth(root,arm);out=root/SSRPC_ARM_OUTPUT[arm]
+    from m463_coverage_env import SSRPCCoverageJoystick
+    h4m12_require(type(environment) is SSRPCCoverageJoystick and environment.ssrpc_arm==arm
+        and environment._h4_arm=='control' and environment._ffe is True and environment._ffe2 is True
+        and not any(getattr(environment,k,False) for k in ('_h4red','_r11','_r12','_h4m6_tech_capture','_h4m8_common'))
+        and all(getattr(environment,k,None) is None for k in ('_h4cc_arm','_h4m6_arm')),'SSRPC_ENV_ARM')
+    h4m12_require(all(callable(fn) and getattr(fn,'ssrpc_auth',None)==auth for fn in
+        (audit,abort,prepare,commit)),'SSRPC_CALLBACK_ARM')
+    h4m12_require(Path(generated_file).resolve()==out/'m463_brax_ppo_instrumented.py'
+        and Path(resume).resolve()==root/H4M12_PARENT/H4M12_FULL,'SSRPC_GENERATED_BINDING')
+    h4x_file_pin(Path(generated_file),auth['generated_sha256'])
+    h4x_file_pin(Path(resume),SSRPC_PARENT_SHA)
+    h4m12_require(json.loads((out/'attempt.json').read_bytes())==
+        {'authorization':auth,'parent_pid':os.getppid()},'SSRPC_RESERVATION')
+    h4x_write_json(out/'dispatch.started.json',{'authorization':auth},exclusive=True)
+
+def ssrpc_join_records(r):
+    a=r['ffe2_chunks'];b=r['ssrpc_lane_chunks']
+    h4m12_require(type(a) is list and type(b) is list and len(a)==len(b)<=4,'SSRPC_JOIN_LENGTH')
+    return [dict(x,ssrpc_lane=y) for x,y in zip(a,b)]
+
+def ssrpc_replay_report(np,r,*,complete,prospective_commit=False):
+    arm=r['authorization']['arm']
+    records=ssrpc_join_records(r)
+    n=len(records)
+    committed=sum(x['event']=='chunk_ledger' for x in r['operational_rows'])
+    h4m12_require(n==committed+int(prospective_commit),'SSRPC_OPERATIONAL_COMMIT')
+    h4m12_require(n*1310720==r['budget']['recorded']['training']+
+        (1310720 if prospective_commit else 0),'SSRPC_TRAIN_COMMIT')
+    h4m12_require(n*200==r['budget']['recorded']['optimizer']+
+        (200 if prospective_commit else 0),'SSRPC_OPT_COMMIT')
+    joint=ssrpc_replay_joint_chunks(np,records,arm,complete=complete)
+    old=h4ffe2_replay_full_ledger(np,r,complete=complete)
+    pending=r.get('ffe2_pending_chunk');lane=r.get('ssrpc_pending_lane')
+    h4m12_require((pending is None)==(lane is None),'SSRPC_PENDING_PAIR')
+    if pending is not None:
+        h4m12_require(not complete and pending['index']==lane['index']==n+1,'SSRPC_PENDING_ORDER')
+        ssrpc_replay_joint_chunks(np,records+[dict(pending,ssrpc_lane=lane)],arm,complete=False)
+    screen=joint['screen']
+    common=None;decision='INCOMPLETE'
+    if complete:
+        h4m12_require(n==4 and pending is None,'SSRPC_COMPLETE')
+        e=h4ffe_exposure_replay(r)
+        common=bool(e['nominal']>=916743 and all(x>=y for x,y in
+            zip(e['ordinary_broad'],(1256,1262,1360,1296,1344))))
+        decision=('COMMON_EXPOSURE_FAIL' if not common else
+                  'MATCHED_CONTROL_COMPLETE' if arm=='ctrl' else
+                  'EXPLORATORY_EXPOSURE_PASS' if screen['candidate_exposure_screen']
+                  else 'EXPOSURE_INCONCLUSIVE')
+        h4m12_require(screen['tail_pending_or_final_censor']==sum(x[1] for x in old['tail_pending']),
+                      'SSRPC_FINAL_HOST_CENSOR')
+    return dict(screen=screen,common_floors=common,decision=decision,
+                high_cost_legacy_verdict_not_ssrpc=True,promotion_authorized=False)
+
+def ssrpc_read_final(root,expected_sha,auth):
+    return _ssrpc_read_final(root,expected_sha,auth,require_terminal=True)
+
+def ssrpc_read_partial(out,auth):
+    # A STOP report is evidence only; never infer completion or authorize retry.
+    import numpy as np
+    out=Path(out);p=out/'report.json'
+    h4m12_require(p.is_file() and not p.is_symlink() and p.stat().st_size<=H4M12_SPEC['output_cap']
+        and not (out/'supervisor.terminal.json').exists(),'SSRPC_PARTIAL_PATH')
+    r=json.loads(p.read_bytes())
+    h4m12_require(r['status'] in ('RUNNING','STOP') and r['authorization']==auth and
+        r['spec']==ssrpc_spec(auth['arm']) and r['promotion_authorized'] is False,'SSRPC_PARTIAL_STATUS')
+    b=H4M12Budget()
+    for row in r['operational_rows']:b.advance(row['event'])
+    h4m12_require(b.snapshot()==r['budget'],'SSRPC_PARTIAL_BUDGET')
+    joint=ssrpc_replay_report(np,r,complete=False)
+    attempt=json.loads((out/'attempt.json').read_bytes())
+    worker=json.loads((out/'worker.started.json').read_bytes())
+    result=json.loads((out/'attempt_result.json').read_bytes())
+    h4m12_require(set(attempt)=={'authorization','parent_pid'} and attempt['authorization']==auth
+        and type(attempt['parent_pid']) is int and attempt['parent_pid']>0 and
+        set(worker)=={'authorization','pid'} and worker['authorization']==auth and
+        type(worker['pid']) is int and worker['pid']>0 and result['authorization']==auth and
+        result['status']=='STOP','SSRPC_PARTIAL_RECEIPTS')
+    for name in ('attempt.json','worker.started.json','attempt_result.json'):
+        h4m12_require((out/name).is_file() and not (out/name).is_symlink(),'SSRPC_PARTIAL_SYMLINK')
+    abort=r.get('ffe_abort')
+    if abort is not None:
+        m=abort['metrics'];col=m['ffe_collected'];comm=m['ffe_batch_committed'];rej=m['ffe_batch_rejected']
+        h4m12_require(abort['complete'] is False and abort['index']==len(r['ffe2_chunks'])+1 and
+            all(type(x) in (int,float) and x==int(x) and 0<=x<=5 for x in (col,comm,rej)) and
+            col==comm+rej and rej<=1 and abort['clock']==160*len(r['ffe2_chunks'])+32*col and
+            m['ffe_chunk_failed']==1,'SSRPC_PARTIAL_ABORT')
+    return dict(status='STOP_PARTIAL',sha256=digest(p),budget=b.snapshot(),joint=joint,
+                provisional='ssrpc_pending_lane' in r,abort=abort,promotion_authorized=False)
+
+def ssrpc_bootstrap_pins(args,*,h4cc=False,h4m6=None,h4m12=False,red=False,r11=False,r12=False,ffe=False):
+    from importlib.machinery import PathFinder
+    root=Path(__file__).resolve().parent
+    compat=root.parent/'G1_M4_0_G1_PPO_ONE_UPDATE_SMOKE_V1'
+    paths={}
+    local_pins=dict(H4R_LOCAL_SHA)
+    h4ffe_mode(red,r11,r12,ffe)
+    h4m12_require(not (red or r11 or r12 or ffe) or h4m12,'CONTINUATION_BOOTSTRAP_MODE')
+    if h4m12:
+        h4m12_require(not h4cc and h4m6 is None,'BOOTSTRAP_CONFLICT')
+        env_file=root/'m463_coverage_env.py'
+        from m463_instrument_brax import h4c_git_blob
+        if ffe:
+            ssrpc_source_projection(root)
+        elif r12:
+            h4red_project_env(h4r11_project_env(h4r12_project_env(env_file.read_bytes())))
+        elif r11:
+            h4red_project_env(h4r11_project_env(env_file.read_bytes()))
+        elif red:
+            h4red_project_env(env_file.read_bytes())
+        else:
+            h4m12_require(h4c_git_blob(env_file.read_bytes())==H4M12_CURRENT_ENV,'ENV_PIN')
+        local_pins['m463_coverage_env']=digest(env_file)
+    if h4cc:
+        local_pins['m463_coverage_env']='d131e0bd14f6f1c8730eef5aaac32a6ef11e30ca19b7efb0a0751d1822991d01'
+    if h4m6 is not None:
+        h4m6_require(h4cc and h4m6['id']==H4M6_ID,'BOOTSTRAP_MODE')
+        identity=h4m6_source_identity(root)
+        h4m6_require(identity['sha256']==h4m6['source_sha256'],'BOOTSTRAP_SOURCE')
+        local_pins['m463_coverage_env']=identity['files']['m463_coverage_env.py']
+    for name,expected in local_pins.items():
+        search=[str(compat),*sys.path] if name=='nvcc_compat' else sys.path
+        spec=PathFinder.find_spec(name,search)
+        h4r_require(spec is not None and spec.origin is not None,'MODULE_MISSING '+name)
+        actual=Path(spec.origin).resolve()
+        intended=(compat if name=='nvcc_compat' else root)/(name+'.py')
+        h4r_require(actual==intended.resolve() and digest(actual)==expected,'MODULE_PIN '+name)
+        paths[name]=str(actual)
+    for name,blob in (('train','b36b69a38d2ebb1a218342b3f34386d47624383e'),
+                      ('paper_config','6dc390de5eec3cd0b036b2d766c71e3164e1b17f')):
+        spec=PathFinder.find_spec(name,sys.path)
+        h4r_require(spec is not None and spec.origin is not None,'MODULE_MISSING '+name)
+        actual=Path(spec.origin).resolve()
+        raw=actual.read_bytes()
+        actual_blob=hashlib.sha1(('blob '+str(len(raw))+'\0').encode()+raw).hexdigest()
+        h4r_require(actual==root/(name+'.py') and actual_blob==blob,'MODULE_PIN '+name)
+        paths[name]=str(actual)
+    import subprocess
+    for name in ('m463_instrument_brax','m463_push_ppo_train'):
+        spec=PathFinder.find_spec(name,sys.path)
+        h4r_require(spec is not None and spec.origin is not None,'MODULE_MISSING '+name)
+        actual=Path(spec.origin).resolve()
+        h4r_require(actual==root/(name+'.py'),'MODULE_ORIGIN '+name)
+        tracked=subprocess.check_output(['git','show','HEAD:'+name+'.py'],cwd=root)
+        h4r_require(actual.read_bytes()==tracked,'TRACKED_SOURCE '+name)
+        if name=='m463_instrument_brax':
+            paths[name]=str(actual)
+    h4r_require(digest(root/'paper_config_preflight.json')==H4R_CONFIG_SHA,'PAPER_CONFIG_PIN')
+    for path,sha in ((args.checkpoint,SEED1_SHA),(args.restore_report,H3_CAUSAL_RESTORE_SHA),
+                     (args.h4_readiness_reward_report,H4R_REWARD_SHA)):
+        h4r_require(path.is_file() and not path.is_symlink() and digest(path)==sha,'INPUT_PIN '+str(path))
+    return paths
+
+def ssrpc_bootstrap(args,*,h4cc=False,h4m6=None,h4m12=False,red=False,r11=False,r12=False,ffe=False):
+    from types import SimpleNamespace
+    proxy=SimpleNamespace(checkpoint=args.checkpoint,restore_report=args.restore_report,
+                          h4_readiness_reward_report=args.h4_exploratory_reward_report)
+    pins=ssrpc_bootstrap_pins(proxy,h4cc=h4cc,h4m6=h4m6, h4m12=h4m12,red=red,r11=r11,r12=r12,ffe=ffe)
+    # Exact launcher overlay resolution before JAX is imported.
+    from importlib import metadata
+    from importlib.machinery import PathFinder
+    root=Path(__file__).resolve().parent
+    base=root.parent
+    expected=[
+        base/'G1_M3_11E_PPO_CLOUDPICKLE_OVERLAY_V1/overlays/cloudpickle_20261107_111524_3962615',
+        base/'G1_M3_11D_PPO_GYM_ISOLATED_REPAIR_V1/overlays/wheels_20261107_111000_3952924',
+        base/'G1_M3_11C_PPO_MANIFEST_REPAIR_V1/overlays/wheels_20261107_110316_3940764',
+        base/'G1_M3_7_G1_MJX_GPU_ONE_STEP_V1/source/mujoco_playground_2025',root]
+    paths=[Path(p).resolve() for p in os.environ.get('PYTHONPATH','').split(os.pathsep)]
+    h4x_require(paths==[p.resolve() for p in expected],'LAUNCHER_PATH')
+    venv=base/'G1_M3_7_G1_MJX_GPU_ONE_STEP_V1/.venv_m37_jax0435_mjx327'
+    h4x_require(Path(sys.executable)==venv/'bin/python' and
+                Path(sys.prefix).resolve()==venv.resolve(),'LAUNCHER_PYTHON')
+    spec=PathFinder.find_spec('dm_env',sys.path)
+    origin=(expected[2]/'dm_env/__init__.py').resolve()
+    dist=metadata.distribution('dm-env')
+    h4x_require(spec is not None and spec.origin is not None and
+                Path(spec.origin).resolve()==origin and dist.version=='1.6' and
+                Path(dist.locate_file('dm_env/__init__.py')).resolve()==origin,'DM_ENV')
+    return pins
+
+def ssrpc_checkpoint_meta(auth,full_sha,policy_sha):
+    return dict(format=ssrpc_spec(auth['arm'])['id'],ssrpc_arm=auth['arm'],authorization=auth,
+        cumulative_steps=15728640,adam_count=2400,normalizer_count=416808960,
+        fullstate_sha256=full_sha,policy_sha256=policy_sha,
+        parent_resume_sha256=H4M12_PARENT_PINS[H4M12_FULL],
+        reset_edge=True,optimizer_state_included=True,training_rng_included=True,
+        evaluator_rng_included=True,h4_arm='control',h4_resume_forbidden=True,
+        promotion_authorized=False)
+
+def ssrpc_check_complete(out,r,auth):
+    """Strict host replay and byte checks, not a claim of recovery efficacy."""
+    out=Path(out)
+    h4m12_require(r['status']=='TECHNICAL_PASS' and r['authorization']==auth and
+                  r['spec']==ssrpc_spec(auth['arm']) and r['promotion_authorized'] is False,'FINAL_STATUS')
+    expected=dict(r['parent']['original_contract']['config'],num_timesteps=5242880,num_evals=2)
+    h4m12_require(r['hardware_scaled_config']==expected and r['reward']==r['parent']['original_contract']['reward'],'FINAL_CONFIG')
+    b=H4M12Budget()
+    rows=r['operational_rows']
+    for row in rows:
+        b.advance(row['event'])
+    h4m12_require(b.complete and b.snapshot()==r['budget'],'FINAL_LEDGER')
+    initial=next(x for x in rows if x['event']=='initial')
+    restored=next(x for x in rows if x['event']=='restore_payload')
+    h4m12_require(restored['policy_exact'] is True and restored['fullstate_exact'] is True
+        and restored['local_key']==H4M12_LOCAL and restored['eval_key']==H4M12_EVAL
+        and restored['reset_sha256']==H4M12_RESET_SHA,'FINAL_RESTORE')
+    def counter(row,n):
+        h4m12_require(row['steps']==10485760+n*1310720 and row['adam']==1600+n*200
+            and row['normalizer']==411566080+n*1310720 and
+            row['training_schema']==r['parent']['edge']['training_schema'],'FINAL_COUNTER')
+    counter(initial,0)
+    for n,row in enumerate((x for x in rows if x['event']=='chunk_before'),0):
+        counter(row,n)
+    for n,row in enumerate((x for x in rows if x['event']=='chunk_after'),1):
+        counter(row,n)
+        h4m12_require(row['finite'] is True,'FINAL_FINITE')
+    counter(rows[-1],4)
+    pre=[x for x in rows if x['event']=='chunk_before']
+    post=[x for x in rows if x['event']=='chunk_after']
+    for i,(p,q) in enumerate(zip(pre,post)):
+        h4m12_require(p['expected_key']==q['key'] and
+            (i==0 or p['key']==post[i-1]['key']),'FINAL_CARRY')
+    resets=[x for x in rows if x['event'].endswith('reset_before')]
+    h4m12_require(len(resets)==3 and all(x['dr_sha256']==H4M12_DR for x in resets)
+        and resets[1]['keys_sha256']==H4M12_RESET_SHA and resets[1]['local_key']==H4M12_LOCAL
+        and resets[1]['eval_key']==H4M12_EVAL,'FINAL_DR')
+    epoch=next(x for x in rows if x['event']=='epoch')
+    counter(epoch,0)
+    h4m12_require(epoch['key']==pre[0]['key'] and
+        [x['chunk'] for x in rows if x['event']=='chunk_ledger']==[1,2,3,4] and
+        next(x for x in rows if x['event']=='checkpoint')['step']==15728640,'FINAL_EVENT_DETAIL')
+    for row in rows:
+        if row['event'].endswith('reset_after'):
+            h4m12_require(row['finite'] is True and row['environment_schema']==
+                r['parent']['edge']['environment_schema'],'FINAL_RESET')
+    evb=next(x for x in rows if x['event']=='eval_before')
+    eva=next(x for x in rows if x['event']=='eval_after')
+    h4m12_require(evb['step']==eva['step']==15728640 and evb['key']==H4M12_EVAL
+        and eva['key']==evb['expected_key'] and eva['finite'] is True,'FINAL_EVAL')
+    h4m12_require(h4m12_exposure_replay(r)==r['exposure'],'FINAL_EXPOSURE')
+    h4m12_require(h4ffe_exposure_replay(r)==r['ffe_exposure'],'FFE2_FINAL_EXPOSURE')
+    import numpy as np
+    h4m12_require(h4ffe2_replay_full_ledger(np,r,complete=True)==r['ffe2_ledger'],'FFE2_FINAL_LEDGER')
+    h4m12_require(ssrpc_replay_report(np,r,complete=True)==r['ssrpc_ledger'],'SSRPC_FINAL_JOINT')
+    gpu=r['gpu']
+    h4m12_require(gpu['total_mib']==12288 and 0<gpu['peak_used_mib']<.95*12288
+        and not gpu['sampler_errors'] and gpu['samples']>0 and r['returned_policy_exact'] is True,
+        'FINAL_GPU_OR_PARAMS')
+    files=r['artifacts']
+    h4m12_require(set(files)=={H4M12_NEW_POLICY,H4M12_NEW_FULL,
+        Path(H4M12_NEW_FULL).with_suffix('.json').name},'FINAL_ARTIFACT_SET')
+    for name,sha in files.items():
+        h4x_file_pin(out/name,sha)
+    meta=json.loads((out/Path(H4M12_NEW_FULL).with_suffix('.json')).read_bytes())
+    h4m12_require(meta==ssrpc_checkpoint_meta(auth,files[H4M12_NEW_FULL],files[H4M12_NEW_POLICY]),
+                  'FINAL_MANIFEST')
+    h4x_file_pin(out/'m463_brax_ppo_instrumented.py',auth['generated_sha256'])
+    h4x_storage(out)
+    return True
+
+def ssrpc_terminal_receipt(out,expected_sha,auth):
+    out=Path(out);terminal=out/'supervisor.terminal.json';log=out/'worker.log'
+    failure=out/'supervisor.failed.json'
+    h4m12_require(not failure.exists() and not failure.is_symlink(),'FFE2_SUPERVISOR_FAILURE')
+    h4m12_require(terminal.is_file() and not terminal.is_symlink() and
+        log.is_file() and not log.is_symlink() and
+        log.stat().st_size<=H4FFE2_SPEC['external_log_reserve'],'FFE2_TERMINAL_PATH')
+    expected=dict(status='COMPLETE',authorization=auth,report_sha256=expected_sha,
+        producer_rc=0,reader_rc=0,worker_log_sha256=digest(log),stored_log_bytes=log.stat().st_size)
+    value=json.loads(terminal.read_bytes())
+    h4m12_require(type(value) is dict and set(value)==set(expected) and
+        all(type(value[k]) is type(expected[k]) for k in expected) and value==expected,'FFE2_TERMINAL_RECEIPT')
+    return True
+
+def _ssrpc_read_final(root,expected_sha,auth,*,require_terminal):
+    root=Path(root).resolve()
+    ssrpc_validate_auth_evidence(root,auth)
+    out=root/SSRPC_ARM_OUTPUT[auth['arm']]
+    failed=out/'supervisor.failed.json'
+    h4m12_require(not failed.exists() and not failed.is_symlink(),'FFE2_SUPERVISOR_FAILURE')
+    h4x_file_pin(out/'report.json',expected_sha)
+    r=json.loads((out/'report.json').read_bytes())
+    for name in ('dispatch.started.json','attempt.json','worker.started.json','attempt_result.json'):
+        h4m12_require((out/name).is_file() and not (out/name).is_symlink(),'FINAL_RECEIPT_PATH')
+    h4m12_require(json.loads((out/'dispatch.started.json').read_bytes())==
+        {'authorization':auth},'FINAL_DISPATCH')
+    worker=json.loads((out/'worker.started.json').read_bytes())
+    h4m12_require(set(worker)=={'authorization','pid'} and worker['authorization']==auth
+        and type(worker['pid']) is int and worker['pid']>0,'FINAL_WORKER')
+    receipt=json.loads((out/'attempt.json').read_bytes())
+    h4m12_require(set(receipt)=={'authorization','parent_pid'} and receipt['authorization']==auth
+        and type(receipt['parent_pid']) is int and receipt['parent_pid']>0,'FINAL_RESERVATION')
+    result=json.loads((out/'attempt_result.json').read_bytes())
+    h4m12_require(result=={'status':'COMPLETE','authorization':auth,
+                          'report_sha256':expected_sha,'producer_rc':0},'FINAL_RECEIPT')
+    parent_check=ssrpc_parent_preflight
+    h4m12_require(parent_check(root,require_unused=False)==r['parent'],'FINAL_PARENT')
+    ssrpc_check_complete(out,r,auth)
+    if require_terminal:ssrpc_terminal_receipt(out,expected_sha,auth)
+    return r
+
+def ssrpc_worker(a,auth,root,out):
+    """One authorized worker only; no generic longtrain or warmstart fallback."""
+    red=r11=r12=False;ffe=True
+    arm=auth['arm']
+    h4m12_require(ssrpc_auth(root,arm)==auth and out==root/SSRPC_ARM_OUTPUT[arm],'SSRPC_WORKER_AUTH')
+    ssrpc_lane_resource_bound()
+    import inspect
+    import importlib.util
+    from m463_instrument_brax import make_h4m12_integrated_source,h4c_git_blob
+    h4m12_require(json.loads((out/'attempt.json').read_bytes())==
+        {'authorization':auth,'parent_pid':os.getppid()},'WORKER_RESERVATION')
+    h4x_write_json(out/'worker.started.json',{'authorization':auth,'pid':os.getpid()},exclusive=True)
+    h4ffe_mode(red,r11,r12,ffe)
+    parent_check=ssrpc_parent_preflight
+    authorize=lambda root:ssrpc_auth(root,arm)
+    parent=parent_check(root,require_unused=False)
+    for path,sha in ((a.checkpoint,SEED1_SHA),(a.restore_report,H3_CAUSAL_RESTORE_SHA),(a.reward_report,H4R_REWARD_SHA)):
+        h4x_file_pin(path,sha)
+    a.h4_exploratory_reward_report=a.reward_report
+    pins=ssrpc_bootstrap(a,h4m12=True,ffe=True)
+    old=json.loads((root/H4M12_PARENT/'report.json').read_bytes())
+    for name,sha in old['h4_common_contract']['source_digests'].items():
+        if name not in ('m463_coverage_env.py','m463_instrument_brax.py','m463_push_ppo_train.py'):
+            h4x_file_pin(root/name,sha)
+    from m462_ppo_warmstart_run import read_restore_gate,sample_gpu,GPUMonitor,check_source_and_config
+    gate,_=read_restore_gate(a.restore_report,a.checkpoint)
+    h4m12_require(gate['orbax_dir_sha256']==H4_ORBAX_SHA,'RESTORE_GATE')
+    api=check_source_and_config('A')
+    jax,np=api['jax'],api['numpy']
+    import optax
+    from flax import serialization
+    from brax.envs.wrappers import training as brax_wrapper
+    from m463_coverage_env import SSRPCCoverageJoystick
+    h4m12_require(jax.__version__=='0.4.35' and jax.default_backend()=='gpu'
+        and jax.process_count()==jax.local_device_count()==1,'CUDA')
+    deps=h4c_dependency_pins(api)
+    h4m12_require(deps==old['h4x_brax_dependencies'],'DEPENDENCIES')
+    wrapper=Path(inspect.getfile(brax_wrapper)).resolve()
+    h4m12_require(h4c_git_blob(wrapper.read_bytes())=='2c09c8268a29d14c832dd07050575e4541ee98af','WRAPPER')
+    for name,path in pins.items():
+        mod=sys.modules.get(name)
+        h4m12_require(mod is not None and Path(mod.__file__).resolve()==Path(path),'MODULE_'+name)
+    source_cfg=api['source_cfg']
+    train_cfg=copy.deepcopy(source_cfg)
+    h4m12_require(bool(source_cfg.push_config.enable),'SOURCE_PUSH')
+    train_cfg.push_config.enable=False
+    h4m12_require(train_cfg.to_dict()['reward_config']==old['train_reward_config']
+        ==json.loads(a.reward_report.read_bytes())['train_reward_config'],'REWARD')
+    env=SSRPCCoverageJoystick(config=train_cfg,arm=arm)
+    ev=api['locomotion'].load(api['env_name'],config=source_cfg)
+    h4m12_require(env.action_size==29 and float(env.dt)==.02,'ENV')
+    scaled=api['scaled']
+    scaled.num_timesteps=5242880
+    scaled.num_evals=2
+    cfg=scaled.to_dict()
+    expected=dict(old['hardware_scaled_config'],num_timesteps=5242880,num_evals=2)
+    h4m12_require(json.loads(json.dumps(cfg))==expected and m470_fingerprint(cfg)==H3_FP,'CONFIG')
+    net=cfg.pop('network_factory')
+    cfg.update(seed=1,randomization_fn=api['randomizer'],restore_checkpoint_path=None,
+        m470_resume_state_path=str(root/H4M12_PARENT/H4M12_FULL),m470_resume_expected_steps=10485760)
+    if red:
+        from m463_instrument_brax import make_h4red_integrated_source
+    if r11:
+        from m463_instrument_brax import make_r11_integrated_source
+    if r12:
+        from m463_instrument_brax import make_r12_integrated_source
+    from m463_instrument_brax import make_ssrpc_integrated_source
+    source,_=make_ssrpc_integrated_source(Path(inspect.getfile(api['ppo'].train)).read_bytes(),arm)
+    raw=source.encode('utf8')
+    h4m12_require(hashlib.sha256(raw).hexdigest()==auth['generated_sha256'],'GENERATED_SHA')
+    generated=out/'m463_brax_ppo_instrumented.py'
+    h4x_storage(out,len(raw))
+    with generated.open('xb') as stream: stream.write(raw)
+    modspec=importlib.util.spec_from_file_location('m463_ssrpc_'+arm+'_generated',str(generated))
+    h4m12_require(modspec is not None and modspec.loader is not None,'MODULE_SPEC')
+    mod=importlib.util.module_from_spec(modspec)
+    modspec.loader.exec_module(mod)
+    budget=H4M12Budget()
+    r=dict(status='RUNNING',authorization=auth,spec=ssrpc_spec(arm),ffe2_chunks=[],ssrpc_lane_chunks=[],parent=parent,
+        operational_rows=[],budget=budget.snapshot(),report_history=[],artifacts={},
+        promotion_authorized=False,hardware_scaled_config=expected,
+        reward=old['train_reward_config'],dependencies=deps)
+    def persist():
+        r['budget']=budget.snapshot()
+        h4x_write_json(out/'report.json',r)
+    monitor=GPUMonitor()
+    chunk_fn=h4_chunk_callback(jax,np,monitor,r,persist,'control',step_offset=10485760)
+    if red:
+        chunk_fn=h4red_chunk_guard(chunk_fn,r,persist)
+    if r11:
+        chunk_fn=h4r11_chunk_guard(chunk_fn,r,persist,jax,np)
+    if r12:
+        chunk_fn=h4r12_chunk_guard(chunk_fn,r,persist,jax,np)
+    if ffe:
+        chunk_fn=h4ffe_chunk_guard(chunk_fn,r,persist,jax,np)
+    restored_ts=last_reset=last_carry=model_ref=axes_ref=None
+    local=eval_key=env_keys=epoch_keys=next_chunk_key=None
+    policy_template=None
+    def arr(x): return np.asarray(jax.device_get(x))
+    def keyhash(x): return hashlib.sha256(arr(x).tobytes()).hexdigest()
+    def same(x,y,label):
+        x,y=arr(x),arr(y)
+        h4m12_require(x.shape==y.shape and x.dtype==y.dtype and x.tobytes()==y.tobytes(),'KEY_'+label)
+    def keylist(x): return arr(x).tolist()
+    def safe():
+        h4m12_require(authorize(root)==auth,'AUTH_CHANGED')
+        h4x_storage(out)
+        g=sample_gpu(); snap=monitor.snapshot()
+        h4m12_require(g['total_mib']==12288 and 0<=g['used_mib']<.95*12288
+            and not snap['sampler_errors'] and
+            (snap['peak_used_mib'] is None or snap['peak_used_mib']<.95*12288),'GPU')
+    def counters(ts,n,replicated=True):
+        ac=[x for x in jax.tree_util.tree_leaves(ts.optimizer_state,
+            is_leaf=lambda x:isinstance(x,optax.ScaleByAdamState)) if isinstance(x,optax.ScaleByAdamState)]
+        h4m12_require(len(ac)==1,'ADAM_LAYOUT')
+        step,count,adam=(arr(x) for x in (ts.env_steps,ts.normalizer_params.count,ac[0].count))
+        shape=(1,) if replicated else ()
+        h4m12_require(step.shape==count.shape==adam.shape==shape and
+            step.dtype.kind in 'iu' and adam.dtype.kind in 'iu' and count.dtype==np.float32
+            and step.item()==10485760+n*1310720 and adam.item()==1600+n*200
+            and count.item()==h4x_normalizer_expected(np,411566080,'float32',n*5).item(),'COUNTERS')
+        schema=h4x_tree_schema(jax,np,ts)
+        if replicated: h4m12_require(schema==parent['edge']['training_schema'],'TRAIN_SCHEMA')
+        return dict(steps=int(step.item()),adam=int(adam.item()),normalizer=count.item(),training_schema=schema)
+    def envcheck(state,reset=False):
+        projected=h4ffe2_project_state(state,jax,np,reset=reset)
+        h4m12_require(arr(state.done).shape==(1,8192) and
+            h4x_tree_schema(jax,np,projected)==parent['edge']['environment_schema'],'ENV_SCHEMA')
+    def finite_flag(value):
+        a=arr(value)
+        h4m12_require(a.shape==() and a.dtype.kind=='b' and bool(a),'FINITE_FLAG')
+    def record(event,row):
+        budget.advance(event)
+        r['operational_rows'].append(dict(event=event,**row))
+        persist()
+    def audit(event,**v):
+        nonlocal restored_ts,last_reset,last_carry,model_ref,axes_ref
+        nonlocal local,eval_key,env_keys,epoch_keys,next_chunk_key,policy_template
+        safe()
+        n=budget.recorded['optimizer']//200
+        row={}
+        if event=='template_reset_before':
+            _,local=jax.random.split(jax.random.PRNGKey(1))
+            local=jax.random.fold_in(local,0)
+            local,k,eval_key=jax.random.split(local,3)
+            env_keys=jax.random.split(k,8192).reshape(1,8192,2)
+            model_ref,axes_ref=v['model'],v['axes']
+            h4m12_require(h4x_model_digest(jax,np,model_ref,axes_ref)==H4M12_DR,'DR_PIN')
+        if event in ('template_reset_before','restore_reset_before','reset_before'):
+            if event=='reset_before':
+                env_keys=jax.random.split(env_keys[0,0],8192).reshape(1,8192,2)
+            h4m12_require(v['model'] is model_ref and v['axes'] is axes_ref,'DR_CARRY')
+            same(v['local_key'],local,'RESET_LOCAL')
+            same(v['eval_key'],eval_key,'RESET_EVAL')
+            same(v['keys'],env_keys,'RESET_KEYS')
+            row=dict(dr_sha256=H4M12_DR,keys_sha256=keyhash(env_keys),
+                     local_key=keylist(local),eval_key=keylist(eval_key))
+        elif event.endswith('reset_after'):
+            finite_flag(v['finite'])
+            last_reset=v['env_state']; envcheck(last_reset,reset=True)
+            row=dict(finite=True,environment_schema=parent['edge']['environment_schema'])
+            if ffe:
+                if event=='reset_after':
+                    h4m12_require(len(r['ffe_chunks'])==len(r['ffe2_chunks'])==4
+                        and 'ffe2_pending_chunk' not in r and 'ssrpc_pending_lane' not in r
+                        and len(r['ssrpc_lane_chunks'])==4,'SSRPC_FINAL_RESET_CHUNKS')
+                    row['ffe_host_reset_closed']=r['ffe_chunks'][-1]['after']
+                else:
+                    row['ffe_host_reset_closed']=h4ffe_empty_pending()
+            if r12:
+                if event=='reset_after':
+                    h4m12_require(len(r['r12_chunks'])==4,'R12_FINAL_RESET_CHUNKS')
+                    row['r12_host_reset_closed']=r['r12_chunks'][-1]['after']
+                else:
+                    row['r12_host_reset_closed']=0
+        elif event=='restore_payload':
+            payload=v['payload']; restored_ts=payload['training_state']
+            file=root/H4M12_PARENT/H4M12_FULL
+            h4x_file_pin(file,H4M12_PARENT_PINS[H4M12_FULL])
+            raw=file.read_bytes()
+            h4m12_require(hashlib.sha256(raw).hexdigest()==H4M12_PARENT_PINS[H4M12_FULL],'PARENT_FULL_BYTES')
+            other=serialization.from_bytes(v['template'],raw)
+            h4m12_tree_equal(jax,np,payload,other,'PARENT_FULL')
+            counters(restored_ts,0,False)
+            local,env_keys,eval_key=(payload[k] for k in ('local_key','key_envs','eval_key'))
+            h4m12_require(arr(local).dtype==arr(env_keys).dtype==arr(eval_key).dtype==np.uint32
+                and arr(local).shape==arr(eval_key).shape==(2,) and arr(env_keys).shape==(1,8192,2)
+                and keylist(local)==H4M12_LOCAL and keylist(eval_key)==H4M12_EVAL
+                and keyhash(env_keys)==H4M12_RESET_SHA,'PARENT_RNG')
+            policy_template=(restored_ts.normalizer_params,restored_ts.params)
+            p=root/H4M12_PARENT/H4M12_POLICY
+            h4x_file_pin(p,H4M12_PARENT_PINS[H4M12_POLICY])
+            raw=p.read_bytes()
+            h4m12_require(hashlib.sha256(raw).hexdigest()==H4M12_PARENT_PINS[H4M12_POLICY],'PARENT_POLICY_BYTES')
+            decoded=serialization.from_bytes(policy_template,raw)
+            h4m12_tree_equal(jax,np,policy_template,decoded,'PARENT_POLICY')
+            row=dict(policy_exact=True,fullstate_exact=True,local_key=keylist(local),
+                     eval_key=keylist(eval_key),reset_sha256=keyhash(env_keys))
+        elif event=='initial':
+            finite_flag(v['finite'])
+            h4m12_require(v['env_state'] is last_reset and restored_ts is not None,'INITIAL_CARRY')
+            ts=v['training_state']
+            h4m12_tree_equal(jax,np,jax.tree_util.tree_map(lambda x:x[0],ts),restored_ts,'REPLICATED_RESTORE')
+            row=counters(ts,0)
+        elif event=='epoch':
+            h4m12_require(v['env_state'] is last_reset,'EPOCH_CARRY')
+            epoch,local=jax.random.split(local)
+            epoch_keys=jax.random.split(epoch,1)
+            same(v['keys'],epoch_keys,'EPOCH');same(v['local_key'],local,'EPOCH_LOCAL')
+            row=dict(**counters(v['training_state'],0),key=keylist(epoch_keys))
+        elif event=='chunk_before':
+            carry=v['carry']; h4m12_require(v['index']==n+1,'CHUNK_INDEX')
+            if n==0: same(carry[2],epoch_keys,'FIRST_CHUNK')
+            else: h4m12_require(carry is last_carry,'CHUNK_CARRY')
+            envcheck(carry[1])
+            if ffe:
+                h4ffe_clock(carry[1],jax,np,n*160)
+            k=carry[2][0]
+            for _ in range(5): k=jax.random.split(k,3)[2]
+            next_chunk_key=k[None,:]
+            row=dict(**counters(carry[0],n),key=keylist(carry[2]),expected_key=keylist(next_chunk_key))
+        elif event=='chunk_after':
+            carry=v['carry']
+            h4m12_require(v['index']==n+1 and arr(v['metrics']['h4x_finite']).dtype==np.float32
+                and arr(v['metrics']['h4x_finite']).shape==()
+                and arr(v['metrics']['h4x_finite']).item()==1.,'CHUNK_FINITE')
+            same(carry[2],next_chunk_key,'NEXT_CHUNK')
+            envcheck(carry[1]);last_carry=carry
+            if ffe:
+                h4ffe_clock(carry[1],jax,np,(n+1)*160)
+            row=dict(**counters(carry[0],n+1),key=keylist(carry[2]),finite=True)
+        elif event=='chunk_ledger':
+            h4m12_require(v['index']==n+1 and len(r['h4_chunks'])==n+1 and
+                r['h4_chunks'][-1]['passed'] is True and len(r['ffe2_chunks'])==n
+                and len(r['ssrpc_lane_chunks'])==n,'SSRPC_CHUNK_LEDGER')
+            # A validated chunk stays provisional until this operational edge.
+            rec=r['ffe2_pending_chunk']; lane=r['ssrpc_pending_lane']
+            h4m12_require(rec['index']==lane['index']==n+1,'SSRPC_PENDING_ID')
+            trial=dict(r,ffe2_chunks=r['ffe2_chunks']+[rec],
+                       ssrpc_lane_chunks=r['ssrpc_lane_chunks']+[lane])
+            del trial['ffe2_pending_chunk'];del trial['ssrpc_pending_lane']
+            ssrpc_replay_report(np,trial,complete=False,prospective_commit=True)
+            r['ffe2_chunks'].append(rec);r['ssrpc_lane_chunks'].append(lane)
+            del r['ffe2_pending_chunk'];del r['ssrpc_pending_lane']
+            row=dict(chunk=n+1)
+        elif event=='eval_before':
+            same(v['key'],eval_key,'EVAL_BEFORE')
+            h4m12_require(v['step']==15728640,'EVAL_STEP')
+            row=dict(step=v['step'],key=keylist(eval_key),expected_key=keylist(jax.random.split(eval_key)[0]))
+        elif event=='eval_after':
+            eval_key=jax.random.split(eval_key)[0]
+            same(v['key'],eval_key,'EVAL_AFTER')
+            h4m12_require(v['step']==15728640 and all(np.isfinite(arr(x)).all() for x in v['metrics'].values()),
+                          'EVAL_METRICS')
+            row=dict(step=v['step'],key=keylist(eval_key),finite=True)
+        elif event=='finish':
+            h4m12_require(v['env_state'] is last_reset and n==4,'FINISH')
+            row=counters(v['training_state'],4)
+        else: raise RuntimeError('M470_H4M12_UNKNOWN_EVENT '+event)
+        record(event,row)
+    audit.h4m12_auth=auth
+    audit.ssrpc_auth=auth
+    pending_policy=None
+    def progress(step,metrics):
+        h4m12_require(step==15728640 and not r['report_history'],'PROGRESS_EDGE')
+        values={}
+        for k,v in metrics.items():
+            x=arr(v)
+            h4m12_require(x.shape==() and x.dtype.kind in 'biuf' and np.isfinite(x),'METRIC_SCHEMA')
+            values[k]=float(x)
+        r['report_history'].append(dict(additional_steps=step,metrics=values))
+        r['exposure']=h4m12_exposure_replay(r)
+        if red:
+            r['red_exposure']=h4red_exposure_replay(r)
+        if r11:
+            r['r11_exposure']=h4r11_exposure_replay(r)
+        if r12:
+            r['r12_exposure']=h4r12_exposure_replay(r)
+        if ffe:
+            r['ffe_exposure']=h4ffe_exposure_replay(r)
+            r['ffe2_ledger']=h4ffe2_replay_full_ledger(np,r,complete=True)
+            r['ssrpc_ledger']=ssrpc_replay_report(np,r,complete=True)
+        persist()
+    def save_policy(step,make_policy,params):
+        nonlocal pending_policy
+        h4m12_require(step==15728640 and pending_policy is None,'POLICY_EDGE')
+        pending_policy=jax.device_get(params)
+    def save_full(step,bundle):
+        safe()
+        h4m12_require(step==15728640 and pending_policy is not None and not r['artifacts']
+            and budget.events[-1]=='eval_after','CHECKPOINT_EDGE')
+        bundle=jax.device_get(bundle);ts=bundle['training_state']
+        counters(ts,4,False)
+        same(bundle['local_key'],local,'SAVE_LOCAL');same(bundle['key_envs'],env_keys,'SAVE_RESET')
+        same(bundle['eval_key'],eval_key,'SAVE_EVAL')
+        h4m12_tree_equal(jax,np,pending_policy,(ts.normalizer_params,ts.params),'SAVE_POLICY')
+        for name,tree,kind in ((H4M12_NEW_POLICY,pending_policy,'policy'),(H4M12_NEW_FULL,bundle,'fullstate')):
+            raw=serialization.to_bytes(tree)
+            h4m12_tree_equal(jax,np,tree,serialization.from_bytes(tree,raw),'ROUNDTRIP')
+            h4x_storage(out,len(raw),kind)
+            with (out/name).open('xb') as stream: stream.write(raw)
+            r['artifacts'][name]=digest(out/name)
+            persist()
+        name=Path(H4M12_NEW_FULL).with_suffix('.json').name
+        h4x_write_json(out/name,ssrpc_checkpoint_meta(auth,r['artifacts'][H4M12_NEW_FULL],
+                       r['artifacts'][H4M12_NEW_POLICY]),exclusive=True)
+        r['artifacts'][name]=digest(out/name)
+        record('checkpoint',dict(step=step))
+    def r11_abort(index,carry,metrics):
+        r['r11_abort']=h4r11_abort_record(index,metrics,jax,np)
+        persist()
+    if r11:
+        cfg['r11_abort_fn']=r11_abort
+    def r12_abort(index,carry,metrics):
+        r['r12_abort']=h4r12_abort_record(index,metrics,jax,np)
+        persist()
+    if r12:
+        cfg['r12_abort_fn']=r12_abort
+    def ffe_abort(index,carry,metrics):
+        r['ffe_abort']=h4ffe_abort_record(index,carry,metrics,jax,np)
+        persist()
+    if ffe:
+        cfg['ffe_abort_fn']=ffe_abort
+    def ffe2_chunk(index,payload,state):
+        h4m12_require(index==len(r['ffe2_chunks'])+1 and 1<=index<=4,'SSRPC_CHUNK_ORDER')
+        rec=ssrpc_prepare_chunk(np,{k:arr(v) for k,v in payload.items()},index,
+                               h4ffe2_tail_pending(state,jax,np))
+        h4m12_require('ffe2_pending_chunk' not in r and 'ssrpc_pending_lane' not in r,
+                      'SSRPC_PENDING_DUPLICATE')
+        old={k:rec[k] for k in ('index','payload','tail_pending')}
+        lane=rec['ssrpc_lane']
+        ssrpc_replay_joint_chunks(np,ssrpc_join_records(r)+[rec],arm,complete=False)
+        r['ffe2_pending_chunk']=old;r['ssrpc_pending_lane']=lane
+        persist()
+    cfg['ffe2_chunk_fn']=ffe2_chunk
+    legacy_chunk_fn=chunk_fn
+    def chunk_fn(index,state,env_state,metrics):
+        legacy_chunk_fn(index,state,env_state,metrics)
+        rec=r.get('ffe2_pending_chunk');lane=r.get('ssrpc_pending_lane')
+        h4m12_require(rec is not None and lane is not None and rec['index']==lane['index']==index,
+                      'SSRPC_PENDING_CHUNK')
+        trial=dict(r,ffe2_chunks=r['ffe2_chunks']+[rec],ssrpc_lane_chunks=r['ssrpc_lane_chunks']+[lane])
+        del trial['ffe2_pending_chunk'];del trial['ssrpc_pending_lane']
+        ssrpc_replay_report(np,trial,complete=False,prospective_commit=True)
+    for fn in (ffe_abort,ffe2_chunk,chunk_fn):
+        fn.ssrpc_auth=auth
+    persist()
+    try:
+        with monitor:
+            safe()
+            _,params,_=mod.train(environment=env,eval_env=ev,
+                wrap_env_fn=api['wrapper'].wrap_for_brax_training,
+                network_factory=functools.partial(api['networks'].make_ppo_networks,**net),
+                progress_fn=progress,policy_params_fn=save_policy,m470_state_checkpoint_fn=save_full,
+                h4x_audit_fn=audit,h4_chunk_fn=chunk_fn,**cfg)
+            h4m12_tree_equal(jax,np,(params[0],{'policy':params[1],'value':params[2]}),
+                 (pending_policy[0],{'policy':pending_policy[1].policy,'value':pending_policy[1].value}),'RETURNED_POLICY')
+            safe()
+        r['gpu']=monitor.snapshot()
+        h4m12_require(parent_check(root,require_unused=False)==parent
+            and ssrpc_bootstrap(a,h4m12=True,ffe=True)==pins and h4c_dependency_pins(api)==deps
+            and h4c_git_blob(wrapper.read_bytes())=='2c09c8268a29d14c832dd07050575e4541ee98af'
+            and authorize(root)==auth,'FINAL_IMMUTABILITY')
+        r.update(status='TECHNICAL_PASS',returned_policy_exact=True)
+        ssrpc_check_complete(out,r,auth)
+        persist()
+    except BaseException as exc:
+        r.update(status='STOP',error=repr(exc)[:2048])
+        persist()
+        raise
+
+def ssrpc_main(argv):
+    red=r11=r12=False;ffe=True
+    import subprocess
+    import selectors
+    import signal
+    p=argparse.ArgumentParser(description='SSRPC isolated continuation')
+    p.add_argument('--checkpoint',type=Path,required=True)
+    p.add_argument('--restore-report',type=Path,required=True)
+    p.add_argument('--reward-report',type=Path,required=True)
+    p.add_argument('--arm',choices=('ctrl','cand'),required=True)
+    p.add_argument('--worker',action='store_true')
+    a=p.parse_args(argv)
+    root=Path(__file__).resolve().parent
+    h4m12_require(Path.cwd().resolve()==root,'WORKDIR')
+    h4ffe_mode(red,r11,r12,ffe)
+    authorize=lambda root:ssrpc_auth(root,a.arm)
+    parent_check=ssrpc_parent_preflight
+    auth=authorize(root)
+    out=root/SSRPC_ARM_OUTPUT[a.arm]
+    if a.worker:
+        return ssrpc_worker(a,auth,root,out)
+    parent_check(root)
+    h4m12_require(not out.exists() and not out.is_symlink(),'SSRPC_OUTPUT_USED')
+    ssrpc_lane_resource_bound()
+    h4x_file_pin(a.checkpoint,SEED1_SHA)
+    h4x_file_pin(a.restore_report,H3_CAUSAL_RESTORE_SHA)
+    h4x_file_pin(a.reward_report,H4R_REWARD_SHA)
+    h4m12_require(out.parent.is_dir() and not out.parent.is_symlink(),'OUTPUT_PARENT')
+    h4x_storage(out,initial=True)
+    out.mkdir(exist_ok=False)
+    h4x_write_json(out/'attempt.json',{'authorization':auth,'parent_pid':os.getpid()},exclusive=True)
+    child=None; rc=None; total=0
+    try:
+        child=subprocess.Popen([sys.executable,'-u',str(Path(__file__).resolve()),
+            '--h4ssrpc-continuation',*argv,'--worker'],stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,start_new_session=True)
+        deadline=time.monotonic()+H4M12_WATCHDOG_SECONDS
+        with selectors.DefaultSelector() as sel, (out/'worker.log').open('xb') as log:
+            sel.register(child.stdout,selectors.EVENT_READ)
+            while True:
+                h4m12_require(time.monotonic()<deadline,'WATCHDOG')
+                if not sel.select(timeout=1): continue
+                data=os.read(child.stdout.fileno(),65536)
+                if not data: break
+                h4m12_require(total+len(data)<=H4M12_SPEC['external_log_reserve'],'LOG_CAP')
+                log.write(data);log.flush();total+=len(data)
+        rc=child.wait(timeout=max(1,deadline-time.monotonic()))
+        h4m12_require(rc==0,'PRODUCER_RC')
+        report=out/'report.json'
+        r=json.loads(report.read_bytes())
+        ssrpc_check_complete(out,r,auth)
+        h4m12_require(parent_check(root,require_unused=False)==r['parent'] and authorize(root)==auth,'SUPERVISOR_IMMUTABILITY')
+        sha=digest(report)
+        h4x_write_json(out/'attempt_result.json',dict(status='COMPLETE',authorization=auth,
+                       report_sha256=sha,producer_rc=0),exclusive=True)
+        _ssrpc_read_final(root,sha,auth,require_terminal=False)
+        h4x_write_json(out/'supervisor.terminal.json',dict(status='COMPLETE',authorization=auth,
+            report_sha256=sha,producer_rc=0,reader_rc=0,worker_log_sha256=digest(out/'worker.log'),
+            stored_log_bytes=total),exclusive=True)
+        ssrpc_read_final(root,sha,auth)
+        if ffe:
+            print('H4SSRPC_TECHNICAL_PASS',sha,r['ssrpc_ledger']['decision'],flush=True)
+        elif r12:
+            print('H4R12_TECHNICAL_PASS',sha,r['r12_exposure']['decision'],flush=True)
+        elif r11:
+            print('H4R11_TECHNICAL_PASS',sha,r['r11_exposure']['decision'],flush=True)
+        elif red:
+            print('H4RED_TECHNICAL_PASS',sha,r['red_exposure']['decision'],flush=True)
+        else:
+            print('H4M12_TECHNICAL_PASS',sha,flush=True)
+    except BaseException as exc:
+        if child is not None and child.poll() is None:
+            try: os.killpg(child.pid,signal.SIGKILL)
+            except ProcessLookupError: pass
+            child.wait()
+        h4x_write_json(out/'supervisor.failed.json',dict(status='STOP',authorization=auth,
+            producer_rc=rc,stored_log_bytes=total,error=repr(exc)[:2048]),exclusive=True)
+        if not (out/'attempt_result.json').exists():
+            h4x_write_json(out/'attempt_result.json',dict(status='STOP',authorization=auth,
+                producer_rc=rc,stored_log_bytes=total,error=repr(exc)[:2048]),exclusive=True)
+        if ffe and (out/'report.json').is_file():
+            # No promotion/technical acceptance from a partial. Preserve the
+            # original error and report independently if partial validation fails.
+            try:
+                part=ssrpc_read_partial(out,auth)
+                print('H4SSRPC_PARTIAL_READER_PASS',json.dumps(part,sort_keys=True),flush=True)
+            except Exception as failure:
+                print('H4SSRPC_PARTIAL_READER_STOP',repr(failure)[:1024],flush=True)
+        raise
+
+# This dispatch is unreachable for native work while SSRPC_RUNTIME_READY=False.
+if __name__=='__main__' and sys.argv[1:2]==['--h4ssrpc-continuation']:
+    ssrpc_main(sys.argv[2:])
+    sys.exit(0)
+# SSRPC_4B_WORKER_END
 # H4SSRPC_HELD_TRAINER_END
 if __name__=='__main__': main()

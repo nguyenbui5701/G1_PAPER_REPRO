@@ -2640,4 +2640,18 @@ def make_ssrpc_held_source(raw,arm):
     if back!=base or s.count(hold)!=1:
         raise RuntimeError('SSRPC_GENERATOR_PROJECTION')
     return s,original
+
+# SSRPC_4B_GENERATED_BEGIN
+def make_ssrpc_integrated_source(raw,arm):
+    """Distinct generated entry; worker/authorization remains held."""
+    base,original=make_ssrpc_held_source(raw,arm)
+    hold="  raise RuntimeError('M470_SSRPC_GENERATED_EXECUTION_HOLD')\n"
+    guard=("  from m463_push_ppo_train import ssrpc_generated_guard\n"
+           "  ssrpc_generated_guard(h4x_audit_fn, __file__, environment, m470_resume_state_path, "
+           +repr(arm)+", ffe_abort_fn, ffe2_chunk_fn, h4_chunk_fn)\n")
+    s=h4c_once(base,hold,guard)
+    if h4c_once(s,guard,hold)!=base:
+        raise RuntimeError('SSRPC_INTEGRATED_PROJECTION')
+    return s,original
+# SSRPC_4B_GENERATED_END
 # H4SSRPC_HELD_INSTRUMENT_END
