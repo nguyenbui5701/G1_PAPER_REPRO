@@ -2277,7 +2277,8 @@ FFE2_LABEL_KEYS=('assigned','first_due','first_risk','first_eligible','first_eve
     'gap','mode_cost','pre_reason','post_reason','terminal','refresh','post_coherent','bad')
 FFE2_ROW_FIELDS=tuple('ffe2_'+k for k in FFE2_LABEL_KEYS)+(
     'ffe2_shadow_before','ffe2_shadow_after')
-FFE2_CARRY_FIELDS=('ffe2_shadow_gap',)
+FFE2_CARRY_FIELDS=('ffe2_shadow_gap','ffe_mode','ffe_cost','ffe_geometry_valid',
+                   'h4_tick_kind','h4_tick_age','ffe_tick_stratum','h4_tail_age')
 
 def ffe2_batch_contract(xp,data,before,after,before_done,after_done,pre_fn,post_fn,label_fn):
     """Replay exact V2 scheduler, V1 native reward/event/legacy identity,
@@ -2292,6 +2293,10 @@ def ffe2_batch_contract(xp,data,before,after,before_done,after_done,pre_fn,post_
         if a.shape!=shape or a.dtype!=i:
             raise RuntimeError('FFE2_ROW_SCHEMA '+k)
     for q in (before,after):
+        for k in FFE2_CARRY_FIELDS:
+            a=q[k];dtype=xp.float32 if k=='ffe_cost' else i
+            if a.shape!=(8192,) or a.dtype!=dtype:
+                raise RuntimeError('FFE2_EXTRA_CARRY_SCHEMA '+k)
         a=q['ffe2_shadow_gap']
         if a.shape!=(8192,) or a.dtype!=i:
             raise RuntimeError('FFE2_SHADOW_CARRY_SCHEMA')
@@ -2317,6 +2322,31 @@ def ffe2_batch_contract(xp,data,before,after,before_done,after_done,pre_fn,post_
         shadow_gap=shadow,terminal=terminal,refresh=refresh,post_coherent=post_coherent)
     for k in FFE2_LABEL_KEYS:
         bad=bad|(y(k)!=labels[k].astype(i))
+    for k in FFE2_CARRY_FIELDS[1:]:
+        bad=bad|(extras[k][:,-1:]!=after[k][:,None])
+    # Independently replay tail clocks, event supersession and closure from
+    # native transition flags; telemetry cannot silently relabel tail age.
+    def prev(k):return xp.concatenate((before[k][:,None],extras[k][:,:-1]),axis=1)
+    event=z('m463_event')==1;repeat=z('m463_repeat')==1
+    for key in ('h4_tail_kind','h4_tail_age','h4_tick_kind','h4_tick_age',
+                'h4_tick_survived','h4_close_repeat','h4_close_terminal',
+                'h4_close_complete','h4_close_boundary'):
+        if z(key).shape!=shape or z(key).dtype!=i:
+            raise RuntimeError('FFE2_TAIL_ROW_SCHEMA '+key)
+    old_kind=prev('h4_tail_kind');old_age=prev('h4_tail_age')
+    prior=(old_kind>0)&(~boundary)
+    tick=prior&(~event)
+    age=xp.where(tick,old_age+1,0)
+    complete=tick&(age==250)
+    keep=tick&(~terminal)&(~complete)
+    kind=xp.where(event&(~terminal),xp.where(repeat,2,1),xp.where(keep,old_kind,0))
+    bad=bad|(old_kind<0)|(old_kind>2)|(old_age<0)|(old_age>=250)|((old_kind==0)&(old_age!=0))
+    for key,value in (('h4_tick_kind',xp.where(tick,old_kind,0)),('h4_tick_age',age),
+        ('h4_tick_survived',tick&(~terminal)),('h4_tail_kind',kind),
+        ('h4_tail_age',xp.where(keep,age,0)),('h4_close_repeat',prior&event),
+        ('h4_close_terminal',tick&terminal),('h4_close_complete',complete&(~terminal)),
+        ('h4_close_boundary',boundary&(old_kind>0))):
+        bad=bad|(z(key)!=value)
     return bad|labels['bad']
 
 def make_ffe2_held_source(raw):
@@ -2336,13 +2366,15 @@ def make_ffe2_held_source(raw):
          "    ffe_bad=ffe2_batch_contract(jnp,data,ffe_before,state.info,ffe_before_done,state.done,ffe2_pre,ffe2_post,ffe2_risk_labels)\n"),
         ("    ffe_abort_fn=None,\n","    ffe_abort_fn=None,\n    ffe2_chunk_fn=None,\n"),
         ("    coverage.update(ffe_reduce(jnp,ffe_extra,ffe_bad,ffe_valid))\n",
-         "    coverage.update(ffe_reduce(jnp,ffe_extra,ffe_bad,ffe_valid))\n    from m463_instrument_brax import ffe2_device_reduce\n    coverage.update(ffe2_device_reduce(jnp,ffe_extra,ffe_valid))\n"),
+         "    coverage.update(ffe_reduce(jnp,ffe_extra,ffe_bad,ffe_valid))\n    from m463_instrument_brax import ffe2_device_reduce\n    coverage.update(ffe2_device_reduce(jnp,ffe_extra,ffe_before,ffe_valid))\n"),
+        ("    reduced = jax.tree_util.tree_map(jnp.mean,metrics)\n    for k,v in metrics.items():\n      if k.startswith('ffe_'):\n        reduced[k] = jnp.sum(v,axis=0)\n",
+         "    reduced = jax.tree_util.tree_map(jnp.mean,{k:v for k,v in metrics.items() if not k.startswith('ffe2_')})\n    for k,v in metrics.items():\n      if k.startswith('ffe_'):\n        reduced[k] = jnp.sum(v,axis=0)\n"),
         ("    metrics = reduced\n    metrics['ffe_chunk_failed']",
-         "    reduced['ffe2_rows']=jnp.sum(metrics['ffe2_rows'],axis=0,dtype=jnp.int32)\n    reduced['ffe2_hist']=jnp.sum(metrics['ffe2_hist'],axis=0,dtype=jnp.int32)\n    reduced['ffe2_lanes']=jnp.bitwise_or.reduce(metrics['ffe2_lanes'],axis=0)\n    metrics = reduced\n    metrics['ffe_chunk_failed']"),
+         "    reduced['ffe2_rows']=jnp.sum(metrics['ffe2_rows'],axis=0,dtype=jnp.int32)\n    reduced['ffe2_hist']=jnp.sum(metrics['ffe2_hist'],axis=0,dtype=jnp.int32)\n    reduced['ffe2_lanes']=jnp.bitwise_or.reduce(metrics['ffe2_lanes'],axis=0)\n    reduced['ffe2_shadow_last']=jnp.max(metrics['ffe2_shadow_last'],axis=0)\n    metrics = reduced\n    metrics['ffe_chunk_failed']"),
         ("      metrics = jax.tree_util.tree_map(jnp.mean, metrics)\n      jax.tree_util.tree_map(lambda x: x.block_until_ready(), metrics)\n",
-         "      ffe2_chunk_payload={k:metrics.pop(k)[0] for k in ('ffe2_rows','ffe2_lanes','ffe2_hist')}\n      metrics = jax.tree_util.tree_map(jnp.mean, metrics)\n      jax.tree_util.tree_map(lambda x: x.block_until_ready(), metrics)\n"),
+         "      ffe2_chunk_payload={k:metrics.pop(k)[0] for k in ('ffe2_rows','ffe2_lanes','ffe2_hist','ffe2_shadow_last')}\n      metrics = jax.tree_util.tree_map(jnp.mean, metrics)\n      jax.tree_util.tree_map(lambda x: x.block_until_ready(), metrics)\n"),
         ("      h4x_audit_fn('chunk_after', index=idx+1, carry=carry, metrics=metrics)\n",
-         "      if not callable(ffe2_chunk_fn):\n        raise RuntimeError('FFE2_CHUNK_CALLBACK_HOLD')\n      ffe2_chunk_fn(idx+1,ffe2_chunk_payload)\n      h4x_audit_fn('chunk_after', index=idx+1, carry=carry, metrics=metrics)\n"))
+         "      if not callable(ffe2_chunk_fn):\n        raise RuntimeError('FFE2_CHUNK_CALLBACK_HOLD')\n      ffe2_chunk_fn(idx+1,ffe2_chunk_payload,carry[1])\n      h4x_audit_fn('chunk_after', index=idx+1, carry=carry, metrics=metrics)\n"))
     s=base
     for a,b in patches:s=h4c_once(s,a,b)
     back=s
@@ -2359,13 +2391,28 @@ def make_ffe2_held_source(raw):
 FFE2_DEVICE_FLAGS=FFE2_RISK_FLAGS+(
     'first_shadow_eligible','first_extended_eligible','first_shadow_event',
     'first_extended_event','repeat_shadow_eligible','repeat_extended_eligible',
-    'repeat_shadow_event','repeat_extended_event')
-FFE2_HIST_SIZES=(128,256,11,8,7,7,7,7)
+    'repeat_shadow_event','repeat_extended_event')+tuple(
+    f'{stage}_predicate_{i}_{kind}'
+    for stage,n in (('first',7),('repeat',8))
+    for i in range(n) for kind in ('pass','fail','funnel'))+tuple(
+    f'repeat_gap_{i}' for i in range(30,41))+tuple(
+    f'repeat_mode_cost_{i}' for i in range(8))+tuple(
+    f'{stage}_close_{name}' for stage in ('first','repeat')
+    for name in ('early','terminal','refresh','incoherent','boundary','nominal'))+tuple(
+    f'tail_{kind}_{age}_{what}' for kind in (1,2)
+    for age in (1,10,25,50,100,250) for what in ('executed','survived','same'))+tuple(
+    f'tail_{kind}_{what}' for kind in (1,2) for what in
+    ('ticks','joint_excess','ctrl_excess','force_excess','foot_foot',
+     'close_repeat','close_terminal','close_complete','close_boundary',
+     'refresh','pre_mode0','pre_mode1','pre_mode2','pre_mode3',
+     'pre_mode3_cost_high','pre_geometry_valid','event_terminal','event_open','successor_geometry'))+tuple(
+    f'first_nonopened_{reason}' for reason in ('any','terminal','refresh','incoherent'))
+FFE2_HIST_SIZES=(128,256,11,8,7,7,7,7)+(16,3,48,5)*2
 
-def ffe2_device_reduce(xp,extras,valid):
+def ffe2_device_reduce(xp,extras,before,valid):
     """Single rollout candidate, JAX-compatible integer sums and packed OR.
     Invalid rollout yields zero scientific counters; abort handled separately.
-    Stage-specific pre/post canonical reasons only; full tail contract pending.
+    Tail windows use native tick accounting; pre-geometry is observed on valid same-episode tail rows.
     """
     y=lambda k:extras['ffe2_'+k]
     x=lambda k:extras['ffe_'+k]
@@ -2374,29 +2421,108 @@ def ffe2_device_reduce(xp,extras,valid):
         for window in ('shadow','extended'):
             for what in ('eligible','event'):
                 flags[stage+'_'+window+'_'+what]=flags[stage+'_'+window]&flags[stage+'_'+what]
-    rows=[];lanes=[];hist=[]
-    for b in range(4):
-        for j in range(4):
-            group=(x('after_band')==b)&(x('after_cell')==j)&valid
-            masks=[group&flags[k] for k in FFE2_DEVICE_FLAGS]
-            rows.append(xp.stack([xp.sum(m,dtype=xp.int32) for m in masks]))
-            lanes.append(xp.stack([xp.packbits(xp.any(m,axis=1).astype(xp.uint8),
-                                               bitorder='little') for m in masks]))
-            fields=((y('first_mask'),128,flags['first_risk']),
-                    (y('repeat_mask'),256,flags['repeat_risk']),
-                    (y('gap')-30,11,flags['repeat_risk']),
-                    (y('mode_cost'),8,flags['repeat_risk']&(y('mode_cost')>=0)),
-                    (y('pre_reason'),7,flags['first_miss']),
-                    (y('post_reason'),7,flags['first_miss']),
-                    (y('pre_reason'),7,flags['repeat_miss']),
-                    (y('post_reason'),7,flags['repeat_miss']))
-            parts=[]
-            for v,n,mask in fields:
-                use=group&mask
-                # Use bin n for excluded rows, then discard it. Static shape.
-                idx=xp.where(use,v,n).reshape(-1)
-                parts.append(xp.bincount(idx,length=n+1)[:n].astype(xp.int32))
-            hist.append(xp.concatenate(parts))
-    return dict(ffe2_rows=xp.stack(rows),ffe2_lanes=xp.stack(lanes),
-                ffe2_hist=xp.stack(hist))
+    z=lambda k:extras[k]
+    for stage,n in (('first',7),('repeat',8)):
+        risk=flags[stage+'_risk'];mask=y(stage+'_mask')
+        for i in range(n):
+            passed=(mask&(1<<i))==0
+            flags[f'{stage}_predicate_{i}_pass']=risk&passed
+            flags[f'{stage}_predicate_{i}_fail']=risk&(~passed)
+            flags[f'{stage}_predicate_{i}_funnel']=risk&((mask&((1<<(i+1))-1))==0)
+        miss=flags[stage+'_miss']
+        for name,m in (
+            ('early',~risk),('terminal',y('terminal')==1),
+            ('refresh',y('refresh')==1),
+            ('incoherent',(x('pre_coherent')==0)|(y('post_coherent')==0)),
+            ('boundary',z('h4_boundary')==1),('nominal',z('m463_no_push')==1)):
+            flags[stage+'_close_'+name]=miss&m
+    for i in range(30,41):flags[f'repeat_gap_{i}']=flags['repeat_risk']&(y('gap')==i)
+    for i in range(8):flags[f'repeat_mode_cost_{i}']=flags['repeat_risk']&(y('mode_cost')==i)
+    nonopened=flags['first_event']&(~flags['repeat_opened'])
+    flags['first_nonopened_any']=nonopened
+    flags['first_nonopened_terminal']=nonopened&(y('terminal')==1)
+    flags['first_nonopened_refresh']=nonopened&(y('refresh')==1)
+    flags['first_nonopened_incoherent']=nonopened&(y('post_coherent')==0)
+    def prev(key):return xp.concatenate((before[key][:,None],z(key)[:,:-1]),axis=1)
+    prior_kind=prev('h4_tail_kind')
+    prior_stratum=prev('ffe_tail_stratum')
+    extra_hist=[]
+    for kind in (1,2):
+        prefix=f'tail_{kind}_'
+        tick=(x('tick_stratum')==2)&(z('h4_tick_kind')==kind)
+        prior=(prior_stratum==2)&(prior_kind==kind)
+        event=flags['first_event' if kind==1 else 'repeat_event']
+        flags[prefix+'event_terminal']=event&(y('terminal')==1)
+        flags[prefix+'event_open']=event&(y('terminal')==0)
+        flags[prefix+'ticks']=tick
+        for age in (1,10,25,50,100,250):
+            w=tick&(z('h4_tick_age')==age)
+            flags[prefix+str(age)+'_executed']=w
+            flags[prefix+str(age)+'_survived']=w&(z('h4_tick_survived')==1)
+            flags[prefix+str(age)+'_same']=w&(x('tick_same')==1)
+        for name in ('joint_excess','ctrl_excess','force_excess','foot_foot'):
+            flags[prefix+name]=tick&(x(name)==1)
+        for name in ('close_repeat','close_terminal','close_complete','close_boundary'):
+            flags[prefix+name]=prior&(z('h4_'+name)==1)
+        flags[prefix+'refresh']=tick&(y('refresh')==1)
+        geo=tick&(x('geometry_valid')==1)
+        flags[prefix+'pre_geometry_valid']=geo
+        for mode in range(4):flags[prefix+f'pre_mode{mode}']=geo&(x('mode')==mode)
+        flags[prefix+'pre_mode3_cost_high']=geo&(x('mode')==3)&(x('cost')>=xp.asarray(.5,xp.float32))
+        successor=geo&(prev('ffe_geometry_valid')==1)&(prev('ffe_tick_stratum')==2)&(prev('h4_tick_kind')==kind)&(z('h4_tick_age')==prev('h4_tick_age')+1)
+        flags[prefix+'successor_geometry']=successor
+        transition=4*prev('ffe_mode')+x('mode')
+        trend=(x('cost')>prev('ffe_cost')).astype(xp.int32)*2+(x('cost')==prev('ffe_cost')).astype(xp.int32)
+        windows=(1,10,25,50,100,250);wi=xp.full_like(x('mode'),-1)
+        for j,w in enumerate(windows):wi=xp.where(z('h4_tick_age')==w,j,wi)
+        mc=2*x('mode')+(x('cost')>=xp.asarray(.5,xp.float32)).astype(xp.int32)
+        cb=xp.minimum((4*x('cost')).astype(xp.int32),4)
+        extra_hist.extend(((transition,16,successor),(trend,3,successor),(8*wi+mc,48,geo&(wi>=0)),(cb,5,geo)))
+    def group_reduce(index):
+        b=index//4;j=index%4
+        group=(x('after_band')==b)&(x('after_cell')==j)&valid
+        masks=[group&flags[k] for k in FFE2_DEVICE_FLAGS]
+        rows=xp.stack([xp.sum(m,dtype=xp.int32) for m in masks])
+        lanes=xp.stack([xp.packbits(xp.any(m,axis=1).astype(xp.uint8),
+                                    bitorder='little') for m in masks])
+        fields=((y('first_mask'),128,flags['first_risk']),
+                (y('repeat_mask'),256,flags['repeat_risk']),
+                (y('gap')-30,11,flags['repeat_risk']),
+                (y('mode_cost'),8,flags['repeat_risk']&(y('mode_cost')>=0)),
+                (y('pre_reason'),7,flags['first_miss']),
+                (y('post_reason'),7,flags['first_miss']),
+                (y('pre_reason'),7,flags['repeat_miss']),
+                (y('post_reason'),7,flags['repeat_miss']))+tuple(extra_hist)
+        parts=[]
+        for v,n,mask in fields:
+            use=group&mask
+            # Use bin n for excluded rows, then discard it. Static shape.
+            idx=xp.where(use,v,n).reshape(-1)
+            parts.append((xp.bincount(idx,minlength=n+1) if xp.__name__=='numpy' else xp.bincount(idx,length=n+1))[:n].astype(xp.int32))
+        return rows,lanes,xp.concatenate(parts)
+    if xp.__name__=='numpy':
+        group_data=[group_reduce(i) for i in range(16)]
+        rows,lanes,hist=(xp.stack(v) for v in zip(*group_data))
+    else:
+        # Sequential bounded map over groups, not sixteen unrolled graphs.
+        import jax
+        rows,lanes,hist=jax.lax.map(group_reduce,xp.arange(16,dtype=xp.int32))
+    last=xp.stack([xp.max(xp.where(flags[stage+'_shadow']&valid,
+                        x('before_k'),-1),axis=1).astype(xp.int32)
+                   for stage in ('first','repeat')])
+    return dict(ffe2_rows=rows,ffe2_lanes=lanes,
+                ffe2_hist=hist,ffe2_shadow_last=last)
 # H4FFE2_DEVICE_LEDGER_HELD_END
+
+# H4FFE2_INTEGRATED_GENERATOR_HELD_BEGIN
+def make_ffe2_integrated_source(raw):
+    """Provenance-bound candidate; trainer guard retains unconditional HOLD."""
+    base,original=make_ffe2_held_source(raw)
+    hold="  raise RuntimeError('M470_FFE2_GENERATED_EXECUTION_HOLD')\n"
+    guard="  from m463_push_ppo_train import h4ffe2_generated_guard\n  h4ffe2_generated_guard(h4x_audit_fn, __file__, environment, m470_resume_state_path)\n  if not callable(ffe_abort_fn) or not callable(ffe2_chunk_fn):\n    raise RuntimeError('M470_FFE2_CALLBACK_HOLD')\n"
+    s=h4c_once(base,hold,guard)
+    if h4c_once(s,guard,hold)!=base:
+        raise RuntimeError('FFE2_INTEGRATION_PROJECTION')
+    compile(s,'<FFE2 integrated candidate>','exec')
+    return s,original
+# H4FFE2_INTEGRATED_GENERATOR_HELD_END

@@ -329,3 +329,6 @@ Each link includes the section until the next heading; ranges are retrieval aids
 
 ## H4-M20-1 continuation
 - [Held environment/generator/chunk candidate and blockers](ACTIVE_EXPERIMENT.md#h4-m20-1-continuation--held-environmentgeneratorchunk-wiring-candidate-2026-11-27); base [36cb15f09d2b4459427797132b68e3aec309d805](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/36cb15f09d2b4459427797132b68e3aec309d805). Source-only, no static or empirical receipt.
+
+## H4-M20-1 end-to-end held source candidate
+- [Exact source blobs, schema arithmetic, fixture preparation and remaining acceptance blockers](ACTIVE_EXPERIMENT.md#h4-m20-1-continuation--end-to-end-held-source-candidate-and-host-static-preparation-2026-11-27); base [df38dbca54599f49eb6e1654ed2bfa718cbca932](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/df38dbca54599f49eb6e1654ed2bfa718cbca932). Source-only, no static/empirical receipt.

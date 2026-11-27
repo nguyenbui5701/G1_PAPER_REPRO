@@ -15,3 +15,6 @@ Owner full held GO; three isolated source blocks added, no executable dispatch o
 
 ## 2026-11-27 — H4-M20-1 continuation (governance v2.0.0 unchanged)
 V2 opt-in environment and held generator, device chunk aggregation and host chunk replay drafted; full integration remains incomplete. No fixture execution, runtime authorization or scientific gate change. Base 36cb15f09d2b4459427797132b68e3aec309d805.
+
+## 2026-11-27 — H4-M20-1 end-to-end held source candidate (governance v2.0.0 unchanged)
+Expanded device risk/tail ledger, isolated worker/supervisor, strict reader/terminal receipt and host-only static fixtures authored. No full integration acceptance, no fixture execution/resource admission, hard runtime HOLD. Frozen controls/evidence unchanged. Base df38dbca54599f49eb6e1654ed2bfa718cbca932.

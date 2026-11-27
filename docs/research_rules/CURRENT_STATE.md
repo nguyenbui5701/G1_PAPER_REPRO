@@ -3,6 +3,8 @@
 Governance v2.0.0 — 2026-11-27 — documentation only. Historical research state pinned to a2a1056075f4a41e9f05115b30e2a50144b34154.
 
 ## Current decision
+**H4-M20-1 continuation — END-TO-END HELD SOURCE CANDIDATE DRAFTED / NOT FULL INTEGRATION PASS / STATIC AND RUNTIME HOLD.** Expanded ledger, worker/supervisor/restore, provisional-to-checked persistence, strict readers/terminal receipt and host-only static fixture candidates authored. No local execution or resource admission. Hard incomplete execution HOLD retained. Review candidate before separate bounded host-static authorization; no H4-M20-2 PASS/runtime GO. Base df38dbca54599f49eb6e1654ed2bfa718cbca932.
+
 **H4-M20-1 continuation — HELD ENVIRONMENT/GENERATOR/CHUNK WIRING CANDIDATE / FULL INTEGRATION NOT COMPLETE / STATIC AND RUNTIME HOLD.** V2 opt-in environment, shadow carry and label replay, held generated source/device aggregation, host chunk validation/replay drafted. No full worker/reader/supervisor or static execution. Next continue same task; no H4-M20-2. Base 36cb15f09d2b4459427797132b68e3aec309d805.
 
 **H4-M20-1 — PARTIAL HELD SOURCE / FULL INTEGRATION NOT COMPLETE / STATIC AND RUNTIME HOLD.** Owner full held GO received; isolated pure scheduler, reference ledger and projection/merge helpers added. At previous partial receipt no production wiring; see latest continuation above; no static/runtime execution. Next continue same H4-M20-1, no H4-M20-2. Base 8d7bcbe30e949d6f99694f096861b7e810cd958b.
