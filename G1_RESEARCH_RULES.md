@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.291  
+**Version:** 1.2.292  
 **Ngày cập nhật:** 2026-11-27 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -3950,6 +3950,23 @@ raise SystemExit(0 if ok else 1)
 # H4FFE_DEV_OWNER_LAUNCHER_END
 ```
 
+
+### H4-M19-1A — Owner FFE controlled DEV full static receipt review (v1.2.292; 2026-11-27)
+
+SA reviewed exact Rules v1.2.291 at verified experiment HEAD `d3a002d20799d96c009035d450aa8d7254f3fb94`, Rules blob6487127d8a9f08fae41b7d08edfdc92d67c48be4, AGENTS and evaluator blob7efb74e89a141f768ca2b41f5bf3408b0079fea4. Independently rehashed uploaded 714-byte Owner receipt `m463_runs/m470_h4ffe_dev_static_20261127_161348_lCiAly.log`:
+
+- static SHA256 d534897f8fb2be700da53af07e62b58dc0f67a0d393ed5a3d99628083793a211
+- receipt source SHA256 29d6f41b2dcb8f65397a51c948120ca0eefdffa583979d03cd1c8fc1102b4273
+- receipt provenance SHA256 0371f76e0c7a1b04e7142d0519c58d475edf29aee47a7bf752b3bca0f51d7f03
+- launcher SHA256 929424d0b522140059aa368adeb98c21a8d59b429dde82ab68677c8118ce931e (independently recomputed from exact remote embedded launcher, MATCH).
+
+Exact footer H4FFE_DEV_FULL_STATIC_PASS / STATIC_EXIT_CODE=0 TEE_EXIT_CODE=0. Fixture fields match source: archive clone NO_GO (M12 host fixture only, not FFE native result), secondary identity true, marker negatives5, reader negatives13, training exposure negatives2, disposition fixtures3, partial positive1/negative3, launcher negative1, byte projection and step graph true, CLI HOLD5, physical/reset/optimizer/inference all zero. By the source path to PASS, Owner static completed strict historical FFE report-reader replay, all ten training artifact pins, original training static/source projection and archive checks; SA did not independently execute those local checks or rehash local binaries. Remote source hashes rechecked for six accessible files: evaluator d9d081c2157d0018b4e214e7894fbee8cd6bb924375b03aa5da7f62fd6dbd324; environment92fd3d9d3f545b1cb7aa0c5b8749291568fc4ee0b96fcfe17020ab835ba612e4; instrument1bc8b5e21a838da9e188ca560f5e5eab1f3bbcaab28a4075da09bf57c4916861; trainer131ea656eb1a0cade852692a0cabfea13bc5508e4a6632e08b62f215d3ae1429; paper_config db3a6c7189bbd6d952d06e9b13a46929be8a79203510b18e12d8ddd53065c887; train.py83e4371a29d96998461b7f5791e08b37bf3647e29c0212d873c6496ce07ed771. GitHub returned 404 for m462_ppo_warmstart_run.py, m462_typed_orbax_stage.py and paper_config_preflight.json; complete nine-file aggregate and host/external provenance are Owner static receipt evidence only, not independently SA-recomputed. Require exact local source/static/provenance guards before any future authorized dispatch.
+
+Decision: OWNER FULL STATIC RECEIPT ACCEPTED; held integration static gate complete on Owner evidence. Historical training terminal supervisor receipt remains NOT SUPPLIED; host reader replay is not a substitute for that terminal receipt. The limitation is separately reviewed and remains immutable in the evaluation disposition. Existing-policy controlled DEV remains decision-relevant to distinguish a curriculum-only policy's observed recovery/safety from its failed material exposure, with no inference of both-loaded learning. Scientific efficacy UNTESTED; FFE EXPOSURE_INCONCLUSIVE and NO_PROMOTE immutable. No need to repeat static for unchanged source/launcher/inputs. No runtime marker or authorization: general request to continue review is not distinct explicit runtime GO.
+
+Next only: H4-M19-2 one-use candidate-only controlled DEV after explicit Owner GO acknowledging the historical receipt limitation and exact local pins; reuse existing bounded supervisor and strict readers, fixed namespace, 12 groups/60 logical/max44808 physical/12 resets, archived CTRL primary/M12 descriptive, frozen +2/8 standing double survival AND recovery5 and nominal/moving/safety gates. Preserve 5400s watchdog, 16MiB log, 128MiB report, sampled VRAM/storage, exclusive log/output, CUDA; v1.2.287 no GPU occupancy gate or interactive prompt. No rerun CTRL/M12, no PPO, no standalone diagnostic, no retry, no holdout/promotion, no executable changes. Branch A ACTIVE/B HOLD. Rules-only update; rollback by reviewed revert, not force/reset.
+
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -4211,6 +4228,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-27)
+
+**H4-M19-1A — FFE controlled DEV static receipt (v1.2.292)**: OWNER FULL STATIC PASS ACCEPTED; exact log d534897f, source29d6f41b/provenance0371f76e Owner receipt, independently matched launcher929424d0. Three local source files unavailable remotely; exact local guards mandatory. Historical training supervisor receipt limitation reviewed and retained; EXPOSURE_INCONCLUSIVE/NO_PROMOTE immutable, efficacy UNTESTED. Next H4-M19-2 distinct explicit Owner GO only; no runtime marker. A ACTIVE/B HOLD.
 
 **H4-M19-1 — FFE existing policy controlled DEV (v1.2.291)**: HELD source candidate, exact local full static pending, conditional historical training terminal receipt explicitly retained; strict local host training replay required. 12/60/44808/12 candidate-only, no CTRL/M12 rerun, immutable exposure/NO_PROMOTE, scientific efficacy UNTESTED, no runtime marker. Branch A ACTIVE/B HOLD.
 
@@ -5147,6 +5166,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-27 | H4-M19-1A FFE controlled DEV static review | Exact Owner log d534897f; launcher independently MATCH; static fixtures and zero native activity; remote aggregate verification limited | OWNER STATIC ACCEPTED / distinct runtime GO pending / NO_PROMOTE | 1.2.292 |
+
 | 2026-11-27 | H4-M19-1 FFE controlled DEV held integration | Reversible evaluator mode, strict provenance and receipt limitation, bounded supervisor, focused static | HELD SOURCE / OWNER STATIC PENDING / no runtime | 1.2.291 |
 
 | 2026-11-27 | H4-M19-0 eligibility bottleneck offline review | First144/1022; single25/77 vs both5/67; expiry predicate unresolved; prospective window and risk-set ledger | OFFLINE COMPLETE / V2 HELD / separate existing-policy DEV decision / no runtime | 1.2.290 |
@@ -5791,6 +5812,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.292 — 2026-11-27:** Accept exact FFE DEV Owner static receipt, independently match embedded launcher, disclose remote source verification limits and preserve historical training receipt limitation; no executable change, runtime authorization or active marker; distinct Owner GO required. Branch B HOLD.
 
 - **v1.2.291 — 2026-11-27:** Integrate held existing FFE policy candidate-only evaluator, preserve historical receipt limitation and exposure/NO_PROMOTE, frozen archived comparators/gates, Owner exact static pending; no runtime, Branch B HOLD.
 
