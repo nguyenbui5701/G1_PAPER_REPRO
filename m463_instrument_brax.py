@@ -1724,3 +1724,213 @@ def make_r11_integrated_source(raw):
     return s,original
 
 # H4R11_GENERATOR_END
+
+# H4R12_GENERATOR_BEGIN
+R12_INTS=('bad','before_active','after_active','before_age','after_age','before_side','after_side',
+      'before_kind','after_kind','open','close','close_reason','scored','support_mode',
+      'coherent','terminal','timeout','event_side','joint_excess','ctrl_excess','force_excess','foot_foot')
+R12_FLOATS=('native','cost','desired','delivered','delta')
+R12_FIELDS=tuple('r12_'+k for k in R12_INTS+R12_FLOATS)
+R12_CARRY=('active','age','side','kind')
+R12_SOURCE_FLAGS=('m463_event','m463_repeat','m463_no_push','h4_boundary','h4_class','h4_motion',
+              'h4_actor_motion','m463_direction','h4_refresh','h4_changed','h4_bad','h4_source_terminal','truncation')
+
+
+def r12_batch_contract(xp,reward,discount,extras,before,after):
+    """Actual Transition.reward (unscaled); return invalid row mask before SGD.
+    Exact expected state, reward and conservation; no tolerance on row reward.
+    The 0/1 source truncation rule follows M12's <640 cap.
+    """
+    shape=(8192,32); f=xp.float32; i=xp.int32
+    if reward.shape!=shape or reward.dtype!=f or discount.shape!=shape or discount.dtype!=f:
+        raise RuntimeError('R12_BATCH_SCHEMA')
+    for k in R12_INTS+R12_FLOATS:
+        a=extras['r12_'+k]
+        if a.shape!=shape or a.dtype!=(i if k in R12_INTS else f):raise RuntimeError('R12_FIELD_SCHEMA '+k)
+    for k in R12_SOURCE_FLAGS:
+        a=extras[k]
+        if a.shape!=shape:raise RuntimeError('R12_SOURCE_SCHEMA '+k)
+    x=lambda k:extras['r12_'+k]; z=lambda k:extras[k]
+    bad=(x('bad')!=0)|(z('h4_bad')!=0)|(z('truncation')!=0)|(~xp.isfinite(reward))
+    binaries=('bad','before_active','after_active','open','close','scored','coherent','terminal','timeout','joint_excess','ctrl_excess','force_excess','foot_foot')
+    for k in binaries:bad=bad|((x(k)!=0)&(x(k)!=1))
+    for k in ('m463_event','m463_repeat','m463_no_push','h4_boundary','h4_refresh','h4_changed','h4_source_terminal'):
+        bad=bad|((z(k)!=0)&(z(k)!=1))
+    bad=bad|((discount!=0)&(discount!=1))|((z('h4_class')!=0)&(z('h4_class')!=1))
+    for k in R12_FLOATS:bad=bad|(~xp.isfinite(x(k)))
+    was=x('before_active')==1; now=x('after_active')==1; age=x('before_age')+1
+    event=z('m463_event')==1; repeat=z('m463_repeat')==1; boundary=z('h4_boundary')==1
+    terminal=x('terminal')==1; timeout=x('timeout')==1; coherent=x('coherent')==1
+    nominal=(z('m463_no_push')==1)|(z('h4_class')==0)
+    moving=(z('h4_motion')!=0)|(z('h4_actor_motion')!=0)
+    bad=bad|((z('m463_no_push')==1)!=(z('h4_class')==0))|(repeat&(~event))|(event&nominal)
+    bad=bad|(terminal!=(discount==0))|((z('h4_source_terminal')==1)&(~terminal))
+    bad=bad|(coherent&(moving|nominal|(z('h4_refresh')==1)|(z('h4_changed')==1)))
+    allow=coherent&(~boundary)&(~terminal)&(~timeout)&(~nominal)&(~moving)
+    opened=event&allow; scored=was&(~event)&allow&(age<=100); keep=scored&(age<100); closed=was&(~keep)
+    want_now=opened|keep
+    want_age=xp.where(keep,age,0)
+    want_reason=xp.where(closed,xp.where(boundary,2,xp.where(terminal,3,xp.where(timeout,4,xp.where(event,1,xp.where(~allow,5,7))))),0)
+    # Event side is native push direction: 1..6, with zero meaning no event.
+    bad=bad|xp.where(event,(x('event_side')<1)|(x('event_side')>6)|(x('event_side')!=z('m463_direction')+1),x('event_side')!=0)
+    want_side=xp.where(opened,x('event_side'),xp.where(keep,x('before_side'),0))
+    want_kind=xp.where(opened,xp.where(repeat,2,1),xp.where(keep,x('before_kind'),0))
+    for k,want in (('open',opened),('scored',scored),('close',closed),('after_active',want_now),('after_age',want_age),('close_reason',want_reason),('after_side',want_side),('after_kind',want_kind)):
+        bad=bad|(x(k)!=want)
+    bad=bad|xp.where(was,(x('before_age')<0)|(x('before_age')>=100)|(x('before_side')<1)|(x('before_side')>6)|(x('before_kind')<1)|(x('before_kind')>2),(x('before_age')!=0)|(x('before_side')!=0)|(x('before_kind')!=0))
+    bad=bad|((x('support_mode')<0)|(x('support_mode')>3))|(x('cost')<0)|(x('cost')>1)|((x('support_mode')==0)&(x('cost')!=1))
+    desired=xp.where(scored,-xp.asarray(.04,f)*xp.asarray(.02,f)*x('cost'),xp.asarray(0.,f))
+    expected=xp.where(desired<0,x('native')+desired,x('native'))
+    def exact(a,b):return (a==b)&(xp.signbit(a)==xp.signbit(b))
+    bad=bad|(~exact(x('desired'),desired))|(~exact(x('delivered'),expected))|(~exact(reward,expected))|(x('delta')!=reward-x('native'))|(x('delta')>0)
+    for k in R12_CARRY:
+        initial=before['r12_'+k]; last=after['r12_'+k]
+        if initial.shape!=(8192,) or last.shape!=(8192,) or initial.dtype!=i or last.dtype!=i:raise RuntimeError('R12_CARRY_SCHEMA '+k)
+        pre=xp.concatenate((initial[:,None],x('after_'+k)[:,:-1]),axis=1)
+        bad=bad|(x('before_'+k)!=pre)|(x('after_'+k)[:,-1:]!=last[:,None])
+    return bad
+
+
+def r12_reduce(xp,reward,extras,bad,valid):
+    """Scalar per-rollout metrics; consumed only if globally accepted pre-SGD."""
+    x=lambda k:extras['r12_'+k]; count=lambda a:xp.sum(a.astype(xp.float32)); out={}
+    scored=x('scored')==1; desired=x('desired')<0; consumed=(x('delta')<0)&valid
+    op=x('open')==1; cl=x('close')==1; z=lambda k:extras[k]
+    for k in ('open','close','scored'):out[k]=count(x(k)==1)
+    out.update(bad_rows=count(bad),collected=xp.asarray(1.,xp.float32),batch_rejected=(~valid).astype(xp.float32),batch_committed=valid.astype(xp.float32),nonzero_desired=count(desired),nonzero_consumed=count(consumed))
+    for mode in range(4):
+        m=x('support_mode')==mode
+        out['scored_mode_'+str(mode)]=count(scored&m);out['consumed_mode_'+str(mode)]=count(consumed&m)
+    for side in range(1,7):
+        out['open_side_'+str(side)]=count(op&(x('event_side')==side))
+        out['scored_side_'+str(side)]=count(scored&(x('before_side')==side))
+    for kind in (1,2):
+        out['open_kind_'+str(kind)]=count(op&(x('after_kind')==kind))
+        out['scored_kind_'+str(kind)]=count(scored&(x('before_kind')==kind))
+        for age in (1,10,25,50,100):out[f'tail_{kind}_{age}']=count(scored&(x('before_kind')==kind)&(x('before_age')+1==age))
+    for reason in range(1,8):out['close_reason_'+str(reason)]=count(cl&(x('close_reason')==reason))
+    nominal=z('h4_class')==0;moving=(z('h4_motion')!=0)|(z('h4_actor_motion')!=0)
+    out['nominal_nonzero']=count(consumed&nominal);out['moving_nonzero']=count(consumed&moving)
+    prior=x('before_active')==1
+    for k in ('joint_excess','ctrl_excess','force_excess','foot_foot'):
+        out['recovery_'+k]=count(prior&(x(k)==1));out['nominal_'+k]=count(nominal&(x(k)==1))
+    out['recovery_foot_foot_terminal']=count(prior&(x('foot_foot')==1)&(x('terminal')==1))
+    out['native_sum']=xp.sum(x('native'));out['native_abs_sum']=xp.sum(xp.abs(x('native')))
+    out['desired_base_abs_sum']=xp.sum(xp.where(desired,xp.abs(x('native')),0.))
+    out['desired_sum']=xp.sum(x('desired'));out['delivered_delta']=xp.sum(x('delta'))
+    out['consumed_delta']=xp.where(valid,xp.sum(reward-x('native')),0.)
+    out['consumed_reward']=xp.where(valid,xp.sum(reward),0.)
+    out['consumed_reward_abs_sum']=xp.where(valid,xp.sum(xp.abs(reward)),0.)
+    return {'r12_'+k:v for k,v in out.items()}
+
+
+# Host-side checker: no native imports, no optimizer. All sums are unscaled.
+R12_SUMS=('native_sum','native_abs_sum','desired_base_abs_sum','desired_sum','delivered_delta','consumed_delta','consumed_reward','consumed_reward_abs_sum')
+
+def r12_check_chunk(c,before,after):
+    import math
+    def req(ok,msg):
+        if not ok:raise RuntimeError('R12_CHUNK_'+msg)
+    expected=set(R12_SUMS)|{'open','close','scored','bad_rows','collected','batch_rejected','batch_committed','nonzero_desired','nonzero_consumed','nominal_nonzero','moving_nonzero','recovery_foot_foot_terminal'}
+    for prefix,ids in (('scored_mode_',range(4)),('consumed_mode_',range(4)),('open_side_',range(1,7)),('scored_side_',range(1,7)),('open_kind_',range(1,3)),('scored_kind_',range(1,3)),('close_reason_',range(1,8))):
+        expected.update(prefix+str(i) for i in ids)
+    expected.update(f'tail_{k}_{a}' for k in (1,2) for a in (1,10,25,50,100))
+    expected.update(p+k for p in ('recovery_','nominal_') for k in ('joint_excess','ctrl_excess','force_excess','foot_foot'))
+    req(set(c)==expected,'KEYS')
+    for k,v in c.items():
+        req(type(v) in (int,float) and math.isfinite(v),'FINITE '+k)
+        if k not in R12_SUMS:req(v>=0 and v==int(v) and v<=1310720,'COUNT '+k)
+    req(c['collected']==c['batch_committed']==5 and c['batch_rejected']==c['bad_rows']==0,'BATCH')
+    req(type(before) is int and type(after) is int and 0<=before<=8192 and 0<=after<=8192 and before+c['open']-c['close']==after,'WINDOW')
+    for key,groups in [('open',('open_side_',range(1,7))),('open',('open_kind_',range(1,3))),('scored',('scored_mode_',range(4))),('scored',('scored_side_',range(1,7))),('scored',('scored_kind_',range(1,3))),('close',('close_reason_',range(1,8))),('nonzero_consumed',('consumed_mode_',range(4)))]:
+        prefix,ids=groups;req(c[key]==sum(c[prefix+str(i)] for i in ids),'PARTITION '+prefix)
+    req(c['nonzero_consumed']<=c['nonzero_desired']<=c['scored']<=100*(before+c['open']),'DOSE')
+    req(c['nominal_nonzero']==c['moving_nonzero']==c['close_reason_6']==c['close_reason_4']==0,'FORBIDDEN')
+    for m in range(4):req(c['consumed_mode_'+str(m)]<=c['scored_mode_'+str(m)],'MODE')
+    n=c['native_sum'];na=c['native_abs_sum'];ba=c['desired_base_abs_sum'];d=c['desired_sum'];a=c['consumed_delta'];t=c['consumed_reward'];ta=c['consumed_reward_abs_sum']
+    req(min(na,ba,ta)>=0 and max(d,a,c['delivered_delta'])<=0,'SIGN')
+    req(abs(n)<=na+1e-5*max(1.,na) and abs(t)<=ta+1e-5*max(1.,ta) and ba<=na+1e-5*max(1.,na),'ABS')
+    req(-d<=.0008*c['nonzero_desired']*(1+1e-6),'DESIRED_BOUND')
+    req(abs(a-d)<=2e-6*(ba+abs(d)+1) and abs(a-c['delivered_delta'])<=1e-6*(abs(a)+1) and abs(t-n-a)<=5e-6*(na+ta+abs(a)+1),'CONSERVATION')
+    req(c['nonzero_desired']!=0 or d==a==0,'ZERO_DESIRED')
+    req((c['nonzero_consumed']==0)==(a==0),'ZERO_CONSUMED')
+    return True
+
+
+def r12_exposure_replay(rows,nominal):
+    if len(rows)!=4 or type(nominal) is not int or not 0<=nominal<=5242880:raise RuntimeError('R12_REPLAY_SCHEMA')
+    pending=0
+    for i,row in enumerate(rows,1):
+        if row['index']!=i or row['before']!=pending or row['passed'] is not True:raise RuntimeError('R12_REPLAY_ORDER')
+        r12_check_chunk(row['metrics'],pending,row['after']);pending=row['after']
+    t={k:sum(row['metrics'][k] for row in rows) for k in rows[0]['metrics']}
+    if t['open']-t['close']!=pending or t['collected']!=20:raise RuntimeError('R12_REPLAY_CONSERVATION')
+    half=[sum(row['metrics']['nonzero_consumed'] for row in rows[i:i+2]) for i in (0,2)]
+    checks=dict(total=t['nonzero_consumed']>=10000,first_half=half[0]>=1000,second_half=half[1]>=1000,
+                left=t['consumed_mode_1']>0,right=t['consumed_mode_2']>0,both=t['consumed_mode_3']>0,
+                nominal=5*nominal>=4*1145928)
+    return dict(decision='EXPOSURE_PASS' if all(checks.values()) else 'EXPOSURE_INCONCLUSIVE',checks=checks,totals=t,halves=half,pending_at_host_reset=pending,nominal=nominal)
+
+R12_GUARD='''    from m463_instrument_brax import r12_batch_contract,r12_reduce
+    r12_extra=data.extras['state_extras']
+    r12_bad=r12_batch_contract(jnp,data.reward,data.discount,r12_extra,r12_before,state.info)
+    r12_valid=~jnp.any(r12_bad)
+    for r12_leaf in jax.tree_util.tree_leaves((data,training_state,state)):
+      r12_valid=r12_valid & jnp.all(jnp.isfinite(r12_leaf))
+    r12_valid=jax.lax.pmin(r12_valid.astype(jnp.int32),_PMAP_AXIS_NAME)==1
+    def r12_update(_):
+      norm=running_statistics.update(training_state.normalizer_params,
+          _remove_pixels(data.observation),pmap_axis_name=_PMAP_AXIS_NAME)
+      (opt,par,_),met=jax.lax.scan(
+          functools.partial(sgd_step,data=data,normalizer_params=norm),
+          (training_state.optimizer_state,training_state.params,key_sgd),(),
+          length=num_updates_per_batch)
+      return opt,par,norm,met
+    def r12_reject(_):
+      meta=jax.eval_shape(r12_update,None)[3]
+      met=jax.tree_util.tree_map(lambda x:jnp.zeros(x.shape,x.dtype),meta)
+      return training_state.optimizer_state,training_state.params,training_state.normalizer_params,met
+    optimizer_state,params,normalizer_params,metrics=jax.lax.cond(r12_valid,r12_update,r12_reject,None)
+'''
+
+def make_r12_held_source(raw):
+    """EDIT-FIRST held generator. Requires existing pinned M12 generator.
+    Generated train unconditionally raises HOLD.
+    """
+    base,original=make_h4m12_integrated_source(raw)
+    if sha256(base.encode('utf8'))!='7f9abc070e38bc287ae1948a3f55ee625d457d0abed6fe99bebf5fdf2ed9c37a':
+        raise RuntimeError('R12_M12_GENERATOR_PIN')
+    fmt=lambda fields:"extra_fields=('truncation', "+', '.join(repr(k) for k in fields)+'),'
+    fields=EXT_FIELDS+H4_EXT_FIELDS
+    anchor='    metrics = {**metrics, **coverage, **m464_tail}\n'
+    guard="  from m463_push_ppo_train import h4m12_generated_guard\n  h4m12_generated_guard(h4x_audit_fn, __file__, environment, m470_resume_state_path)\n"
+    hold="  raise RuntimeError('R12_GENERATED_EXECUTION_HOLD')\n"
+    chunk=H4M8_CHUNK_HELD.replace('h4m8_','r12_').replace('h8_','r12_')
+    host="      h4x_audit_fn('chunk_after', index=idx+1, carry=carry, metrics=metrics)\n"
+    patches=((guard,hold),
+        ('    h4x_audit_fn: Optional[Callable[..., None]] = None,\n','    r12_abort_fn=None,\n    h4x_audit_fn: Optional[Callable[..., None]] = None,\n'),
+        (fmt(fields),fmt(fields+R12_FIELDS)),
+        ('    training_state, state, key = carry\n',"    training_state, state, key = carry\n    r12_before={k:state.info[k] for k in ('r12_active','r12_age','r12_side','r12_kind')}\n"),
+        (H4M8_UPDATE_BLOCK.replace('data=learning_data','data=data'),R12_GUARD),
+        ('        env_steps=training_state.env_steps + env_step_per_training_step,\n','        env_steps=jax.lax.cond(r12_valid,lambda _:training_state.env_steps+env_step_per_training_step,lambda _:training_state.env_steps,None),\n'),
+        (anchor,"    coverage.update(r12_reduce(jnp,data.reward,r12_extra,r12_bad,r12_valid))\n"+anchor),
+        (H4M8_CHUNK_OLD,chunk),
+        (host,"      if float(metrics['r12_chunk_failed']) != 0.:\n        if r12_abort_fn is not None:\n          r12_abort_fn(idx+1,carry,metrics)\n        raise RuntimeError('R12_PRE_SGD_OR_FINITE_STOP')\n"+host))
+    s=base
+    for a,b in patches:s=h4c_once(s,a,b)
+    back=s
+    for a,b in reversed(patches):back=h4c_once(back,b,a)
+    if back!=base or s.count(hold)!=1:raise RuntimeError('R12_GENERATOR_REVERSE_OR_HOLD')
+    compile(s,'<R12 held generated>','exec')
+    return s,original
+
+def make_r12_integrated_source(raw):
+    base,original=make_r12_held_source(raw)
+    hold="  raise RuntimeError('R12_GENERATED_EXECUTION_HOLD')\n"
+    guard="  from m463_push_ppo_train import h4m12_generated_guard\n  h4m12_generated_guard(h4x_audit_fn, __file__, environment, m470_resume_state_path, r12=True)\n  if not callable(r12_abort_fn):\n    raise RuntimeError('M470_R12_ABORT_CALLBACK')\n"
+    s=h4c_once(base,hold,guard)
+    if h4c_once(s,guard,hold)!=base:raise RuntimeError('R12_GENERATOR_INTEGRATION_PROJECTION')
+    compile(s,'<R12 integrated generated>','exec')
+    return s,original
+
+# H4R12_GENERATOR_END

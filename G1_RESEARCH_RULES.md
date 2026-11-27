@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.271  
+**Version:** 1.2.272  
 **Ngày cập nhật:** 2026-11-27 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -3459,6 +3459,14 @@ New external held drafts (not repository executable changes): signed R12 pre-SGD
 
 Separate external wiring draft SHA2560d0f2ccaa3a07d32ef85fe18f05d9d89b2e350e70e7d573e67c4fc6c6fe7a8fa: native pre/post anchors reuse r11_sample, distinct r12 state/reset schema, original range metadata and native foot-foot criterion, proposed generator with exact M12 generated source hash, reverse patches, unconditional generated runtime HOLD, finite/pre-SGD conditional optimizer+normalizer return, failed-chunk latch and abort callback. Actual Python compile of draft PASS, host adapter schema/reset/100 ticks/first/repeat/terminal/range flags PASS. Actual generated Brax source not built or compiled: pinned Brax/MuJoCo absent in SA container and direct repository git access unavailable; connector read/write available. Draft generator and native adapters not installed; exact source projections, trainer typed restore/namespace/auth/provenance/parent-child guards, strict final reader and actual full static remain incomplete. No assertion of technical or scientific PASS, no full static receipt/command. Zero native transitions/reset/inference/SGD. Preserve R12 design and all 24 original terms, original M12 scheduler/optimizer/physics/observation/action, R11 OFF, future budget unallocated, failure-focused curriculum separate HELD. NEXT finish the existing three-file integration and reverse projections, actual pinned source verification and full held static only; no new experiment or standalone diagnostic, no PPO/holdout/promotion, B HOLD.
 
+### H4-M16-1 — R12-DCR-V1 held source integration candidate / Owner full static pending (v1.2.272; 2026-11-27)
+
+Owner directed continued implementation under existing held scope. SA verified exact branch HEAD fcb6b5a294adbd50e74ed7bbb726bd8b7847b3cf and Rules1.2.271 blob8b98aa7bbe6bfd7776a6efee43a060bdd1180762, no active marker, reviewed original three source files and frozen v1.2.269 design/AGENTS. No new runner/file. EDIT-FIRST changes exactly three existing files: env blobad0d9651acee6a338f603d141485361da1ed3fe3 (r12 opt-in exclusive, r11_sample before injection/after original super.step before AutoReset, fixed hull and cost, latch/range/collision extras); instrumenter blob967d9d35c15b178b8ec5abc67b1cfe78f4ab293e (actual Transition row contract, signed reducer, generated held and authorized variants, pre-SGD conditional optimizer/normalizer and sticky failed chunk); trainer blob6dc6fe75870fd9dc424fec896f51443c74fdde13 (new mode in shared M12 bootstrap/worker/typed restore/supervisor/reader, distinct exclusive m463_runs/m470_h4_m16_r12_v1, source/generated/static receipt binding, host ledger and final reset conservation, separate static CLI). Existing legacy flags OFF for R12; no altered native 24 terms, original scheduler, PPO loss/GAE/config, model/physics/PD/observation/action/RNG, Official CTRL fullstate9b19312d. No R11 stacking or failure-focused curriculum change. Archived M12 and CTRL DEV pins unchanged. Exact reverse projection in connector verified five env patches, removed generator block, 48 scoped trainer patches and removed trainer block to exact historical blobs f30242af/ dc4e30d0/505f8a71. Existing historical suites belong to their pinned commits; new R12 static projects to exact R11 bytes, then checks older environment projection. No weakening of historical pins or thresholds. Rollback only reviewed revert; do not reset/delete archived outputs.
+
+Actual SA local NumPy host rerun of the previously pinned external core/ledger drafts: 1000 random hulls, 7 edge cases, 4 support modes, 100 tick latch, 6 boundary cases, invalid/unsafe and bitwise/rounding cases PASS (worst error 7.815747182782218e-08m); synthetic 262144 row ledger, 26 negative fixtures, 4 exposure fixtures PASS, wiring draft py_compile PASS. These were draft tests, not whole-file or actual generated-source compilation. Corrected empty-extraction anchor during candidate construction before push; verified actual native pre/post and pre-SGD guard inserted and all three exact byte reverse projections. SA cannot compile whole remote candidate or generate pinned Brax here (container GitHub DNS inaccessible, Brax missing); new actual integrated adapter-to-Transition fixture, reused sampler fixture, strict completion reader fixture (1 positive/10 negatives), full source compile, actual pinned Brax held/integrated compile/reverse, archive preflight, marker negatives and CLI parent/child HOLD tests are implemented but not executed by SA. No claim full static PASS or native compatibility. Static owner receipt pending; any failure STOP, return actual log, no runtime or automatic patch/retry. Native transition/reset/inference/optimizer counts0 by SA. Preserve all accepted historical evidence.
+
+Frozen future budget remains5242880 training/800 optimizer/2000 diagnostic eval, 20 rollouts/4 chunks, original seed1 fullstate reset-edge and all native/safety gates. Exposure total>=10000 actual nonzero, >=1000 each half, left/right/both support nonzero, report none, nominal>=80% archived M12 1145928 and original minimum nominal/coverage gates. No budget allocated. Only next Owner action: exact local held static via pinned g1_m463 -B -u m463_push_ppo_train.py --h4r12-static --checkpoint m430_seed1/checkpoint_pilot_20261114_120515_1722937_step_401080320.msgpack --restore-report m462_runs/typed_restore_20261120_162901.json --reward-report m463_runs/m470_h3_m1_2_independent_10M_20261124_183319_225465810/report.json. Return full log with both producer and tee exit footer; require static receipt review before any distinct explicit runtime GO. No active marker. No standalone diagnostic, PPO runtime, holdout, promotion or new treatment. Branch A active, Branch B HOLD.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -3720,6 +3728,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-26)
+
+**H4-M16-1 R12-DCR-V1 HELD SOURCE INTEGRATION CANDIDATE / OWNER FULL STATIC PENDING (v1.2.272):** three existing executable files, exact R11 reverse projections (5 env/48 trainer + blocks), actual draft host reruns PASS, new integrated static fixtures and pinned full static not yet executed. Distinct namespace/source receipt/typed restore/reader path, no active marker, native0, Branch B HOLD.
 
 **H4-M16-1 CONTINUATION SIGNED LEDGER/ADAPTER HOST DRAFT PASS / FULL HELD INTEGRATION INCOMPLETE (v1.2.271):** synthetic262144 rows/26 negatives/4 exposure fixtures; host adapter schema/reset/100 ticks/first/repeat/terminal/range PASS; generator draft compile only, pinned actual generated source not built, trainer/projections/strict reader incomplete. Rules-only commit, no executable edits, no active GO, zero native or SGD, B HOLD.
 
@@ -4615,6 +4625,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-27 | H4-M16-1 held source integration candidate | three source blobs, reverse projections exact, draft host rerun PASS, actual integrated static pending | HELD SOURCE CANDIDATE / Owner full static pending / zero native | 1.2.272 |
+
 | 2026-11-27 | H4-M16-1 signed ledger/wiring continuation | 262144 synthetic rows / 26 negatives / 4 exposure cases, adapter host PASS | HOST DRAFT PASS / full held integration incomplete / zero native | 1.2.271 |
 
 | 2026-11-27 | H4-M16-1 partial held host core | 1000 reference hulls / 7 edge cases / latch and delivered delta host fixtures; repo executable unchanged | HOST DRAFT PASS / FULL INTEGRATION BLOCKED / zero native | 1.2.270 |
@@ -5219,6 +5231,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.272 — 2026-11-27:** Integrate R12 held source in existing environment/instrumenter/trainer with exact reverse projections and distinct M12-based continuation/reader/static paths; record actual draft host rerun and pending Owner full static. No active runtime marker, no native work, Branch B HOLD.
 
 - **v1.2.271 — 2026-11-27:** Record tested R12 signed row/aggregate ledger and adapter drafts, explicit synthetic-only limits and incomplete actual generated source/trainer integration. Rules-only, no runtime or full static acceptance. Branch B HOLD.
 

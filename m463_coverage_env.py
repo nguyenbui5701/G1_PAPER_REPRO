@@ -539,6 +539,123 @@ def r11_transition(xp, old, pre, post, *, event, boundary, coherent, terminal, n
 
 # H4R11_CORE_END
 
+# H4R12_CORE_BEGIN
+R12_INTS=('bad','before_active','after_active','before_age','after_age','before_side','after_side',
+      'before_kind','after_kind','open','close','close_reason','scored','support_mode',
+      'coherent','terminal','timeout','event_side','joint_excess','ctrl_excess','force_excess','foot_foot')
+R12_FLOATS=('native','cost','desired','delivered','delta')
+R12_FIELDS=tuple('r12_'+k for k in R12_INTS+R12_FLOATS)
+R12_CARRY=('active','age','side','kind')
+R12_SOURCE_FLAGS=('m463_event','m463_repeat','m463_no_push','h4_boundary','h4_class','h4_motion',
+              'h4_actor_motion','m463_direction','h4_refresh','h4_changed','h4_bad','h4_source_terminal','truncation')
+
+
+R12_PAIRS = tuple((i,j) for i in range(8) for j in range(i+1,8))
+
+
+def r12_hull_distance(xp, xi, rects):
+    f=xp.float32
+    signs=xp.asarray([[-1,-1],[-1,1],[1,-1],[1,1]],f)
+    corners=(rects[:,None,:2]+(signs[None,:,:]*rects[:,None,6:]) @ rects[:,2:6].reshape((2,2,2))).reshape((8,2))
+    pairs=xp.asarray(R12_PAIRS,xp.int32)
+    a,b=corners[pairs[:,0]],corners[pairs[:,1]]
+    e=b-a
+    length2=xp.sum(e*e,axis=1)
+    tol=xp.asarray(1e-6,f)
+    nd=length2>xp.asarray(1e-12,f)
+    diff=corners[None,:,:]-a[:,None,:]
+    cross=e[:,None,0]*diff[:,:,1]-e[:,None,1]*diff[:,:,0]
+    pos=xp.all(cross>=-tol,axis=1)
+    neg=xp.all(cross<=tol,axis=1)
+    # Reject all-collinear pairs, for which neither orientation is unique.
+    support=nd & (pos ^ neg)
+    q=xi-a
+    side=e[:,0]*q[:,1]-e[:,1]*q[:,0]
+    inside=xp.all((~support)|xp.where(pos,side>=-tol,side<=tol))
+    t=xp.clip(xp.sum(q*e,axis=1)/xp.where(nd,length2,xp.ones_like(length2)),0.,1.)
+    d=xp.linalg.norm(q-t[:,None]*e,axis=1)
+    dmin=xp.min(xp.where(support,d,xp.asarray(float('inf'),f)))
+    # Require nondegenerate, finite hull. A single edge cannot enclose area.
+    good=(xp.sum(support.astype(xp.int32))>=3)&xp.all(xp.isfinite(corners))&xp.all(xp.isfinite(xi))&xp.all(xp.isfinite(cross))&xp.all(xp.isfinite(d))&xp.isfinite(dmin)
+    dist=xp.where(inside,xp.asarray(0.,f),dmin)
+    good=good&xp.isfinite(dist)&(dist>=0)
+    return dist.astype(f),good
+
+
+def r12_cost(xp, sample):
+    loads,rects,xi,speed,safe,valid=sample
+    f=xp.float32
+    loaded=loads>=xp.asarray(.05,f)
+    mode=loaded[0].astype(xp.int32)+2*loaded[1].astype(xp.int32)
+    hull,hull_ok=r12_hull_distance(xp,xi,rects)
+    dl=r11_distance(xp,xi,rects[0]);dr=r11_distance(xp,xi,rects[1])
+    distance=xp.where(mode==3,hull,xp.where(mode==1,dl,xp.where(mode==2,dr,xp.asarray(0.,f))))
+    good=valid&((mode!=3)|hull_ok)&xp.isfinite(distance)&(distance>=0)
+    # Stable D^2/(D^2+.1^2); no invalid division when D=0.
+    ref=xp.asarray(.10,f);scale=xp.maximum(distance,ref)
+    a=distance/scale;b=ref/scale
+    cost=xp.where(mode==0,xp.asarray(1.,f),a*a/(a*a+b*b)).astype(f)
+    good=good&xp.isfinite(cost)&(cost>=0)&(cost<=1)
+    return cost,mode,good
+
+
+def r12_latch(xp, was, old_age, pre, post, *, event, boundary, coherent, terminal, truncated, nominal, native):
+    # Actual event and coherence flags supplied by the native step.
+    f=xp.float32
+    cost,mode,good=r12_cost(xp,post)
+    valid=pre[-1]&good&xp.isfinite(native)&((~was)|( (old_age>=0)&(old_age<100)))
+    allowed=valid&coherent&(~boundary)&(~terminal)&(~truncated)&(~nominal)
+    age=old_age+1
+    active=was&(~event)&allowed&(age<=100)
+    start=event&allowed
+    keep=active&(age<100)
+    closed=was&(~keep)
+    next_active=start|keep
+    next_age=xp.where(keep,age,0).astype(xp.int32)
+    desired=xp.where(active,-xp.asarray(.04,f)*xp.asarray(.02,f)*cost,xp.asarray(0.,f)).astype(f)
+    delivered=xp.where(desired<0,native+desired,native).astype(f)
+    delta=(delivered-native).astype(f)
+    bad=(~valid)|(~xp.isfinite(delivered))|(~xp.isfinite(delta))|(delta>0)
+    # 1 repeat, 2 reset, 3 terminal, 4 truncation, 5 coherence/nominal, 6 invalid, 7 expiry.
+    reason=xp.where(closed,xp.where(~valid,6,xp.where(boundary,2,xp.where(terminal,3,xp.where(truncated,4,xp.where(event,1,xp.where((~coherent)|nominal,5,7)))))),0).astype(xp.int32)
+    return dict(active=next_active,age=next_age,open=start,close=closed,close_reason=reason,
+                scored=active,support_mode=mode,cost=cost,native=native,desired=desired,
+                delivered=delivered,delta=delta,bad=bad),delivered
+
+def r12_init(xp):
+    d={f'r12_{k}':xp.asarray(0,xp.int32) for k in R12_INTS+R12_CARRY}
+    d.update({f'r12_{k}':xp.asarray(0.,xp.float32) for k in R12_FLOATS})
+    return d
+
+
+def r12_env_transition(xp,old,pre,post,*,event,repeat,direction,boundary,coherent,terminal,timeout,nominal,native,joint_excess,ctrl_excess,force_excess,foot_foot):
+    """After original super.step; no physics/forward/inference calls."""
+    x=lambda k:old['r12_'+k]
+    z,reward=r12_latch(xp,x('active')==1,x('age'),pre,post,event=event,boundary=boundary,coherent=coherent,terminal=terminal,truncated=timeout,nominal=nominal,native=native)
+    out=r12_init(xp)
+    op=z['open'];keep=z['active']&(~op)
+    event_side=xp.where(event,direction+1,0)
+    side=xp.where(op,event_side,xp.where(keep,x('side'),0))
+    kind=xp.where(op,xp.where(repeat,2,1),xp.where(keep,x('kind'),0))
+    values=dict(active=z['active'],age=z['age'],side=side,kind=kind,before_active=x('active'),before_age=x('age'),before_side=x('side'),before_kind=x('kind'),after_active=z['active'],after_age=z['age'],after_side=side,after_kind=kind,open=op,close=z['close'],close_reason=z['close_reason'],scored=z['scored'],support_mode=z['support_mode'],coherent=coherent,terminal=terminal,timeout=timeout,event_side=event_side,joint_excess=joint_excess,ctrl_excess=ctrl_excess,force_excess=force_excess,foot_foot=foot_foot,bad=z['bad'])
+    out.update({f'r12_{k}':xp.asarray(v,xp.int32) for k,v in values.items()})
+    out.update({f'r12_{k}':xp.asarray(z[k],xp.float32) for k in R12_FLOATS})
+    return out,reward
+
+
+def r12_range_flags(xp,m,d):
+    # Same 29 fields/ranges as r11_sample; r11_sample separately validates
+    # finite values, range metadata and index mapping. No new safety penalty.
+    flags=[]
+    for values,ranges,limited in (
+        (d.qpos[7:],xp.asarray(m.jnt_range)[1:],xp.asarray(m.jnt_limited)[1:]),
+        (d.ctrl,xp.asarray(m.actuator_ctrlrange),xp.asarray(m.actuator_ctrllimited)),
+        (d.actuator_force,xp.asarray(m.actuator_forcerange),xp.asarray(m.actuator_forcelimited))):
+        flags.append(xp.any((limited!=0)&((values<ranges[:,0])|(values>ranges[:,1]))))
+    return tuple(flags)
+
+# H4R12_CORE_END
+
 class CoverageJoystick(joystick.Joystick):
     """JAX-compatible source G1 subclass, independent of pinned checkout.
 
@@ -547,7 +664,7 @@ class CoverageJoystick(joystick.Joystick):
     boundary for re-sampling push targets and counters.  Tracking `age` also
     supports a direct/unwrapped one-env diagnostic.
     """
-    def __init__(self, *, stage: str, config, task='flat_terrain', h1_m1=False, h1_m2=False, h3_m1=False, h4_arm=None, h4cc_arm=None, h4m6_arm=None, h4m6_tech_capture=False, h4m8_common=False, h4red=False, r11=False):
+    def __init__(self, *, stage: str, config, task='flat_terrain', h1_m1=False, h1_m2=False, h3_m1=False, h4_arm=None, h4cc_arm=None, h4m6_arm=None, h4m6_tech_capture=False, h4m8_common=False, h4red=False, r11=False, r12=False):
         if stage not in STAGES:
             raise ValueError('M463_BAD_STAGE')
         if bool(config.push_config.enable):
@@ -597,6 +714,9 @@ class CoverageJoystick(joystick.Joystick):
             raise ValueError('M470_H4RED_ENV_CONTRACT')
         if type(r11) is not bool or (r11 and (stage!='easy_repeat_support' or h4_arm!='control' or h4red or h1_m1 or h1_m2 or h3_m1 or h4cc_arm is not None or h4m6_arm is not None or h4m6_tech_capture or h4m8_common)):
             raise ValueError('M470_R11_ENV_CONTRACT')
+        if type(r12) is not bool or (r12 and (stage!='easy_repeat_support' or h4_arm!='control' or r11 or h4red or h1_m1 or h1_m2 or h3_m1 or h4cc_arm is not None or h4m6_arm is not None or h4m6_tech_capture or h4m8_common)):
+            raise ValueError('M470_R12_ENV_CONTRACT')
+        self._r12 = r12
         self._r11 = r11
         self._h4red = h4red
         self._h4m8_common = h4m8_common
@@ -766,6 +886,8 @@ class CoverageJoystick(joystick.Joystick):
             info.update({'h4m8_'+k:jp.asarray(0.,jp.float32) for k in H4M8_FLOAT_FIELDS})
         if self._r11:
             info.update(r11_init(jp))
+        if self._r12:
+            info.update(r12_init(jp))
         return state.replace(info=info)
 
     def step(self, state, action):
@@ -914,6 +1036,11 @@ class CoverageJoystick(joystick.Joystick):
             r11_old={k:info[k] for k in r11_init(jp)}
             r11_coherent=(jp.all(pre_command==0)&jp.all(state.obs['state'][9:12]==pre_command)&jp.all(state.obs['privileged_state'][9:12]==pre_command)&(pre_source_step<500)&(~disabled))
             r11_timeout=info['steps']>=int(self._config.episode_length)-1
+        if self._r12:
+            r12_pre=r11_sample(jp,self.mjx_model,state.data,self._feet_geom_id,self._floor_geom_id)
+            r12_old={k:info[k] for k in r12_init(jp)}
+            r12_coherent=(jp.all(pre_command==0)&jp.all(state.obs['state'][9:12]==pre_command)&jp.all(state.obs['privileged_state'][9:12]==pre_command)&(pre_source_step<500)&(~disabled))
+            r12_timeout=info['steps']>=int(self._config.episode_length)-1
         updated_qvel = state.data.qvel.at[:2].add(world_delta)
         if self._h4_arm is not None:
             h4_actual_delta = updated_qvel[:2] - state.data.qvel[:2]
@@ -1155,6 +1282,14 @@ class CoverageJoystick(joystick.Joystick):
             r11_post=r11_sample(jp,self.mjx_model,after.data,self._feet_geom_id,self._floor_geom_id)
             coherent=r11_coherent&jp.all(out['command']==pre_command)&jp.all(after.obs['state'][9:12]==pre_command)&jp.all(after.obs['privileged_state'][9:12]==pre_command)
             extra,reward=r11_transition(jp,r11_old,r11_pre,r11_post,event=event,boundary=boundary,coherent=coherent,terminal=(after.done>0)|r11_timeout,native=after.reward)
+            out.update(extra)
+            after=after.replace(reward=reward)
+        if self._r12:
+            r12_post=r11_sample(jp,self.mjx_model,after.data,self._feet_geom_id,self._floor_geom_id)
+            coherent=r12_coherent&jp.all(out['command']==pre_command)&jp.all(after.obs['state'][9:12]==pre_command)&jp.all(after.obs['privileged_state'][9:12]==pre_command)
+            joint,ctrl,force=r12_range_flags(jp,self.mjx_model,after.data)
+            foot_foot=geoms_colliding(after.data,self._right_foot_geom_id,self._left_foot_geom_id)
+            extra,reward=r12_env_transition(jp,r12_old,r12_pre,r12_post,event=event,repeat=repeat,direction=direction,boundary=boundary,coherent=coherent,terminal=after.done>0,timeout=r12_timeout,nominal=disabled,native=after.reward,joint_excess=joint,ctrl_excess=ctrl,force_excess=force,foot_foot=foot_foot)
             out.update(extra)
             after=after.replace(reward=reward)
         return after.replace(info=out)
