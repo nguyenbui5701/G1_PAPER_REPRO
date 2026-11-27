@@ -1,6 +1,6 @@
 # G1 RESEARCH RULES — PPO Push Robustness → Fall Recovery → Get-Up → Resume
 
-**Version:** 1.2.287  
+**Version:** 1.2.288  
 **Ngày cập nhật:** 2026-11-27 (Asia/Ho_Chi_Minh)  
 **Trạng thái:** ACTIVE — tài liệu điều hành bắt buộc cho các task tiếp theo  
 **Repository:** `https://github.com/nguyenbui5701/G1_PAPER_REPRO`  
@@ -3767,6 +3767,14 @@ Owner reported repeated false blocking by Chrome PID798707, C+G, 163MiB, then sh
 
 Under v1.2.286 pre-reservation STOP counted as an attempt; close old H4FFE active marker conservatively. Owner log indicates no supervisor dispatch in this shell; local namespace and zero native execution are not independently verified. No automatic rearm, retry or new runtime GO in this Rules-only update. A separate explicit Owner GO can authorize a new invocation after confirming unused namespace and exact unchanged provenance, without idle-GPU gate or interactive UNUSED prompt. Technical/exposure/efficacy remain untested for this attempt; no promotion.
 
+### H4-M18-2B — Corrected one-use FFE-V1 Owner launch (v1.2.288; 2026-11-27)
+
+Owner's subsequent explicit request to provide one corrected training command without GPU occupancy blocking is accepted as a new conditional one-use runtime GO for the same frozen FFE supervisor. Prior authorization remains historical/closed; no prior supervisor dispatch established from supplied shell STOP, and no local namespace inspection by SA. Authorization is conditional on local exclusive output absent (including symlinks), exact clean branch/HEAD, unchanged pinned executable blobs and all original static/core/checkpoint hashes before invocation. No deletion or rearming if any output exists. Remote source blob pins match v1.2.286; local artifact bytes must be verified by Owner shell/supervisor. This is Rules-only; no native execution or static repetition by SA.
+
+H4FFE_ACTIVE_GO: H4-M18-FFE-V1 m463_runs/m470_h4_m18_ffe_v1 ac4f395c615ce9abe9fa7a769aac0289fe17050cf69898cc68aa2eb7632e6fad 7b256192b6e067032136fd44e18c4877f7db8a625c47910572c2076871ccc12f m463_runs/m470_h4ffe_static_20261127_143456_UPB9bF.log aec8185d6215761d116ffbd25efe50ee2cc40b0ff9a3aa56f117b8034c0ccdab
+
+Use the exact H4-M18-2 supervisor invocation and all frozen scientific/resource/report criteria. Apply v1.2.287 operational override: no GPU process occupancy queries/gates and no interactive prompts; preserve CUDA, runtime sampled VRAM/sampler, watchdog, storage and strict readers. Exactly one invocation, no retry, no --worker direct, no threshold changes, no additional runs, no promotion. Branch A ACTIVE, Branch B HOLD.
+
 ## 5. Fall / Get-up / Resume — tiêu chí bắt buộc mới
 
 **Tuyệt đối không trộn hai bài toán:** `push survival / recovery khi còn đứng` khác `tự đứng dậy từ trạng thái đã ngã`. PPO locomotion hiện tại có `termination` và auto-reset; việc học get-up đòi môi trường cho phép trạng thái sau ngã tiến triển qua nhiều bước, có dữ liệu quan sát và action hợp lệ trong các tư thế ngã.
@@ -4028,6 +4036,8 @@ PY
 **M4.70-K RULES CANONICAL FULL GPU COMMAND v1.2.4 (2026-11-22; A ONLY):** Owner requested merged rerun commands and permanent prevention notes. The already recorded v1.2.1–1.2.3 rules cover all five command mistakes. Added one **complete, runnable, read-only** pinned G1 CUDA heredoc in §7 (instead of only bootstrap plus message fragments) including all 3 local SHA checks, sibling `nvcc_compat.apply()` before JAX, JAX0.4.35/GPU validation, AST extraction from owner-local `CoverageJoystick.step`, and the full 12-case side-target/match/fallback JIT assertions; no separate script/file created. Assistant dry-tested equivalent branch logic on a reconstructed source with isolated JAX 0.9 CPU **solely to catch command construction errors**; it does not validate exact owner source or pinned CUDA runtime. **Current gate:** owner M470K_STATIC_PASS and GPU import/JIT basic PASS, 12-case actual owner `M470K_JAX_SOURCE_EXPR_PASS` still PENDING. NEXT: run canonical one-shot GPU source-expression command; after PASS do MJX physical contact/transition test and Brax telemetry reconciliation; no PPO training, C remains baseline, H not promoted, B HOLD.
 
 ## 8. CURRENT STATE — cập nhật theo bằng chứng mới nhất (2026-11-27)
+
+**H4-M18-2B CORRECTED CONDITIONAL ONE-USE GO (v1.2.288):** Owner requests corrected training command after shell STOP. Unique new active FFE marker, conditional on unused local output and exact frozen provenance; no GPU occupancy or interactive gate. Existing supervisor only, 5242880 training/800 optimizer/2000 diagnostic eval, runtime limits unchanged. No native execution by SA; technical/exposure/efficacy UNTESTED, no promotion, Branch B HOLD.
 
 **H4-M18-2A SHELL PREFLIGHT STOP / OWNER OPERATIONAL OVERRIDE (v1.2.287):** Chrome C+G false block and assistant-added case-sensitive UNUSED prompt STOP reported; no supervisor dispatch established. Old one-use marker closed under prior rule; separate explicit runtime GO required. Future Owner launch shells noninteractive, no GPU process occupancy gate; runtime VRAM/sampler/watchdog/storage/provenance/strict readers unchanged. No executable edits or native calls; Branch A ACTIVE, B HOLD.
 
@@ -4955,6 +4965,8 @@ PY
 
 ## 9. TASK LEDGER (ngắn, append-only)
 
+| 2026-11-27 | H4-M18-2B corrected FFE launch | Owner requested one corrected command; remote executable pins unchanged; local namespace/provenance pending preflight | CONDITIONAL ONE-USE GO / no GPU occupancy or interactive gate / no promotion | 1.2.288 |
+
 | 2026-11-27 | H4-M18-2A Owner shell correction | Chrome PID798707 C+G 163MiB; lowercase unused blocked; no supervisor dispatch established | RULES-ONLY / remove GPU occupancy and interactive prompt gates / old GO closed / new explicit GO required | 1.2.287 |
 
 | 2026-11-27 | H4-M18-2 FFE bounded PPO authorization | exact full static aec8185d, source ac4f395c/generated7b256192; unchanged executable blobs | ONE-USE GO / Owner execution pending / no promotion | 1.2.286 |
@@ -5591,6 +5603,8 @@ PY
 
 
 ## 10. CHANGELOG (append changes; do not rewrite history)
+
+- **v1.2.288 — 2026-11-27:** New conditional one-use FFE authorization after Owner's corrected launch request, preserving historical closure of old GO and all frozen science/resource/reader gates; no GPU occupancy or interactive prompt, no executable edits or native calls. Branch B HOLD.
 
 - **v1.2.287 — 2026-11-27:** Owner operational override: no GPU process occupancy/idle check or interactive confirmation in future launch shells; Owner manages GPU occupancy. Preserve runtime VRAM/sampler limits, CUDA, watchdog, storage, provenance, exclusive namespace and strict readers. Close old H4FFE marker after shell STOP under v1.2.286; no new runtime GO or executable changes. Branch B HOLD.
 
