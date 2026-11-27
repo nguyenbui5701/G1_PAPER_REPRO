@@ -10968,8 +10968,7 @@ def ssrpc_replay_joint_chunks(np,records,arm,*,complete):
 # SSRPC_4B_WORKER_BEGIN
 # Held integration: runtime entry fails before reservation. A separate source
 # review/full-static authorization must complete the activation contract.
-SSRPC_RUNTIME_READY=False
-SSRPC_STATIC_PREFIX='m463_runs/m470_h4_m28_ssrpc_'
+SSRPC_RUNTIME_READY=False  # Held until separate final-source review; do not toggle after static receipt.
 def ssrpc_spec(arm):
     h4m12_require(type(arm) is str and arm in SSRPC_ARM_OUTPUT,'SSRPC_ARM')
     return dict(H4M12_SPEC,id='H4-M28-SSRPC-'+arm.upper()+'-V1',arm=arm,
@@ -12253,7 +12252,11 @@ def ssrpc_marker_fixture():
                   'SSRPC_MARKER_POSITIVE')
     for value in ('',ctrl+'\n'+cand,ctrl+'\nOTHER_GO: X',ctrl.replace('ctrl','cand'),cand.replace('cand','ctrl'),ctrl+' extra'):
         ssrpc_expect_reject(lambda:ssrpc_parse_marker(value),'runtime_marker')
-    return dict(positive=2,negative=6)
+    static='H4SSRPC_STATIC_GO: '+SSRPC_STATIC_ID+' '+'d'*40
+    h4m12_require(ssrpc_static_parse_marker(static)['source_head']=='d'*40,'SSRPC_STATIC_MARKER_POSITIVE')
+    for v in ('',static+'\n'+ctrl,static+' extra',static[:-1]):
+        ssrpc_expect_reject(lambda:ssrpc_static_parse_marker(v),'static_marker')
+    return dict(positive=2,negative=6,static_positive=1,static_negative=4)
 # SSRPC_5A_FIXTURES_END
 
 # SSRPC_5A_STATIC_SUPERVISOR_BEGIN
@@ -12273,7 +12276,7 @@ def ssrpc_static_manifest():
         report_ctrl=dict(final_positive=1,final_negative=10,pending_positive=1,commit_positive=2,pending_negative=2),
         report_cand=dict(final_positive=1,final_negative=10,pending_positive=1,commit_positive=2,pending_negative=2),
         receipts=dict(json_positive=1,json_negative=6,terminal_positive=1,terminal_negative=7),
-        marker=dict(positive=2,negative=6),
+        marker=dict(positive=2,negative=6,static_positive=1,static_negative=4),
         typed=dict(positive=2,negative=5,native_calls=0,typed_mock_only=True),
         generator=dict(arms=2,invalid_arm_rejected=1,held_runtime_rejected=2))
 
@@ -12303,7 +12306,31 @@ def ssrpc_static_auth(root):
     added=[v for v in rules.splitlines(keepends=True) if v.startswith(b'H4SSRPC_STATIC_GO: ')]
     h4m12_require(len(added)==1 and rules.replace(added[0],b'',1)==prior and
         rules==git('show','HEAD:G1_RESEARCH_RULES.md'),'SSRPC_STATIC_EXACT_ADDITION')
-    return auth
+    return dict(auth,authorization_head=parents[0].decode())
+
+
+def ssrpc_static_verify_authorization_commit(root,auth):
+    """Revalidate exact historical root-only authorization, not an active grant."""
+    import re,subprocess
+    h4m12_require(type(auth) is dict and set(auth)=={'id','source_head','output','authorization_head'}
+        and all(type(v) is str for v in auth.values()) and re.fullmatch('[0-9a-f]{40}',auth['authorization_head']),
+        'SSRPC_STATIC_AUTH_SCHEMA')
+    head=auth['authorization_head']
+    git=lambda *args:subprocess.check_output(['git',*args],cwd=root)
+    parents=git('rev-list','--parents','-n','1',head).split()
+    h4m12_require(parents==[head.encode(),auth['source_head'].encode()] and
+        subprocess.run(['git','merge-base','--is-ancestor',head,'HEAD'],cwd=root).returncode==0,
+        'SSRPC_STATIC_AUTH_HISTORY')
+    h4m12_require(git('diff','--name-only',auth['source_head'],head).splitlines()==[b'G1_RESEARCH_RULES.md'],
+        'SSRPC_STATIC_AUTH_ROOT_ONLY')
+    prior=git('show',auth['source_head']+':G1_RESEARCH_RULES.md')
+    rules=git('show',head+':G1_RESEARCH_RULES.md')
+    h4m12_require(hashlib.sha1(b'blob '+str(len(prior)).encode()+b'\0'+prior).hexdigest()==
+        'e09c35a82f06a97fe5406ba36bb3fd9664913583','SSRPC_STATIC_AUTH_PRIOR')
+    marker=ssrpc_static_parse_marker(rules.decode('utf8'))
+    added=[v for v in rules.splitlines(keepends=True) if v.startswith(b'H4SSRPC_STATIC_GO: ')]
+    h4m12_require(dict(marker,authorization_head=head)==auth and len(added)==1 and
+        rules.replace(added[0],b'',1)==prior,'SSRPC_STATIC_AUTH_EXACT_ADDITION')
 
 def ssrpc_static_no_native():
     return not any(k.split('.')[0] in ('jax','jaxlib','mujoco','brax','mujoco_playground','torch','tensorflow')
@@ -12374,9 +12401,7 @@ def ssrpc_read_static(root,expected_sha,*,terminal_required=True):
     h4m12_require(not failure.exists() and not failure.is_symlink(),'SSRPC_STATIC_FAILED')
     attempt=ssrpc_read_json(out/'attempt.json',SSRPC_STATIC_REPORT_CAP)
     auth=attempt['authorization']
-    h4m12_require(type(auth) is dict and set(auth)=={'id','source_head','output'} and
-        ssrpc_static_parse_marker('H4SSRPC_STATIC_GO: '+auth['id']+' '+auth['source_head'])==auth,
-        'SSRPC_STATIC_AUTH_SCHEMA')
+    ssrpc_static_verify_authorization_commit(root,auth)
     h4m12_require(set(attempt)=={'authorization','parent_pid'} and type(attempt['parent_pid']) is int
         and attempt['parent_pid']>0,'SSRPC_STATIC_ATTEMPT')
     worker=ssrpc_read_json(out/'worker.started.json',SSRPC_STATIC_REPORT_CAP)
@@ -12394,6 +12419,8 @@ def ssrpc_read_static(root,expected_sha,*,terminal_required=True):
         log=out/'worker.log'
         h4m12_require(log.is_file() and not log.is_symlink() and 0<log.stat().st_size<=SSRPC_STATIC_LOG_CAP,
                       'SSRPC_STATIC_LOG')
+        token=b'H4SSRPC_FULL_STATIC_PASS '+expected_sha.encode()
+        h4m12_require(log.read_bytes().splitlines().count(token)==1,'SSRPC_STATIC_LOG_TOKEN')
         result=ssrpc_read_json(out/'attempt_result.json',SSRPC_STATIC_REPORT_CAP)
         expected=dict(status='COMPLETE',authorization=auth,report_sha256=expected_sha,
                       producer_rc=0,worker_log_sha256=digest(log),stored_log_bytes=log.stat().st_size)
@@ -12419,7 +12446,9 @@ def ssrpc_static_worker(root,args,auth,out):
             and source.count('ssrpc_generated_guard(')==1,'SSRPC_STATIC_GENERATOR_IDENTITY')
         compile(held,'<SSRPC held '+arm+'>','exec');compile(source,'<SSRPC integrated '+arm+'>','exec')
         src[arm]=source;generated[arm]=hashlib.sha256(source.encode('utf8')).hexdigest()
-        ssrpc_expect_reject(lambda:ssrpc_auth(root,arm),'runtime_held_'+arm)
+        try:ssrpc_auth(root,arm)
+        except RuntimeError as exc:h4m12_require('SSRPC_RUNTIME_HELD' in str(exc),'SSRPC_WRONG_HOLD_REASON')
+        else:raise RuntimeError('SSRPC_RUNTIME_OPEN')
     ssrpc_expect_reject(lambda:make_ssrpc_integrated_source(raw,'invalid'),'generator_invalid_arm')
     fixtures=dict(core=ssrpc_core_fixture(root),batch_ctrl=ssrpc_batch_fixture(root,'ctrl'),
         batch_cand=ssrpc_batch_fixture(root,'cand'),
