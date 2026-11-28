@@ -16026,6 +16026,7 @@ def ptr_r8a2_audit_factory(root,binding,jax,np,optax,serialization,safe):
         actual=dict(event=event,**row)
         if n<7:ptr_r7b_exact(actual,expected[n],'PTR_R8A2_MATCHED_PREFIX_'+event)
         rows.append(actual)
+        print('PTR_R8A2_AUDIT_ROW='+ptr_r7b_canonical(actual),flush=True)
     return audit,rows,result
 
 def ptr_r8a2_audit_reader(root,rows,report,binding,gpu):
@@ -16048,6 +16049,7 @@ def ptr_r8a2_audit_reader(root,rows,report,binding,gpu):
 PTR_R8A3_GENERATED='m463_brax_ppo_instrumented.py'
 PTR_R8A3_AUDIT='diagnostic.audit.json'
 PTR_R8A3_READER_PASS='PTR_R8A3_INDEPENDENT_READER_PASS'
+PTR_R8A3_TERMINAL_CANDIDATE='PTR_R8A3_TERMINAL_CANDIDATE'
 PTR_R8A3_BASE_FILES={'attempt.json','worker.started.json','dispatch.started.json',
     PTR_R8A3_GENERATED,'report.json',PTR_R8A3_AUDIT,'worker.log','attempt_result.json'}
 
@@ -16060,7 +16062,7 @@ def ptr_r8a3_generated_projection(raw):
         "  ptr_r8a2_generated_guard(h4x_audit_fn, __file__, environment, "
         "m470_resume_state_path, r12_abort_fn, h4_chunk_fn)\n")
     end="  raise RuntimeError('PTR_R7_DIAGNOSTIC_TERMINAL_HOLD')\n"
-    finish="  return None\n"
+    finish="  # PTR_R8A3_DIAGNOSTIC_RETURN\n  return None\n"
     projected=h4c_once(h4c_once(held,entry,guard),end,finish)
     h4m12_require(h4c_once(h4c_once(projected,finish,end),guard,entry)==held
         and not any(k in projected for k in ('gradient_update_fn(', 'running_statistics.update(',
@@ -16124,6 +16126,7 @@ def ptr_r8a3_worker(root,out,args,a,head,binding,source,pins,boot,history):
         import optax
         from flax import serialization
         from brax.envs.wrappers import training as brax_wrapper
+        from m463_coverage_env import PTRHeldCoverageJoystick
         h4m12_require(jax.__version__=='0.4.35' and jax.default_backend()=='gpu' and
             jax.process_count()==jax.local_device_count()==1,'PTR_R8A3_CUDA')
         deps=h4c_dependency_pins(api)
@@ -16168,6 +16171,8 @@ def ptr_r8a3_worker(root,out,args,a,head,binding,source,pins,boot,history):
             h4x_audit_fn=audit,h4_chunk_fn=forbidden,**cfg)
         h4m12_require(ret is None and _PTR_R8A2_CONTEXT['dispatched'] is True and
             tuple(x['event'] for x in rows)==PTR_R8A2_EVENTS and bool(result),'PTR_R8A3_RETURN')
+        # Preserve completed evidence even if a subsequent resource or provenance check stops.
+        h4x_write_json(out/'report.json',result,exclusive=True)
         safe()
     gpu=monitor.snapshot()
     h4m12_require(not monitor.thread.is_alive() and ptr_parent_evidence(root)==parent and
@@ -16175,7 +16180,6 @@ def ptr_r8a3_worker(root,out,args,a,head,binding,source,pins,boot,history):
         ssrpc_bootstrap_identity(root)==boot and ptr_r8a_historical(root)==history and
         ptr_r8a2_auth(root)==(a,head),'PTR_R8A3_FINAL_IMMUTABILITY')
     ptr_r8a2_audit_reader(root,rows,result,binding,gpu)
-    h4x_write_json(out/'report.json',result,exclusive=True)
     h4x_write_json(out/PTR_R8A3_AUDIT,dict(binding=binding,report_sha256=digest(out/'report.json'),
         bootstrap_sha256=boot,rows=rows,gpu=gpu,promotion_authorized=False),exclusive=True)
 
@@ -16185,6 +16189,37 @@ def ptr_r8a3_stage(out):
 
 def ptr_r8a3_artifact_hashes(out):
     return {name:ptr_r7b_optional_hash(out,name) for name in sorted(PTR_R8A3_BASE_FILES)}
+
+def ptr_r8a3_log_prefix(root,out,report=None,*,complete):
+    path=out/'worker.log'
+    if not path.exists() and not path.is_symlink():
+        h4m12_require(not complete,'PTR_R8A3_MISSING_LOG')
+        return []
+    h4m12_require(path.is_file() and not path.is_symlink() and
+        path.stat().st_size<=ptr_r7_spec()['log_cap_bytes'],'PTR_R8A3_LOG_PATH')
+    prefix=b'PTR_R8A2_AUDIT_ROW='
+    rows=[]
+    for line in path.read_bytes().splitlines():
+        if line.startswith(prefix):
+            value=json.loads(line[len(prefix):])
+            h4m12_require(line[len(prefix):]==ptr_r7b_canonical(value).encode(),
+                'PTR_R8A3_AUDIT_LOG_CANONICAL')
+            rows.append(value)
+    h4m12_require(len(rows)<=len(PTR_R8A2_EVENTS) and
+        tuple(x['event'] for x in rows)==PTR_R8A2_EVENTS[:len(rows)],'PTR_R8A3_LOG_ORDER')
+    n=min(len(rows),7)
+    ptr_r7b_exact(rows[:n],ptr_r8a2_expected_prefix(root)[:n],'PTR_R8A3_LOG_PREFIX')
+    if len(rows)==8:
+        import re
+        sha=rows[-1]['training_state_sha256']
+        h4m12_require(type(sha) is str and re.fullmatch('[0-9a-f]{64}',sha) is not None,
+            'PTR_R8A3_LOG_STATE_SHA')
+        ptr_r7b_exact(rows[-1],dict(event='ptr_r7_diagnostic',collected=262144,optimizer_updates=0,
+            normalizer_updates=0,evaluation=0,train_reset_lanes=16384,eval_reset_lanes=0,
+            training_state_sha256=sha),'PTR_R8A3_LOG_EDGE')
+        if report is not None:h4m12_require(sha==report['training_state_sha256_after'],'PTR_R8A3_LOG_REPORT')
+    h4m12_require(not complete or len(rows)==8,'PTR_R8A3_LOG_COMPLETE')
+    return rows
 
 def ptr_r8a3_check_payload(root,out,binding,boot,*,complete):
     ptr_r4b_output_path(out);h4m12_require(out==root/PTR_R7_OUTPUT,'PTR_R8A3_PAYLOAD_PATH')
@@ -16204,7 +16239,7 @@ def ptr_r8a3_check_payload(root,out,binding,boot,*,complete):
         (dispatch is None or hashes[PTR_R8A3_GENERATED] is not None) and
         (hashes['report.json'] is None or dispatch is not None) and
         (hashes[PTR_R8A3_AUDIT] is None or hashes['report.json'] is not None),'PTR_R8A3_STAGE_LINK')
-    evidence=None
+    evidence=report=None
     if hashes['report.json'] is not None:
         report=ssrpc_read_json(out/'report.json',H4X_SPEC['other_cap'])
         evidence=ptr_r7_check_report(report,binding)
@@ -16215,11 +16250,13 @@ def ptr_r8a3_check_payload(root,out,binding,boot,*,complete):
                 audit['report_sha256']==hashes['report.json'] and audit['bootstrap_sha256']==boot and
                 audit['promotion_authorized'] is False,'PTR_R8A3_AUDIT_LINK')
             ptr_r8a2_audit_reader(root,audit['rows'],report,binding,audit['gpu'])
+    logged=ptr_r8a3_log_prefix(root,out,report,complete=complete)
+    if hashes[PTR_R8A3_AUDIT] is not None:ptr_r7b_exact(logged,audit['rows'],'PTR_R8A3_LOG_AUDIT')
     if complete:
         h4m12_require(all(hashes[k] is not None for k in PTR_R8A3_BASE_FILES) and
             evidence is not None and dispatch is not None,'PTR_R8A3_COMPLETE_PAYLOAD')
     return dict(stage=ptr_r8a3_stage(out),worker_pid=None if worker is None else worker['worker_pid'],
-        actual_rollouts=None if evidence is None else 1,evidence=evidence)
+        actual_rollouts=None if evidence is None else 1,evidence=evidence,completed_audit_prefix=logged)
 
 def ptr_r8a3_result(out,binding,rc):
     h4m12_require(rc is None or type(rc) is int,'PTR_R8A3_RC')
@@ -16227,7 +16264,7 @@ def ptr_r8a3_result(out,binding,rc):
         status='PRODUCED' if rc==0 and ptr_r7b_optional_hash(out,PTR_R8A3_AUDIT) is not None else 'STOP',
         report_sha256=ptr_r7b_optional_hash(out,'report.json'),audit_sha256=ptr_r7b_optional_hash(out,PTR_R8A3_AUDIT))
 
-def ptr_r8a3_terminal(out,binding,boot,rc,rr,error):
+def ptr_r8a3_terminal(out,binding,boot,rc,rr,trc,error):
     attempt=ssrpc_read_json(out/'attempt.json',65536)
     worker=(ssrpc_read_json(out/'worker.started.json',65536) if
         ptr_r7b_optional_hash(out,'worker.started.json') is not None else None)
@@ -16235,25 +16272,25 @@ def ptr_r8a3_terminal(out,binding,boot,rc,rr,error):
     h4m12_require(n<=ptr_r7_spec()['log_cap_bytes'],'PTR_R8A3_LOG_CAP')
     return dict(id=PTR_R7_ID,binding=binding,bootstrap_sha256=boot,
         parent_pid=attempt['parent_pid'],worker_pid=None if worker is None else worker['worker_pid'],
-        status='COMPLETE' if error is None and rc==rr==0 else 'STOP',stage=ptr_r8a3_stage(out),
-        producer_rc=rc,reader_rc=rr,error=error,artifact_sha256=ptr_r8a3_artifact_hashes(out),
+        status='COMPLETE' if error is None and rc==rr==trc==0 else 'STOP',stage=ptr_r8a3_stage(out),
+        producer_rc=rc,reader_rc=rr,terminal_reader_rc=trc,error=error,artifact_sha256=ptr_r8a3_artifact_hashes(out),
         stored_log_bytes=n,promotion_authorized=False)
 
 def ptr_r8a3_read_terminal(root,out,binding,boot,*,complete):
     name='supervisor.terminal.json' if complete else 'supervisor.failed.json'
     other='supervisor.failed.json' if complete else 'supervisor.terminal.json'
     h4m12_require(ptr_r7b_optional_hash(out,other) is None,'PTR_R8A3_TERMINAL_CONFLICT')
-    t=ssrpc_read_json(out/name,65536);rc,rr,error=(t[k] for k in ('producer_rc','reader_rc','error'))
-    h4m12_require((rc is None or type(rc) is int) and (rr is None or type(rr) is int)
-        and (rr is None or rc==0),'PTR_R8A3_TERMINAL_RC')
-    ptr_r7b_exact(t,ptr_r8a3_terminal(out,binding,boot,rc,rr,error),'PTR_R8A3_TERMINAL_SCHEMA')
+    t=ssrpc_read_json(out/name,65536);rc,rr,trc,error=(t[k] for k in ('producer_rc','reader_rc','terminal_reader_rc','error'))
+    h4m12_require(all(v is None or type(v) is int for v in (rc,rr,trc))
+        and (rr is None or rc==0) and (trc is None or rc==rr==0),'PTR_R8A3_TERMINAL_RC')
+    ptr_r7b_exact(t,ptr_r8a3_terminal(out,binding,boot,rc,rr,trc,error),'PTR_R8A3_TERMINAL_SCHEMA')
     ptr_r7b_exact(ssrpc_read_json(out/'attempt_result.json',65536),ptr_r8a3_result(out,binding,rc),
         'PTR_R8A3_RESULT_LINK')
     entries={p.name for p in out.iterdir()}
     h4m12_require(entries<=PTR_R8A3_BASE_FILES|{name} and
         all(p.is_file() and not p.is_symlink() for p in out.iterdir()),'PTR_R8A3_INVENTORY')
     if complete:
-        h4m12_require(type(rc) is type(rr) is int and rc==rr==0 and error is None and
+        h4m12_require(type(rc) is type(rr) is type(trc) is int and rc==rr==trc==0 and error is None and
             entries==PTR_R8A3_BASE_FILES|{name} and
             (out/'worker.log').read_bytes().splitlines().count(PTR_R8A3_READER_PASS.encode())==1,
             'PTR_R8A3_TERMINAL_COMPLETE')
@@ -16272,8 +16309,8 @@ def ptr_r8a3_main(argv):
     source,pins,boot,history=ptr_r8a3_preflight(root,args,a)
     role=os.environ.get(PTR_R8A2_ROLE)
     if role is not None:
-        h4m12_require(role in ('producer','reader') and os.environ.get(PTR_R8A2_BOOT)==boot,
-            'PTR_R8A3_ROLE')
+        h4m12_require(role in ('producer','reader','terminal') and os.environ.get(PTR_R8A2_BOOT)==boot and
+            (PTR_R8A3_TERMINAL_CANDIDATE in os.environ)==(role=='terminal'),'PTR_R8A3_ROLE')
         attempt=ptr_r8a2_reservation(root,out,binding)
         h4m12_require(os.getppid()==attempt['parent_pid'],'PTR_R8A3_CHILD_PARENT')
         if role=='producer':return ptr_r8a3_worker(root,out,args,a,head,binding,source,pins,boot,history)
@@ -16282,17 +16319,31 @@ def ptr_r8a3_main(argv):
             'PTR_R8A3_READER_RESULT')
         h4m12_require(ptr_r8a2_auth(root)==(a,head) and ptr_r8a_historical(root)==history and
             ssrpc_bootstrap_identity(root)==boot and ssrpc_static_no_native(),'PTR_R8A3_READER_FINAL')
+        if role=='terminal':
+            raw=os.environ[PTR_R8A3_TERMINAL_CANDIDATE]
+            candidate=json.loads(raw)
+            h4m12_require(raw==ptr_r7b_canonical(candidate) and
+                {p.name for p in out.iterdir()}==PTR_R8A3_BASE_FILES and
+                all(p.is_file() and not p.is_symlink() for p in out.iterdir()) and
+                (out/'worker.log').read_bytes().splitlines().count(PTR_R8A3_READER_PASS.encode())==1,
+                'PTR_R8A3_TERMINAL_CANDIDATE_INVENTORY')
+            ptr_r7b_exact(candidate,ptr_r8a3_terminal(out,binding,boot,0,0,0,None),
+                'PTR_R8A3_INDEPENDENT_TERMINAL_CANDIDATE')
+            print('PTR_R8A3_INDEPENDENT_TERMINAL_CANDIDATE_PASS',flush=True);return
         print(PTR_R8A3_READER_PASS,flush=True);return
+    h4m12_require(PTR_R8A3_TERMINAL_CANDIDATE not in os.environ,'PTR_R8A3_PARENT_TERMINAL_ENV')
     out,attempt=ptr_r8a2_reserve(root,binding)
-    rc=rr=None;child=None;child_role=None;producer_pid=None;total=0
+    rc=rr=trc=None;child=None;child_role=None;producer_pid=None;total=0
     deadline=time.monotonic()+ptr_r7_spec()['watchdog_seconds']
-    def drain(log,which):
+    def drain(log,which,candidate=None):
         nonlocal child,child_role,producer_pid,total
         child_role=which
         code='import sys;import m463_push_ppo_train as t;t.ptr_r8a3_main(sys.argv[1:])'
+        env=dict(os.environ,**{PTR_R8A2_ROLE:which,PTR_R8A2_BOOT:boot})
+        if candidate is not None:env[PTR_R8A3_TERMINAL_CANDIDATE]=ptr_r7b_canonical(candidate)
         child=subprocess.Popen([sys.executable,'-B','-u','-c',code,*argv],stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,start_new_session=True,
-            env=dict(os.environ,**{PTR_R8A2_ROLE:which,PTR_R8A2_BOOT:boot}))
+            stderr=subprocess.STDOUT,start_new_session=True,env=env)
+        external=bytearray()
         if which=='producer':producer_pid=child.pid
         with selectors.DefaultSelector() as sel:
             sel.register(child.stdout,selectors.EVENT_READ)
@@ -16301,10 +16352,16 @@ def ptr_r8a3_main(argv):
                 if not sel.select(timeout=1):continue
                 data=os.read(child.stdout.fileno(),65536)
                 if not data:break
-                h4m12_require(total+len(data)<=ptr_r7_spec()['log_cap_bytes'],'PTR_R8A3_LOG_CAP')
-                log.write(data);log.flush();total+=len(data)
+                h4m12_require(total+len(external)+len(data)<=ptr_r7_spec()['log_cap_bytes'],'PTR_R8A3_LOG_CAP')
+                if log is None:external.extend(data)
+                else:log.write(data);log.flush();total+=len(data)
         value=child.wait(timeout=max(.001,deadline-time.monotonic()))
-        child.stdout.close();child=None;log.flush();os.fsync(log.fileno())
+        child.stdout.close();child=None
+        if log is None:
+            if external:print(external.decode('utf8',errors='replace'),end='',flush=True)
+            if value==0:h4m12_require(bytes(external).splitlines().count(
+                b'PTR_R8A3_INDEPENDENT_TERMINAL_CANDIDATE_PASS')==1,'PTR_R8A3_TERMINAL_READER_LOG')
+        else:log.flush();os.fsync(log.fileno())
         return value
     try:
         with (out/'worker.log').open('xb') as log:
@@ -16320,7 +16377,11 @@ def ptr_r8a3_main(argv):
         ptr_r8a3_check_payload(root,out,binding,boot,complete=True)
         h4m12_require((out/'worker.log').read_bytes().splitlines().count(PTR_R8A3_READER_PASS.encode())==1,
             'PTR_R8A3_READER_LOG')
-        ssrpc_static_write(out/'supervisor.terminal.json',ptr_r8a3_terminal(out,binding,boot,rc,rr,None))
+        candidate=ptr_r8a3_terminal(out,binding,boot,rc,rr,0,None)
+        trc=drain(None,'terminal',candidate)
+        h4m12_require(trc==0,'PTR_R8A3_TERMINAL_READER_RC')
+        ptr_r7b_exact(candidate,ptr_r8a3_terminal(out,binding,boot,rc,rr,trc,None),'PTR_R8A3_TERMINAL_UNCHANGED')
+        ssrpc_static_write(out/'supervisor.terminal.json',candidate)
         ptr_r8a3_read_terminal(root,out,binding,boot,complete=True)
     except BaseException as exc:
         if child is not None:
@@ -16330,12 +16391,13 @@ def ptr_r8a3_main(argv):
             value=child.wait()
             if child_role=='producer':rc=value
             elif child_role=='reader':rr=value
+            elif child_role=='terminal':trc=value
             if child.stdout is not None:child.stdout.close()
         if ptr_r7b_optional_hash(out,'attempt_result.json') is None:
             ssrpc_static_write(out/'attempt_result.json',ptr_r8a3_result(out,binding,rc))
         # A terminal already written is immutable; reader failure must not forge a second terminal.
         if ptr_r7b_optional_hash(out,'supervisor.terminal.json') is None:
-            ssrpc_static_write(out/'supervisor.failed.json',ptr_r8a3_terminal(out,binding,boot,rc,rr,repr(exc)[:2048]))
+            ssrpc_static_write(out/'supervisor.failed.json',ptr_r8a3_terminal(out,binding,boot,rc,rr,trc,repr(exc)[:2048]))
             try:ptr_r8a3_read_terminal(root,out,binding,boot,complete=False)
             except Exception as reader_error:print('PTR_R8A3_PARTIAL_READER_STOP',repr(reader_error)[:1024],flush=True)
         raise
