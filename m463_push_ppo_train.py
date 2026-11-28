@@ -16901,7 +16901,7 @@ def ptr_r10b_root_auth(root,marker):
         git('rev-parse','refs/remotes/origin/experiment/b1-hardware-scaled').decode().strip()==head,
         'PTR_R10B_BRANCH')
     raw=rp.read_bytes();prefix=(marker+': ').encode()
-    lines=re.findall(rb'(?m)^[A-Z0-9_]+_GO:.*,raw)
+    lines=re.findall(rb'(?m)^[A-Z0-9_]+_GO:.*$',raw)
     h4m12_require(len(lines)==1 and lines[0].startswith(prefix),'PTR_R10B_MARKER')
     a=json.loads(lines[0][len(prefix):])
     parents=git('rev-list','--parents','-n','1',head).decode().split()
