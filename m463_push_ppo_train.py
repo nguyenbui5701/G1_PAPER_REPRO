@@ -15670,6 +15670,142 @@ def ptr_r7b_static_held(argv):
         ssrpc_static_write(out/'supervisor.failed.json',ptr_r7b_terminal_payload(out,attempt,rc,rr,repr(exc)[:2048]))
         raise
 
+
+# H4M29_R8A_NATIVE_HELD_BEGIN
+# R8A draft: historical admission and typed state witness only. No dispatcher.
+PTR_R8A_STATIC_HEAD='34f54a686871b4e290095b109dc32cca7eae9599'
+PTR_R8A_STATIC_SOURCE='1f04b17638f3a3748dee58217d161b519ebc2239'
+PTR_R8A_CLOSURE='929c57164aeda6ab3d494347b7a5bb2535aa48b6'
+PTR_R8A_BASE_SHA='bec6c44d82947a87db83f57667450afec1a13a79f0a2a84094cedced1508c2e6'
+PTR_R8A_BASE_TRAINER='c1c94593b47ca39755a1cc9f7251d01a2ed2c8a04c84758403f1f6d60491cb9c'
+PTR_R8A_STATIC_PINS={
+    'attempt.json':'91b2fd89d412acaf7cacd0c498f41c4634f15c9452c5c38f34363ebef2d52004',
+    'worker.started.json':'5f828fc56a4b4a44813bda7fe646b196d31dcf13a5496da778d34c8923a41926',
+    'worker.log':'53ea7292d37982822d1f9651c578ecbef4c4c354bfd9192edd4f39b8effbeac5',
+    'report.json':'f5d0931cd4bda2f97a42f5343fb44add6b3f948f3d2f439c00eb82d66db81b97',
+    'attempt_result.json':'1c9159bb0f052bcfdbace7cfe1562a2f6ceb7999b8dba53298665b6226fd48f5',
+    'supervisor.terminal.json':'07078a821e0062ca597b7ba1b19258d8d888bb6dbfc4cd2945be7f32115e5b01'}
+PTR_R8A_STATIC_BOOT='afd9a7f1f1cc82040267b9099112b3fbb015e401ecc8677db1f03ccbfdf9d7c1'
+
+def ptr_r8a_reverse(raw):
+    first=b'\n# H4M29_R8A_NATIVE_HELD_'+b'BEGIN\n'
+    last=b'# H4M29_R8A_NATIVE_HELD_'+b'END\n'
+    h4m12_require(raw.count(first)==raw.count(last)==1 and raw.index(first)<raw.index(last),'PTR_R8A_REVERSE')
+    old=raw[:raw.index(first)]+raw[raw.index(last)+len(last):]
+    h4m12_require(hashlib.sha256(old).hexdigest()==PTR_R8A_BASE_TRAINER,'PTR_R8A_BASE_TRAINER')
+    return old
+
+def ptr_r8a_project_sources(root):
+    import subprocess
+    root=Path(root).resolve()
+    git=lambda *a:subprocess.check_output(['git',*a],cwd=root,timeout=30)
+    pins={}
+    for name in PTR_SOURCE_NAMES:
+        p=root/name
+        h4m12_require(p.is_file() and not p.is_symlink(),'PTR_R8A_SOURCE_PATH')
+        raw=p.read_bytes()
+        projected=ptr_r8a_reverse(raw) if name=='m463_push_ppo_train.py' else raw
+        old=git('show',PTR_R8A_STATIC_SOURCE+':'+name)
+        h4m12_require(raw==git('show','HEAD:'+name) and projected==old
+            and old==git('show',PTR_R8A_STATIC_HEAD+':'+name)
+            and old==git('show',PTR_R8A_CLOSURE+':'+name),'PTR_R8A_SOURCE_'+name)
+        pins[name]=hashlib.sha256(old).hexdigest()
+    h4m12_require(hashlib.sha256(ptr_r7b_canonical(pins).encode()).hexdigest()==PTR_R8A_BASE_SHA,'PTR_R8A_BASE_AGGREGATE')
+    ptr_r7b_project(root)
+    return pins
+
+def ptr_r8a_historical(root):
+    """Verify consumed static evidence against historical Git, never reactivate it."""
+    import subprocess
+    root=Path(root).resolve();out=root/PTR_R7B_OUT
+    git=lambda *a:subprocess.check_output(['git',*a],cwd=root,timeout=30)
+    pins=ptr_r8a_project_sources(root)
+    a=ptr_r7b_auth_schema(dict(id=PTR_R7B_ID,source_head=PTR_R8A_STATIC_SOURCE,
+        source_sha256=PTR_R8A_BASE_SHA,fixture_manifest_sha256=PTR_R7B_MANIFEST,generated_sha256=PTR_R7B_GENERATED))
+    closed=git('show',PTR_R8A_STATIC_SOURCE+':G1_RESEARCH_RULES.md')
+    marked=git('show',PTR_R8A_STATIC_HEAD+':G1_RESEARCH_RULES.md')
+    marker=(PTR_R7B_MARKER+': '+ptr_r7b_canonical(a)+'\n').encode()
+    h4m12_require(hashlib.sha1(b'blob '+str(len(closed)).encode()+b'\0'+closed).hexdigest()==PTR_R7B_CLOSED_ROOT
+        and marked==closed+marker and git('show',PTR_R8A_CLOSURE+':G1_RESEARCH_RULES.md')==closed
+        and git('rev-list','--parents','-n','1',PTR_R8A_STATIC_HEAD).decode().split()==[PTR_R8A_STATIC_HEAD,PTR_R8A_STATIC_SOURCE]
+        and git('rev-list','--parents','-n','1',PTR_R8A_CLOSURE).decode().split()==[PTR_R8A_CLOSURE,PTR_R8A_STATIC_HEAD]
+        and all(git('diff','--name-only',head+'^',head).splitlines()==[b'G1_RESEARCH_RULES.md']
+            for head in (PTR_R8A_STATIC_HEAD,PTR_R8A_CLOSURE)),'PTR_R8A_STATIC_CLOSURE')
+    ptr_r4b_lineage(root,PTR_R8A_CLOSURE,ptr_head(root))
+    ptr_r4b_output_path(out)
+    h4m12_require({p.name for p in out.iterdir()}==set(PTR_R8A_STATIC_PINS),'PTR_R8A_STATIC_INVENTORY')
+    for name,sha in PTR_R8A_STATIC_PINS.items():
+        h4x_file_pin(out/name,sha)
+    history=ptr_r7b_historical(root)
+    attempt=ssrpc_read_json(out/'attempt.json',65536)
+    ptr_r7b_exact(attempt,ptr_r7b_attempt(a,PTR_R8A_STATIC_HEAD,PTR_R8A_STATIC_BOOT,attempt['parent_pid']),'PTR_R8A_ATTEMPT')
+    ptr_r7b_worker_receipt(out,attempt)
+    rows=ptr_r7b_log_cases(out,complete=True)
+    h4m12_require((out/'worker.log').read_bytes().splitlines()==
+        [(PTR_R7B_CASE_PREFIX+k).encode() for k in PTR_R7_CASES]+[b'PTR_R7B_INDEPENDENT_READER_PASS'],'PTR_R8A_STATIC_LOG')
+    ptr_r7b_exact(ssrpc_read_json(out/'attempt_result.json',65536),
+        ptr_r7b_result(out,a,PTR_R8A_STATIC_HEAD,0),'PTR_R8A_STATIC_RESULT')
+    ptr_r7b_exact(ssrpc_read_json(out/'supervisor.terminal.json',65536),
+        ptr_r7b_terminal_payload(out,attempt,0,0,None),'PTR_R8A_STATIC_TERMINAL')
+    report=ssrpc_read_json(out/'report.json',SSRPC_STATIC_REPORT_CAP)
+    expected=dict(status='FOCUSED_HOST_STATIC_PASS',authorization=a,authorization_head=PTR_R8A_STATIC_HEAD,
+        source_files=pins,bootstrap_sha256=PTR_R8A_STATIC_BOOT,historical_artifacts=history,
+        parent_pins=dict(PTR_PARENT_PINS),
+        original_brax_sha256='e20613d42bf0868a13003e0312998816cc8d3593bb5ccaf9f1d070fd09c44bd7',
+        held_ctrl_sha256=PTR_R7B_HELD_CTRL,diagnostic_generated_sha256=PTR_R7B_GENERATED,
+        fixtures=[dict(id=k,status='PASS') for k in rows],zero_native_execution=True,
+        zero_optimizer_updates=True,zero_normalizer_updates=True,promotion_authorized=False)
+    ptr_r7b_exact(report,expected,'PTR_R8A_HISTORICAL_REPORT')
+    return dict(source_files=pins,static_artifacts=dict(PTR_R8A_STATIC_PINS),history=history)
+
+def ptr_r8a_state_witness(jax,np,optax,serialization,before,after):
+    """Compare actual replicated input/output trees, including signed-zero bytes."""
+    cb=ptr_counters(before,jax,np,optax,0,replicated=True)
+    ca=ptr_counters(after,jax,np,optax,0,replicated=True)
+    ptr_r7b_exact(cb,ca,'PTR_R8A_COUNTER_EQUAL')
+    b=jax.device_get(before);a=jax.device_get(after)
+    h4m12_require(jax.tree_util.tree_structure(b)==jax.tree_util.tree_structure(a),'PTR_R8A_STATE_STRUCTURE')
+    for x,y in zip(jax.tree_util.tree_leaves(b),jax.tree_util.tree_leaves(a)):
+        x,y=np.asarray(x),np.asarray(y)
+        h4m12_require(x.shape==y.shape and x.dtype==y.dtype and x.dtype.kind in 'biuf'
+            and np.isfinite(x).all() and np.isfinite(y).all()
+            and x.tobytes()==y.tobytes(),'PTR_R8A_STATE_BYTES')
+    raw_b=serialization.to_bytes(b);raw_a=serialization.to_bytes(a)
+    h4m12_require(raw_b==raw_a,'PTR_R8A_SERIALIZED_STATE')
+    sha=hashlib.sha256(raw_b).hexdigest()
+    return dict(counters_before=cb,counters_after=ca,training_state_exact=True,
+        training_state_sha256_before=sha,training_state_sha256_after=sha)
+
+def ptr_r8a_held_state_output_source(raw):
+    """Derived source text only: retain R7 held entry/terminal and report actual pmap output state.
+    R7C identity remains the immutable base; no released generated SHA is issued.
+    """
+    from m463_instrument_brax import make_ptr_r7_diagnostic_held_source,h4c_once
+    base,original=make_ptr_r7_diagnostic_held_source(raw)
+    h4m12_require(hashlib.sha256(base.encode()).hexdigest()==PTR_R7B_GENERATED,'PTR_R8A_HELD_BASE')
+    edits=(
+        ('    return ptr_r7_diagnose(jnp,data,','    evidence=ptr_r7_diagnose(jnp,data,'),
+        ('        post_environment=finite(state)))\n\n  diagnostic_step=',
+         '        post_environment=finite(state)))\n    return evidence,training_state\n\n  diagnostic_step='),
+        ('  diagnostic=diagnostic_step(_strip_weak_type((training_state,env_state,epoch_keys)),None)\n',
+         '  diagnostic,training_state_after=diagnostic_step(_strip_weak_type((training_state,env_state,epoch_keys)),None)\n'),
+        ('                training_state=training_state, collected=262144,\n',
+         '                training_state=training_state, training_state_after=training_state_after, collected=262144,\n'))
+    s=base
+    for a,b in edits:s=h4c_once(s,a,b)
+    back=s
+    for a,b in reversed(edits):back=h4c_once(back,b,a)
+    h4m12_require(back==base and s.count("  raise RuntimeError('R12_GENERATED_EXECUTION_HOLD')\n")==1
+        and s.count("  raise RuntimeError('PTR_R7_DIAGNOSTIC_TERMINAL_HOLD')\n")==1
+        and not any(k in s for k in ('gradient_update_fn(', 'running_statistics.update(',
+            'evaluator.run_evaluation(', 'm470_state_checkpoint_fn(current_step')),'PTR_R8A_DERIVED_HOLD')
+    return s,original
+
+def ptr_r8a_native_admission_held(*args,**kwargs):
+    # Deliberately unconditional: do not expose a dispatcher or alias the legacy worker.
+    raise RuntimeError('PTR_R8A_NATIVE_ADMISSION_NOT_INTEGRATED')
+
+# H4M29_R8A_NATIVE_HELD_END
 # H4M29_R7B_FOCUSED_STATIC_END
 # H4M29_R7_DIAGNOSTIC_TRAINER_END
 # H4M29_PTR_HELD_TRAINER_END
