@@ -19451,7 +19451,7 @@ def ptr_r12_red_release_projection(raw):
     return result
 
 def ptr_r12_red_authorization(root,arm):
-    raise RuntimeError('PTR_R12_RED_CTRL_V1_RUNTIME_AUTH_HELD')
+    ptr_r12_red_release_guard(root)
     a,head=ptr_r12_red_release_guard(root)
     h4m12_require(arm=='ctrl' and a['arm']==arm,'PTR_R12_RED_CTRL_ONLY')
     ptr_r12_red_marker_at(root,head,a)
