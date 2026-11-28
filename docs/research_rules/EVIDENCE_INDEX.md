@@ -849,3 +849,6 @@ Owner explicit GO at 58ea190ef0e4217d30d8cf56f740f3e9d74f2774; governance v2.0.0
 ## H4-M29-R8B — exact held evidence
 - [Brax v0.12.1 source](https://github.com/google/brax/blob/v0.12.1/brax/training/agents/ppo/train.py) SHA256 e20613d42bf0868a13003e0312998816cc8d3593bb5ccaf9f1d070fd09c44bd7; five historical identities independently reconstructed; R8 derived SHA 20ab3e2c58097d643e14ac0c3e3615e81e56532bc3b31399fe1f2c5e9567bcb4.
 - [Held contract](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/0f8aeeb34e3253a646e51554ea05ac441d6ec910), [payload cap repair and exact final source](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/e6e0ac2af39b81a70243415a82912a2d1dd31e31). Manifest a779a0dc06d136464c1bc3a388fdac73129cab818e092aac7d6837ce6fc201d5. Hypothetical release not applied. No static/native execution. See CURRENT_STATE for scope/limits.
+
+## H4-M29-R8C — host adapter
+- [Exact adapter commit](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/7f4cf34daf093079df50c9cc0f724457c0d125e4), SHA256 e0018cb7747c864731cf6a18f4ba9011a392553ab6aca11af5ed27ad9a61b7bb. Six-case manifest unchanged. Output m463_runs/m470_h4_m29_ptr_r8c_static_v1; actual receipts pending. See CURRENT_STATE for authorization scope and limitations.
