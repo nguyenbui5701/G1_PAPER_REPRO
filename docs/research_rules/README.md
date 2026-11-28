@@ -30,3 +30,6 @@ Declare governance version, HEAD, current authorization and task scope.
 Retrieve only applicable exact evidence via EVIDENCE_INDEX; read SCIENTIFIC_GATES and RUNTIME_PROTOCOL when relevant.
 Follow EDIT-FIRST; report evidence, limits, GO/NO-GO and exact next step. No runtime without distinct Owner GO. Branch A ACTIVE, B HOLD.
 ```
+
+
+**Latest governance revision: v2.0.1 (2026-11-28).** Runtime Protocol now requires complete exclusive outer terminal capture with tee and separate pipeline exit receipts; no change to scientific thresholds, root ABI or executable source. Historical v2.0.0 headings remain provenance. Current R16 disposition is recorded at the end of CURRENT_STATE and ACTIVE_EXPERIMENT.
