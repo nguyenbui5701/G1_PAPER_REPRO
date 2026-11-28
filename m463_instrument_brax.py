@@ -3467,3 +3467,24 @@ def make_r12_ptr_red_ctrl_held_source(raw):
     compile(result,'<PTR R12 RED CTRL held>','exec')
     return result,original
 # H4M29_R18_RED_GENERATOR_END
+
+# H4M29_R18B_RED_GENERATOR_BEGIN
+PTR_R12_RED_CTRL_GUARDED_GENERATED_SHA='9ba23fe8bb1378d83632d803b5ea2ec4059989f8138d6ea2423b2a9aa0ccf4c6'
+
+def make_r12_ptr_red_ctrl_guarded_source(raw):
+    """Prospective guarded CTRL-only variant; trainer admission remains HELD."""
+    import hashlib
+    held,original=make_r12_ptr_red_ctrl_held_source(raw)
+    hold="  raise RuntimeError('PTR_R12_RED_GENERATED_EXECUTION_HOLD')\n"
+    guard=("  from m463_push_ppo_train import ptr_r12_red_generated_guard\n"
+           "  ptr_r12_red_generated_guard(h4x_audit_fn, __file__, environment, m470_resume_state_path, "
+           "'ctrl', r12_abort_fn, h4_chunk_fn)\n")
+    result=h4c_once(held,hold,guard)
+    historical,original2=make_r12_ptr_ctrl_v2_guarded_source(raw)
+    if (h4c_once(result,guard,hold)!=held or original!=original2 or
+            result.replace('ptr_r12_red_generated_guard','ptr_r12_ctrl_generated_guard')!=historical or
+            hashlib.sha256(result.encode()).hexdigest()!=PTR_R12_RED_CTRL_GUARDED_GENERATED_SHA):
+        raise RuntimeError('PTR_R12_RED_GUARDED_PIN')
+    compile(result,'<PTR R12 RED CTRL guarded>','exec')
+    return result,original
+# H4M29_R18B_RED_GENERATOR_END
