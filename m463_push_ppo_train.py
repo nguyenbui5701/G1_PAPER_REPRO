@@ -19343,7 +19343,7 @@ def ptr_r12_red_focused_admission(root,auth):
         'fixture_manifest_sha256','files','authorization_head','closure_head'},'PTR_R12_RED_FOCUSED_SCHEMA')
     h4m12_require(auth['focused_static_sha256']==accepted['report_sha256'] and
         auth['focused_terminal_sha256']==accepted['terminal_sha256'],'PTR_R12_RED_FOCUSED_AUTH')
-    out=Path(root)/'m463_runs/m470_h4_m29_ptr_red_ctrl_v1_static'
+    out=Path(root)/'m463_runs/m470_h4_m29_ptr_red_ctrl_v1_static_v2'
     ptr_r4b_output_path(out)
     h4m12_require(set(accepted['files'])=={'attempt.json','worker.started.json','worker.log',
         'report.json','attempt_result.json','supervisor.terminal.json'} and
@@ -19366,7 +19366,7 @@ def ptr_r12_red_focused_admission(root,auth):
     ptr_r7b_exact(term,ptr_r12_red_focused_terminal(out,r['authorization'],accepted['authorization_head'],att,0,0,None),
         'PTR_RED_ACCEPTED_TERMINAL')
     ptr_r10b_closed_marker(root,accepted['source_head'],accepted['authorization_head'],
-        accepted['closure_head'],'H4PTR_RED_CTRL_STATIC_GO',r['authorization'])
+        accepted['closure_head'],'H4PTR_RED_CTRL_STATIC_V2_GO',r['authorization'])
     ptr_r4b_lineage(root,accepted['closure_head'],auth['source_head'])
     # The reviewed focused source may differ from released source only by the
     # exact acceptance dictionary and the one-line runtime release.
@@ -20291,10 +20291,10 @@ def ptr_r12_red_runtime_main(argv):
 
 
 # R19 focused verification only. The separate runtime HOLD above remains unchanged.
-PTR_R12_RED_FOCUSED_ID='H4-M29-R12-PTR-RED-CTRL-V1-FOCUSED-STATIC'
-PTR_R12_RED_FOCUSED_OUT=Path('m463_runs/m470_h4_m29_ptr_red_ctrl_v1_static')
-PTR_R12_RED_FOCUSED_MARKER='H4PTR_RED_CTRL_STATIC_GO'
-PTR_R12_RED_FOCUSED_ROLE='PTR_R12_RED_CTRL_STATIC_CHILD_ROLE'
+PTR_R12_RED_FOCUSED_ID='H4-M29-R12-PTR-RED-CTRL-V1-FOCUSED-STATIC-V2'
+PTR_R12_RED_FOCUSED_OUT=Path('m463_runs/m470_h4_m29_ptr_red_ctrl_v1_static_v2')
+PTR_R12_RED_FOCUSED_MARKER='H4PTR_RED_CTRL_STATIC_V2_GO'
+PTR_R12_RED_FOCUSED_ROLE='PTR_R12_RED_CTRL_STATIC_V2_CHILD_ROLE'
 PTR_R12_RED_FOCUSED_PREFIX='PTR_R12_RED_FOCUSED_CASE_PASS='
 PTR_R12_RED_FOCUSED_PASS='PTR_R12_RED_FOCUSED_INDEPENDENT_READER_PASS'
 PTR_R12_RED_FOCUSED_FILES={'attempt.json','worker.started.json','worker.log','report.json','attempt_result.json'}
@@ -20398,8 +20398,14 @@ def ptr_r12_red_focused_cases(root,args,record):
         rejects(lambda:C(**kw,r12=True,r12_red_timing=1)) and
         rejects(lambda:C(**kw,r12_red_timing=True)) and
         rejects(lambda:C(**kw,r12=True,r12_red_timing=True),'PTR_R12_RED_ENV_CLAIM'))
-    target=next(n.value for n in ast.walk(cls) if isinstance(n,ast.Assign) and
-        any(isinstance(x,ast.Name) and x.id=='target_first' for x in n.targets))
+    step=next(n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name=='step')
+    predicate=ast.dump(ast.parse("self._m463_stage == 'easy_mixed_time'",mode='eval').body)
+    branches=[n for n in step.body if isinstance(n,ast.If) and ast.dump(n.test)==predicate]
+    h4m12_require(len(branches)==1,'PTR_RED_STATIC_TARGET_BRANCH')
+    targets=[n.value for n in branches[0].orelse if isinstance(n,ast.Assign) and
+        any(isinstance(x,ast.Name) and x.id=='target_first' for x in n.targets)]
+    h4m12_require(len(targets)==1,'PTR_RED_STATIC_TARGET_ASSIGNMENT')
+    target=targets[0]
     expr=compile(ast.Expression(body=target),'<target fixture>','eval')
     key=object();rng=NS(random=NS(randint=lambda k,shape,lo,hi:(k is key,shape,lo,hi)))
     def bound(red,new):
