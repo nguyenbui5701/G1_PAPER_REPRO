@@ -18140,7 +18140,7 @@ def ptr_r12_ctrl_release_guard(root):
 
 def ptr_r12_ctrl_authorization(root,arm):
     # This independent gate must not be released by documentation or static acceptance.
-    raise RuntimeError('PTR_R12_CTRL_V2_RUNTIME_AUTH_HELD')
+    ptr_r12_ctrl_release_guard(root)
     a,head=ptr_r12_ctrl_release_guard(root)
     h4m12_require(arm=='ctrl' and a['arm']==arm,'PTR_R12_CTRL_ONLY')
     ptr_r12_ctrl_marker_at(root,head,a)
