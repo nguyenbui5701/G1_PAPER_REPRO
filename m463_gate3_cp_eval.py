@@ -17311,8 +17311,8 @@ PTR_RED_DEV_D_FIXTURES=["source_reverse","compile_only","held_runtime","held_lau
 PTR_RED_DEV_D_PATCHES=[["ptr_red_dev_c_reverse(p.read_bytes())==","ptr_red_dev_c_reverse(ptr_red_dev_d_reverse(p.read_bytes()))=="],["provenance_sha256=h4m3_digest(inputs),","provenance_sha256=ptr_red_dev_d_provenance(inputs),"],["h4m12_req(h4m3_digest(inputs)==a['provenance_sha256'],'PTR_DEVC_PROVENANCE')","h4m12_req(ptr_red_dev_d_provenance(inputs)==a['provenance_sha256'],'PTR_DEVC_PROVENANCE')"],["    h4m12_req(type(PTR_RED_DEV_C_ACCEPTANCE) is dict and\n        a['static_sha256']==PTR_RED_DEV_C_ACCEPTANCE['report_sha256'],'PTR_DEVC_STATIC_HOLD')","    ptr_red_dev_d_accepted(root,a)"],["    replay_red=ptr_red_dev_c_replay(root,'red')","    # Historical raw archive reward source is used by run() as well.\n    reward_path=Path('m463_runs/m470_h4_m1_2r_control_v1/report.json')\n    reward_sha=H4_EVAL_ARTIFACTS['report.json'][0]\n    ptr_red_dev_pin(root,reward_path,reward_sha);pins[str(reward_path)]=reward_sha\n    replay_red=ptr_red_dev_c_replay(root,'red')"],["    hard=all(v for k,v in checks.items() if k not in ('incremental_gain','matched_windows'))\n    decision=('NO_GO' if not hard else 'INCONCLUSIVE' if ceiling or not checks['matched_windows']\n        else 'DEV_PASS' if checks['incremental_gain'] else 'NO_GO')","    decision=ptr_red_dev_d_disposition(checks,ceiling)"],["    out=root/PTR_RED_DEV_C_OUT;path=out/'report.json'\n    h4m12_req(out.is_dir() and not out.is_symlink(),'PTR_DEVC_READ_PATH')","    out=root/PTR_RED_DEV_C_OUT;path=out/'report.json'\n    h4m12_req(out.is_dir() and not out.is_symlink() and out.resolve()==out,'PTR_DEVC_READ_PATH')"],["    s=json.loads(path.read_bytes());inputs=ptr_red_dev_c_inputs(root)","    s=json.loads(path.read_bytes());inputs=ptr_red_dev_c_inputs(root)\n    ptr_red_dev_d_report_shape(s,partial=partial)"],["    h4m12_req(set(dispatch)=={'authorization','pid'} and dispatch['authorization']==a and\n        type(dispatch['pid']) is int and dispatch['pid']>0 and dispatch['pid']!=att['parent_pid'],'PTR_DEVC_DISPATCH')","    ptr_red_dev_d_receipt_pair(att,dispatch,a)"],["        h4m12_req(accepted['status']=='READER_COMPLETE' and accepted['report_sha256']==sha256(out/'report.json')\n            and accepted['promotion_authorized'] is False and accepted['holdout_authorized'] is False\n            and accepted['further_training_authorized'] is False,'PTR_DEVC_READER_LINK')","        ptr_red_dev_d_decision_link(accepted,sha256(out/'report.json'))"],["    def check():\n        h4m12_req(git('rev-parse','HEAD').decode().strip()==head","    def check():\n        ptr_red_dev_d_history_files(root,work)\n        h4m12_req(git('rev-parse','HEAD').decode().strip()==head"]]
 PTR_RED_DEV_D_ACCEPT_LINE=b'PTR_RED_DEV_C_ACCEPTANCE=None\n'
 PTR_RED_DEV_D_AUTH_LINE=b"    raise RuntimeError('PTR_DEVC_RUNTIME_AUTHORIZATION_HELD')\n"
-PTR_RED_DEV_D_SHELL_LINE=b"printf 'PTR_DEVC_LAUNCHER_HELD\\n' >&2; exit 2\n"
-PTR_RED_DEV_D_STATIC_ENTRY_HELD=True
+PTR_RED_DEV_D_SHELL_LINE=b"  printf 'PTR_DEVC_LAUNCHER_HELD\\n' >&2; exit 2\n"
+PTR_RED_DEV_D_LAUNCHER_PATCHES=[["printf 'PTR_DEVC_LAUNCHER_HELD\\n' >&2; exit 2\n","mode=runtime\nif [[ $# == 2 && $1 == --static ]]; then mode=static; shift; else\n  printf 'PTR_DEVC_LAUNCHER_HELD\\n' >&2; exit 2\nfi\n"],["out=m463_runs/m470_h4_m29_ptr_red_matched_dev_v1\n","out=m463_runs/m470_h4_m29_ptr_red_matched_dev_v1\nif [[ $mode == static ]]; then out=m463_runs/m470_h4_m29_ptr_red_matched_dev_static_v1; fi\n"],["  python3 - \"$root\" <<'PY'\n","  python3 - \"$root\" \"$mode\" <<'PY'\n"],["prefix=b'H4PTR_RED_MATCHED_DEV_V1_GO: '\n","prefix=(b'H4PTR_RED_MATCHED_DEV_STATIC_V1_GO: ' if sys.argv[2]=='static' else b'H4PTR_RED_MATCHED_DEV_V1_GO: ')\n"],["if p.is_symlink() or hashlib.sha256(p.read_bytes()).hexdigest()!=a.get('launcher_sha256'):\n","if p.is_symlink() or (sys.argv[2]!='static' and hashlib.sha256(p.read_bytes()).hexdigest()!=a.get('launcher_sha256')):\n"],["  timeout --kill-after=10s 5400s \"$base/G1_M3_7_G1_MJX_GPU_ONE_STEP_V1/.venv_m37_jax0435_mjx327/bin/python\" -B -u -c 'import sys;import m463_gate3_cp_eval as e;e.ptr_red_dev_c_main(sys.argv[1:])' supervisor\n","  if [[ $mode == static ]]; then\n    timeout --kill-after=10s 900s \"$base/G1_M3_7_G1_MJX_GPU_ONE_STEP_V1/.venv_m37_jax0435_mjx327/bin/python\" -B -u -c 'import m463_gate3_cp_eval as e;e.ptr_red_dev_d_static_main()'\n    timeout --kill-after=10s 900s \"$base/G1_M3_7_G1_MJX_GPU_ONE_STEP_V1/.venv_m37_jax0435_mjx327/bin/python\" -B -u -c 'import m463_gate3_cp_eval as e;e.ptr_red_dev_d_static_read()'\n  else\n    timeout --kill-after=10s 5400s \"$base/G1_M3_7_G1_MJX_GPU_ONE_STEP_V1/.venv_m37_jax0435_mjx327/bin/python\" -B -u -c 'import sys;import m463_gate3_cp_eval as e;e.ptr_red_dev_c_main(sys.argv[1:])' supervisor\n  fi\n"]]
 
 def ptr_red_dev_d_replace(raw,a,b):
     h4m12_req(raw.count(a)==1,'PTR_DEVD_PROJECTION_ANCHOR')
@@ -17329,7 +17329,7 @@ def ptr_red_dev_d_accept_line(accepted):
         h4m12_req(type(v) is str and re.fullmatch('[0-9a-f]{40}' if k.endswith('_head') else '[0-9a-f]{64}',v)
             is not None,'PTR_DEVD_ACCEPT_PIN')
     h4m12_req(type(accepted['files']) is dict and set(accepted['files'])==
-        {'attempt.json','report.json','worker.log','supervisor.terminal.json'} and
+        {'attempt.json','report.json','worker.log','reader.json','supervisor.terminal.json'} and
         all(type(v) is str and re.fullmatch('[0-9a-f]{64}',v) is not None
             for v in accepted['files'].values()),'PTR_DEVD_ACCEPT_FILES')
     return ('PTR_RED_DEV_C_ACCEPTANCE='+repr(dict(sorted(accepted.items())))+'\n').encode()
@@ -17449,9 +17449,9 @@ def ptr_red_dev_d_parse_static(raw):
     return a
 
 def ptr_red_dev_d_static_auth(root):
-    # R29D source preparation only. Separate static GO and reviewed release
-    # of this one static hold required before any fixture execution.
-    if PTR_RED_DEV_D_STATIC_ENTRY_HELD:raise RuntimeError('PTR_DEVD_STATIC_ENTRY_HELD')
+    # Static entry is fail-closed unless a distinct one-use marker is present.
+    # Closed root rejects execution; distinct static root-only GO is required.
+    h4m12_req(PTR_RED_DEV_C_ACCEPTANCE is None,'PTR_DEVD_STATIC_ALREADY_ACCEPTED')
     root=Path(root).resolve()
     raw=(root/'G1_RESEARCH_RULES.md').read_bytes();a=ptr_red_dev_d_parse_static(raw)
     git=lambda *v:ptr_red_dev_c_git(root,*v)
@@ -17463,6 +17463,8 @@ def ptr_red_dev_d_static_auth(root):
         git('diff','--name-only','HEAD^','HEAD').splitlines()==[b'G1_RESEARCH_RULES.md'] and
         not git('status','--porcelain','--untracked-files=no'),'PTR_DEVD_STATIC_ROOT')
     pins=ptr_red_dev_c_source(root)
+    h4m12_req(ptr_red_dev_d_launcher_reverse((root/PTR_RED_DEV_C_LAUNCHER).read_bytes())==
+        git('show',PTR_RED_DEV_D_BASE+':'+PTR_RED_DEV_C_LAUNCHER),'PTR_DEVD_LAUNCHER_REVERSE')
     h4m12_req(h4m3_digest(pins)==a['source_sha256'],'PTR_DEVD_STATIC_SOURCE')
     return a,pins
 
@@ -17566,7 +17568,7 @@ def ptr_red_dev_d_cases(root,a,pins,record):
         accepted={k:'a'*40 for k in ('source_head','authorization_head','closure_head')}
         accepted.update({k:'b'*64 for k in ('source_sha256','manifest_sha256','provenance_sha256','report_sha256',
             'terminal_sha256','outer_log_sha256','outer_receipt_sha256')})
-        accepted['files']={k:'c'*64 for k in ('attempt.json','report.json','worker.log','supervisor.terminal.json')}
+        accepted['files']={k:'c'*64 for k in ('attempt.json','report.json','worker.log','reader.json','supervisor.terminal.json')}
         h,r,l=ptr_red_dev_d_release_projection(raw,launch,accepted)
         h4m12_req(ptr_red_dev_d_replace(h,ptr_red_dev_d_accept_line(accepted),PTR_RED_DEV_D_ACCEPT_LINE)==raw
             and r==ptr_red_dev_d_replace(h,PTR_RED_DEV_D_AUTH_LINE,b'')
@@ -17600,10 +17602,11 @@ def ptr_red_dev_d_static_main():
     if error is not None:report['error']=error
     h4m6_write_bounded(out/'report.json',report,exclusive=True)
     files={p.name:sha256(p) for p in out.iterdir() if p.is_file() and not p.is_symlink()}
-    h4m6_write_bounded(out/'supervisor.terminal.json',dict(status=report['status'],authorization=a,
-        authorization_head=head,producer_rc=int(error is not None),files=files,promotion_authorized=False),exclusive=True)
-    if error is not None:raise RuntimeError(error)
-    print('PTR_DEVD_FOCUSED_HOST_STATIC_PASS',sha256(out/'report.json'),flush=True)
+    if error is not None:
+        h4m6_write_bounded(out/'supervisor.terminal.json',dict(status='STOP',authorization=a,
+            authorization_head=head,producer_rc=1,reader_rc=None,files=files,promotion_authorized=False),exclusive=True)
+        raise RuntimeError(error)
+    print('PTR_DEVD_STATIC_PRODUCER_COMPLETE',sha256(out/'report.json'),flush=True)
 
 def ptr_red_dev_d_accepted(root,a):
     # Future release path; not reachable from held runtime authorization.
@@ -17625,9 +17628,13 @@ def ptr_red_dev_d_accepted(root,a):
         r['fixtures']==[dict(id=k,status='PASS') for k in PTR_RED_DEV_D_FIXTURES] and
         all(r[k] is True for k in ('zero_native_execution','zero_optimizer_updates','zero_resets')) and
         r['promotion_authorized'] is False and a['static_sha256']==accepted['report_sha256'],'PTR_DEVD_ACCEPT_REPORT')
-    h4m12_req(term==dict(status=r['status'],authorization=sa,authorization_head=head,producer_rc=0,
+    h4m12_req(term==dict(status=r['status'],authorization=sa,authorization_head=head,producer_rc=0,reader_rc=0,
         files={k:v for k,v in accepted['files'].items() if k!='supervisor.terminal.json'},
         promotion_authorized=False),'PTR_DEVD_ACCEPT_TERMINAL')
+    reader=json.loads((out/'reader.json').read_bytes())
+    h4m12_req(reader==dict(status='READER_COMPLETE',authorization=sa,authorization_head=head,
+        report_sha256=accepted['report_sha256'],provenance_sha256=accepted['provenance_sha256'],
+        promotion_authorized=False),'PTR_DEVD_ACCEPT_READER')
     outer=ptr_red_dev_pin(root,str(PTR_RED_DEV_D_STATIC_OUT)+'_outer.log',accepted['outer_log_sha256'])
     receipt=ptr_red_dev_pin(root,str(PTR_RED_DEV_D_STATIC_OUT)+'_outer.receipt.json',accepted['outer_receipt_sha256'])
     h4m12_req(0<outer.stat().st_size<=PTR_RED_DEV_C_LOG_CAP and json.loads(receipt.read_bytes())==
@@ -17650,5 +17657,46 @@ def ptr_red_dev_d_accepted(root,a):
     for n in t.PTR_SOURCE_NAMES:
         if n!='m463_gate3_cp_eval.py':h4m12_req(git('show',a['source_head']+':'+n)==
             git('show',accepted['source_head']+':'+n),'PTR_DEVD_ACCEPT_FROZEN_'+n)
+
+
+def ptr_red_dev_d_launcher_reverse(raw):
+    s=raw.decode()
+    for before,after in reversed(PTR_RED_DEV_D_LAUNCHER_PATCHES):
+        h4m12_req(s.count(after)==1,'PTR_DEVD_LAUNCHER_REVERSE_ANCHOR')
+        s=s.replace(after,before,1)
+    return s.encode()
+
+def ptr_red_dev_d_static_read():
+    """Fresh host process, no native, immutable producer report and log."""
+    root=H4_EVAL_ROOT;a,pins=ptr_red_dev_d_static_auth(root);out=root/PTR_RED_DEV_D_STATIC_OUT
+    head=ptr_red_dev_c_git(root,'rev-parse','HEAD').decode().strip()
+    h4m12_req(out.is_dir() and not out.is_symlink() and
+        {p.name for p in out.iterdir()}=={'attempt.json','report.json','worker.log'} and
+        all(p.is_file() and not p.is_symlink() for p in out.iterdir()),'PTR_DEVD_STATIC_READER_INVENTORY')
+    att=json.loads((out/'attempt.json').read_bytes())
+    h4m12_req(set(att)=={'authorization','authorization_head','parent_pid'} and
+        att['authorization']==a and att['authorization_head']==head and
+        type(att['parent_pid']) is int and att['parent_pid']>0 and att['parent_pid']!=os.getpid(),
+        'PTR_DEVD_STATIC_READER_ATTEMPT')
+    r=json.loads((out/'report.json').read_bytes())
+    h4m12_req((out/'report.json').stat().st_size<=1024**2 and
+        (out/'worker.log').stat().st_size<=PTR_RED_DEV_C_LOG_CAP,'PTR_DEVD_STATIC_READER_CAP')
+    inputs=ptr_red_dev_c_inputs(root)
+    expected=dict(status='FOCUSED_HOST_STATIC_PASS',authorization=a,authorization_head=head,
+        source_files=pins,manifest_sha256=ptr_red_dev_d_manifest(),
+        fixtures=[dict(id=k,status='PASS') for k in PTR_RED_DEV_D_FIXTURES],
+        provenance_sha256=ptr_red_dev_d_provenance(inputs),zero_native_execution=True,
+        zero_optimizer_updates=True,zero_resets=True,promotion_authorized=False)
+    h4m12_req(r==expected and (out/'worker.log').read_bytes().splitlines()==
+        [('PTR_DEVD_FIXTURE_PASS '+k).encode() for k in PTR_RED_DEV_D_FIXTURES],
+        'PTR_DEVD_STATIC_READER_REPLAY')
+    h4m3_no_runtime_imports()
+    h4m6_write_bounded(out/'reader.json',dict(status='READER_COMPLETE',authorization=a,
+        authorization_head=head,report_sha256=sha256(out/'report.json'),
+        provenance_sha256=r['provenance_sha256'],promotion_authorized=False),exclusive=True)
+    files={p.name:sha256(p) for p in out.iterdir()}
+    h4m6_write_bounded(out/'supervisor.terminal.json',dict(status=r['status'],authorization=a,
+        authorization_head=head,producer_rc=0,reader_rc=0,files=files,promotion_authorized=False),exclusive=True)
+    print('PTR_DEVD_FOCUSED_HOST_STATIC_PASS',sha256(out/'report.json'),flush=True)
 
 # H4M29_R29D_RED_MATCHED_DEV_STATIC_END
