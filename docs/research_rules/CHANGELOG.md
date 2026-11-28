@@ -613,3 +613,7 @@ SA scope: prior accepted R13 evidence and current exact root/held/released text/
 
 ## v2.0.1 — 2026-11-28 — H4-M29-R16
 Owner-approved documentation-only complete outer terminal capture rule in RUNTIME_PROTOCOL; preserve exclusive namespace, full stdout/stderr, both pipeline exit statuses, final digest and bounds. No root launcher ABI or executable change. R15 closed separately by 14fc5c5a35b37e45f3a7485125cb9e430a8a40dc; TECHNICAL_PASS / EXPOSURE_INCONCLUSIVE / NO_PROMOTE, CAND HOLD; offline evidence and next held design recorded in CURRENT_STATE/ACTIVE_EXPERIMENT/TASK_LEDGER/EVIDENCE_INDEX. No new GO or retry.
+
+
+## H4-M29-R17 — historical scheduler reuse design
+Owner approved offline R17. RED-first selected prospectively, exact prior NO_GO preserved; R15 closed/EXPOSURE_INCONCLUSIVE, no active GO. See ACTIVE_EXPERIMENT R17 for complete source locations, arithmetic, constraints, matched design, falsifiers and proposed held R18. No executable changes or runtime; no guarantee of policy gain. Governance v2.0.1 unchanged.
