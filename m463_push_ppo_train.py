@@ -13828,7 +13828,7 @@ def ptr_static_authorization(root):
     ptr_source_files(root,auth['source_head'])
     return auth,head
 
-def ptr_static_preflight(root,args):
+def ptr_static_preflight(root,args,*,compile_modules=False):
     from importlib import metadata
     from importlib.machinery import PathFinder
     from m463_instrument_brax import h4c_git_blob
@@ -13844,10 +13844,11 @@ def ptr_static_preflight(root,args):
         h4m12_require(spec is not None and spec.submodule_search_locations is not None,'PTR_STATIC_DEPENDENCY')
         p=Path(next(iter(spec.submodule_search_locations)))/relative
         raw=p.read_bytes();h4m12_require(h4c_git_blob(raw)==expected,'PTR_STATIC_DEPENDENCY_PIN')
-        compile(raw,str(p),'exec')
+        if compile_modules:compile(raw,str(p),'exec')
     raw=Path(metadata.distribution('brax').locate_file('brax/training/agents/ppo/train.py')).read_bytes()
     h4m12_require(hashlib.sha256(raw).hexdigest()=='e20613d42bf0868a13003e0312998816cc8d3593bb5ccaf9f1d070fd09c44bd7','PTR_STATIC_BRAX')
-    for name in PTR_BASE_BLOBS:compile((root/name).read_bytes(),name,'exec')
+    if compile_modules:
+        for name in PTR_BASE_BLOBS:compile((root/name).read_bytes(),name,'exec')
     h4m12_require(ssrpc_static_no_native() and all(not (root/ptr_spec(a)['output']).exists() and
         not (root/ptr_spec(a)['output']).is_symlink() for a in ('ctrl','cand')),'PTR_STATIC_RUNTIME_NAMESPACE')
     return parent,raw,bootstrap
@@ -14160,14 +14161,14 @@ def ptr_static_fixtures(root,raw,record):
     combined['ptr_chunks'],combined['r12_chunks'],_=replay_rows('cand')
     for j,(row,dr,br) in enumerate(zip(combined['ptr_chunks'],combined['r12_chunks'],combined['h4_chunks'])):
         m=row['metrics'];dm=dr['metrics'];counts=br['counts']
-        m.update(open_kind_1=51,open_kind_2=10,tail_1_1=50,tail_2_1=10)
+        m.update(open_kind_1=41,open_kind_2=20,tail_1_1=40,tail_2_1=20)
         dm.update(open=60,close=60,scored=3000,nonzero_desired=3000,nonzero_consumed=3000,
             desired_sum=-2.4,delivered_delta=-2.4,consumed_delta=-2.4,consumed_reward=-2.4,
             consumed_reward_abs_sum=2.4,open_kind_1=50,open_kind_2=10,open_side_1=60,
             scored_kind_1=2500,scored_kind_2=500,scored_side_1=3000,close_reason_5=60)
         for mode in (1,2,3):
             dm[f'consumed_mode_{mode}']=dm[f'scored_mode_{mode}']=1000
-        h4m12_require(counts['m463_h4_first_events_per_rollout']>=51 and counts['m463_h4_repeat_events_per_rollout']>=10,'PTR_FIXTURE_ARCHIVE_EVENTS')
+        h4m12_require(counts['m463_h4_first_events_per_rollout']>=50 and counts['m463_h4_repeat_events_per_rollout']>=20,'PTR_FIXTURE_ARCHIVE_EVENTS')
         m.update(intermediate_sum=-2.4,intermediate_abs_sum=2.4,delivered_sum=-4.8,
             delivered_abs_sum=4.8,consumed_dcr_delta=-2.4,consumed_total_delta=-4.8,
             desired_base_abs_sum=2.4)
@@ -14249,10 +14250,12 @@ def ptr_read_static(root,expected_sha,*,require_terminal):
     return r
 
 def ptr_static_worker(root,args,auth,head,out):
-    h4m12_require(ptr_static_authorization(root)==(auth,head) and ssrpc_static_no_native(),'PTR_STATIC_WORKER_AUTH')
+    h4m12_require(out==root/PTR_STATIC and out.is_dir() and not out.is_symlink() and not out.parent.is_symlink() and
+        ptr_static_authorization(root)==(auth,head) and ssrpc_static_no_native(),'PTR_STATIC_WORKER_AUTH')
     h4m12_require(ssrpc_read_json(out/'attempt.json',65536)==dict(authorization=auth,static_head=head,parent_pid=os.getppid()),'PTR_STATIC_RESERVED')
     ssrpc_static_write(out/'worker.started.json',dict(authorization=auth,pid=os.getpid(),parent_pid=os.getppid()))
-    parent,raw,bootstrap=ptr_static_preflight(root,args)
+    # Reserve once, then compile and run host fixtures only in this worker.
+    parent,raw,bootstrap=ptr_static_preflight(root,args,compile_modules=True)
     h4m12_require(os.environ.get('PTR_STATIC_BOOTSTRAP_SHA256')==bootstrap,'PTR_STATIC_PARENT_BOOTSTRAP')
     cases=[]
     def record(name):
@@ -14283,8 +14286,8 @@ def ptr_static_cli_held(argv):
     a=p.parse_args(argv);root=Path(__file__).resolve().parent
     h4m12_require(Path.cwd().resolve()==root and ssrpc_static_no_native(),'PTR_STATIC_WORKDIR')
     auth,head=ptr_static_authorization(root);out=root/PTR_STATIC
-    # Source remains held pending review of expanded fixtures; no GO issued.
-    ptr_execution_hold()
+    # Static entry only: the exact separate root-only marker above is required.
+    # Native worker, supervisor, generated guard and environment remain HOLD.
     if a.worker:return ptr_static_worker(root,a,auth,head,out)
     h4m12_require(out.parent.is_dir() and not out.parent.is_symlink() and
         not out.exists() and not out.is_symlink(),'PTR_STATIC_USED')
@@ -14308,7 +14311,9 @@ def ptr_static_cli_held(argv):
                 h4m12_require(total+len(data)<=H4M12_SPEC['external_log_reserve'],'PTR_STATIC_LOG_CAP')
                 log.write(data);log.flush();total+=len(data)
         rc=child.wait(timeout=max(1,deadline-time.monotonic()))
-        h4m12_require(rc==0,'PTR_STATIC_PRODUCER_RC')
+        h4m12_require(rc==0 and ptr_static_authorization(root)==(auth,head) and
+            ssrpc_bootstrap_identity(root)==bootstrap and ssrpc_static_no_native(),'PTR_STATIC_PRODUCER_RC_OR_PROVENANCE')
+        h4x_storage(out)
         sha=digest(out/'report.json')
         ptr_static_report_check(root,ssrpc_read_json(out/'report.json',H4X_SPEC['other_cap']))
         ssrpc_static_write(out/'attempt_result.json',dict(status='COMPLETE',authorization=auth,report_sha256=sha,producer_rc=0))
@@ -14321,7 +14326,7 @@ def ptr_static_cli_held(argv):
             try:os.killpg(child.pid,signal.SIGKILL)
             except ProcessLookupError:pass
             child.wait()
-        failure=dict(status='STOP',authorization=auth,producer_rc=rc,stored_log_bytes=total,error=repr(exc)[:2048])
+        failure=dict(status='STOP',authorization=auth,static_head=head,producer_rc=rc,stored_log_bytes=total,error=repr(exc)[:2048])
         ssrpc_static_write(out/'supervisor.failed.json',failure)
         if not (out/'attempt_result.json').exists():ssrpc_static_write(out/'attempt_result.json',failure)
         raise
