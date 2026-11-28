@@ -12834,6 +12834,15 @@ def ptr_parent_evidence(root):
         historical_exposure=r['r12_exposure']['decision'],original_contract=r['parent']['original_contract'],
         config=r['hardware_scaled_config'],reward=r['reward'],dependencies=r['dependencies'],execution_authorized=False)
 
+def ptr_typed_leaves(np,actual,template):
+    """Host-safe leaf schema validation used by real typed admission."""
+    h4m12_require(len(actual)==len(template),'PTR_TYPED_LEAF_COUNT')
+    for x,y in zip(actual,template):
+        x,y=np.asarray(x),np.asarray(y)
+        h4m12_require(x.shape==y.shape and x.dtype==y.dtype and
+            x.dtype.kind in 'biuf' and np.isfinite(x).all(),'PTR_TYPED_LEAF')
+    return True
+
 def ptr_verify_typed_payload(jax,np,optax,serialization,template,payload,root):
     """Future authorized typed-restore audit callback, not a loader/dispatch.
     Requires the existing native template and already restored payload.
@@ -12849,9 +12858,8 @@ def ptr_verify_typed_payload(jax,np,optax,serialization,template,payload,root):
     ts=payload['training_state']
     h4m12_require(jax.tree_util.tree_structure(ts)==jax.tree_util.tree_structure(template['training_state']),
                   'PTR_TRAIN_TEMPLATE')
-    for x,y in zip(jax.tree_util.tree_leaves(ts),jax.tree_util.tree_leaves(template['training_state'])):
-        x,y=(np.asarray(jax.device_get(z)) for z in (x,y))
-        h4m12_require(x.shape==y.shape and x.dtype==y.dtype and np.isfinite(x).all(),'PTR_TYPED_LEAF')
+    ptr_typed_leaves(np,jax.device_get(jax.tree_util.tree_leaves(ts)),
+        jax.device_get(jax.tree_util.tree_leaves(template['training_state'])))
     a=[x for x in jax.tree_util.tree_leaves(ts.optimizer_state,
         is_leaf=lambda x:isinstance(x,optax.ScaleByAdamState)) if isinstance(x,optax.ScaleByAdamState)]
     h4m12_require(len(a)==1,'PTR_ADAM_LAYOUT')
@@ -13264,8 +13272,13 @@ def ptr_receipt_stages(out,auth):
         stored_log_bytes=n,authorization_head=a['authorization_head'],parent_pid=a['parent_pid'],worker_pid=None if w is None else w['pid'])
 
 def ptr_failure_record(out,auth,rc,error):
-    return dict(status='STOP',authorization=auth,producer_rc=rc,error=repr(error)[:2048],
-                **ptr_receipt_stages(out,auth))
+    base=dict(status='STOP',authorization=auth,producer_rc=rc,error=repr(error)[:2048])
+    try:
+        return dict(base,**ptr_receipt_stages(out,auth))
+    except Exception as stage_error:
+        # Invalid/missing evidence must never prevent an exclusive STOP receipt.
+        # This fallback cannot prove any committed budget or authorize CAND.
+        return dict(base,stage='UNREADABLE_EVIDENCE',stage_error=repr(stage_error)[:2048])
 
 def ptr_check_complete(out,r,auth):
     out=Path(out);arm=auth['arm']
@@ -13337,8 +13350,14 @@ def ptr_read_partial_held(out,auth):
     """STOP-only evidence reader including pre-report and failed acceptance."""
     out=Path(out);root=out.parent.parent.resolve();ptr_auth_schema(auth)
     h4m12_require(out.resolve()==root/ptr_spec(auth['arm'])['output'],'PTR_PARTIAL_PATH')
-    stage=ptr_receipt_stages(out,auth)
     fail=ssrpc_read_json(out/'supervisor.failed.json',65536)
+    if fail.get('stage')=='UNREADABLE_EVIDENCE':
+        h4m12_require(set(fail)=={'status','authorization','producer_rc','error','stage','stage_error'} and
+            fail['status']=='STOP' and fail['authorization']==auth and
+            (fail['producer_rc'] is None or type(fail['producer_rc']) is int) and
+            all(type(fail[k]) is str and 0<len(fail[k])<=2048 for k in ('error','stage_error')),'PTR_PARTIAL_FALLBACK')
+        return dict(status='STOP_UNREADABLE_EVIDENCE',budget=None,promotion_authorized=False)
+    stage=ptr_receipt_stages(out,auth)
     h4m12_require(set(fail)==set(stage)|{'status','authorization','producer_rc','error'} and
         fail['status']=='STOP' and fail['authorization']==auth and
         all(fail[k]==v for k,v in stage.items()) and
@@ -13741,7 +13760,13 @@ PTR_STATIC_CASES=(
     'reject_dtype','rejected_consumed_zero','chunk_conservation','reject_chunk_partition',
     'reject_chunk_delta','report_prefix_schema','reject_report_unknown','reject_report_config',
     'reject_report_budget','reject_report_promotion','reject_static_manifest','reject_static_report_keys',
-    'reject_candidate_no_control','no_native_imports')
+    'reject_candidate_no_control','cross_chunk_prefix','cross_chunk_complete','reject_cross_chunk',
+    'reject_host_reset','exposure_both_arms','exposure_late_floor','exposure_motion_floor',
+    'exposure_dcr_floor','typed_template_leaves','reject_typed_shape','reject_typed_dtype',
+    'reject_typed_nonfinite','generated_invalid_no_sgd','generated_guard_order',
+    'candidate_off_reward_identity','positive_final_report','reject_final_counter',
+    'reject_final_artifact','terminal_receipt_positive','reject_terminal_failure',
+    'failure_receipt_fallback','no_native_imports')
 PTR_STATIC_REPORT_KEYS={'status','authorization','static_head','source_head','source_sha256',
     'source_files','parent_pins','bootstrap_sha256','generated_sha256','held_generated_sha256',
     'fixture_manifest_sha256','fixtures','zero_native_execution','zero_optimizer_updates','promotion_authorized'}
@@ -13981,6 +14006,151 @@ def ptr_static_fixtures(root,raw,record):
     reject('reject_static_report_keys',lambda:ptr_static_report_check(root,{}),'PTR_STATIC_REPORT_KEYS')
     cand=dict(fake,id=ptr_spec('cand')['id'],arm='cand',output=ptr_spec('cand')['output'])
     reject('reject_candidate_no_control',lambda:ptr_auth_schema(cand),'PTR_CTRL_BIND')
+
+    # Aggregate-only fixtures: no simulation, actual runtime or claim of
+    # exposure. Independent values are chosen to satisfy each ledger identity.
+    def replay_rows(arm):
+        pr=[];dr=[];br=[]
+        for j in range(1,5):
+            m={k:0 for k in inst.PTR_COUNTS+inst.PTR_SUMS}
+            pending_before=0 if j==1 else 1
+            m.update(collected=5,batch_committed=5,open=61,close=61+pending_before-1,
+                scored=3000,open_kind_1=31,open_kind_2=30,scored_risk_sum=3000.)
+            m['close_reason_5']=m['close']
+            m['scored_pre_support_1']=3000
+            for motion in range(6):
+                for kind in (1,2):
+                    m[f'scored_motion_{motion}_kind_{kind}']=250
+                    m[f'tail_{kind}_1']=30
+            if arm=='cand':
+                m.update(nonzero_desired=3000,nonzero_consumed=3000,desired_sum=-2.4,
+                    consumed_ptr_delta=-2.4,consumed_total_delta=-2.4,delivered_sum=-2.4,delivered_abs_sum=2.4)
+                for motion in range(6):
+                    for kind in (1,2):m[f'consumed_motion_{motion}_kind_{kind}']=250
+                for side in range(1,7):m[f'consumed_side_{side}']=500
+            pr.append(dict(index=j,before=pending_before,after=1,metrics=m,passed=True))
+            dm={k:0 for k in d};dm.update(collected=5,batch_committed=5)
+            dr.append(dict(index=j,before=0,after=0,metrics=dm,passed=True))
+            bc={f'm463_h4_broad_motion_{motion}_per_rollout':400 for motion in range(1,6)}
+            bc.update(m463_h4_first_events_per_rollout=2000,m463_h4_repeat_events_per_rollout=2000)
+            br.append(dict(counts=bc,passed=True))
+        return pr,dr,br
+    pr,dr,br=replay_rows('cand')
+    full=lambda rows=pr,ds=dr,bs=br,reset=[0,0,1]:inst.ptr_exposure_replay(rows,ds,bs,'cand',1000000,reset,complete=True)
+    pref=inst.ptr_exposure_replay(pr[:2],dr[:2],br[:2],'cand',0,None,complete=False)
+    check('cross_chunk_prefix',pref['decision']=='INCOMPLETE' and pref['pending']==1 and pref['halves']==[6000,0])
+    check('cross_chunk_complete',full()['pending']==1 and full()['totals']['open']-full()['totals']['close']==1)
+    bad_rows=copy.deepcopy(pr);bad_rows[2]['before']=0
+    reject('reject_cross_chunk',lambda:full(rows=bad_rows),'PTR_REPLAY_ROW')
+    reject('reject_host_reset',lambda:full(reset=[0,0,0]),'PTR_REPLAY_COMPLETE')
+    cp,cd,cb=replay_rows('ctrl')
+    ctrl=inst.ptr_exposure_replay(cp,cd,cb,'ctrl',1000000,[0,0,1],complete=True)
+    check('exposure_both_arms',full()['decision']==ctrl['decision']=='EXPOSURE_PASS' and ctrl['totals']['nonzero_consumed']==0)
+    late=copy.deepcopy(pr)
+    for row in late[2:]:
+        m=row['metrics']
+        for key in m:
+            if key.startswith('consumed_motion_') or key.startswith('consumed_side_'):m[key]=0
+        m.update(nonzero_desired=0,nonzero_consumed=0,desired_sum=0.,consumed_ptr_delta=0.,
+            consumed_total_delta=0.,delivered_sum=0.,delivered_abs_sum=0.)
+    check('exposure_late_floor',full(rows=late)['checks']['second_half'] is False)
+    low=copy.deepcopy(br)
+    for row in low:row['counts']['m463_h4_broad_motion_3_per_rollout']=1
+    check('exposure_motion_floor',full(bs=low)['checks']['broad_motion_3'] is False)
+    check('exposure_dcr_floor',inst.r12_exposure_replay(dr,1000000)['decision']=='EXPOSURE_INCONCLUSIVE')
+    template=[np.zeros((2,3),f),np.asarray(0,ii)]
+    values=[np.ones((2,3),f),np.asarray(2400,ii)]
+    check('typed_template_leaves',ptr_typed_leaves(np,values,template))
+    reject('reject_typed_shape',lambda:ptr_typed_leaves(np,[np.ones(6,f),values[1]],template),'PTR_TYPED_LEAF')
+    reject('reject_typed_dtype',lambda:ptr_typed_leaves(np,[values[0].astype(np.float64),values[1]],template),'PTR_TYPED_LEAF')
+    reject('reject_typed_nonfinite',lambda:ptr_typed_leaves(np,[np.full((2,3),np.nan,f),values[1]],template),'PTR_TYPED_LEAF')
+    # Source structural check: no generated train function is invoked.
+    for arm in ('ctrl','cand'):
+        src,_=inst.make_r12_ptr_integrated_source(raw,arm)
+        start=src.index('    r12_bad=ptr_actual_batch_contract(')
+        end=src.index('    coverage.update(ptr_reduce(',start)
+        segment=src[start:end]
+        guard_start=segment.index('    def r12_update(_):')
+        guard_end=segment.index('    def r12_reject(_):')
+        commit=segment.index('jax.lax.cond(r12_valid,r12_update,r12_reject,None)')
+        update=segment[guard_start:guard_end];rejected=segment[guard_end:commit]
+        h4m12_require(segment.count('running_statistics.update(')==1 and
+            'running_statistics.update(' in update and 'functools.partial(sgd_step' in update and
+            'return training_state.optimizer_state,training_state.params,training_state.normalizer_params,met' in rejected and
+            'running_statistics.update(' not in rejected and
+            'jax.lax.pmin(r12_valid.astype(jnp.int32),_PMAP_AXIS_NAME)==1' in segment and
+            'env_steps=jax.lax.cond(r12_valid,' in src,'PTR_STRUCTURAL_REJECT')
+        h4m12_require(src.index('  ptr_generated_guard(')<start and
+            src.index("if float(metrics['r12_chunk_failed']) != 0.:")<
+            src.index("h4x_audit_fn('chunk_after'"),'PTR_STRUCTURAL_ORDER')
+    check('generated_invalid_no_sgd',True)
+    check('generated_guard_order',True)
+    for value in (f(-0.),f(0.),f(-.2),f(.5)):
+        for arm,gravity in (('ctrl',tilted),('cand',upright)):
+            p,v=step(opened,arm,base=value,native=value,gravity=gravity)
+            h4m12_require(v.tobytes()==value.tobytes() and p['ptr_delta']==0,'PTR_OFF_IDENTITY')
+    check('candidate_off_reward_identity',True)
+    # Complete synthetic technical reader from independently pinned R12
+    # historical ledger. Preserve original historical verdict; zero PTR
+    # is deliberate in this CTRL-only fixture, not evidence of exposure.
+    import tempfile
+    archived=copy.deepcopy(json.loads((root/PTR_PARENT/'report.json').read_bytes()))
+    h4x_file_pin(root/PTR_PARENT/'report.json',PTR_PARENT_PINS['report.json'])
+    parent=ptr_parent_evidence(root)
+    report={key:copy.deepcopy(archived[key]) for key in PTR_REPORT_BASE_KEYS if key in archived}
+    report.update(status='TECHNICAL_PASS',authorization=fake,spec=ptr_spec('ctrl'),parent=parent,
+        promotion_authorized=False,returned_policy_exact=True,gpu=copy.deepcopy(archived['gpu']),artifacts={})
+    report['ptr_chunks']=[]
+    for j,row in enumerate(report['r12_chunks'],1):
+        m={k:0 for k in inst.PTR_COUNTS+inst.PTR_SUMS}
+        dcr=row['metrics']
+        m.update(collected=5,batch_committed=5,native_sum=dcr['native_sum'],
+            intermediate_sum=dcr['consumed_reward'],delivered_sum=dcr['consumed_reward'],
+            consumed_dcr_delta=dcr['consumed_delta'],consumed_total_delta=dcr['consumed_delta'],
+            native_abs_sum=dcr['native_abs_sum'],intermediate_abs_sum=dcr['consumed_reward_abs_sum'],
+            delivered_abs_sum=dcr['consumed_reward_abs_sum'])
+        report['ptr_chunks'].append(dict(index=j,before=0,after=0,metrics=m,passed=True))
+    restore_key=[3994719248,2536063210];eval_key=[3826574560,1155328204]
+    reset_sha='67c2e99b593813442e608ede12e01c7757ca1fb98e7daafaec8c36904280fd36'
+    for row in report['operational_rows']:
+        if 'steps' in row:row['steps']+=5242880;row['adam']+=800;row['normalizer']+=5242880
+        if 'step' in row:row['step']+=5242880
+        if row['event'].endswith('reset_after'):row['ptr_host_reset_closed']=0
+        if row['event']=='restore_payload':row.update(local_key=restore_key,eval_key=eval_key,reset_sha256=reset_sha)
+        if row['event']=='restore_reset_before':row.update(local_key=restore_key,eval_key=eval_key,keys_sha256=reset_sha)
+        if row['event']=='eval_before':row['key']=eval_key
+    report['report_history'][0]['additional_steps']=20971520
+    hist=report['report_history'][0]['metrics']
+    for key in inst.PTR_COUNTS+inst.PTR_SUMS:
+        hist['training/ptr_'+key]=sum(row['metrics'][key] for row in report['ptr_chunks'])/4
+    report['ptr_exposure']=ptr_complete_exposure(report,'ctrl')
+    with tempfile.TemporaryDirectory(prefix='ptr-host-fixture-') as tmp:
+        out=Path(tmp)
+        for name in (PTR_NEW_POLICY,PTR_NEW_FULL):
+            (out/name).write_bytes(b'SYNTHETIC NON-CHECKPOINT '+name.encode())
+            report['artifacts'][name]=digest(out/name)
+        name=Path(PTR_NEW_FULL).with_suffix('.json').name
+        (out/name).write_text(json.dumps(ptr_checkpoint_meta(fake,report['artifacts'][PTR_NEW_FULL],report['artifacts'][PTR_NEW_POLICY])),encoding='utf8')
+        report['artifacts'][name]=digest(out/name)
+        (out/'m463_brax_ppo_instrumented.py').write_bytes(b'SYNTHETIC NEVER IMPORT')
+        fake['generated_sha256']=digest(out/'m463_brax_ppo_instrumented.py')
+        # Manifest embeds authorization; rewrite only synthetic fixture.
+        (out/name).write_text(json.dumps(ptr_checkpoint_meta(fake,report['artifacts'][PTR_NEW_FULL],report['artifacts'][PTR_NEW_POLICY])),encoding='utf8')
+        report['artifacts'][name]=digest(out/name)
+        check('positive_final_report',ptr_check_complete(out,report,fake))
+        invalid=copy.deepcopy(report);invalid['operational_rows'][-1]['adam']+=1
+        reject('reject_final_counter',lambda:ptr_check_complete(out,invalid,fake),'PTR_OPERATIONAL_COUNTER')
+        invalid=copy.deepcopy(report);invalid['artifacts'].pop(PTR_NEW_POLICY)
+        reject('reject_final_artifact',lambda:ptr_check_complete(out,invalid,fake),'PTR_FINAL_FILES')
+        (out/'worker.log').write_bytes(b'SYNTHETIC')
+        sha='a'*64
+        ssrpc_static_write(out/'supervisor.terminal.json',dict(status='COMPLETE',authorization=fake,report_sha256=sha,
+            producer_rc=0,reader_rc=0,worker_log_sha256=digest(out/'worker.log'),stored_log_bytes=9))
+        check('terminal_receipt_positive',ssrpc_terminal_receipt(out,sha,fake))
+        ssrpc_static_write(out/'supervisor.failed.json',dict(status='STOP'))
+        reject('reject_terminal_failure',lambda:ssrpc_terminal_receipt(out,sha,fake),'FFE2_SUPERVISOR_FAILURE')
+        failure=ptr_failure_record(out,fake,1,RuntimeError('synthetic malformed reservation'))
+        check('failure_receipt_fallback',failure['status']=='STOP' and failure['stage']=='UNREADABLE_EVIDENCE')
     check('no_native_imports',ssrpc_static_no_native())
     return generated,held
 
@@ -14058,8 +14228,7 @@ def ptr_static_worker(root,args,auth,head,out):
     ssrpc_static_write(out/'report.json',r)
 
 def ptr_static_cli_held(argv):
-    # No static release under R2C; distinct Owner static GO and review required.
-    ptr_execution_hold()
+    # R2D: no fixture before exact distinct static marker, branch and source pins.
     import subprocess,selectors,signal
     p=argparse.ArgumentParser(description='R12 PTR one-use host-static verification')
     p.add_argument('--checkpoint',type=Path,required=True)
@@ -14069,6 +14238,8 @@ def ptr_static_cli_held(argv):
     a=p.parse_args(argv);root=Path(__file__).resolve().parent
     h4m12_require(Path.cwd().resolve()==root and ssrpc_static_no_native(),'PTR_STATIC_WORKDIR')
     auth,head=ptr_static_authorization(root);out=root/PTR_STATIC
+    # Source remains held pending review of expanded fixtures; no GO issued.
+    ptr_execution_hold()
     if a.worker:return ptr_static_worker(root,a,auth,head,out)
     h4m12_require(out.parent.is_dir() and not out.parent.is_symlink() and
         not out.exists() and not out.is_symlink(),'PTR_STATIC_USED')
