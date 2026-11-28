@@ -3296,3 +3296,109 @@ def make_ptr_r7_diagnostic_held_source(raw):
 
 # H4M29_R7_DIAGNOSTIC_INSTRUMENT_END
 # H4M29_PTR_HELD_INSTRUMENT_END
+
+# H4M29_R12_AUTO_RESET_HELD_BEGIN
+# Distinct contract: old V1 and DIAG-V2 functions/generators remain byte-identical.
+def ptr_r12_autoreset_masks(xp,prior,native_pre_live,boundary):
+    """Pinned AutoReset clears done before native step; prior done implies boundary."""
+    if prior.shape!=native_pre_live.shape or prior.shape!=boundary.shape:
+        raise RuntimeError('PTR_R12_RESET_SHAPE')
+    if prior.dtype!=xp.float32 or native_pre_live.dtype!=xp.int32 or boundary.dtype!=xp.int32:
+        raise RuntimeError('PTR_R12_RESET_DTYPE')
+    live_bad=native_pre_live!=1
+    reset_bad=((boundary!=0)&(boundary!=1))|((prior==1)&(boundary!=1))
+    return live_bad,reset_bad
+
+def ptr_r12_actual_batch_contract(xp,data,before,after,before_done,after_done,arm):
+    """Independent actual Transition observation and cross-row clock/done evidence."""
+    shape=(8192,32);f=xp.float32;i=xp.int32
+    extras=data.extras['state_extras'];x=lambda k:extras['ptr_'+k];z=lambda k:extras[k]
+    bad=ptr_batch_contract(xp,data.reward,data.discount,extras,before,after,arm)
+    command=xp.asarray([[0.,0.,0.],[.2,0.,0.],[.6,0.,0.],[.4,0.,.8],
+                        [.4,0.,-.8],[0.,.35,0.]],f)
+    vec=lambda k:xp.stack([x(k+'_'+str(j)) for j in range(3)],axis=-1)
+    pn,pa,pc,nn,na,nc=(vec(k) for k in PTR_COMMANDS)
+    motion=z('h4_motion');terminal=z('r12_terminal')==1;refresh=z('h4_refresh')==1
+    changed=xp.any(pn!=nn,axis=-1)
+    coherent=xp.all(pa==pn,axis=-1)&xp.all(pc==pn,axis=-1)&xp.all(nn==pn,axis=-1)&(
+        xp.all(na==pn,axis=-1))&xp.all(nc==pn,axis=-1)&xp.all(command[xp.clip(motion,0,5)]==pn,axis=-1)&(
+        z('h4_actor_motion')==motion)&~refresh&~changed&(x('pre_step')<500)
+    bad=bad|(coherent!=(x('coherent')==1))|(changed!=(z('h4_changed')==1))
+    for obs,witness,post in ((data.observation['state'],pa,False),
+        (data.observation['privileged_state'],pc,False),
+        (data.next_observation['state'],na,True),
+        (data.next_observation['privileged_state'],nc,True)):
+        if obs.ndim!=3 or obs.shape[:2]!=shape or obs.shape[2]<12 or obs.dtype!=f:
+            raise RuntimeError('PTR_ACTUAL_OBS_SCHEMA')
+        mismatch=xp.any(obs[:,:,9:12]!=witness,axis=-1)
+        bad=bad|(mismatch&~terminal if post else mismatch)
+    # Exact source-clock progression from historical FFE checker. No new reset.
+    clock=x('pre_step');nxt=x('after_step')
+    for q in (before['step'],after['step']):
+        if q.shape!=(8192,) or q.dtype!=i:raise RuntimeError('PTR_SOURCE_CLOCK_SCHEMA')
+    prev=xp.concatenate((before['step'][:,None],nxt[:,:-1]),axis=1)
+    bad=bad|(clock!=prev)|(clock<0)|(clock>500)|(
+        nxt!=xp.where(terminal|refresh,0,clock+1))|(nxt[:,-1:]!=after['step'][:,None])
+    for q in (before_done,after_done):
+        if q.shape!=(8192,) or q.dtype!=f:raise RuntimeError('PTR_DONE_SCHEMA')
+    prior=xp.concatenate((before_done[:,None],1-data.discount[:,:-1]),axis=1)
+    live_bad,reset_bad=ptr_r12_autoreset_masks(xp,prior,x('pre_live'),z('h4_boundary'))
+    bad=bad|((prior!=0)&(prior!=1))|live_bad|reset_bad|(
+        (1-data.discount[:,-1:])!=after_done[:,None])
+    return bad
+
+def _ptr_r12_actual(xp,data,before,after,before_done,after_done,arm,note):
+    """Independent actual Transition observation and cross-row clock/done evidence."""
+    shape=(8192,32);f=xp.float32;i=xp.int32
+    extras=data.extras['state_extras'];x=lambda k:extras['ptr_'+k];z=lambda k:extras[k]
+    bad=_ptr_r7_ptr(xp,data.reward,data.discount,extras,before,after,arm,note)
+    command=xp.asarray([[0.,0.,0.],[.2,0.,0.],[.6,0.,0.],[.4,0.,.8],
+                        [.4,0.,-.8],[0.,.35,0.]],f)
+    vec=lambda k:xp.stack([x(k+'_'+str(j)) for j in range(3)],axis=-1)
+    pn,pa,pc,nn,na,nc=(vec(k) for k in PTR_COMMANDS)
+    motion=z('h4_motion');terminal=z('r12_terminal')==1;refresh=z('h4_refresh')==1
+    changed=xp.any(pn!=nn,axis=-1)
+    coherent=xp.all(pa==pn,axis=-1)&xp.all(pc==pn,axis=-1)&xp.all(nn==pn,axis=-1)&(
+        xp.all(na==pn,axis=-1))&xp.all(nc==pn,axis=-1)&xp.all(command[xp.clip(motion,0,5)]==pn,axis=-1)&(
+        z('h4_actor_motion')==motion)&~refresh&~changed&(x('pre_step')<500)
+    bad=bad|note('actual_2753_1',((coherent!=(x('coherent')==1))),coherent,x('coherent')==1)|note('actual_2753_2',((changed!=(z('h4_changed')==1))),changed,z('h4_changed')==1)
+    for obs,witness,post in ((data.observation['state'],pa,False),
+        (data.observation['privileged_state'],pc,False),
+        (data.next_observation['state'],na,True),
+        (data.next_observation['privileged_state'],nc,True)):
+        if obs.ndim!=3 or obs.shape[:2]!=shape or obs.shape[2]<12 or obs.dtype!=f:
+            raise RuntimeError('PTR_ACTUAL_OBS_SCHEMA')
+        mismatch=xp.any(obs[:,:,9:12]!=witness,axis=-1)
+        # Same OR of three command-coordinate mismatches, preserving terminal exemption.
+        for j,label in enumerate(('actual_2761_axis0','actual_2761_axis1','actual_2761_axis2')):
+            observed=obs[:,:,9+j];expected=witness[:,:,j]
+            differs=observed!=expected
+            bad=bad|note(label,differs&~terminal if post else differs,observed,expected)
+    # Exact source-clock progression from historical FFE checker. No new reset.
+    clock=x('pre_step');nxt=x('after_step')
+    for q in (before['step'],after['step']):
+        if q.shape!=(8192,) or q.dtype!=i:raise RuntimeError('PTR_SOURCE_CLOCK_SCHEMA')
+    prev=xp.concatenate((before['step'][:,None],nxt[:,:-1]),axis=1)
+    bad=bad|note('actual_2767_1',((clock!=prev)),clock,prev)|note('actual_2767_2',((clock<0)))|note('actual_2767_3',((clock>500)))|note('actual_2767_4',(( nxt!=xp.where(terminal|refresh,0,clock+1))),nxt,xp.where(terminal|refresh,0,clock+1))|note('actual_2767_5',((nxt[:,-1:]!=after['step'][:,None])),nxt[:,-1:],after['step'][:,None])
+    for q in (before_done,after_done):
+        if q.shape!=(8192,) or q.dtype!=f:raise RuntimeError('PTR_DONE_SCHEMA')
+    prior=xp.concatenate((before_done[:,None],1-data.discount[:,:-1]),axis=1)
+    live_bad,reset_bad=ptr_r12_autoreset_masks(xp,prior,x('pre_live'),z('h4_boundary'))
+    bad=bad|note('actual_2772_1',((prior!=0)&(prior!=1)))|note('actual_2772_2',live_bad,x('pre_live')==1,xp.ones_like(live_bad))|note('actual_r12_reset_edge',reset_bad)|note('actual_2772_3',((1-data.discount[:,-1:])!=after_done[:,None]),1-data.discount[:,-1:],after_done[:,None])
+    return bad
+
+# New traced predicate namespace is distinct; historical 68/162 contract stays frozen.
+PTR_R12_PREDICATES=dict(PTR_R7_PREDICATES,actual_r12_reset_edge=(1,False))
+
+def make_r12_ptr_ctrl_v2_held_source(raw):
+    """Generate only a held CTRL variant, using the same loss/optimizer/rollout."""
+    base,original=make_r12_ptr_held_source(raw,'ctrl')
+    a='ptr_actual_batch_contract'
+    b='ptr_r12_actual_batch_contract'
+    if base.count(a)!=2 or b in base:
+        raise RuntimeError('PTR_R12_GENERATOR_ANCHOR')
+    result=base.replace(a,b)
+    if result.replace(b,a)!=base or result.count("  raise RuntimeError('R12_GENERATED_EXECUTION_HOLD')\n")!=1:
+        raise RuntimeError('PTR_R12_GENERATOR_REVERSE_OR_HOLD')
+    return result,original
+# H4M29_R12_AUTO_RESET_HELD_END

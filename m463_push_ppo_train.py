@@ -17742,3 +17742,150 @@ def ptr_r10b_host_main(argv):
         raise
 # H4M29_R10B_DIAG_V2_INTEGRATION_END
 # H4M29_PTR_HELD_TRAINER_END
+
+# H4M29_R12_CTRL_V2_HELD_BEGIN
+PTR_R12_BASE_HEAD='2d4fefd532a825b00031299208695dad686058ef'
+PTR_R12_DIAG_AUTH='1d1a4ec18cd133cf76c4fe9a20be425b779fec57'
+PTR_R12_DIAG_CLOSURE='488323c6584b68eb03709bc89a3d6ba8bdf51197'
+PTR_R12_CTRL_ID='H4-M29-R12-PTR-CTRL-V2'
+PTR_R12_CTRL_OUT='m463_runs/m470_h4_m29_ptr_ctrl_v2'
+PTR_R12_CTRL_MARKER='H4PTR_CTRL_V2_GO'
+PTR_R12_DIAG_PINS={
+    'attempt.json':'8a7706ca5b1837b5b935f3d93132ba5765beec62cb5ea82fc85ee9d60f21ae3e',
+    'attempt_result.json':'c6f88563f6c353e8afa07406dd665acc6d2c2e5a58e986103755b90b1ee9a8f5',
+    'diagnostic.audit.json':'32ff5393fb79d20f82a9dc2dda7a0fb317b9eb3502cf989048081ddba6c42eab',
+    'dispatch.started.json':'ee2aba97df9d1b38cd2be5da8295bb17a2ee591502181df59b268b96dc5ca8cd',
+    'm463_brax_ppo_instrumented.py':'1fd2f2d19b96046903a04801699908a0b53ec6811271e2683c23369834137028',
+    'report.json':'1ae6a95945e29fa5d5897d0f99cd73caed8c493cc62563d4312abfb206b2830a',
+    'supervisor.terminal.json':'7daf94e7e0a5c81ae2ece6dbf5689151aca47c8352e7fac6b13bae476ab27107',
+    'worker.log':'bfbeda335439b9a1202295709bb66ff379f7ea0d8385d5b0e0829ef298842cd0',
+    'worker.started.json':'ee2aba97df9d1b38cd2be5da8295bb17a2ee591502181df59b268b96dc5ca8cd'}
+PTR_R12_FOCUSED_CASES=('ordinary_live','initial_boundary','autoreset_boundary','r11_two_witnesses',
+    'missing_reset_boundary','invalid_native_live_zero','invalid_native_live_two','invalid_boundary',
+    'nonbinary_prior_done','timeout_boundary','source_clock_negative','final_done_negative',
+    'production_traced_equivalence','historical_reverse','generated_hold_reverse',
+    'diag_receipt_mutation','ctrl_v1_envelope_reject','ctrl_v2_live_hold')
+
+def ptr_r12_ctrl_spec():
+    return dict(ptr_spec('ctrl'),id=PTR_R12_CTRL_ID,output=PTR_R12_CTRL_OUT)
+
+def ptr_r12_reverse(name,raw):
+    tags={'m463_push_ppo_train.py':b'H4M29_R12_CTRL_V2_HELD',
+          'm463_instrument_brax.py':b'H4M29_R12_AUTO_RESET_HELD'}
+    if name not in tags:return raw
+    tag=tags[name];begin=b'\n# '+tag+b'_BEGIN\n';end=b'# '+tag+b'_END\n'
+    # Construct delimiters dynamically: do not match literals within this block.
+    h4m12_require(raw.count(begin)==raw.count(end)==1 and raw.endswith(end),'PTR_R12_REVERSE_ANCHOR')
+    return raw[:raw.index(begin)]
+
+def ptr_r12_project_history(root):
+    import subprocess
+    root=Path(root).resolve()
+    git=lambda *v:subprocess.check_output(['git',*v],cwd=root,timeout=30)
+    pins={}
+    for name in PTR_SOURCE_NAMES:
+        p=root/name
+        h4m12_require(p.is_file() and not p.is_symlink(),'PTR_R12_SOURCE_PATH')
+        raw=p.read_bytes()
+        h4m12_require(raw==git('show','HEAD:'+name),'PTR_R12_SOURCE_BYTES')
+        previous=ptr_r12_reverse(name,raw)
+        for head in (PTR_R12_BASE_HEAD,PTR_R12_DIAG_AUTH,PTR_R12_DIAG_CLOSURE):
+            h4m12_require(previous==git('show',head+':'+name),'PTR_R12_HISTORICAL_SOURCE_'+name)
+        pins[name]=hashlib.sha256(previous).hexdigest()
+    h4m12_require(hashlib.sha256(ptr_r7b_canonical(pins).encode()).hexdigest()==
+        '5ddf511b6d005601e9c97200a5a9414b05a5724b9cacd4503b63169496713ef2','PTR_R12_HISTORICAL_AGGREGATE')
+    return pins
+
+def ptr_r12_diag_history(root):
+    """Read consumed exact R11 evidence without live DIAG authorization or replay."""
+    import subprocess,struct
+    root=Path(root).resolve()
+    git=lambda *v:subprocess.check_output(['git',*v],cwd=root,timeout=30)
+    raw=git('show',PTR_R12_DIAG_AUTH+':G1_RESEARCH_RULES.md')
+    prefix=b'H4PTR_R10A_NATIVE_GO: '
+    lines=[x for x in raw.splitlines() if x.startswith(prefix)]
+    h4m12_require(len(lines)==1,'PTR_R12_DIAG_MARKER')
+    a=json.loads(lines[0][len(prefix):])
+    ptr_r10a_auth_schema(a)
+    ptr_r10b_closed_marker(root,PTR_R12_BASE_HEAD,PTR_R12_DIAG_AUTH,PTR_R12_DIAG_CLOSURE,
+        'H4PTR_R10A_NATIVE_GO',a)
+    out=root/PTR_R10A_OUTPUT
+    ptr_r4b_output_path(out)
+    h4m12_require({p.name for p in out.iterdir()}==set(PTR_R12_DIAG_PINS) and
+        all(p.is_file() and not p.is_symlink() for p in out.iterdir()),'PTR_R12_DIAG_INVENTORY')
+    for name,sha in PTR_R12_DIAG_PINS.items():h4x_file_pin(out/name,sha)
+    binding=ptr_r10a_binding(a,PTR_R12_DIAG_AUTH)
+    read=lambda name:ssrpc_read_json(out/name,H4X_SPEC['other_cap'])
+    report=read('report.json')
+    evidence=ptr_r10a_check_report(report,a,PTR_R12_DIAG_AUTH)
+    ptr_r7b_exact(evidence,dict(bad_rows=2,families=dict(r12=0,ptr=0,actual=2),
+        finite=dict(transition=True,training_state=True,pre_environment=True,post_environment=True),
+        mask_equivalent=True),'PTR_R12_DIAG_EVIDENCE')
+    e=report['evidence'];p=e['predicates']['actual_2772_2:0']
+    ptr_r7b_exact(p,dict(count=dict(dtype='<i4',shape=[],hex='02000000'),
+        indices=dict(dtype='<i4',shape=[2],hex='1c4100005dbe0200'),
+        actual=dict(dtype='|b1',shape=[2],hex='0000'),
+        expected=dict(dtype='|b1',shape=[2],hex='0101')),'PTR_R12_DIAG_PREDICATE')
+    h4m12_require(all(v['count']['hex']=='00000000' for k,v in e['predicates'].items()
+        if k!='actual_2772_2:0'),'PTR_R12_DIAG_OTHER_PREDICATE')
+    for name,values in dict(h4_boundary=(1,1,0,0),ptr_pre_live=(1,1,0,0),
+        ptr_pre_step=(0,0,0,0),ptr_after_step=(1,1,0,0),ptr_before_active=(0,0,0,0),
+        ptr_after_active=(0,0,0,0)).items():
+        ptr_r7b_exact(e['witness'][name],dict(dtype='<i4',shape=[4],
+            hex=struct.pack('<4i',*values).hex()),'PTR_R12_DIAG_WITNESS_'+name)
+    attempt=read('attempt.json');pid=attempt['parent_pid'];worker=read('worker.started.json')
+    wid=worker['worker_pid']
+    h4m12_require(type(pid) is type(wid) is int and pid>0 and wid>0 and pid!=wid,'PTR_R12_DIAG_PID')
+    ptr_r7b_exact(attempt,dict(id=PTR_R10A_ID,binding=binding,parent_pid=pid),'PTR_R12_DIAG_ATTEMPT')
+    ptr_r7b_exact(worker,dict(attempt,worker_pid=wid),'PTR_R12_DIAG_WORKER')
+    ptr_r7b_exact(read('dispatch.started.json'),worker,'PTR_R12_DIAG_DISPATCH')
+    ptr_r7b_exact(read('attempt_result.json'),ptr_r10b_result(out,binding,0),'PTR_R12_DIAG_RESULT')
+    audit=read('diagnostic.audit.json')
+    gpu=audit['gpu'];rows=audit['rows']
+    ptr_r7b_exact(audit,dict(binding=binding,report_sha256=PTR_R12_DIAG_PINS['report.json'],
+        bootstrap_sha256=PTR_R8A_STATIC_BOOT,rows=rows,gpu=gpu,promotion_authorized=False),'PTR_R12_DIAG_AUDIT')
+    ptr_r7b_exact(rows[:7],ptr_r8a2_expected_prefix(root),'PTR_R12_DIAG_PREFIX')
+    ptr_r7b_exact(rows[7:], [dict(event='ptr_r7_diagnostic',collected=262144,optimizer_updates=0,
+        normalizer_updates=0,evaluation=0,train_reset_lanes=16384,eval_reset_lanes=0,
+        training_state_sha256=report['training_state_sha256_after'])],'PTR_R12_DIAG_AUDIT_EDGE')
+    h4m12_require(type(gpu['samples']) is int and gpu['samples']>0 and gpu['total_mib']==12288 and
+        0<gpu['peak_used_mib']<.95*12288 and gpu['sampler_errors']==[],'PTR_R12_DIAG_GPU')
+    logs=(out/'worker.log').read_text().splitlines()
+    pref='PTR_R10B_AUDIT_ROW='
+    ptr_r7b_exact([json.loads(v[len(pref):]) for v in logs if v.startswith(pref)],rows,'PTR_R12_DIAG_LOG')
+    h4m12_require(logs.count(PTR_R10B_READER_PASS)==1,'PTR_R12_DIAG_READER')
+    ptr_r7b_exact(read('supervisor.terminal.json'),
+        ptr_r10b_terminal(out,binding,PTR_R8A_STATIC_BOOT,0,0,0,None),'PTR_R12_DIAG_TERMINAL')
+    return dict(report_sha256=PTR_R12_DIAG_PINS['report.json'],
+        terminal_sha256=PTR_R12_DIAG_PINS['supervisor.terminal.json'],
+        audit_sha256=PTR_R12_DIAG_PINS['diagnostic.audit.json'])
+
+def ptr_r12_ctrl_auth_schema(a):
+    """Prospective distinct schema, not a live authorization parser."""
+    import re
+    hashes=('source_sha256','generated_sha256','focused_static_sha256','focused_terminal_sha256',
+        'diag_report_sha256','diag_terminal_sha256','diag_audit_sha256','parent_sha256')
+    h4m12_require(type(a) is dict and set(a)=={'id','arm','output','source_head',*hashes} and
+        all(type(v) is str for v in a.values()),'PTR_R12_AUTH_KEYS')
+    h4m12_require(a['id']==PTR_R12_CTRL_ID and a['arm']=='ctrl' and a['output']==PTR_R12_CTRL_OUT and
+        re.fullmatch('[0-9a-f]{40}',a['source_head']) is not None and
+        a['source_head'] not in (PTR_R12_BASE_HEAD,PTR_R12_DIAG_AUTH,PTR_R12_DIAG_CLOSURE) and
+        all(re.fullmatch('[0-9a-f]{64}',a[k]) and a[k]!='0'*64 for k in hashes),'PTR_R12_AUTH_ID')
+    for key,name in (('diag_report_sha256','report.json'),('diag_terminal_sha256','supervisor.terminal.json'),
+        ('diag_audit_sha256','diagnostic.audit.json')):
+        h4m12_require(a[key]==PTR_R12_DIAG_PINS[name],'PTR_R12_AUTH_DIAG')
+    h4m12_require(a['parent_sha256']=='b8540c6ab1b282d8605910515af4dc86065beb69417b28752f49178ba617ab1e',
+        'PTR_R12_AUTH_PARENT')
+    return a
+
+def ptr_r12_ctrl_report_envelope(r,a):
+    """Held envelope check; complete/partial scientific and receipt reader still required."""
+    ptr_r12_ctrl_auth_schema(a)
+    h4m12_require(type(r) is dict and r.get('promotion_authorized') is False,'PTR_R12_CTRL_REPORT')
+    ptr_r7b_exact(r.get('authorization'),a,'PTR_R12_CTRL_REPORT_AUTH')
+    ptr_r7b_exact(r.get('spec'),ptr_r12_ctrl_spec(),'PTR_R12_CTRL_REPORT_SPEC')
+    return True
+
+def ptr_r12_ctrl_main(*args,**kwargs):
+    raise RuntimeError('PTR_R12_CTRL_V2_EXECUTION_HOLD')
+# H4M29_R12_CTRL_V2_HELD_END
