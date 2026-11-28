@@ -14112,8 +14112,8 @@ def ptr_static_fixtures(root,raw,record):
             h4m12_require(v.tobytes()==value.tobytes() and p['ptr_delta']==0,'PTR_OFF_IDENTITY')
     check('candidate_off_reward_identity',True)
 
-    # Same synthetic input, same original DCR, zero PTR dose. Compare exact
-    # bytes (including negative zero) for reward, obs, extras and final carry.
+    # Same synthetic input, same original DCR, zero PTR dose. Preserve exact
+    # bytes except the arm-specific signed zero of ptr_desired on scored rows.
     left,lp,lq,ld,lb=batch('ctrl',0,gravity=upright)
     right,rp,rq,rd,rb=batch('cand',0,gravity=upright)
     def byte_equal(a,b):
@@ -14121,10 +14121,18 @@ def ptr_static_fixtures(root,raw,record):
     h4m12_require(not np.any(lb) and not np.any(rb) and byte_equal(left.reward,right.reward) and
         byte_equal(left.discount,right.discount) and byte_equal(ld,rd),'PTR_OFF_BATCH_REWARD')
     for x,y in ((lp,rp),(lq,rq),(left.observation,right.observation),
-        (left.next_observation,right.next_observation),(left.extras['state_extras'],right.extras['state_extras'])):
+        (left.next_observation,right.next_observation)):
         h4m12_require(set(x)==set(y) and all(byte_equal(x[key],y[key]) for key in x),'PTR_OFF_BATCH_FIELDS')
+    x,y=left.extras['state_extras'],right.extras['state_extras']
+    h4m12_require(set(x)==set(y) and {'ptr_desired','ptr_scored'}<=set(x) and
+        all(byte_equal(x[key],y[key]) for key in x if key!='ptr_desired'),'PTR_OFF_BATCH_FIELDS')
+    a0,b0=x['ptr_desired'],y['ptr_desired']
+    scored=x['ptr_scored']==1
+    h4m12_require(a0.shape==b0.shape==scored.shape==sh and a0.dtype==b0.dtype==f and
+        np.all(a0==0) and np.all(b0==0) and np.any(scored) and np.any(~scored) and
+        not np.any(np.signbit(a0)) and np.array_equal(np.signbit(b0),scored),'PTR_OFF_BATCH_DESIRED_SIGN')
     check('candidate_off_batch_identity',True)
-    del left,right,lp,lq,rp,rq,ld,rd,lb,rb
+    del left,right,lp,lq,rp,rq,ld,rd,lb,rb,x,y,a0,b0,scored
     # Complete synthetic technical reader from independently pinned R12
     # historical ledger. Preserve original historical verdict; zero PTR
     # is deliberate in this CTRL-only fixture, not evidence of exposure.
