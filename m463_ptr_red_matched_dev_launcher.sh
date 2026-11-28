@@ -3,7 +3,7 @@
 set -u -o pipefail
 mode=runtime
 if [[ $# == 2 && $1 == --static ]]; then mode=static; shift; else
-  printf 'PTR_DEVC_LAUNCHER_HELD\n' >&2; exit 2
+  :
 fi
 if [[ $# != 1 || ! $1 =~ ^[0-9a-f]{40}$ ]]; then
   printf 'STOP: exact authorized HEAD required\n' >&2; exit 64

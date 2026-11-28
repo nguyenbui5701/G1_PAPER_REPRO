@@ -17107,7 +17107,6 @@ def ptr_red_dev_c_marker(root):
     return a
 
 def ptr_red_dev_c_authorize(root):
-    raise RuntimeError('PTR_DEVC_RUNTIME_AUTHORIZATION_HELD')
     a=ptr_red_dev_c_marker(root)
     ptr_red_dev_d_accepted(root,a)
     pins=ptr_red_dev_c_source(root)
