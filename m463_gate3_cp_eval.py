@@ -17338,7 +17338,7 @@ def ptr_red_dev_d_release_projection(raw,launcher,accepted):
     a=ptr_red_dev_d_accept_line(accepted)
     held=ptr_red_dev_d_replace(raw,PTR_RED_DEV_D_ACCEPT_LINE,a)
     released=ptr_red_dev_d_replace(held,PTR_RED_DEV_D_AUTH_LINE,b'')
-    shell=ptr_red_dev_d_replace(launcher,PTR_RED_DEV_D_SHELL_LINE,b'')
+    shell=ptr_red_dev_d_replace(launcher,PTR_RED_DEV_D_SHELL_LINE,b'  :\n')
     return held,released,shell
 
 def ptr_red_dev_d_normalize(raw):
@@ -17530,6 +17530,14 @@ def ptr_red_dev_d_cases(root,a,pins,record):
             for g in groups:h4m12_validate_group(g,report['frame_columns'])
         # Historical R12 replay already performed by unchanged reader.
         h4m12_req(r12['decision']['decision']=='NO_PROMOTE','PTR_DEVD_ARCHIVE_DISPOSITION')
+        # Archive clone is a synthetic host scoring fixture, not fresh policy evidence.
+        groups=[dict(g,policy=label) for g in r12['groups'] for label in PTR_RED_DEV_SPEC['policies']]
+        n=sum(g['physical_transitions'] for g in groups)
+        cloned=dict(r12,groups=groups,reset_lanes_attempted=24,reset_lanes_recorded=24,
+            logical_trajectories_completed=120,physical_transitions_attempted=n,physical_transitions_recorded=n)
+        d=ptr_red_dev_held_decision(official,r12,m12,cloned)
+        h4m12_req(d['decision']=='NO_GO' and not d['r12_case_losses'] and
+            all(v['gain']==0 for v in d['matched']['primary_stand_double'].values()),'PTR_DEVD_ARCHIVE_CLONE')
     run_case('archive_replay',archive_case)
     s=ptr_red_dev_d_synthetic_ledger()
     run_case('ledger_complete',lambda:h4m12_req(ptr_red_dev_c_ledger(s,partial=False)['logical']==120,'PTR_DEVD_LEDGER'))
@@ -17572,7 +17580,8 @@ def ptr_red_dev_d_cases(root,a,pins,record):
         h,r,l=ptr_red_dev_d_release_projection(raw,launch,accepted)
         h4m12_req(ptr_red_dev_d_replace(h,ptr_red_dev_d_accept_line(accepted),PTR_RED_DEV_D_ACCEPT_LINE)==raw
             and r==ptr_red_dev_d_replace(h,PTR_RED_DEV_D_AUTH_LINE,b'')
-            and l==ptr_red_dev_d_replace(launch,PTR_RED_DEV_D_SHELL_LINE,b''),'PTR_DEVD_RELEASE_INVERSE')
+            and l==ptr_red_dev_d_replace(launch,PTR_RED_DEV_D_SHELL_LINE,b'  :\n'),'PTR_DEVD_RELEASE_INVERSE')
+        subprocess.run(['bash','-n'],input=l,check=True,timeout=30)
     run_case('release_projection',projection_case)
     run_case('no_native_import',h4m3_no_runtime_imports)
     return inputs
@@ -17652,6 +17661,7 @@ def ptr_red_dev_d_accepted(root,a):
     old=git('show',accepted['source_head']+':m463_gate3_cp_eval.py')
     old_l=git('show',accepted['source_head']+':'+PTR_RED_DEV_C_LAUNCHER)
     held,released,shell=ptr_red_dev_d_release_projection(old,old_l,accepted)
+    t.ptr_r4b_lineage(root,accepted['closure_head'],a['source_head'])
     h4m12_req(git('show',a['source_head']+':m463_gate3_cp_eval.py')==released and
         git('show',a['source_head']+':'+PTR_RED_DEV_C_LAUNCHER)==shell,'PTR_DEVD_ACCEPT_RELEASE')
     for n in t.PTR_SOURCE_NAMES:
@@ -17687,7 +17697,8 @@ def ptr_red_dev_d_static_read():
         fixtures=[dict(id=k,status='PASS') for k in PTR_RED_DEV_D_FIXTURES],
         provenance_sha256=ptr_red_dev_d_provenance(inputs),zero_native_execution=True,
         zero_optimizer_updates=True,zero_resets=True,promotion_authorized=False)
-    h4m12_req(r==expected and (out/'worker.log').read_bytes().splitlines()==
+    lines=(out/'worker.log').read_bytes().splitlines()
+    h4m12_req(r==expected and [x for x in lines if x.startswith(b'PTR_DEVD_FIXTURE_PASS ')]==
         [('PTR_DEVD_FIXTURE_PASS '+k).encode() for k in PTR_RED_DEV_D_FIXTURES],
         'PTR_DEVD_STATIC_READER_REPLAY')
     h4m3_no_runtime_imports()
