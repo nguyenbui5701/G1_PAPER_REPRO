@@ -6593,4 +6593,3 @@ for name in ("report.json","attempt.json","dispatch.started.json","attempt_resul
         print("H4FFE2_DEV_ARTIFACT",str(p),p.stat().st_size,digest(p),flush=True)
 raise SystemExit(0 if ok else 1)
 # H4FFE2_DEV_OWNER_LAUNCHER_END
-H4PTR_CTRL_V2_STATIC_GO: {"fixture_manifest_sha256":"b2eb4a04cabcd1a4bc607498fc618c6eff4bb4c6c78049bbad99c1d7ad90ca30","guarded_generated_sha256":"e1f447083a9fed0b2ae1b55109f347ecd426d5c82652c123475c147041dfe484","held_generated_sha256":"5da8c9647db8565b7a35619bf552810df0121a8b1e33f35909d33c1afe5c09f0","id":"H4-M29-R12-PTR-CTRL-V2-FOCUSED-STATIC","projected_source_sha256":"1fb0afdbbfb90017f58b38a9d24887ea980af6e9adfbb3b83acb951062c12986","source_head":"c205897f65d597a4a5facf3f2345fac990e2abfe","source_sha256":"eef683bf8f6413673cb23b3ab52006dafed391c6194303dbc5980cdc6c4827b7"}
