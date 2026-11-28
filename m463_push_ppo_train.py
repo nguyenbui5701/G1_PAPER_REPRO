@@ -20616,3 +20616,128 @@ def ptr_r12_red_focused_main(argv):
         raise
 
 # H4M29_R18B_RED_WIRING_END
+
+# H4M29_R23_RED_CAND_HELD_CORE_BEGIN
+# Separate held core: do not change historical CTRL authorization or reader.
+PTR_R23_CTRL_SOURCE='be76f88155268ba55ba8ea7b4195ce777c95d4fb'
+PTR_R23_CTRL_AUTH='3d97717925528b31a3623a2db9ad83595b33cca9'
+PTR_R23_CTRL_CLOSED='27d84403f9d141c4bba97cba16b870aa211e7f4c'
+PTR_R23_CTRL_SHA='4cbe3a018f01cb83461bc5ab9a29555c321c8c82c7072ef60f9bda3a0f0716c3'
+PTR_R23_CTRL_PINS={
+    'attempt.json':'6880e52caccb75991274bf2dd237de23e72bec14459569ae7023b47de01aa151',
+    'attempt_result.json':'2da70143c43c77ae43e0e109f4a5dbf3a80ec58bf0a1531100d3b61c10d242c4',
+    'dispatch.started.json':'cc1bb0d0202b728d7963d93e07542a4168824289216c417d6819ffc673116aae',
+    'm463_brax_ppo_instrumented.py':'9ba23fe8bb1378d83632d803b5ea2ec4059989f8138d6ea2423b2a9aa0ccf4c6',
+    'm463_easy_repeat_support_longtrain_step_020971520.msgpack':'25ff2770b171ac8acf3a6d42b2b6a4ce81a46b3a9782b299a7320e925e221031',
+    'm470_fullstate_step_020971520.json':'723b3e7a95297abe02d5cee9ffed539d1f2d2f68fca0a1b0842e637487e2a2e9',
+    'm470_fullstate_step_020971520.msgpack':'125d16f4f1c3c19221fe2f277491f097e6dc89922b5c4addf7189dc0c8d5b916',
+    'report.json':'e8d0942d5018cb65474e03184a350fb8fd8044c595d04480b5e358553c7ee604',
+    'supervisor.terminal.json':'394b6ad4ffaea4a823d74afc65eecee87509e688454c74187520fb8acde71654',
+    'worker.log':'19a4cf70c7a47bbe85c9fcc03d40da25e5b65b09e40afa128b68c81e34b5660d',
+    'worker.started.json':'230218ba7dab5a762e070ee6733031a4c0e0a325ef8c776b7bf4f5ae31e0ca30'}
+PTR_R23_CTRL_OUTER_LOG='3ad19c099898b4ef9ac4ece59c2a7fd8ae6ba1883a7f07cc13e807024152885b'
+PTR_R23_CAND_ID='H4-M29-R12-PTR-RED-CAND-V1'
+PTR_R23_CAND_OUT='m463_runs/m470_h4_m29_ptr_red_cand_v1'
+PTR_R23_CAND_HELD_GEN='f4280cbe30d688b25a4ce29dc079be187f4a697a8266b9c40d23712f47978b49'
+
+def ptr_r23_cand_source_inverse(root):
+    """Held-core inverse only; future wiring requires its own exact projection."""
+    import subprocess
+    root=Path(root).resolve()
+    git=lambda *v:subprocess.check_output(['git',*v],cwd=root,timeout=30)
+    begin=b'\n# H4M29_R23_RED_CAND_HELD_CORE_BEGIN\n'
+    end=b'# H4M29_R23_RED_CAND_HELD_CORE_END\n'
+    pins={}
+    for name in PTR_SOURCE_NAMES:
+        p=root/name
+        h4m12_require(p.is_file() and not p.is_symlink(),'PTR_R23_SOURCE_PATH')
+        raw=p.read_bytes()
+        h4m12_require(raw==git('show','HEAD:'+name),'PTR_R23_SOURCE_TRACKED')
+        base=git('show',PTR_R23_CTRL_SOURCE+':'+name)
+        if name=='m463_push_ppo_train.py':
+            h4m12_require(raw.count(begin)==raw.count(end)==1 and raw.endswith(end)
+                and raw[:raw.index(begin)]==base,'PTR_R23_SOURCE_INVERSE')
+        else:
+            h4m12_require(raw==base,'PTR_R23_COMMON_SOURCE')
+        pins[name]=hashlib.sha256(base).hexdigest()
+    h4m12_require(hashlib.sha256(ptr_r7b_canonical(pins).encode()).hexdigest()==
+        PTR_R23_CTRL_SHA,'PTR_R23_CTRL_SOURCE_SHA')
+    h4x_file_pin(root/PTR_R12_RED_LAUNCHER,PTR_R12_RED_LAUNCHER_SHA)
+    return pins
+
+def ptr_r23_cand_control_evidence(root):
+    """Historical CTRL acceptance without treating its policy as the CAND parent."""
+    root=Path(root).resolve()
+    h4m12_require(ssrpc_static_no_native(),'PTR_R23_CONTROL_NATIVE')
+    ptr_r23_cand_source_inverse(root)
+    out=root/PTR_R12_RED_OUT
+    ptr_r4b_output_path(out)
+    h4m12_require({p.name for p in out.iterdir()}==set(PTR_R23_CTRL_PINS),
+                  'PTR_R23_CONTROL_INVENTORY')
+    for name,sha in PTR_R23_CTRL_PINS.items():h4x_file_pin(out/name,sha)
+    report=ssrpc_read_json(out/'report.json',H4X_SPEC['other_cap'])
+    auth=report['authorization'];ptr_r12_red_auth_schema(auth)
+    h4m12_require(auth['source_head']==PTR_R23_CTRL_SOURCE and
+        auth['source_sha256']==PTR_R23_CTRL_SHA,'PTR_R23_CONTROL_SOURCE')
+    ptr_r10b_closed_marker(root,PTR_R23_CTRL_SOURCE,PTR_R23_CTRL_AUTH,
+        PTR_R23_CTRL_CLOSED,PTR_R12_RED_MARKER,auth)
+    attempt=ptr_r12_red_attempt_read(out,auth)
+    worker=ssrpc_read_json(out/'worker.started.json',65536)
+    h4m12_require(attempt['authorization_head']==PTR_R23_CTRL_AUTH and
+        set(worker)=={'authorization','pid'} and worker['authorization']==auth and
+        type(worker['pid']) is int and worker['pid']>0 and worker['pid']!=attempt['parent_pid'] and
+        ssrpc_read_json(out/'dispatch.started.json',65536)==ptr_r4b_dispatch_receipt(attempt,worker) and
+        ssrpc_read_json(out/'attempt_result.json',65536)==dict(status='COMPLETE',
+            authorization=auth,report_sha256=PTR_R23_CTRL_PINS['report.json'],producer_rc=0),
+        'PTR_R23_CONTROL_RECEIPTS')
+    ssrpc_terminal_receipt(out,PTR_R23_CTRL_PINS['report.json'],auth)
+    h4m12_require((out/'worker.log').read_bytes().splitlines().count(
+        b'PTR_R12_RED_INDEPENDENT_READER_PASS')==1,'PTR_R23_CONTROL_READER')
+    outer=Path(str(out)+'_outer.log');receipt=Path(str(out)+'_outer.receipt.json')
+    h4x_file_pin(outer,PTR_R23_CTRL_OUTER_LOG)
+    h4m12_require(receipt.is_file() and not receipt.is_symlink() and outer.stat().st_size==5284 and
+        ssrpc_read_json(receipt,65536)==dict(authorization_head=PTR_R23_CTRL_AUTH,
+            outer_log_sha256=PTR_R23_CTRL_OUTER_LOG,outer_rc=0,tee_rc=0,stored_log_bytes=5284,
+            status='CAPTURE_COMPLETE',promotion_authorized=False),'PTR_R23_CONTROL_OUTER')
+    ptr_r12_red_check_complete(out,report,auth)
+    h4m12_require(report['ptr_exposure']['decision']=='EXPOSURE_PASS' and
+        report['parent']==ptr_parent_evidence(root),'PTR_R23_CONTROL_EXPOSURE')
+    h4m12_require(ssrpc_static_no_native(),'PTR_R23_CONTROL_NATIVE')
+    return report
+
+def ptr_r23_cand_spec():
+    return dict(ptr_spec('cand'),id=PTR_R23_CAND_ID,output=PTR_R23_CAND_OUT)
+
+def ptr_r23_cand_exposure(r):
+    common=ptr_complete_exposure(r,'cand')
+    timing=ptr_r12_red_timing_replay(r)
+    return dict(common,common_decision=common['decision'],timing=timing,
+        decision='EXPOSURE_PASS' if common['decision']==timing['decision']=='EXPOSURE_PASS'
+        else 'EXPOSURE_INCONCLUSIVE')
+
+def ptr_r23_cand_held_generated_source(raw):
+    """Exact two-site projection from the accepted CTRL generator; no dispatch."""
+    from m463_instrument_brax import make_r12_ptr_red_ctrl_guarded_source,make_r12_ptr_held_source,h4c_once
+    ctrl,original=make_r12_ptr_red_ctrl_guarded_source(raw)
+    guard=("  from m463_push_ppo_train import ptr_r12_red_generated_guard\n"
+           "  ptr_r12_red_generated_guard(h4x_audit_fn, __file__, environment, m470_resume_state_path, "
+           "'ctrl', r12_abort_fn, h4_chunk_fn)\n")
+    hold="  raise RuntimeError('PTR_R12_RED_CAND_GENERATED_EXECUTION_HOLD')\n"
+    a="    r12_bad=ptr_r12_actual_batch_contract(jnp,data,{**r12_before,**ptr_before},state.info,ptr_before_done,state.done,'ctrl')\n"
+    b=a.replace("'ctrl'","'cand'")
+    result=h4c_once(h4c_once(ctrl,guard,hold),a,b)
+    base,pin=make_r12_ptr_held_source(raw,'cand')
+    expected=h4c_once(h4c_once(base,
+        "  raise RuntimeError('R12_GENERATED_EXECUTION_HOLD')\n",hold),
+        'ptr_actual_batch_contract,ptr_reduce','ptr_r12_actual_batch_contract,ptr_reduce')
+    expected=h4c_once(expected,'r12_bad=ptr_actual_batch_contract(','r12_bad=ptr_r12_actual_batch_contract(')
+    h4m12_require(h4c_once(h4c_once(result,b,a),hold,guard)==ctrl and result==expected and
+        original==pin and hashlib.sha256(result.encode()).hexdigest()==PTR_R23_CAND_HELD_GEN,
+        'PTR_R23_CAND_GENERATOR_PROJECTION')
+    compile(result,'<PTR RED CAND held>','exec')
+    return result,original
+
+def ptr_r23_cand_runtime_main(*args,**kwargs):
+    # No constructor/context, supervisor, guarded release or runtime admission yet.
+    raise RuntimeError('PTR_R23_RED_CAND_RUNTIME_HELD')
+# H4M29_R23_RED_CAND_HELD_CORE_END
