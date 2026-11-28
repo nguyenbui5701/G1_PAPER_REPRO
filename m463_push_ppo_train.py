@@ -15082,7 +15082,7 @@ def ptr_r7_check_report(r,expected_binding):
         expected_binding['v1_generated_sha256']==PTR_R7_V1_GENERATED,'PTR_R7_V1_EVIDENCE')
     h4m12_require(r['id']==PTR_R7_ID and json.dumps(r['spec'],sort_keys=True)==json.dumps(ptr_r7_spec(),sort_keys=True) and r['status']=='DIAGNOSTIC_COMPLETE'
         and r['promotion_authorized'] is False and r['artifacts']=={} and r['training_state_exact'] is True,'PTR_R7_REPORT_ID')
-    edge=dict(steps=15728640,adam=2400,normalizer=416808960,training_schema=PTR_TRAIN_SCHEMA)
+    edge=dict(steps=15728640,adam=2400,normalizer=416808960.0,training_schema=PTR_TRAIN_SCHEMA)
     canon=lambda x:json.dumps(x,sort_keys=True,separators=(',',':'),allow_nan=False)
     h4m12_require(canon(r['counters_before'])==canon(r['counters_after'])==canon(edge),
         'PTR_R7_STATE_EDGE')
@@ -15318,7 +15318,7 @@ def ptr_r7_focused_fixtures(root,raw,record):
         generated_sha256='d'*64,v1_report_sha256=PTR_R7_V1_REPORT,
         v1_terminal_sha256=PTR_R7_V1_TERMINAL,v1_generated_sha256=PTR_R7_V1_GENERATED,
         focused_static_sha256='e'*64,focused_terminal_sha256='f'*64)
-    edge=dict(steps=15728640,adam=2400,normalizer=416808960,training_schema=PTR_TRAIN_SCHEMA)
+    edge=dict(steps=15728640,adam=2400,normalizer=416808960.0,training_schema=PTR_TRAIN_SCHEMA)
     report=dict(id=PTR_R7_ID,binding=binding,spec=ptr_r7_spec(),status='DIAGNOSTIC_COMPLETE',
         evidence=cwire,counters_before=dict(edge),counters_after=dict(edge),
         training_state_exact=True,training_state_sha256_before='a'*64,training_state_sha256_after='a'*64,
@@ -15886,7 +15886,7 @@ def ptr_r8a2_reservation(root,out,binding,*,worker=False):
 
 def ptr_r8a2_reserve(root,binding):
     """Future supervisor-only reservation, still unconditionally held."""
-    ptr_r8b_release_gate('PTR_R8A2_RESERVATION_HELD')
+    raise RuntimeError('PTR_R8A2_RESERVATION_HELD')
     out=root/PTR_R7_OUTPUT
     h4m12_require(ssrpc_static_no_native() and PTR_R8A2_ROLE not in os.environ and
         PTR_R8A2_BOOT not in os.environ,'PTR_R8A2_PARENT_ENTRY')
@@ -15902,7 +15902,7 @@ def ptr_r8a2_make_environment(root,out,binding,config):
     """Reuse exact PTR reset/step via a diagnostic-only constructor.
     Never install or impersonate the historical PPO R4B context.
     """
-    ptr_r8b_release_gate('PTR_R8A2_ENVIRONMENT_HELD')
+    raise RuntimeError('PTR_R8A2_ENVIRONMENT_HELD')
     global _PTR_R8A2_CONTEXT
     h4m12_require(_PTR_R8A2_CONTEXT is None,'PTR_R8A2_CONTEXT')
     ptr_r8a2_reservation(root,out,binding,worker=True)
@@ -15933,7 +15933,7 @@ def ptr_r8a2_bind_callbacks(environment,audit,abort,chunk):
 
 def ptr_r8a2_generated_guard(audit,generated_file,environment,resume,abort,chunk):
     """Prospective guarded entry; the actual held generator is unchanged."""
-    ptr_r8b_release_gate('PTR_R8A2_GENERATED_ENTRY_HELD')
+    raise RuntimeError('PTR_R8A2_GENERATED_ENTRY_HELD')
     c=_PTR_R8A2_CONTEXT
     h4m12_require(c is not None and not c['dispatched'] and c['environment'] is environment and
         c['callbacks'] is not None and all(x is y for x,y in zip(c['callbacks'],(audit,abort,chunk))),
@@ -16108,7 +16108,7 @@ def ptr_r8a3_preflight(root,args,a):
 
 def ptr_r8a3_worker(root,out,args,a,head,binding,source,pins,boot,history):
     """Held native worker draft. No imports of native packages above the barrier."""
-    ptr_r8b_release_gate('PTR_R8A3_WORKER_HELD')
+    raise RuntimeError('PTR_R8A3_WORKER_HELD')
     import inspect,importlib.util
     h4m12_require(ssrpc_static_no_native() and os.environ.get(PTR_R8A2_ROLE)=='producer' and
         os.environ.get(PTR_R8A2_BOOT)==boot,'PTR_R8A3_WORKER_ENTRY')
@@ -16315,7 +16315,7 @@ def ptr_r8a3_read_terminal(root,out,binding,boot,*,complete):
 
 def ptr_r8a3_main(argv):
     """Distinct prospective supervisor/producer/reader. No public execution release."""
-    ptr_r8b_release_gate('PTR_R8A3_SUPERVISOR_HELD')
+    raise RuntimeError('PTR_R8A3_SUPERVISOR_HELD')
     import selectors,signal,subprocess
     p=argparse.ArgumentParser(description='R12 PTR one-rollout zero-update diagnostic')
     for name in ('checkpoint','restore-report','reward-report'):p.add_argument('--'+name,type=Path,required=True)
@@ -16549,4 +16549,207 @@ def ptr_r8b_focus_cases(root,args,record):
 # H4M29_R8A_NATIVE_HELD_END
 # H4M29_R7B_FOCUSED_STATIC_END
 # H4M29_R7_DIAGNOSTIC_TRAINER_END
+
+# H4M29_R10A_DIAG_V2_HELD_BEGIN
+# Only the canonical normalizer type is repaired. V1 receipts remain immutable.
+# V2 has no dispatcher, no executable release and no active authorization.
+PTR_R10A_ID='H4-M29-R12-PTR-DIAG-V2'
+PTR_R10A_OUTPUT='m463_runs/m470_h4_m29_ptr_diag_v2'
+PTR_R10A_MARKER='H4PTR_R10A_NATIVE_GO'
+PTR_R10A_R9_HEAD='337936f004a228e91adc7c55d53b995215b0fbd8'
+PTR_R10A_R9_AUTH='d2d8371db09655384d846d50cc52b6114bc4f8fd'
+PTR_R10A_R9_CLOSURE='6e81f52070e018ed4aa996ce0c0ec4080f0e83f4'
+PTR_R10A_R9_TRAINER='08cd160c7b2fb5b76b5aa53c58d8ac855e9c7cf33d425b55014e8e2c18bac9b6'
+PTR_R10A_R9_AGGREGATE='1e5b44786e2f32b85e5230696203a22f29d477fd94c2fa272f7abc3fc93578a9'
+PTR_R10A_R8C_REPORT='bb3959431c049aea8a3de4ac733648492866d9d976567c5791822d49b1d87ea2'
+PTR_R10A_R8C_TERMINAL='e2b9084affa472cc05877c514eeb3260c055435a1fc68e9f590f3c77b3fe4dfd'
+PTR_R10A_FAILED_PINS={
+    'attempt.json':(872,'178edc99673892266fec3a57ac5d7d0080742ee73d0d535c3e1e358d15cbde0c'),
+    'attempt_result.json':(936,'675fcbab3178dc12bddd8e436d1ab7519e7b9151b5f3950bcb938bdbde4ed396'),
+    'dispatch.started.json':(897,'25a405152f537339c1d8412b72c18e7ed2951939a7ed18e9576c3c11155979fb'),
+    'm463_brax_ppo_instrumented.py':(24974,PTR_R8B_GENERATED_SHA),
+    'supervisor.failed.json':(1886,'e91728bb62b409f5cca6664a7c1d6131008dcefe228d27daafba593bf9c4318a'),
+    'worker.log':(3755,'071f35cc8c3616257b6ab83fc96bcf15d4fedf4d47a11f804dffb1188d8e0a63'),
+    'worker.started.json':(897,'25a405152f537339c1d8412b72c18e7ed2951939a7ed18e9576c3c11155979fb')}
+PTR_R10A_CASES=('native_float_counter','integer_before','integer_both',
+    'changed_normalizer','changed_adam','changed_steps','changed_schema',
+    'state_hash_changed','nan_counter','inf_counter','v1_report_id','v1_output_spec',
+    'failed_receipt_binding','old_source_head')
+
+def ptr_r10a_reverse(raw):
+    """Exact inverse to R9 released trainer; no change to historical bytes."""
+    first=b'\n# H4M29_R10A_DIAG_V2_HELD_'+b'BEGIN\n'
+    last=b'# H4M29_R10A_DIAG_V2_HELD_'+b'END\n'
+    h4m12_require(raw.count(first)==raw.count(last)==1 and raw.index(first)<raw.index(last),
+        'PTR_R10A_REVERSE_BLOCK')
+    old=raw[:raw.index(first)]+raw[raw.index(last)+len(last):]
+    fixed=b'    edge=dict(steps=15728640,adam=2400,normalizer=416808960.0,training_schema=PTR_TRAIN_SCHEMA)\n'
+    original=fixed.replace(b'416808960.0,',b'416808960,')
+    h4m12_require(old.count(fixed)==2 and old.count(original)==0,'PTR_R10A_REVERSE_EDGE')
+    old=old.replace(fixed,original)
+    for label in PTR_R8B_RELEASE_LABELS:
+        a=('    raise RuntimeError('+repr(label)+')\n').encode()
+        b=('    ptr_r8b_release_gate('+repr(label)+')\n').encode()
+        h4m12_require(old.count(a)==1 and old.count(b)==0,'PTR_R10A_REVERSE_HOLD')
+        old=old.replace(a,b,1)
+    h4m12_require(hashlib.sha256(old).hexdigest()==PTR_R10A_R9_TRAINER,'PTR_R10A_REVERSE_SHA')
+    return old
+
+def ptr_r10a_project_sources(root):
+    """Future host-only historical check; R9 runtime remains closed."""
+    import subprocess
+    root=Path(root).resolve()
+    git=lambda *a:subprocess.check_output(['git',*a],cwd=root,timeout=30)
+    pins={}
+    for name in PTR_SOURCE_NAMES:
+        p=root/name
+        h4m12_require(p.is_file() and not p.is_symlink(),'PTR_R10A_SOURCE_PATH')
+        raw=p.read_bytes();old=git('show',PTR_R10A_R9_HEAD+':'+name)
+        projected=ptr_r10a_reverse(raw) if name=='m463_push_ppo_train.py' else raw
+        h4m12_require(raw==git('show','HEAD:'+name) and projected==old
+            and old==git('show',PTR_R10A_R9_AUTH+':'+name)
+            and old==git('show',PTR_R10A_R9_CLOSURE+':'+name),'PTR_R10A_SOURCE_'+name)
+        pins[name]=hashlib.sha256(old).hexdigest()
+    h4m12_require(hashlib.sha256(ptr_r7b_canonical(pins).encode()).hexdigest()==
+        PTR_R10A_R9_AGGREGATE,'PTR_R10A_SOURCE_AGGREGATE')
+    return pins
+
+def ptr_r10a_failed_v1(root):
+    """Read-only exact failed namespace admission; never reserve/retry it."""
+    out=Path(root).resolve()/PTR_R7_OUTPUT
+    ptr_r4b_output_path(out)
+    h4m12_require({p.name for p in out.iterdir()}==set(PTR_R10A_FAILED_PINS),'PTR_R10A_V1_INVENTORY')
+    for name,(size,sha) in PTR_R10A_FAILED_PINS.items():
+        p=out/name
+        h4x_file_pin(p,sha)
+        h4m12_require(p.stat().st_size==size,'PTR_R10A_V1_SIZE')
+    r=ssrpc_read_json(out/'supervisor.failed.json',65536)
+    h4m12_require(r['id']==PTR_R7_ID and r['binding']['authorization_head']==PTR_R10A_R9_AUTH
+        and r['status']=='STOP' and r['stage']=='REPORT_DISPATCHED' and r['producer_rc']==1
+        and r['reader_rc'] is None and r['terminal_reader_rc'] is None
+        and r['promotion_authorized'] is False,'PTR_R10A_V1_STOP')
+    return dict(PTR_R10A_FAILED_PINS)
+
+def ptr_r10a_spec():
+    return dict(ptr_r7_spec(),id=PTR_R10A_ID,output=PTR_R10A_OUTPUT)
+
+def ptr_r10a_auth_schema(a):
+    """Prospective schema only: validating fields is NOT execution permission."""
+    import re
+    fixed=dict(id=PTR_R10A_ID,output=PTR_R10A_OUTPUT,generated_sha256=PTR_R8B_GENERATED_SHA,
+        held_generated_sha256=PTR_R7B_GENERATED,parent_sha256=PTR_PARENT_PINS[PTR_FULL],
+        focused_static_sha256=PTR_R8A_STATIC_PINS['report.json'],
+        focused_terminal_sha256=PTR_R8A_STATIC_PINS['supervisor.terminal.json'],
+        r8c_report_sha256=PTR_R10A_R8C_REPORT,r8c_terminal_sha256=PTR_R10A_R8C_TERMINAL,
+        diag_v1_authorization_head=PTR_R10A_R9_AUTH,
+        diag_v1_failed_sha256=PTR_R10A_FAILED_PINS['supervisor.failed.json'][1])
+    future={'source_head','source_sha256','repair_static_sha256','repair_terminal_sha256'}
+    h4m12_require(type(a) is dict and set(a)==set(fixed)|future
+        and all(type(v) is str for v in a.values())
+        and all(a[k]==v for k,v in fixed.items())
+        and all(re.fullmatch('[0-9a-f]{40}' if k=='source_head' else '[0-9a-f]{64}',a[k])
+            and a[k]!=('0'*len(a[k])) for k in future)
+        and a['source_head'] not in (PTR_R10A_R9_HEAD,PTR_R10A_R9_AUTH,PTR_R10A_R9_CLOSURE)
+        and a['source_sha256']!=PTR_R10A_R9_AGGREGATE
+        and a['repair_static_sha256'] not in (PTR_R10A_R8C_REPORT,a['focused_static_sha256'])
+        and a['repair_terminal_sha256'] not in (PTR_R10A_R8C_TERMINAL,a['focused_terminal_sha256']),
+        'PTR_R10A_AUTH_SCHEMA')
+    return a
+
+def ptr_r10a_binding(a,head):
+    import re
+    ptr_r10a_auth_schema(a)
+    h4m12_require(type(head) is str and re.fullmatch('[0-9a-f]{40}',head)
+        and head not in (a['source_head'],PTR_R10A_R9_HEAD,PTR_R10A_R9_AUTH,PTR_R10A_R9_CLOSURE),
+        'PTR_R10A_AUTH_HEAD')
+    old_keys=('source_head','source_sha256','generated_sha256','focused_static_sha256','focused_terminal_sha256')
+    extra=('r8c_report_sha256','r8c_terminal_sha256','diag_v1_authorization_head',
+        'diag_v1_failed_sha256','repair_static_sha256','repair_terminal_sha256')
+    return dict({k:a[k] for k in old_keys+extra},authorization_head=head,
+        v1_report_sha256=PTR_R7_V1_REPORT,v1_terminal_sha256=PTR_R7_V1_TERMINAL,
+        v1_generated_sha256=PTR_R7_V1_GENERATED)
+
+def ptr_r10a_check_report(r,a,head):
+    """V2 envelope plus the unchanged scientific/body checks of the repaired validator."""
+    binding=ptr_r10a_binding(a,head)
+    h4m12_require(type(r) is dict and r.get('id')==PTR_R10A_ID,'PTR_R10A_REPORT_ID')
+    ptr_r7b_exact(r.get('spec'),ptr_r10a_spec(),'PTR_R10A_REPORT_SPEC')
+    ptr_r7b_exact(r.get('binding'),binding,'PTR_R10A_REPORT_BINDING')
+    keys=('source_head','source_sha256','generated_sha256','authorization_head','v1_report_sha256',
+        'v1_terminal_sha256','v1_generated_sha256','focused_static_sha256','focused_terminal_sha256')
+    common={k:binding[k] for k in keys}
+    # In-memory envelope projection only. Never write a V1 report or change its pins.
+    return ptr_r7_check_report(dict(r,id=PTR_R7_ID,spec=ptr_r7_spec(),binding=common),common)
+
+def ptr_r10a_manifest():
+    return hashlib.sha256(json.dumps(list(PTR_R10A_CASES),separators=(',',':')).encode()).hexdigest()
+
+def ptr_r10a_counter_cases(root,record):
+    """Prepared minimal counter regressions. No invocation authorized by R10A."""
+    import copy,numpy as np
+    import m463_instrument_brax as inst
+    h4m12_require(ssrpc_static_no_native(),'PTR_R10A_CASE_NATIVE')
+    data,pre,post,done,bad=ptr_r7_fixture_batch(Path(root).resolve())
+    flags={k:np.asarray(True) for k in inst.PTR_R7_FINITE}
+    wire=ptr_r7_wire_tree(inst.ptr_r7_diagnose(np,data,pre,post,done,done,'ctrl',flags))
+    a=dict(id=PTR_R10A_ID,output=PTR_R10A_OUTPUT,source_head='a'*40,source_sha256='b'*64,
+        generated_sha256=PTR_R8B_GENERATED_SHA,held_generated_sha256=PTR_R7B_GENERATED,
+        parent_sha256=PTR_PARENT_PINS[PTR_FULL],focused_static_sha256=PTR_R8A_STATIC_PINS['report.json'],
+        focused_terminal_sha256=PTR_R8A_STATIC_PINS['supervisor.terminal.json'],
+        r8c_report_sha256=PTR_R10A_R8C_REPORT,r8c_terminal_sha256=PTR_R10A_R8C_TERMINAL,
+        diag_v1_authorization_head=PTR_R10A_R9_AUTH,
+        diag_v1_failed_sha256=PTR_R10A_FAILED_PINS['supervisor.failed.json'][1],
+        repair_static_sha256='c'*64,repair_terminal_sha256='d'*64)
+    head='e'*40
+    edge=dict(steps=15728640,adam=2400,normalizer=np.asarray(416808960,dtype=np.float32).item(),
+        training_schema=PTR_TRAIN_SCHEMA)
+    r=dict(id=PTR_R10A_ID,binding=ptr_r10a_binding(a,head),spec=ptr_r10a_spec(),
+        status='DIAGNOSTIC_COMPLETE',evidence=wire,counters_before=dict(edge),counters_after=dict(edge),
+        training_state_exact=True,training_state_sha256_before='a'*64,training_state_sha256_after='a'*64,
+        actual_rollouts=1,skipped_rollouts=0,collected=262144,optimizer_updates=0,
+        normalizer_updates=0,evaluation=0,artifacts={},promotion_authorized=False)
+    seen=[]
+    def check(name,ok):
+        h4m12_require(len(seen)<len(PTR_R10A_CASES) and name==PTR_R10A_CASES[len(seen)]
+            and bool(ok) and ssrpc_static_no_native(),'PTR_R10A_CASE_'+name)
+        seen.append(name);record(name)
+    def rejects(fn,label):
+        try:fn()
+        except RuntimeError as exc:return label in str(exc)
+        except ValueError:return label=='NONFINITE_JSON'
+        return False
+    def altered(name,key,value,*,both=True,label='PTR_R7_STATE_EDGE'):
+        x=copy.deepcopy(r);x['counters_before'][key]=value
+        if both:x['counters_after'][key]=value
+        check(name,rejects(lambda:ptr_r10a_check_report(x,a,head),label))
+    check('native_float_counter',type(edge['normalizer']) is float and
+        ptr_r10a_check_report(r,a,head)['bad_rows']==0)
+    altered('integer_before','normalizer',416808960,both=False)
+    altered('integer_both','normalizer',416808960)
+    altered('changed_normalizer','normalizer',416808992.0)
+    altered('changed_adam','adam',2401)
+    altered('changed_steps','steps',15728641)
+    altered('changed_schema','training_schema','0'*64)
+    check('state_hash_changed',rejects(lambda:ptr_r10a_check_report(
+        dict(r,training_state_sha256_after='b'*64),a,head),'PTR_R7_STATE_HASH'))
+    altered('nan_counter','normalizer',float('nan'),label='NONFINITE_JSON')
+    altered('inf_counter','normalizer',float('inf'),label='NONFINITE_JSON')
+    check('v1_report_id',rejects(lambda:ptr_r10a_check_report(dict(r,id=PTR_R7_ID),a,head),
+        'PTR_R10A_REPORT_ID'))
+    check('v1_output_spec',rejects(lambda:ptr_r10a_check_report(
+        dict(r,spec=dict(r['spec'],output=PTR_R7_OUTPUT)),a,head),'PTR_R10A_REPORT_SPEC'))
+    check('failed_receipt_binding',rejects(lambda:ptr_r10a_check_report(
+        dict(r,binding=dict(r['binding'],diag_v1_failed_sha256='0'*64)),a,head),'PTR_R10A_REPORT_BINDING'))
+    check('old_source_head',rejects(lambda:ptr_r10a_auth_schema(dict(a,source_head=PTR_R10A_R9_HEAD)),
+        'PTR_R10A_AUTH_SCHEMA'))
+    h4m12_require(tuple(seen)==PTR_R10A_CASES,'PTR_R10A_CASE_ORDER')
+    return dict(cases=tuple(seen),manifest_sha256=ptr_r10a_manifest(),
+        zero_native_execution=True,promotion_authorized=False)
+
+def ptr_r10a_main(*args,**kwargs):
+    # Future distinct runtime must bind exact source, receipts, generated entry,
+    # exclusive unused V2 output, actual child PIDs and all existing guards.
+    # No reservation, import, dispatch, or V1 alias is released here.
+    raise RuntimeError('PTR_R10A_DIAG_V2_HELD')
+# H4M29_R10A_DIAG_V2_HELD_END
 # H4M29_PTR_HELD_TRAINER_END
