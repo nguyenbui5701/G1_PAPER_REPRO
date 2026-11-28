@@ -16074,10 +16074,12 @@ def ptr_r8a3_preflight(root,args,a):
     """Host-only future preflight; does not release any native gate."""
     from importlib import metadata
     from importlib.machinery import PathFinder
-    from m463_instrument_brax import h4c_git_blob
+    from m463_instrument_brax import (h4c_git_blob,make_r12_ptr_held_source,
+        make_r12_ptr_integrated_source)
     h4m12_require(ssrpc_static_no_native(),'PTR_R8A3_PRE_NATIVE')
     history=ptr_r8a_historical(root);pins=ptr_bootstrap_held(args)
     boot=ssrpc_bootstrap_identity(root)
+    h4m12_require(boot==PTR_R8A_STATIC_BOOT,'PTR_R8A3_HISTORICAL_BOOTSTRAP')
     for pkg,relative,expected in (
         ('mujoco_playground','_src/wrapper.py','62e2823b80b692befe29e4640d0b7a816e52271c'),
         ('brax','envs/wrappers/training.py','2c09c8268a29d14c832dd07050575e4541ee98af'),
@@ -16088,9 +16090,13 @@ def ptr_r8a3_preflight(root,args,a):
         h4m12_require(p.is_file() and h4c_git_blob(p.read_bytes())==expected,'PTR_R8A3_DEP_PIN')
     raw=Path(metadata.distribution('brax').locate_file('brax/training/agents/ppo/train.py')).read_bytes()
     source,original=ptr_r8a3_generated_projection(raw)
-    h4m12_require(original==hashlib.sha256(raw).hexdigest()==
+    held,hpin=make_r12_ptr_held_source(raw,'ctrl')
+    integrated,ipin=make_r12_ptr_integrated_source(raw,'ctrl')
+    h4m12_require(original==hpin==ipin==hashlib.sha256(raw).hexdigest()==
         'e20613d42bf0868a13003e0312998816cc8d3593bb5ccaf9f1d070fd09c44bd7' and
         hashlib.sha256(source.encode()).hexdigest()==a['generated_sha256'] and
+        hashlib.sha256(held.encode()).hexdigest()==PTR_R7B_HELD_CTRL and
+        hashlib.sha256(integrated.encode()).hexdigest()==PTR_R7_V1_GENERATED and
         ssrpc_static_no_native(),'PTR_R8A3_SOURCE_PIN')
     return source,pins,boot,history
 
