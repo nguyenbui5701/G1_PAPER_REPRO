@@ -637,3 +637,7 @@ Owner explicit GO accepted at 3ca622bdf59c7c43fae615c13eafa2b87a05e675; 9/9 remo
 
 ## H4-M29-R19C — R19B CLOSED / V2 harness refrozen HELD
 Owner accepted R19B STOP/CONSUMED 3/13, exact root-only closure 2cb12213cc978d878f3cf5f79cd4c4789f17e631, trainer-only repair 42294f338f061d40fd636f830c800cddf309ee15, exact candidate blob 322981ac9da8ede43a94c721bfbfad9ac16c0152 and aggregate f37d53427c89cf975309d7b134e03e3ff366b54ae6e8c1612d18fe79926f16c9. Exact forward/reverse, eight unchanged source blobs, zero active GO, runtime held and acceptance None. Seven uploaded artifacts rehashed; see ACTIVE_EXPERIMENT R19C for evidence, limits and V2 identity. No project fixture/native/PPO execution or promotion. Next distinct R20 Owner GO for V2 host-static only; no retry R19B. Governance v2.0.1 unchanged; A ACTIVE/B HOLD.
+
+
+## H4-M29-R20 — explicit distinct V2 focused host-static GO
+Owner approved at 8824ba3bd9b92c4bc944da18241301cba6bf680b; 9/9 remote source SHA256, exact manifest and launcher independently matched; exact trainer blob 322981ac9da8ede43a94c721bfbfad9ac16c0152, aggregate f37d53427c89cf975309d7b134e03e3ff366b54ae6e8c1612d18fe79926f16c9. All source unchanged. Separate root-only canonical V2 marker child required; only one Owner host-static supervisor invocation, 13 ordered cases and independent reader, exclusive V2 output/outer capture. See ACTIVE_EXPERIMENT R20 for contract and limits. No SA fixtures or native/PPO execution, no retry R19B, no promotion. A ACTIVE/B HOLD; governance v2.0.1 unchanged.
