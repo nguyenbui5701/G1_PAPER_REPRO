@@ -15805,6 +15805,244 @@ def ptr_r8a_native_admission_held(*args,**kwargs):
     # Deliberately unconditional: do not expose a dispatcher or alias the legacy worker.
     raise RuntimeError('PTR_R8A_NATIVE_ADMISSION_NOT_INTEGRATED')
 
+
+# H4M29_R8A2_HELD_BINDING_BEGIN
+# Prospective native diagnostic contract; no active marker and no release.
+PTR_R8A2_MARKER='H4PTR_R8_NATIVE_GO'
+PTR_R8A2_BASE='3867456476e91e296893e09be546019522bb0513'
+PTR_R8A2_ROLE='PTR_R8A2_CHILD_ROLE'
+PTR_R8A2_BOOT='PTR_R8A2_BOOTSTRAP_SHA256'
+PTR_R8A2_EVENTS=('template_reset_before','template_reset_after','restore_payload',
+    'restore_reset_before','restore_reset_after','initial','epoch','ptr_r7_diagnostic')
+_PTR_R8A2_CONTEXT=None
+
+def ptr_r8a2_auth_schema(a):
+    import re
+    fields={'id','source_head','source_sha256','generated_sha256','held_generated_sha256',
+        'focused_static_sha256','focused_terminal_sha256','parent_sha256'}
+    h4m12_require(type(a) is dict and set(a)==fields and a['id']==PTR_R7_ID and
+        all(type(v) is str and re.fullmatch('[0-9a-f]{40}' if k=='source_head' else '[0-9a-f]{64}',v)
+            for k,v in a.items() if k!='id') and
+        a['held_generated_sha256']==PTR_R7B_GENERATED and
+        a['focused_static_sha256']==PTR_R8A_STATIC_PINS['report.json'] and
+        a['focused_terminal_sha256']==PTR_R8A_STATIC_PINS['supervisor.terminal.json'] and
+        a['parent_sha256']==PTR_PARENT_PINS[PTR_FULL],'PTR_R8A2_AUTH_SCHEMA')
+    return a
+
+def ptr_r8a2_auth(root):
+    """Read-only prospective admission; deliberately not an execution release."""
+    import re,subprocess
+    root=Path(root).resolve()
+    git=lambda *a:subprocess.check_output(['git',*a],cwd=root,timeout=30)
+    head=ptr_head(root);rp=root/'G1_RESEARCH_RULES.md'
+    h4m12_require(Path.cwd().resolve()==root and rp.is_file() and not rp.is_symlink() and
+        git('symbolic-ref','--short','HEAD').strip()==b'experiment/b1-hardware-scaled' and
+        not git('status','--porcelain','--untracked-files=no') and
+        git('rev-parse','refs/remotes/origin/experiment/b1-hardware-scaled').decode().strip()==head,
+        'PTR_R8A2_BRANCH')
+    raw=rp.read_bytes();prefix=(PTR_R8A2_MARKER+': ').encode()
+    lines=re.findall(rb'(?m)^[A-Z0-9_]+_GO:.*$',raw)
+    h4m12_require(raw==git('show','HEAD:G1_RESEARCH_RULES.md') and len(lines)==1
+        and lines[0].startswith(prefix),'PTR_R8A2_MARKER')
+    a=ptr_r8a2_auth_schema(json.loads(lines[0][len(prefix):]))
+    prior=git('show',a['source_head']+':G1_RESEARCH_RULES.md')
+    h4m12_require(hashlib.sha1(b'blob '+str(len(prior)).encode()+b'\0'+prior).hexdigest()==PTR_R7B_CLOSED_ROOT and
+        raw==prior+prefix+ptr_r7b_canonical(a).encode()+b'\n' and
+        git('rev-list','--parents','-n','1',head).decode().split()==[head,a['source_head']] and
+        git('diff','--name-only',head+'^',head).splitlines()==[b'G1_RESEARCH_RULES.md'],
+        'PTR_R8A2_ROOT_ONLY')
+    ptr_r4b_lineage(root,PTR_R8A2_BASE,a['source_head'])
+    ptr_source_files(root,a['source_head'])
+    h4m12_require(h4x_source_digest(root)==a['source_sha256'],'PTR_R8A2_SOURCE')
+    return a,head
+
+def ptr_r8a2_binding(a,head):
+    ptr_r8a2_auth_schema(a)
+    return dict(source_head=a['source_head'],source_sha256=a['source_sha256'],
+        generated_sha256=a['generated_sha256'],authorization_head=head,
+        v1_report_sha256=PTR_R7_V1_REPORT,v1_terminal_sha256=PTR_R7_V1_TERMINAL,
+        v1_generated_sha256=PTR_R7_V1_GENERATED,focused_static_sha256=a['focused_static_sha256'],
+        focused_terminal_sha256=a['focused_terminal_sha256'])
+
+def ptr_r8a2_reservation(root,out,binding,*,worker=False):
+    h4m12_require(out==root/PTR_R7_OUTPUT,'PTR_R8A2_OUTPUT')
+    ptr_r4b_output_path(out)
+    a,head=ptr_r8a2_auth(root)
+    ptr_r7b_exact(binding,ptr_r8a2_binding(a,head),'PTR_R8A2_LIVE_BINDING')
+    attempt=ssrpc_read_json(out/'attempt.json',65536)
+    pid=attempt['parent_pid']
+    h4m12_require(type(pid) is int and pid>0,'PTR_R8A2_PARENT_PID')
+    ptr_r7b_exact(attempt,dict(id=PTR_R7_ID,binding=binding,parent_pid=pid),'PTR_R8A2_ATTEMPT')
+    if worker:
+        h4m12_require(os.getppid()==pid and os.getpid()!=pid and
+            os.environ.get(PTR_R8A2_ROLE)=='producer' and
+            os.environ.get(PTR_R8A2_BOOT)==ssrpc_bootstrap_identity(root),'PTR_R8A2_WORKER_PARENT')
+        ptr_r7b_exact(ssrpc_read_json(out/'worker.started.json',65536),
+            dict(attempt,worker_pid=os.getpid()),'PTR_R8A2_WORKER_RECEIPT')
+    return attempt
+
+def ptr_r8a2_reserve(root,binding):
+    """Future supervisor-only reservation, still unconditionally held."""
+    raise RuntimeError('PTR_R8A2_RESERVATION_HELD')
+    out=root/PTR_R7_OUTPUT
+    h4m12_require(ssrpc_static_no_native() and PTR_R8A2_ROLE not in os.environ and
+        PTR_R8A2_BOOT not in os.environ,'PTR_R8A2_PARENT_ENTRY')
+    a,head=ptr_r8a2_auth(root)
+    ptr_r7b_exact(binding,ptr_r8a2_binding(a,head),'PTR_R8A2_RESERVE_BINDING')
+    ptr_r8a_historical(root);ptr_r4b_unused(out)
+    h4x_storage(out,initial=True);out.mkdir(exist_ok=False)
+    attempt=dict(id=PTR_R7_ID,binding=binding,parent_pid=os.getpid())
+    ssrpc_static_write(out/'attempt.json',attempt)
+    return out,attempt
+
+def ptr_r8a2_make_environment(root,out,binding,config):
+    """Reuse exact PTR reset/step via a diagnostic-only constructor.
+    Never install or impersonate the historical PPO R4B context.
+    """
+    raise RuntimeError('PTR_R8A2_ENVIRONMENT_HELD')
+    global _PTR_R8A2_CONTEXT
+    h4m12_require(_PTR_R8A2_CONTEXT is None,'PTR_R8A2_CONTEXT')
+    ptr_r8a2_reservation(root,out,binding,worker=True)
+    from m463_coverage_env import CoverageJoystick,PTRHeldCoverageJoystick
+    class DiagnosticCoverageJoystick(PTRHeldCoverageJoystick):
+        def __init__(self):
+            h4m12_require(_PTR_R8A2_CONTEXT is not None and
+                _PTR_R8A2_CONTEXT['environment'] is None,'PTR_R8A2_ENV_CLAIM')
+            self._PTRHeldCoverageJoystick__ptr_arm='ctrl'
+            _PTR_R8A2_CONTEXT['environment']=self
+            CoverageJoystick.__init__(self,stage='easy_repeat_support',config=config,
+                h4_arm='control',r12=True)
+    _PTR_R8A2_CONTEXT=dict(root=root,out=out,binding=copy.deepcopy(binding),
+        config=config,environment=None,callbacks=None,dispatched=False)
+    env=DiagnosticCoverageJoystick()
+    h4m12_require(env.action_size==29 and float(env.dt)==.02 and
+        env._PTRHeldCoverageJoystick__ptr_arm=='ctrl' and env._h4_arm=='control' and
+        env._r12 is True and all(not getattr(env,k,False) for k in
+        ('_h4red','_r11','_ffe','_h4m6_tech_capture','_h4m8_common')) and
+        all(getattr(env,k,None) is None for k in ('_h4cc_arm','_h4m6_arm')),'PTR_R8A2_ENV')
+    return env
+
+def ptr_r8a2_bind_callbacks(environment,audit,abort,chunk):
+    c=_PTR_R8A2_CONTEXT
+    h4m12_require(c is not None and c['environment'] is environment and c['callbacks'] is None
+        and all(callable(f) for f in (audit,abort,chunk)),'PTR_R8A2_CALLBACKS')
+    c['callbacks']=(audit,abort,chunk)
+
+def ptr_r8a2_generated_guard(audit,generated_file,environment,resume,abort,chunk):
+    """Prospective guarded entry; the actual held generator is unchanged."""
+    raise RuntimeError('PTR_R8A2_GENERATED_ENTRY_HELD')
+    c=_PTR_R8A2_CONTEXT
+    h4m12_require(c is not None and not c['dispatched'] and c['environment'] is environment and
+        c['callbacks'] is not None and all(x is y for x,y in zip(c['callbacks'],(audit,abort,chunk))),
+        'PTR_R8A2_GENERATED_CONTEXT')
+    root,out,binding=c['root'],c['out'],c['binding']
+    attempt=ptr_r8a2_reservation(root,out,binding,worker=True)
+    h4m12_require(Path(generated_file).resolve()==out/'m463_brax_ppo_instrumented.py' and
+        Path(resume).resolve()==root/PTR_PARENT/PTR_FULL,'PTR_R8A2_GENERATED_PATH')
+    h4x_file_pin(Path(generated_file),binding['generated_sha256'])
+    h4x_file_pin(Path(resume),PTR_PARENT_PINS[PTR_FULL])
+    h4m12_require(not (out/'report.json').exists() and not (out/'report.json').is_symlink(),
+        'PTR_R8A2_REPORT_UNUSED')
+    ssrpc_static_write(out/'dispatch.started.json',dict(attempt,worker_pid=os.getpid()))
+    c['dispatched']=True
+
+def ptr_r8a2_expected_prefix(root):
+    """Use exact V1 receipt for matched first-rollout preconditions, not a new seed."""
+    path=root/PTR_R7B_V1/'report.json';h4x_file_pin(path,PTR_R7_V1_REPORT)
+    old=ssrpc_read_json(path,H4X_SPEC['other_cap'])
+    rows=old['operational_rows'][:7]
+    h4m12_require(tuple(x['event'] for x in rows)==PTR_R8A2_EVENTS[:7],'PTR_R8A2_V1_PREFIX')
+    return rows
+
+def ptr_r8a2_audit_factory(root,binding,jax,np,optax,serialization,safe):
+    """Future native callback; retains all seven matched restore/reset/RNG edges."""
+    expected=ptr_r8a2_expected_prefix(root);rows=[];result={}
+    local=eval_key=env_keys=epoch_keys=model=axes=reset=restored=initial=None
+    def arr(x):return np.asarray(jax.device_get(x))
+    def keyhash(x):return hashlib.sha256(arr(x).tobytes()).hexdigest()
+    def same(x,y,label):
+        x,y=arr(x),arr(y)
+        h4m12_require(x.shape==y.shape and x.dtype==y.dtype and x.tobytes()==y.tobytes(),
+            'PTR_R8A2_KEY_'+label)
+    def finite(x):
+        a=arr(x);h4m12_require(a.shape==() and a.dtype.kind=='b' and bool(a),'PTR_R8A2_FINITE')
+    def audit(event,**v):
+        nonlocal local,eval_key,env_keys,epoch_keys,model,axes,reset,restored,initial
+        safe()
+        n=len(rows)
+        h4m12_require(n<len(PTR_R8A2_EVENTS) and event==PTR_R8A2_EVENTS[n],
+            'PTR_R8A2_AUDIT_ORDER')
+        if event=='template_reset_before':
+            _,local=jax.random.split(jax.random.PRNGKey(1))
+            local=jax.random.fold_in(local,0)
+            local,k,eval_key=jax.random.split(local,3)
+            env_keys=jax.random.split(k,8192).reshape(1,8192,2)
+            model,axes=v['model'],v['axes'];ptr_reset_model_check(jax,np,model,axes)
+        if event in ('template_reset_before','restore_reset_before'):
+            h4m12_require(v['model'] is model and v['axes'] is axes,'PTR_R8A2_DR_CARRY')
+            same(v['local_key'],local,'RESET_LOCAL');same(v['eval_key'],eval_key,'RESET_EVAL')
+            same(v['keys'],env_keys,'RESET_KEYS')
+            row=dict(dr_sha256=H4M12_DR,keys_sha256=keyhash(env_keys),
+                local_key=arr(local).tolist(),eval_key=arr(eval_key).tolist())
+        elif event in ('template_reset_after','restore_reset_after'):
+            finite(v['finite']);reset=v['env_state'];ptr_project_state(reset,jax,np,reset=True)
+            row=dict(finite=True,environment_schema=PTR_ENV_SCHEMA,
+                r12_host_reset_closed=0,ptr_host_reset_closed=0)
+        elif event=='restore_payload':
+            p=v['payload']
+            ptr_verify_typed_payload(jax,np,optax,serialization,v['template'],p,root)
+            restored=p['training_state'];ptr_counters(restored,jax,np,optax,0,replicated=False)
+            local,env_keys,eval_key=(p[k] for k in ('local_key','key_envs','eval_key'))
+            row=dict(policy_exact=True,fullstate_exact=True,local_key=arr(local).tolist(),
+                eval_key=arr(eval_key).tolist(),reset_sha256=keyhash(env_keys))
+        elif event=='initial':
+            finite(v['finite']);initial=v['training_state']
+            h4m12_require(v['env_state'] is reset and restored is not None,'PTR_R8A2_INITIAL_CARRY')
+            h4m12_tree_equal(jax,np,jax.tree_util.tree_map(lambda x:x[0],initial),restored,
+                'PTR_R8A2_REPLICATED')
+            row=ptr_counters(initial,jax,np,optax,0,replicated=True)
+        elif event=='epoch':
+            h4m12_require(v['env_state'] is reset and initial is v['training_state'],'PTR_R8A2_EPOCH_CARRY')
+            epoch,local=jax.random.split(local);epoch_keys=jax.random.split(epoch,1)
+            same(v['keys'],epoch_keys,'EPOCH');same(v['local_key'],local,'EPOCH_LOCAL')
+            row=dict(**ptr_counters(initial,jax,np,optax,0,replicated=True),key=arr(epoch_keys).tolist())
+        elif event=='ptr_r7_diagnostic':
+            h4m12_require(set(v)=={'evidence','training_state','training_state_after','collected',
+                'optimizer_updates','normalizer_updates'} and v['training_state'] is initial and
+                type(v['collected']) is int and v['collected']==262144 and
+                type(v['optimizer_updates']) is type(v['normalizer_updates']) is int and
+                v['optimizer_updates']==v['normalizer_updates']==0,'PTR_R8A2_DIAGNOSTIC_INPUT')
+            witness=ptr_r8a_state_witness(jax,np,optax,serialization,initial,v['training_state_after'])
+            evidence=ptr_r7_wire_tree(v['evidence'])
+            ptr_r7_check_evidence(evidence)
+            report=dict(id=PTR_R7_ID,binding=binding,spec=ptr_r7_spec(),status='DIAGNOSTIC_COMPLETE',
+                evidence=evidence,**witness,actual_rollouts=1,skipped_rollouts=0,collected=v['collected'],
+                optimizer_updates=0,normalizer_updates=0,evaluation=0,artifacts={},promotion_authorized=False)
+            ptr_r7_check_report(report,binding)
+            result.update(report)
+            row=dict(collected=v['collected'],optimizer_updates=0,normalizer_updates=0,evaluation=0,
+                train_reset_lanes=16384,eval_reset_lanes=0,training_state_sha256=witness['training_state_sha256_after'])
+        else:raise RuntimeError('PTR_R8A2_UNKNOWN_EVENT')
+        actual=dict(event=event,**row)
+        if n<7:ptr_r7b_exact(actual,expected[n],'PTR_R8A2_MATCHED_PREFIX_'+event)
+        rows.append(actual)
+    return audit,rows,result
+
+def ptr_r8a2_audit_reader(root,rows,report,binding,gpu):
+    """Host replay of exact V1 prefix and completed diagnostic witness."""
+    ptr_r7_check_report(report,binding)
+    h4m12_require(type(rows) is list and len(rows)==len(PTR_R8A2_EVENTS),'PTR_R8A2_AUDIT_LENGTH')
+    ptr_r7b_exact(rows[:7],ptr_r8a2_expected_prefix(root),'PTR_R8A2_AUDIT_PREFIX')
+    ptr_r7b_exact(rows[-1],dict(event='ptr_r7_diagnostic',collected=262144,optimizer_updates=0,
+        normalizer_updates=0,evaluation=0,train_reset_lanes=16384,eval_reset_lanes=0,
+        training_state_sha256=report['training_state_sha256_after']),'PTR_R8A2_AUDIT_EDGE')
+    h4m12_require(type(gpu) is dict and set(gpu)=={'samples','gpu_name','total_mib','peak_used_mib','sampler_errors'}
+        and type(gpu['samples']) is int and gpu['samples']>0 and type(gpu['gpu_name']) is str and
+        type(gpu['total_mib']) is int and gpu['total_mib']==12288 and type(gpu['peak_used_mib']) is int and
+        0<gpu['peak_used_mib']<.95*12288 and gpu['sampler_errors']==[],'PTR_R8A2_GPU_REPORT')
+    return True
+
+# H4M29_R8A2_HELD_BINDING_END
 # H4M29_R8A_NATIVE_HELD_END
 # H4M29_R7B_FOCUSED_STATIC_END
 # H4M29_R7_DIAGNOSTIC_TRAINER_END
