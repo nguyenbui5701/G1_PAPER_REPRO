@@ -19363,6 +19363,28 @@ def ptr_r12_red_focused_admission(root,auth):
     ptr_r10b_closed_marker(root,accepted['source_head'],accepted['authorization_head'],
         accepted['closure_head'],'H4PTR_RED_CTRL_STATIC_GO',r['authorization'])
     ptr_r4b_lineage(root,accepted['closure_head'],auth['source_head'])
+    # The reviewed focused source may differ from released source only by the
+    # exact acceptance dictionary and the one-line runtime release.
+    import subprocess
+    git=lambda *v:subprocess.check_output(['git',*v],cwd=root,timeout=30)
+    focused_pins={}
+    for name in PTR_SOURCE_NAMES:
+        before=git('show',accepted['source_head']+':'+name)
+        after=git('show',auth['source_head']+':'+name)
+        focused_pins[name]=hashlib.sha256(before).hexdigest()
+        if name=='m463_push_ppo_train.py':
+            old=b'PTR_R12_RED_FOCUSED_ACCEPTANCE='+b'None\n'
+            new=b'PTR_R12_RED_FOCUSED_ACCEPTANCE='+ptr_r7b_canonical(accepted).encode()+b'\n'
+            h4m12_require(before.count(old)==1 and before.count(new)==0,
+                'PTR_R12_RED_FOCUSED_ACCEPTANCE_ANCHOR')
+            expected=ptr_r12_red_release_projection(before.replace(old,new,1))
+        else:expected=before
+        h4m12_require(after==expected,'PTR_R12_RED_FOCUSED_RELEASE_'+name)
+    h4m12_require(hashlib.sha256(ptr_r7b_canonical(focused_pins).encode()).hexdigest()==
+        accepted['source_sha256'] and
+        git('show',accepted['source_head']+':'+PTR_R12_RED_LAUNCHER)==
+        git('show',auth['source_head']+':'+PTR_R12_RED_LAUNCHER),
+        'PTR_R12_RED_FOCUSED_EXACT_RELEASE')
 
 def ptr_r12_red_historical(root):
     """Retain exact R15 evidence, never reuse it as a RED matched parent."""
