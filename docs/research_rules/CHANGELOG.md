@@ -625,3 +625,7 @@ Source bd3b3c7eea081008bfa38bc448a53964e85c98e5; exact +110/-2 across three exis
 
 ## H4-M29-R18B — isolated CTRL-RED wiring HELD
 Source bdc06fa3d4b7e5aaae3eaf27c3f72b69b38074e3 plus exact focused-to-release projection strengthening 27e0e81dcc22af7a89e8a99fc712520a36318c16. Final nine-file aggregate a63b9c11050746ae38f449f7efb3655bf9891ff088efe06d2aa735f37563208a; guarded generated 9ba23fe8bb1378d83632d803b5ea2ec4059989f8138d6ea2423b2a9aa0ccf4c6; separate pinned launcher 5f53fa53be1922374392d1a0af4f9538d5b1509611fa80ce41bb65bb98d1c07c. 2/2 reverse and seven unchanged sources; bash -n and isolated mock success/failure/reuse verified, generated projection compile-only. No project fixture execution, no new GO; new focused harness/manifest/acceptance pending. See ACTIVE_EXPERIMENT R18B for exact evidence, checks and limitations. Branch A ACTIVE/B HOLD, R15 immutable, CAND HOLD, no promotion.
+
+
+## H4-M29-R19A — focused RED harness HELD
+Trainer-only commits 613dcc92bcc42c7c7769caf6fb9cb58f8aa744c9, 20d7b05d929f20bba51882abef2591cbe2f4673f; aggregate 63038002682b365c1fe6d8c631c48e1265b91a8db39456d848b8772d85178562, ordered13-case manifest 986524b94939b92662819013502ae860f72d3d0d962d44ff6c906855d97a254d. Constructor reject-before-native-import fixed; exact receipt replay implemented. 0/13 project fixtures executed, runtime HOLD/zero GO. See ACTIVE_EXPERIMENT R19A for exact identities, limits, next distinct Owner host-static authorization. Branch A ACTIVE/B HOLD.
