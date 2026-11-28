@@ -653,3 +653,7 @@ Governance v2.0.1 unchanged. Accepted R22 technical/combined exposure, closed co
 
 ## H4-M29-R24 — 2026-11-28 ICT
 Governance v2.0.1 unchanged. Added distinct RED CAND held runtime wiring in source commit2ba11c315e4659ac8ea57c90765c0fa5499c6725; exact historical inverse and new launcher, no CTRL-only guard weakening, no scientific or budget change. Two unconditional HOLDs, focused acceptance None, zero active GO, no project execution. A ACTIVE/B HOLD.
+
+
+## H4-M29-R25 — 2026-11-28 ICT
+Governance v2.0.1 unchanged. Added focused CAND harness and prospective acceptance/release in ad3ba4f52920cb1e44131c153c652d40d02d4715, trainer +434/-1 with exact inverse, 12 cases/0 executed. Both HOLDs, zero marker, all frozen evidence and scientific thresholds retained. No native/PPO. See ACTIVE_EXPERIMENT R25.
