@@ -14917,4 +14917,427 @@ if __name__=='__main__' and sys.argv[1:2]==['--h4ptr-full-static']:
     else:
         ptr_static_cli_held(sys.argv[2:])
     sys.exit(0)
+
+# H4M29_R7_DIAGNOSTIC_TRAINER_BEGIN
+# Held diagnostic contract; deliberately no CLI, marker reader, reservation or dispatch.
+PTR_R7_BASE_HEAD='361636831557a775557607452c067b8cbc1d18c3'
+PTR_R7_BASE_BLOBS={'m463_instrument_brax.py':'10d6093197002933fe59ed40c118ab253648652d',
+    'm463_push_ppo_train.py':'84b82e1dc396c444002be3f7bafd5c4a839bab0e'}
+PTR_R7_ID='H4-M29-R12-PTR-DIAG-V1'
+PTR_R7_OUTPUT='m463_runs/m470_h4_m29_ptr_diag_v1'
+PTR_R7_V1_REPORT='cedb09e0e78f95a3fd8eb5a1ac0ae4e35bcf2605d51fbdb0336e4278b6e1b6a3'
+PTR_R7_V1_TERMINAL='267f2cb99124bf514979b474f28f01ba42a9107f293ff0241a7aacca86008041'
+PTR_R7_V1_GENERATED='c5cd4894838c9433b1049bb653f4df8d72263710e3ef37accb8b4054ecf5d120'
+PTR_R7_CASES=('manifest_exact','mask_equivalence_clean','mask_equivalence_corrupt',
+    'r12_terminal_discount','r12_dcr_exact','ptr_geometry_exact','ptr_reward_exact',
+    'ptr_lifecycle_carry','actual_pre_actor','actual_pre_critic','actual_post_actor',
+    'actual_post_critic','terminal_post_observation_exemption','source_clock_refresh',
+    'source_clock_last_broadcast','done_prior','done_last_broadcast','finite_group_separate',
+    'bounded_indices_and_padding','exact_signed_zero_bits','reader_rejects_unknown_predicate',
+    'reader_rejects_counts_or_indices','reader_rejects_bad_witness','reader_rejects_mutated_state',
+    'generated_reverse_and_no_update','historical_source_reverse')
+
+def ptr_r7_spec():
+    return dict(id=PTR_R7_ID,output=PTR_R7_OUTPUT,arm='ctrl',parent=str(PTR_PARENT),
+        parent_sha256=PTR_PARENT_PINS[PTR_FULL],seed=1,backend='cuda',num_envs=8192,
+        unroll_length=32,rollouts=1,transitions=262144,optimizer_updates=0,
+        normalizer_updates=0,evaluation=0,train_reset_lanes=16384,eval_reset_lanes=0,
+        parent_steps=15728640,parent_adam=2400,parent_normalizer=416808960,
+        watchdog_seconds=3600,log_cap_bytes=16*1024**2,storage_cap_bytes=512*1024**2,
+        reserve_bytes=2*1024**3,gpu_total_mib=12288,gpu_fraction_limit=.95,
+        execution_authorized=False,promotion_authorized=False)
+
+def ptr_r7_reverse(name,raw):
+    """Project R7 source exactly to closed R6; all historical functions unchanged."""
+    if name not in PTR_R7_BASE_BLOBS:return raw
+    label='INSTRUMENT' if name=='m463_instrument_brax.py' else 'TRAINER'
+    first=('\n# H4M29_R7_DIAGNOSTIC_'+label+'_BEGIN\n').encode()
+    last=('# H4M29_R7_DIAGNOSTIC_'+label+'_END\n').encode()
+    h4m12_require(raw.count(first)==raw.count(last)==1 and raw.index(first)<raw.index(last),'PTR_R7_REVERSE_SENTINELS')
+    old=raw[:raw.index(first)]+raw[raw.index(last)+len(last):]
+    h4m12_require(hashlib.sha1(b'blob '+str(len(old)).encode()+b'\0'+old).hexdigest()==PTR_R7_BASE_BLOBS[name],
+        'PTR_R7_REVERSE_BLOB')
+    return old
+
+def ptr_r7_project_sources(root):
+    import subprocess
+    root=Path(root).resolve(); result={}
+    for name in PTR_SOURCE_NAMES:
+        path=root/name
+        h4m12_require(path.is_file() and not path.is_symlink(),'PTR_R7_SOURCE_PATH')
+        raw=path.read_bytes()
+        current=subprocess.check_output(['git','show','HEAD:'+name],cwd=root,timeout=30)
+        historical=subprocess.check_output(['git','show',PTR_R7_BASE_HEAD+':'+name],cwd=root,timeout=30)
+        h4m12_require(raw==current and ptr_r7_reverse(name,raw)==historical,'PTR_R7_SOURCE_REVERSE_'+name)
+        result[name]=hashlib.sha256(historical).hexdigest()
+    h4m12_require(hashlib.sha256(json.dumps(result,sort_keys=True,separators=(',',':')).encode()).hexdigest()==
+        '3b1d41f1041d113209c58c2740e34fc882065227aa1481db22ed4ada6506063f','PTR_R7_SOURCE_AGGREGATE')
+    return result
+
+def ptr_r7_wire(x):
+    """Host conversion of bounded device arrays; exact raw bits, including NaN/-0."""
+    import numpy as np
+    a=np.asarray(x)
+    h4m12_require(a.dtype.kind in 'biuf' and a.dtype.itemsize<=8 and a.ndim<=1 and a.size<=4,'PTR_R7_WIRE')
+    a=a.astype(a.dtype.newbyteorder('<'),copy=False)
+    return dict(dtype=a.dtype.str,shape=list(a.shape),hex=a.tobytes().hex())
+
+def ptr_r7_wire_tree(obj):
+    if type(obj) is dict:return {k:ptr_r7_wire_tree(v) for k,v in obj.items()}
+    return ptr_r7_wire(obj)
+
+def ptr_r7_check_evidence(e):
+    """Strict host-only diagnostic payload reader. Does not validate physical cause."""
+    import re,struct
+    from m463_instrument_brax import (PTR_R7_PREDICATES,PTR_R7_WITNESS_FIELDS,PTR_R7_OBS,
+        PTR_R7_N,PTR_R7_FINITE,R12_CARRY,PTR_CARRY,R12_INTS,R12_FLOATS,PTR_INTS,PTR_FLOATS)
+    N=PTR_R7_N
+    h4m12_require(type(e) is dict and set(e)=={'predicates','witness','indices','family_counts',
+        'frozen_count','traced_count','union_count','mismatch_count','finite'},'PTR_R7_EVIDENCE_KEYS')
+    def wire(x,shape,allowed=None):
+        types={'|b1':'?','|i1':'b','|u1':'B','<i2':'h','<u2':'H','<i4':'i','<u4':'I',
+            '<i8':'q','<u8':'Q','<f4':'f','<f8':'d'}
+        h4m12_require(type(x) is dict and set(x)=={'dtype','shape','hex'} and
+            x['dtype'] in types and (allowed is None or x['dtype'] in allowed) and
+            type(x['shape']) is list and all(type(v) is int for v in x['shape']) and x['shape']==shape and
+            type(x['hex']) is str and re.fullmatch('[0-9a-f]*',x['hex']) is not None,'PTR_R7_WIRE_SCHEMA')
+        n=shape[0] if shape else 1;fmt='<'+types[x['dtype']]*n
+        h4m12_require(len(x['hex'])==2*struct.calcsize(fmt),'PTR_R7_WIRE_LENGTH')
+        raw=bytes.fromhex(x['hex'])
+        if x['dtype']=='|b1':h4m12_require(all(b in (0,1) for b in raw),'PTR_R7_BOOL_WIRE')
+        return struct.unpack(fmt,raw)
+    def counter(x):
+        n=wire(x,[],{'<i4'})[0]
+        h4m12_require(0<=n<=N,'PTR_R7_COUNTER')
+        return n
+    def indices(x,n,count):
+        vals=wire(x,[n],{'<i4'})
+        active=vals[:min(n,count)]
+        h4m12_require(all(0<=v<N for v in active) and list(active)==sorted(set(active)) and
+            all(v==N for v in vals[len(active):]),'PTR_R7_INDICES')
+        return vals
+    p=e['predicates']
+    ids={k+':'+str(j) for k,(n,_) in PTR_R7_PREDICATES.items() for j in range(n)}
+    h4m12_require(type(p) is dict and set(p)==ids,'PTR_R7_PREDICATE_IDS')
+    family_rows={k:[] for k in ('r12','ptr','actual')}
+    samples=set()
+    def padding(x,n,count):
+        size=len(x['hex'])//(2*n)
+        h4m12_require(x['hex'][2*size*min(n,count):]=='00'*(size*(n-min(n,count))),
+            'PTR_R7_EXACT_ZERO_PADDING')
+    for key,val in p.items():
+        label=key.rsplit(':',1)[0];paired=PTR_R7_PREDICATES[label][1]
+        h4m12_require(type(val) is dict and set(val)==({'count','indices','actual','expected'} if paired else {'count','indices'}),
+            'PTR_R7_PREDICATE_KEYS')
+        c=counter(val['count']);ii=indices(val['indices'],2,c)
+        family_rows[label.split('_',1)[0]].append(c)
+        samples.update(v for v in ii if v<N)
+        if paired:
+            for k in ('actual','expected'):
+                wire(val[k],[2]);padding(val[k],2,c)
+    f=e['family_counts']
+    h4m12_require(type(f) is dict and set(f)==set(family_rows),'PTR_R7_FAMILY_IDS')
+    families={k:counter(v) for k,v in f.items()}
+    for k,v in families.items():
+        h4m12_require(max(family_rows[k])<=v<=min(N,sum(family_rows[k])),'PTR_R7_FAMILY_CONSERVATION')
+    frozen,traced,union,mismatch=(counter(e[k]) for k in ('frozen_count','traced_count','union_count','mismatch_count'))
+    h4m12_require(mismatch==0 and frozen==traced==union and max(families.values())<=union<=min(N,sum(families.values())),
+        'PTR_R7_MASK_EQUIVALENCE')
+    observed=indices(e['indices'],4,union)
+    h4m12_require(list(observed[:min(2,union)])==sorted(samples)[:min(2,union)],'PTR_R7_SAMPLE_UNION_PREFIX')
+    names=set(PTR_R7_WITNESS_FIELDS)|{'reward','discount','before_done','after_done'}
+    names|={edge+'_'+key for edge in ('before','after') for key in
+        (*('r12_'+k for k in R12_CARRY),*('ptr_'+k for k in PTR_CARRY),'step')}
+    names|={'obs_'+name+'_'+str(j) for name in PTR_R7_OBS for j in range(3)}
+    w=e['witness']
+    h4m12_require(type(w) is dict and set(w)==names,'PTR_R7_WITNESS_IDS')
+    float_names={('r12_'+k) for k in R12_FLOATS}|{('ptr_'+k) for k in PTR_FLOATS}|{
+        'reward','discount','before_done','after_done'}|{'obs_'+n+'_'+str(j) for n in PTR_R7_OBS for j in range(3)}
+    int_names={('r12_'+k) for k in R12_INTS}|{('ptr_'+k) for k in PTR_INTS}|{
+        edge+'_'+key for edge in ('before','after') for key in
+        (*('r12_'+k for k in R12_CARRY),*('ptr_'+k for k in PTR_CARRY),'step')}
+    for k,v in w.items():
+        wire(v,[4],{'<f4'} if k in float_names else {'<i4'} if k in int_names else None)
+        padding(v,4,union)
+    finite=e['finite']
+    h4m12_require(type(finite) is dict and set(finite)==set(PTR_R7_FINITE),'PTR_R7_FINITE_IDS')
+    flags={k:wire(v,[],{'|b1'})[0] for k,v in finite.items()}
+    return dict(bad_rows=union,families=families,finite=flags,mask_equivalent=True)
+
+def ptr_r7_check_report(r,expected_binding):
+    """Prospective distinct report schema; no V1 report changes or execution release."""
+    import re
+    h4m12_require(type(r) is dict and set(r)=={'id','binding','spec','status','evidence',
+        'counters_before','counters_after','training_state_exact','training_state_sha256_before',
+        'training_state_sha256_after','actual_rollouts','skipped_rollouts',
+        'collected','optimizer_updates','normalizer_updates','evaluation','artifacts','promotion_authorized'},
+        'PTR_R7_REPORT_KEYS')
+    keys={'source_head','source_sha256','generated_sha256','authorization_head','v1_report_sha256',
+        'v1_terminal_sha256','v1_generated_sha256','focused_static_sha256','focused_terminal_sha256'}
+    h4m12_require(type(expected_binding) is dict and set(expected_binding)==keys and r['binding']==expected_binding
+        and all(type(v) is str and re.fullmatch('[0-9a-f]{40}' if k.endswith('_head') else '[0-9a-f]{64}',v)
+            is not None for k,v in expected_binding.items()),'PTR_R7_REPORT_BINDING')
+    h4m12_require(expected_binding['v1_report_sha256']==PTR_R7_V1_REPORT and
+        expected_binding['v1_terminal_sha256']==PTR_R7_V1_TERMINAL and
+        expected_binding['v1_generated_sha256']==PTR_R7_V1_GENERATED,'PTR_R7_V1_EVIDENCE')
+    h4m12_require(r['id']==PTR_R7_ID and json.dumps(r['spec'],sort_keys=True)==json.dumps(ptr_r7_spec(),sort_keys=True) and r['status']=='DIAGNOSTIC_COMPLETE'
+        and r['promotion_authorized'] is False and r['artifacts']=={} and r['training_state_exact'] is True,'PTR_R7_REPORT_ID')
+    edge=dict(steps=15728640,adam=2400,normalizer=416808960,training_schema=PTR_TRAIN_SCHEMA)
+    canon=lambda x:json.dumps(x,sort_keys=True,separators=(',',':'),allow_nan=False)
+    h4m12_require(canon(r['counters_before'])==canon(r['counters_after'])==canon(edge),
+        'PTR_R7_STATE_EDGE')
+    h4m12_require(type(r['training_state_sha256_before']) is str and
+        re.fullmatch('[0-9a-f]{64}',r['training_state_sha256_before']) is not None and
+        r['training_state_sha256_after']==r['training_state_sha256_before'],'PTR_R7_STATE_HASH')
+    for k,v in dict(actual_rollouts=1,skipped_rollouts=0,collected=262144,optimizer_updates=0,
+        normalizer_updates=0,evaluation=0).items():
+        h4m12_require(type(r[k]) is int and r[k]==v,'PTR_R7_BUDGET_'+k)
+    return ptr_r7_check_evidence(r['evidence'])
+
+def ptr_r7_read_held(out,expected_sha,expected_binding):
+    """Only report reading, no runtime dispatch or marker issuance."""
+    out=Path(out)
+    h4m12_require(out.name==Path(PTR_R7_OUTPUT).name and out.parent.name=='m463_runs'
+        and out.is_dir() and not out.is_symlink() and not out.parent.is_symlink(),'PTR_R7_OUTPUT')
+    h4x_file_pin(out/'report.json',expected_sha)
+    return ptr_r7_check_report(ssrpc_read_json(out/'report.json',H4X_SPEC['other_cap']),expected_binding)
+
+
+def ptr_r7_check_terminal(out,expected_binding,expected_terminal_sha,*,complete):
+    """Prospective strict receipt linkage. No dispatcher exists in R7A."""
+    import re
+    out=Path(out)
+    h4m12_require(out.name==Path(PTR_R7_OUTPUT).name and out.parent.name=='m463_runs'
+        and out.is_dir() and not out.is_symlink() and not out.parent.is_symlink(),'PTR_R7_OUTPUT')
+    name='supervisor.terminal.json' if complete else 'supervisor.failed.json'
+    h4x_file_pin(out/name,expected_terminal_sha)
+    terminal=ssrpc_read_json(out/name,65536)
+    fields={'id','binding','status','stage','producer_rc','reader_rc','report_sha256',
+        'generated_sha256','log_sha256','stored_log_bytes','parent_pid','worker_pid','error'}
+    h4m12_require(type(terminal) is dict and set(terminal)==fields and terminal['id']==PTR_R7_ID
+        and terminal['binding']==expected_binding,'PTR_R7_TERMINAL_SCHEMA')
+    def pid(v):return type(v) is int and v>0
+    def rc(v):return v is None or type(v) is int
+    a=ssrpc_read_json(out/'attempt.json',65536)
+    h4m12_require(type(a) is dict and set(a)=={'id','binding','parent_pid'}
+        and a['id']==PTR_R7_ID and a['binding']==expected_binding and pid(a['parent_pid'])
+        and terminal['parent_pid']==a['parent_pid'],'PTR_R7_ATTEMPT')
+    def optional(n):
+        p=out/n
+        return ssrpc_read_json(p,65536) if p.exists() or p.is_symlink() else None
+    w=optional('worker.started.json');d=optional('dispatch.started.json')
+    if w is not None:
+        h4m12_require(type(w) is dict and set(w)==set(a)|{'worker_pid'} and
+            all(w[k]==a[k] for k in a) and pid(w['worker_pid']) and w['worker_pid']!=a['parent_pid'],
+            'PTR_R7_WORKER')
+    if d is not None:h4m12_require(w is not None and d==w,'PTR_R7_DISPATCH')
+    h4m12_require(terminal['worker_pid']==(None if w is None else w['worker_pid']),'PTR_R7_WORKER_LINK')
+    def file_sha(n):
+        p=out/n
+        if not p.exists() and not p.is_symlink():return None
+        h4m12_require(p.is_file() and not p.is_symlink(),'PTR_R7_TERMINAL_FILE')
+        return digest(p)
+    gs,rs,ls=map(file_sha,('m463_brax_ppo_instrumented.py','report.json','worker.log'))
+    h4m12_require(gs in (None,expected_binding['generated_sha256']) and
+        (gs is None or w is not None) and (rs is None or d is not None) and
+        (d is None or gs is not None) and terminal['report_sha256']==rs and
+        terminal['generated_sha256']==gs and terminal['log_sha256']==ls,'PTR_R7_TERMINAL_HASH_LINK')
+    n=(out/'worker.log').stat().st_size if ls is not None else 0
+    h4m12_require(type(terminal['stored_log_bytes']) is int and terminal['stored_log_bytes']==n and
+        0<=n<=ptr_r7_spec()['log_cap_bytes'] and rc(terminal['producer_rc']) and rc(terminal['reader_rc']),
+        'PTR_R7_LOG_OR_RC')
+    result=ssrpc_read_json(out/'attempt_result.json',65536)
+    h4m12_require(result==terminal,'PTR_R7_RESULT_LINK')
+    if complete:
+        h4m12_require(terminal['status']=='COMPLETE' and terminal['stage']=='REPORT_DISPATCHED'
+            and rs is not None and ls is not None and d is not None and
+            type(terminal['producer_rc']) is type(terminal['reader_rc']) is int and
+            terminal['producer_rc']==terminal['reader_rc']==0 and terminal['error'] is None and
+            not (out/'supervisor.failed.json').exists() and not (out/'supervisor.failed.json').is_symlink(),
+            'PTR_R7_COMPLETE_TERMINAL')
+        return ptr_r7_read_held(out,rs,expected_binding)
+    stage='REPORT_DISPATCHED' if d is not None else 'WORKER_STARTED' if w is not None else 'RESERVATION_ONLY'
+    h4m12_require(terminal['status']=='STOP' and terminal['stage']==stage and
+        type(terminal['error']) is str and 0<len(terminal['error'])<=2048 and
+        not (out/'supervisor.terminal.json').exists() and not (out/'supervisor.terminal.json').is_symlink(),
+        'PTR_R7_STOP_TERMINAL')
+    # A crash before a completed payload leaves actual rollout count UNKNOWN, never a PASS.
+    evidence=ptr_r7_read_held(out,rs,expected_binding) if rs is not None else None
+    return dict(status='STOP',stage=stage,diagnostic_evidence=evidence,
+        actual_rollouts=None if evidence is None else 1,promotion_authorized=False)
+
+
+def ptr_r7_fixture_batch(root,arm='ctrl',motion=0):
+    """Exact legacy synthetic batch construction, without dispatching old fixtures."""
+    import ast,numpy as np
+    from types import SimpleNamespace
+    import m463_instrument_brax as inst
+    f=np.float32;b=np.bool_;ii=np.int32;sh=(8192,32)
+    code=(root/'m463_coverage_env.py').read_text('utf8')
+    tree=ast.parse(code)
+    distance=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='r11_distance')
+    ns={};exec(compile(ast.Module(body=[distance],type_ignores=[]),'<PTR static distance>','exec'),ns)
+    a=code.index('# H4R12_CORE_BEGIN\n');z=code.index('# H4R12_CORE_END\n',a)
+    exec(compile(code[a:z],'<PTR original R12 core>','exec'),ns)
+    a=code.index('# H4M29_PTR_HELD_ENV_BEGIN\n');z=code.index('class PTRHeldCoverageJoystick(',a)
+    exec(compile(code[a:z],'<PTR isolated core>','exec'),ns)
+    h4m12_require(ns['PTR_FIELDS']==inst.PTR_FIELDS and ns['R12_FIELDS']==inst.R12_FIELDS,'PTR_EXTRA_IDENTITY')
+    init=lambda:ns['ptr_init'](np)
+    upright=np.array([0,0,1],f);tilted=np.array([.5,0,np.sqrt(.75)],f)
+    def step(old,arm='cand',**kw):
+        args=dict(arm=arm,gravity=tilted,base=f(-0.),native=f(-0.),event=b(False),repeat=b(False),
+            direction=ii(2),motion=ii(0),boundary=b(False),coherent=b(True),pre_live=b(True),
+            pre_step=ii(50),terminal=b(False),timeout=b(False),nominal=b(False),support_pre=ii(1))
+        args.update(kw);return ns['ptr_transition'](np,old,**args)
+    def batch(arm,motion,gravity=tilted):
+        d=ns['r12_init'](np);p=init();start_d=dict(d);start_p=dict(p)
+        rows=[];reward=[];clock=10
+        source={k:np.zeros(sh,ii) for k in inst.R12_SOURCE_FLAGS}
+        source['m463_support_side']=np.ones(sh,ii);source['h4_class'][:]=1
+        source['h4_motion'][:]=motion;source['h4_actor_motion'][:]=motion
+        discount=np.ones(sh,f)
+        command=np.asarray([0.,0.,0.] if motion==0 else [.6,0.,0.],f)
+        obs=np.zeros((32,12),f);obs[:,9:12]=command
+        rects=np.array([[-.2,0,1,0,0,1,.09,.03],[.2,0,1,0,0,1,.09,.03]],f)
+        for k in range(32):
+            ev=k in (0,15);rep=k==15;term=k==30;bound=k==31
+            sample=(np.array([.6,0],f),rects,np.array([.4,.1],f),f(0),b(True),b(True))
+            d,r1=ns['r12_env_transition'](np,d,sample,sample,event=b(ev),repeat=b(rep),direction=ii(2),
+                boundary=b(bound),coherent=b(motion==0),terminal=b(term),timeout=b(False),nominal=b(False),
+                native=f(-0.),joint_excess=b(False),ctrl_excess=b(False),force_excess=b(False),foot_foot=b(False))
+            p,r2=step(p,arm,gravity=gravity,base=r1,native=f(-0.),event=b(ev),repeat=b(rep),motion=ii(motion),boundary=b(bound),
+                pre_live=b(k!=31),terminal=b(term),pre_step=ii(clock))
+            clock=0 if term else clock+1;p['ptr_after_step']=ii(clock)
+            for name in ns['PTR_COMMANDS']:
+                for j in range(3):p['ptr_'+name+'_'+str(j)]=command[j]
+            rows.append(dict(d,**p));reward.append(r2)
+            for key,value in (('m463_event',ev),('m463_repeat',rep),('m463_direction',2),
+                ('h4_boundary',bound),('h4_source_terminal',term)):
+                source[key][:,k]=int(value)
+            if term:discount[:,k]=0
+        extra={key:np.broadcast_to(np.asarray([row[key] for row in rows]),sh).copy() for key in inst.R12_FIELDS+inst.PTR_FIELDS}
+        extra.update(source)
+        pre={prefix+k:np.full(8192,s[prefix+k],ii) for prefix,s,ks in (
+            ('r12_',start_d,inst.R12_CARRY),('ptr_',start_p,inst.PTR_CARRY)) for k in ks}
+        post={prefix+k:np.full(8192,s[prefix+k],ii) for prefix,s,ks in (
+            ('r12_',d,inst.R12_CARRY),('ptr_',p,inst.PTR_CARRY)) for k in ks}
+        pre['step']=np.full(8192,10,ii);post['step']=np.full(8192,clock,ii)
+        obs=np.broadcast_to(obs,(8192,32,12))
+        data=SimpleNamespace(reward=np.broadcast_to(np.asarray(reward,f),sh).copy(),discount=discount,
+            extras={'state_extras':extra},observation={'state':obs,'privileged_state':obs},
+            next_observation={'state':obs,'privileged_state':obs})
+        done=np.zeros(8192,f)
+        bad=inst.ptr_actual_batch_contract(np,data,pre,post,done,done,arm)
+        return data,pre,post,done,bad
+
+    return batch(arm,motion)
+
+def ptr_r7_focused_fixtures(root,raw,record):
+    """Prepared host-static cases; no call from CLI in R7A. Explicit future GO required."""
+    import copy,numpy as np
+    import m463_instrument_brax as inst
+    from types import SimpleNamespace
+    root=Path(root).resolve()
+    seen=[]
+    def check(name,ok):
+        h4m12_require(len(seen)<len(PTR_R7_CASES) and PTR_R7_CASES[len(seen)]==name and bool(ok),
+            'PTR_R7_FIXTURE_'+name)
+        seen.append(name);record(name)
+    def rejects(fn):
+        try:fn()
+        except RuntimeError:return True
+        return False
+    def run(data,pre,post,pd,ad,*,finite):
+        e=inst.ptr_r7_diagnose(np,data,pre,post,pd,ad,'ctrl',finite)
+        wire=ptr_r7_wire_tree(e);checked=ptr_r7_check_evidence(wire)
+        return e,wire,checked
+    data,pre,post,done,bad=ptr_r7_fixture_batch(root)
+    f={k:np.asarray(True) for k in inst.PTR_R7_FINITE}
+    clean,cwire,cresult=run(data,pre,post,done,done,finite=f)
+    check('manifest_exact',len(inst.PTR_R7_PREDICATES)==68 and len(clean['predicates'])==162)
+    check('mask_equivalence_clean',not np.any(bad) and cresult['bad_rows']==0 and cresult['mask_equivalent'])
+    # Inject independent faults at distinct lanes. One corrupted batch exercises all
+    # families without re-running the historical 74/53 cases or collecting native rows.
+    ex=dict(data.extras['state_extras'])
+    def mutate(field,lane,t,value):
+        ex[field]=ex[field].copy();ex[field][lane,t]=value
+    mutate('r12_terminal',0,1,1)
+    mutate('r12_delivered',1,1,np.float32(.125))
+    mutate('ptr_tilt',2,1,np.float32(9.))
+    reward=data.reward.copy();reward[3,1]=np.float32(.125)
+    mutate('ptr_before_age',4,1,99)
+    ob={k:v.copy() for k,v in data.observation.items()}
+    nb={k:v.copy() for k,v in data.next_observation.items()}
+    ob['state'][5,1,9]=np.float32(.125)
+    ob['privileged_state'][6,1,10]=np.float32(.125)
+    nb['state'][7,1,11]=np.float32(.125)
+    nb['privileged_state'][8,1,9]=np.float32(.125)
+    # At terminal time30 the post-observation mismatch must remain exempt.
+    nb['state'][9,30,9]=np.float32(.125)
+    mutate('h4_refresh',10,1,1)
+    post2=dict(post);post2['step']=post['step'].copy();post2['step'][11]+=1
+    pd=done.copy();pd[12]=1
+    ad=done.copy();ad[13]=1
+    dirty=SimpleNamespace(reward=reward,discount=data.discount,extras={'state_extras':ex},
+        observation=ob,next_observation=nb)
+    f2=dict(f,transition=np.asarray(False))
+    e,wire,result=run(dirty,pre,post2,pd,ad,finite=f2)
+    frozen=inst.ptr_actual_batch_contract(np,dirty,pre,post2,pd,ad,'ctrl')
+    check('mask_equivalence_corrupt',result['bad_rows']==int(frozen.sum())>0 and result['mask_equivalent'])
+    def sample(label,lane,t,ordinal=0):
+        v=e['predicates'][label+':'+str(ordinal)]
+        return int(v['count'])>0 and lane*32+t in v['indices']
+    check('r12_terminal_discount',sample('r12_1767_1',0,1))
+    check('r12_dcr_exact',sample('r12_1785_2',1,1))
+    check('ptr_geometry_exact',sample('ptr_2700_1',2,1))
+    check('ptr_reward_exact',sample('ptr_2733_3',3,1))
+    check('ptr_lifecycle_carry',sample('ptr_2730_1',4,1,1))
+    check('actual_pre_actor',sample('actual_2761_axis0',5,1,0))
+    check('actual_pre_critic',sample('actual_2761_axis1',6,1,1))
+    check('actual_post_actor',sample('actual_2761_axis2',7,1,2))
+    check('actual_post_critic',sample('actual_2761_axis0',8,1,3))
+    check('terminal_post_observation_exemption',not frozen[9,30] and int(e['predicates']['actual_2761_axis0:2']['count'])==0)
+    check('source_clock_refresh',sample('ptr_2705_2',10,1))
+    check('source_clock_last_broadcast',int(e['predicates']['actual_2767_5:0']['count'])==32 and
+        np.all(frozen[11,:]))
+    check('done_prior',sample('actual_2772_2',12,0))
+    check('done_last_broadcast',int(e['predicates']['actual_2772_3:0']['count'])==32 and np.all(frozen[13,:]))
+    check('finite_group_separate',result['finite']==dict(transition=False,training_state=True,
+        pre_environment=True,post_environment=True))
+    mask=np.zeros(inst.PTR_R7_SHAPE,dtype=np.bool_);mask.reshape(-1)[[0,2,4,6,8,10]]=True
+    check('bounded_indices_and_padding',inst.ptr_r7_first(np,mask,4).tolist()==[0,2,4,6]
+        and clean['indices'].tolist()==[inst.PTR_R7_N]*4)
+    check('exact_signed_zero_bits',ptr_r7_wire(np.asarray([-0.,0.],np.float32))['hex']=='0000008000000000')
+    damaged=copy.deepcopy(cwire);damaged['predicates']['unknown:0']={}
+    check('reader_rejects_unknown_predicate',rejects(lambda:ptr_r7_check_evidence(damaged)))
+    damaged=copy.deepcopy(cwire);damaged['indices']=ptr_r7_wire(np.zeros(4,np.int32))
+    check('reader_rejects_counts_or_indices',rejects(lambda:ptr_r7_check_evidence(damaged)))
+    damaged=copy.deepcopy(cwire);damaged['witness']['reward']=ptr_r7_wire(np.asarray([-0.,0.,0.,0.],np.float32))
+    check('reader_rejects_bad_witness',rejects(lambda:ptr_r7_check_evidence(damaged)))
+    binding=dict(source_head='a'*40,authorization_head='b'*40,source_sha256='c'*64,
+        generated_sha256='d'*64,v1_report_sha256=PTR_R7_V1_REPORT,
+        v1_terminal_sha256=PTR_R7_V1_TERMINAL,v1_generated_sha256=PTR_R7_V1_GENERATED,
+        focused_static_sha256='e'*64,focused_terminal_sha256='f'*64)
+    edge=dict(steps=15728640,adam=2400,normalizer=416808960,training_schema=PTR_TRAIN_SCHEMA)
+    report=dict(id=PTR_R7_ID,binding=binding,spec=ptr_r7_spec(),status='DIAGNOSTIC_COMPLETE',
+        evidence=cwire,counters_before=dict(edge),counters_after=dict(edge),
+        training_state_exact=True,training_state_sha256_before='a'*64,training_state_sha256_after='a'*64,
+        actual_rollouts=1,skipped_rollouts=0,collected=262144,optimizer_updates=0,
+        normalizer_updates=0,evaluation=0,artifacts={},promotion_authorized=False)
+    h4m12_require(ptr_r7_check_report(report,binding)['bad_rows']==0,'PTR_R7_VALID_REPORT_FIXTURE')
+    report['counters_after']['adam']+=1
+    check('reader_rejects_mutated_state',rejects(lambda:ptr_r7_check_report(report,binding)))
+    generated,original=inst.make_ptr_r7_diagnostic_held_source(raw)
+    check('generated_reverse_and_no_update',original=='e20613d42bf0868a13003e0312998816cc8d3593bb5ccaf9f1d070fd09c44bd7'
+        and generated.count('R12_GENERATED_EXECUTION_HOLD')==1
+        and generated.count('diagnostic=diagnostic_step(')==1
+        and 'running_statistics.update(' not in generated and 'gradient_update_fn(' not in generated)
+    check('historical_source_reverse',set(ptr_r7_project_sources(root))==set(PTR_SOURCE_NAMES))
+    h4m12_require(tuple(seen)==PTR_R7_CASES,'PTR_R7_CASE_ORDER')
+    return dict(cases=tuple(seen),generated_sha256=hashlib.sha256(generated.encode()).hexdigest(),
+        zero_native_execution=True,zero_optimizer_updates=True,promotion_authorized=False)
+
+def ptr_r7_native_held(*args,**kwargs):
+    raise RuntimeError('PTR_R7_NATIVE_DIAGNOSTIC_HELD')
+# H4M29_R7_DIAGNOSTIC_TRAINER_END
 # H4M29_PTR_HELD_TRAINER_END

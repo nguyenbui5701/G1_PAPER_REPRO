@@ -2945,4 +2945,354 @@ def ptr_exposure_replay(rows,dcr_rows,broad_rows,arm,nominal,host_reset,*,comple
     else:checks['ptr_off']=totals['nonzero_consumed']==0
     return dict(decision='EXPOSURE_PASS' if all(checks.values()) else 'EXPOSURE_INCONCLUSIVE',
         checks=checks,totals=totals,halves=halves,pending=pending,broad=broad)
+
+# H4M29_R7_DIAGNOSTIC_INSTRUMENT_BEGIN
+# Held diagnostic only. Frozen V1 checkers and generator are not edited.
+# IDs refer to exact V1 source lines; repeated predicates retain invocation index.
+PTR_R7_PREDICATES={
+    'r12_1754_0':(1,True),
+    'r12_1754_1':(1,True),
+    'r12_1754_2':(1,True),
+    'r12_1754_3':(1,False),
+    'r12_1756_1':(13,False),
+    'r12_1758_1':(7,False),
+    'r12_1759_1':(1,False),
+    'r12_1759_2':(1,False),
+    'r12_1760_1':(5,False),
+    'r12_1766_1':(1,True),
+    'r12_1766_2':(1,False),
+    'r12_1766_3':(1,False),
+    'r12_1767_1':(1,True),
+    'r12_1767_2':(1,False),
+    'r12_1768_1':(1,False),
+    'r12_1775_1':(1,False),
+    'r12_1779_1':(8,True),
+    'r12_1780_1':(1,False),
+    'r12_1781_1':(1,False),
+    'r12_1781_2':(1,False),
+    'r12_1781_3':(1,False),
+    'r12_1781_4':(1,False),
+    'r12_1785_1':(1,True),
+    'r12_1785_2':(1,True),
+    'r12_1785_3':(1,True),
+    'r12_1785_4':(1,True),
+    'r12_1785_5':(1,False),
+    'r12_1790_1':(4,True),
+    'r12_1790_2':(4,True),
+    'ptr_2690_1':(1,True),
+    'ptr_2690_2':(1,True),
+    'ptr_2692_1':(28,False),
+    'ptr_2694_1':(8,False),
+    'ptr_2696_1':(1,False),
+    'ptr_2696_2':(1,False),
+    'ptr_2700_1':(1,True),
+    'ptr_2700_2':(1,True),
+    'ptr_2705_1':(1,False),
+    'ptr_2705_2':(1,True),
+    'ptr_2705_3':(1,False),
+    'ptr_2705_4':(1,False),
+    'ptr_2705_5':(1,False),
+    'ptr_2707_1':(1,False),
+    'ptr_2708_1':(1,False),
+    'ptr_2724_1':(9,True),
+    'ptr_2730_1':(5,True),
+    'ptr_2730_2':(5,True),
+    'ptr_2733_1':(1,True),
+    'ptr_2733_2':(1,True),
+    'ptr_2733_3':(1,True),
+    'ptr_2734_1':(1,True),
+    'ptr_2734_2':(1,True),
+    'ptr_2734_3':(1,False),
+    'ptr_2734_4':(1,False),
+    'ptr_2736_1':(1,True),
+    'actual_2753_1':(1,True),
+    'actual_2753_2':(1,True),
+    'actual_2761_axis0':(4,True),
+    'actual_2761_axis1':(4,True),
+    'actual_2761_axis2':(4,True),
+    'actual_2767_1':(1,True),
+    'actual_2767_2':(1,False),
+    'actual_2767_3':(1,False),
+    'actual_2767_4':(1,True),
+    'actual_2767_5':(1,True),
+    'actual_2772_1':(1,False),
+    'actual_2772_2':(1,True),
+    'actual_2772_3':(1,True),
+}
+PTR_R7_SHAPE=(8192,32)
+PTR_R7_N=8192*32
+PTR_R7_SAMPLE=4
+PTR_R7_WITNESS_FIELDS=tuple(dict.fromkeys(R12_FIELDS+PTR_FIELDS+R12_SOURCE_FLAGS+
+    ('m463_support_side',)))
+PTR_R7_OBS=('pre_actor','pre_critic','post_actor','post_critic')
+PTR_R7_FINITE=('transition','training_state','pre_environment','post_environment')
+
+def _ptr_r7_r12(xp,reward,discount,extras,before,after,note):
+    """Actual Transition.reward (unscaled); return invalid row mask before SGD.
+    Exact expected state, reward and conservation; no tolerance on row reward.
+    The 0/1 source truncation rule follows M12's <640 cap.
+    """
+    shape=(8192,32); f=xp.float32; i=xp.int32
+    if reward.shape!=shape or reward.dtype!=f or discount.shape!=shape or discount.dtype!=f:
+        raise RuntimeError('R12_BATCH_SCHEMA')
+    for k in R12_INTS+R12_FLOATS:
+        a=extras['r12_'+k]
+        if a.shape!=shape or a.dtype!=(i if k in R12_INTS else f):raise RuntimeError('R12_FIELD_SCHEMA '+k)
+    for k in R12_SOURCE_FLAGS:
+        a=extras[k]
+        if a.shape!=shape:raise RuntimeError('R12_SOURCE_SCHEMA '+k)
+    x=lambda k:extras['r12_'+k]; z=lambda k:extras[k]
+    bad=note('r12_1754_0',((x('bad')!=0)),x('bad'),0)|note('r12_1754_1',((z('h4_bad')!=0)),z('h4_bad'),0)|note('r12_1754_2',((z('truncation')!=0)),z('truncation'),0)|note('r12_1754_3',((~xp.isfinite(reward))))
+    binaries=('bad','before_active','after_active','open','close','scored','coherent','terminal','timeout','joint_excess','ctrl_excess','force_excess','foot_foot')
+    for k in binaries:bad=bad|note('r12_1756_1',(((x(k)!=0)&(x(k)!=1))))
+    for k in ('m463_event','m463_repeat','m463_no_push','h4_boundary','h4_refresh','h4_changed','h4_source_terminal'):
+        bad=bad|note('r12_1758_1',(((z(k)!=0)&(z(k)!=1))))
+    bad=bad|note('r12_1759_1',(((discount!=0)&(discount!=1))))|note('r12_1759_2',(((z('h4_class')!=0)&(z('h4_class')!=1))))
+    for k in R12_FLOATS:bad=bad|note('r12_1760_1',((~xp.isfinite(x(k)))))
+    was=x('before_active')==1; now=x('after_active')==1; age=x('before_age')+1
+    event=z('m463_event')==1; repeat=z('m463_repeat')==1; boundary=z('h4_boundary')==1
+    terminal=x('terminal')==1; timeout=x('timeout')==1; coherent=x('coherent')==1
+    nominal=(z('m463_no_push')==1)|(z('h4_class')==0)
+    moving=(z('h4_motion')!=0)|(z('h4_actor_motion')!=0)
+    bad=bad|note('r12_1766_1',(((z('m463_no_push')==1)!=(z('h4_class')==0))),z('m463_no_push')==1,z('h4_class')==0)|note('r12_1766_2',((repeat&(~event))))|note('r12_1766_3',((event&nominal)))
+    bad=bad|note('r12_1767_1',((terminal!=(discount==0))),terminal,discount==0)|note('r12_1767_2',(((z('h4_source_terminal')==1)&(~terminal))))
+    bad=bad|note('r12_1768_1',((coherent&(moving|nominal|(z('h4_refresh')==1)|(z('h4_changed')==1)))))
+    allow=coherent&(~boundary)&(~terminal)&(~timeout)&(~nominal)&(~moving)
+    opened=event&allow; scored=was&(~event)&allow&(age<=100); keep=scored&(age<100); closed=was&(~keep)
+    want_now=opened|keep
+    want_age=xp.where(keep,age,0)
+    want_reason=xp.where(closed,xp.where(boundary,2,xp.where(terminal,3,xp.where(timeout,4,xp.where(event,1,xp.where(~allow,5,7))))),0)
+    # Event side is native push direction: 1..6, with zero meaning no event.
+    bad=bad|note('r12_1775_1',(xp.where(event,(x('event_side')<1)|(x('event_side')>6)|(x('event_side')!=z('m463_direction')+1),x('event_side')!=0)))
+    want_side=xp.where(opened,x('event_side'),xp.where(keep,x('before_side'),0))
+    want_kind=xp.where(opened,xp.where(repeat,2,1),xp.where(keep,x('before_kind'),0))
+    for k,want in (('open',opened),('scored',scored),('close',closed),('after_active',want_now),('after_age',want_age),('close_reason',want_reason),('after_side',want_side),('after_kind',want_kind)):
+        bad=bad|note('r12_1779_1',((x(k)!=want)),x(k),want)
+    bad=bad|note('r12_1780_1',(xp.where(was,(x('before_age')<0)|(x('before_age')>=100)|(x('before_side')<1)|(x('before_side')>6)|(x('before_kind')<1)|(x('before_kind')>2),(x('before_age')!=0)|(x('before_side')!=0)|(x('before_kind')!=0))))
+    bad=bad|note('r12_1781_1',(((x('support_mode')<0)|(x('support_mode')>3))))|note('r12_1781_2',((x('cost')<0)))|note('r12_1781_3',((x('cost')>1)))|note('r12_1781_4',(((x('support_mode')==0)&(x('cost')!=1))))
+    desired=xp.where(scored,-xp.asarray(.04,f)*xp.asarray(.02,f)*x('cost'),xp.asarray(0.,f))
+    expected=xp.where(desired<0,x('native')+desired,x('native'))
+    def exact(a,b):return (a==b)&(xp.signbit(a)==xp.signbit(b))
+    bad=bad|note('r12_1785_1',((~exact(x('desired'),desired))),x('desired'),desired)|note('r12_1785_2',((~exact(x('delivered'),expected))),x('delivered'),expected)|note('r12_1785_3',((~exact(reward,expected))),reward,expected)|note('r12_1785_4',((x('delta')!=reward-x('native'))),x('delta'),reward-x('native'))|note('r12_1785_5',((x('delta')>0)))
+    for k in R12_CARRY:
+        initial=before['r12_'+k]; last=after['r12_'+k]
+        if initial.shape!=(8192,) or last.shape!=(8192,) or initial.dtype!=i or last.dtype!=i:raise RuntimeError('R12_CARRY_SCHEMA '+k)
+        pre=xp.concatenate((initial[:,None],x('after_'+k)[:,:-1]),axis=1)
+        bad=bad|note('r12_1790_1',((x('before_'+k)!=pre)),x('before_'+k),pre)|note('r12_1790_2',((x('after_'+k)[:,-1:]!=last[:,None])),x('after_'+k)[:,-1:],last[:,None])
+    return bad
+
+def _ptr_r7_ptr(xp,reward,discount,extras,before,after,arm,note):
+    """Validate the composed actual Transition.reward r2, separately from r1."""
+    if arm not in ('ctrl','cand'):
+        raise RuntimeError('PTR_BATCH_ARM')
+    shape=(8192,32);f=xp.float32;i=xp.int32
+    if reward.shape!=shape or reward.dtype!=f:
+        raise RuntimeError('PTR_REWARD_SCHEMA')
+    for k in PTR_INTS+PTR_FLOATS:
+        v=extras['ptr_'+k]
+        if v.shape!=shape or v.dtype!=(i if k in PTR_INTS else f):
+            raise RuntimeError('PTR_FIELD_SCHEMA '+k)
+    x=lambda k:extras['ptr_'+k];z=lambda k:extras[k]
+    exact=lambda a,b:(a==b)&(xp.signbit(a)==xp.signbit(b))
+    bad=_ptr_r7_r12(xp,x('base'),discount,extras,before,after,note)
+    bad=bad|note('ptr_2690_1',((~exact(x('base'),z('r12_delivered')))),x('base'),z('r12_delivered'))|note('ptr_2690_2',((x('bad')!=0)),x('bad'),0)
+    for k in PTR_FLOATS:
+        bad=bad|note('ptr_2692_1',(~xp.isfinite(x(k))))
+    for k in ('before_active','after_active','open','close','scored','coherent','pre_live','bad'):
+        bad=bad|note('ptr_2694_1',(((x(k)!=0)&(x(k)!=1))))
+    gravity=xp.stack([x('gx'),x('gy'),x('gz')],axis=-1)
+    bad=bad|note('ptr_2696_1',((xp.abs(xp.sum(gravity*gravity,axis=-1)-xp.asarray(1.,f))>xp.asarray(1e-4,f))))|note('ptr_2696_2',(( xp.any(xp.abs(gravity)>xp.asarray(1.00001,f),axis=-1))))
+    tilt=xp.degrees(xp.arccos(xp.clip(x('gz'),xp.asarray(-1.,f),xp.asarray(1.,f)))).astype(f)
+    risk=xp.square(xp.clip((tilt-xp.asarray(10.,f))/xp.asarray(15.,f),0.,1.)).astype(f)
+    bad=bad|note('ptr_2700_1',(~exact(x('tilt'),tilt)),x('tilt'),tilt)|note('ptr_2700_2',(~exact(x('risk'),risk)),x('risk'),risk)
+    was=x('before_active')==1;age=x('before_age')+1
+    event=z('m463_event')==1;repeat=z('m463_repeat')==1;boundary=z('h4_boundary')==1
+    terminal=z('r12_terminal')==1;timeout=z('r12_timeout')==1
+    nominal=z('h4_class')==0;motion=z('h4_motion');coherent=x('coherent')==1
+    bad=bad|note('ptr_2705_1',((x('pre_step')<0)))|note('ptr_2705_2',(((x('pre_step')>=500)!=(z('h4_refresh')==1))),x('pre_step')>=500,z('h4_refresh')==1)|note('ptr_2705_3',(( (motion<0)|(motion>=6))))|note('ptr_2705_4',((x('support_pre')<0)))|note('ptr_2705_5',((x('support_pre')>3)))
+    bad=bad|note('ptr_2707_1',((coherent&((z('h4_changed')==1)|(z('h4_refresh')==1)|(motion!=z('h4_actor_motion'))))))
+    bad=bad|note('ptr_2708_1',(xp.where(was,(x('before_age')<0)|(x('before_age')>=100)| (x('before_side')<1)|(x('before_side')>6)|(x('before_kind')<1)| (x('before_kind')>2)|(x('before_motion')<0)|(x('before_motion')>=6), (x('before_age')!=0)|(x('before_side')!=0)|(x('before_kind')!=0)|(x('before_motion')!=0))))
+    allow=coherent&(x('pre_live')==1)&~boundary&~terminal&~timeout&~nominal&(x('pre_step')<500)
+    same=motion==x('before_motion')
+    op=event&allow;scored=was&~event&allow&same&(age<=100)
+    keep=scored&(age<100);close=was&~keep
+    reason=xp.where(close,xp.where(boundary,2,xp.where(terminal,3,xp.where(timeout,4,
+        xp.where(event,1,xp.where(~allow|~same,5,7))))),0)
+    wants=dict(open=op,close=close,scored=scored,close_reason=reason,
+        after_active=op|keep,after_age=xp.where(keep,age,0),
+        after_side=xp.where(op,z('m463_direction')+1,xp.where(keep,x('before_side'),0)),
+        after_kind=xp.where(op,xp.where(repeat,2,1),xp.where(keep,x('before_kind'),0)),
+        after_motion=xp.where(op,motion,xp.where(keep,x('before_motion'),0)))
+    for k,v in wants.items():
+        bad=bad|note('ptr_2724_1',((x(k)!=v)),x(k),v)
+    for k in PTR_CARRY:
+        initial=before['ptr_'+k];last=after['ptr_'+k]
+        if initial.shape!=(8192,) or last.shape!=(8192,) or initial.dtype!=i or last.dtype!=i:
+            raise RuntimeError('PTR_CARRY_SCHEMA '+k)
+        prev=xp.concatenate((initial[:,None],x('after_'+k)[:,:-1]),axis=1)
+        bad=bad|note('ptr_2730_1',((x('before_'+k)!=prev)),x('before_'+k),prev)|note('ptr_2730_2',((x('after_'+k)[:,-1:]!=last[:,None])),x('after_'+k)[:,-1:],last[:,None])
+    desired=xp.where(scored&(arm=='cand'),-xp.asarray(.04,f)*xp.asarray(.02,f)*risk,xp.asarray(0.,f)).astype(f)
+    expected=xp.where(desired<0,x('base')+desired,x('base')).astype(f)
+    bad=bad|note('ptr_2733_1',(~exact(x('desired'),desired)),x('desired'),desired)|note('ptr_2733_2',(~exact(x('delivered'),expected)),x('delivered'),expected)|note('ptr_2733_3',(~exact(reward,expected)),reward,expected)
+    bad=bad|note('ptr_2734_1',(~exact(x('delta'),(reward-x('base')).astype(f))),x('delta'),(reward-x('base')).astype(f))|note('ptr_2734_2',(~exact( x('total_delta'),(reward-z('r12_native')).astype(f))),x('total_delta'),(reward-z('r12_native')).astype(f))|note('ptr_2734_3',((x('delta')>0)))|note('ptr_2734_4',((x('total_delta')>0)))
+    bad=bad|note('ptr_2736_1',((x('support_pre')!=z('m463_support_side'))),x('support_pre'),z('m463_support_side'))
+    return bad
+
+def _ptr_r7_actual(xp,data,before,after,before_done,after_done,arm,note):
+    """Independent actual Transition observation and cross-row clock/done evidence."""
+    shape=(8192,32);f=xp.float32;i=xp.int32
+    extras=data.extras['state_extras'];x=lambda k:extras['ptr_'+k];z=lambda k:extras[k]
+    bad=_ptr_r7_ptr(xp,data.reward,data.discount,extras,before,after,arm,note)
+    command=xp.asarray([[0.,0.,0.],[.2,0.,0.],[.6,0.,0.],[.4,0.,.8],
+                        [.4,0.,-.8],[0.,.35,0.]],f)
+    vec=lambda k:xp.stack([x(k+'_'+str(j)) for j in range(3)],axis=-1)
+    pn,pa,pc,nn,na,nc=(vec(k) for k in PTR_COMMANDS)
+    motion=z('h4_motion');terminal=z('r12_terminal')==1;refresh=z('h4_refresh')==1
+    changed=xp.any(pn!=nn,axis=-1)
+    coherent=xp.all(pa==pn,axis=-1)&xp.all(pc==pn,axis=-1)&xp.all(nn==pn,axis=-1)&(
+        xp.all(na==pn,axis=-1))&xp.all(nc==pn,axis=-1)&xp.all(command[xp.clip(motion,0,5)]==pn,axis=-1)&(
+        z('h4_actor_motion')==motion)&~refresh&~changed&(x('pre_step')<500)
+    bad=bad|note('actual_2753_1',((coherent!=(x('coherent')==1))),coherent,x('coherent')==1)|note('actual_2753_2',((changed!=(z('h4_changed')==1))),changed,z('h4_changed')==1)
+    for obs,witness,post in ((data.observation['state'],pa,False),
+        (data.observation['privileged_state'],pc,False),
+        (data.next_observation['state'],na,True),
+        (data.next_observation['privileged_state'],nc,True)):
+        if obs.ndim!=3 or obs.shape[:2]!=shape or obs.shape[2]<12 or obs.dtype!=f:
+            raise RuntimeError('PTR_ACTUAL_OBS_SCHEMA')
+        mismatch=xp.any(obs[:,:,9:12]!=witness,axis=-1)
+        # Same OR of three command-coordinate mismatches, preserving terminal exemption.
+        for j,label in enumerate(('actual_2761_axis0','actual_2761_axis1','actual_2761_axis2')):
+            observed=obs[:,:,9+j];expected=witness[:,:,j]
+            differs=observed!=expected
+            bad=bad|note(label,differs&~terminal if post else differs,observed,expected)
+    # Exact source-clock progression from historical FFE checker. No new reset.
+    clock=x('pre_step');nxt=x('after_step')
+    for q in (before['step'],after['step']):
+        if q.shape!=(8192,) or q.dtype!=i:raise RuntimeError('PTR_SOURCE_CLOCK_SCHEMA')
+    prev=xp.concatenate((before['step'][:,None],nxt[:,:-1]),axis=1)
+    bad=bad|note('actual_2767_1',((clock!=prev)),clock,prev)|note('actual_2767_2',((clock<0)))|note('actual_2767_3',((clock>500)))|note('actual_2767_4',(( nxt!=xp.where(terminal|refresh,0,clock+1))),nxt,xp.where(terminal|refresh,0,clock+1))|note('actual_2767_5',((nxt[:,-1:]!=after['step'][:,None])),nxt[:,-1:],after['step'][:,None])
+    for q in (before_done,after_done):
+        if q.shape!=(8192,) or q.dtype!=f:raise RuntimeError('PTR_DONE_SCHEMA')
+    prior=xp.concatenate((before_done[:,None],1-data.discount[:,:-1]),axis=1)
+    bad=bad|note('actual_2772_1',(((prior!=0)&(prior!=1))))|note('actual_2772_2',(((prior==0)!=(x('pre_live')==1))),prior==0,x('pre_live')==1)|note('actual_2772_3',(( (1-data.discount[:,-1:])!=after_done[:,None])),1-data.discount[:,-1:],after_done[:,None])
+    return bad
+
+def ptr_r7_first(xp,mask,n):
+    """Fixed-size ascending flattened indices, N sentinel; no full mask transfer."""
+    nrows=PTR_R7_N
+    flat=xp.broadcast_to(mask,PTR_R7_SHAPE).reshape(-1)
+    loc=xp.arange(nrows,dtype=xp.int32)
+    indices=[]
+    for _ in range(n):
+        first=xp.min(xp.where(flat,loc,nrows)).astype(xp.int32)
+        indices.append(first)
+        flat=flat&(loc!=first)
+    return xp.stack(indices)
+
+def ptr_r7_gather(xp,value,indices):
+    flat=xp.broadcast_to(xp.asarray(value),PTR_R7_SHAPE).reshape(-1)
+    return xp.where(indices<PTR_R7_N,flat[xp.minimum(indices,PTR_R7_N-1)],0).astype(flat.dtype)
+
+def ptr_r7_diagnose(xp,data,before,after,before_done,after_done,arm,finite):
+    """Read-only exact diagnostic of the actual pre-SGD transition; no loss/update."""
+    counts={}; evidence={}; union=xp.zeros(PTR_R7_SHAPE,dtype=xp.bool_)
+    families={k:xp.zeros(PTR_R7_SHAPE,dtype=xp.bool_) for k in ('r12','ptr','actual')}
+    def note(label,mask,actual=None,expected=None):
+        nonlocal union
+        if label not in PTR_R7_PREDICATES:raise RuntimeError('PTR_R7_UNKNOWN_PREDICATE')
+        ordinal=counts.get(label,0);counts[label]=ordinal+1
+        limit,paired=PTR_R7_PREDICATES[label]
+        if ordinal>=limit or paired!=(actual is not None and expected is not None):
+            raise RuntimeError('PTR_R7_PREDICATE_SCHEMA')
+        rows=xp.broadcast_to(mask,PTR_R7_SHAPE)
+        union=union|rows
+        family=label.split('_',1)[0];families[family]=families[family]|rows
+        idx=ptr_r7_first(xp,rows,2)
+        entry={'count':xp.sum(rows,dtype=xp.int32),'indices':idx}
+        if paired:
+            entry.update(actual=ptr_r7_gather(xp,actual,idx),expected=ptr_r7_gather(xp,expected,idx))
+        evidence[label+':'+str(ordinal)]=entry
+        return mask
+    traced=_ptr_r7_actual(xp,data,before,after,before_done,after_done,arm,note)
+    if counts!={k:v[0] for k,v in PTR_R7_PREDICATES.items()}:
+        raise RuntimeError('PTR_R7_MANIFEST')
+    frozen=ptr_actual_batch_contract(xp,data,before,after,before_done,after_done,arm)
+    idx=ptr_r7_first(xp,frozen|union,PTR_R7_SAMPLE)
+    extras=data.extras['state_extras']
+    witness={k:ptr_r7_gather(xp,extras[k],idx) for k in PTR_R7_WITNESS_FIELDS}
+    witness.update(reward=ptr_r7_gather(xp,data.reward,idx),
+        discount=ptr_r7_gather(xp,data.discount,idx))
+    for key in ('r12_'+k for k in R12_CARRY):
+        for name,carry in (('before',before),('after',after)):
+            witness[name+'_'+key]=ptr_r7_gather(xp,carry[key][:,None],idx)
+    for key in (*('ptr_'+k for k in PTR_CARRY),'step'):
+        for name,carry in (('before',before),('after',after)):
+            witness[name+'_'+key]=ptr_r7_gather(xp,carry[key][:,None],idx)
+    for name,done in (('before_done',before_done),('after_done',after_done)):
+        witness[name]=ptr_r7_gather(xp,done[:,None],idx)
+    for name,obs in zip(PTR_R7_OBS,(data.observation['state'],data.observation['privileged_state'],
+        data.next_observation['state'],data.next_observation['privileged_state'])):
+        for j in range(3):witness['obs_'+name+'_'+str(j)]=ptr_r7_gather(xp,obs[:,:,9+j],idx)
+    if set(finite)!=set(PTR_R7_FINITE):raise RuntimeError('PTR_R7_FINITE_SCHEMA')
+    return dict(predicates=evidence,witness=witness,indices=idx,
+        family_counts={k:xp.sum(v,dtype=xp.int32) for k,v in families.items()},
+        frozen_count=xp.sum(frozen,dtype=xp.int32),traced_count=xp.sum(traced,dtype=xp.int32),
+        union_count=xp.sum(union,dtype=xp.int32),
+        mismatch_count=xp.sum((frozen!=traced)|(frozen!=union),dtype=xp.int32),
+        finite=finite)
+
+def make_ptr_r7_diagnostic_held_source(raw):
+    """Generate a one-rollout, zero-update variant, still unconditionally HELD.
+    Return inverse material so exact historical generated source can be recovered.
+    """
+    base,original=make_r12_ptr_held_source(raw,'ctrl')
+    def section(a,b):
+        if base.count(a)!=1 or base.count(b)!=1 or base.index(a)>=base.index(b):
+            raise RuntimeError('PTR_R7_GENERATOR_ANCHOR')
+        return base[base.index(a):base.index(b)]
+    # Remove gradient/SGD definitions completely, retaining optimizer.init for restore.
+    remove=section('  gradient_update_fn = gradients.gradient_update_fn(','  def training_step(')
+    # Keep the exact rollout collection / RNG / Transition reshape; replace all following training.
+    tail=section('    from m463_instrument_brax import r12_batch_contract,r12_reduce\n',
+                 '  if (num_training_steps_per_epoch != 20 or num_evals != 2')
+    rest=base[base.index("  if not eval_env:\n",base.index("  h4x_audit_fn('initial',")):]
+    diagnostic="""    from m463_instrument_brax import ptr_r7_diagnose
+    finite=lambda tree: functools.reduce(lambda a,b:a & jnp.all(jnp.isfinite(b)),
+        jax.tree_util.tree_leaves(tree),jnp.asarray(True))
+    return ptr_r7_diagnose(jnp,data,{**r12_before,**ptr_before},state.info,
+        ptr_before_done,state.done,'ctrl',dict(transition=finite(data),
+        training_state=finite(training_state),pre_environment=pre_environment_finite,
+        post_environment=finite(state)))
+
+  diagnostic_step=jax.pmap(training_step,axis_name=_PMAP_AXIS_NAME,in_axes=(0,None))
+
+"""
+    final="""  epoch_key, local_key = jax.random.split(local_key)
+  epoch_keys = jax.random.split(epoch_key, local_devices_to_use)
+  h4x_audit_fn('epoch', keys=epoch_keys, local_key=local_key,
+                training_state=training_state, env_state=env_state)
+  diagnostic=diagnostic_step(_strip_weak_type((training_state,env_state,epoch_keys)),None)
+  diagnostic=jax.device_get(_unpmap(diagnostic))
+  h4x_audit_fn('ptr_r7_diagnostic', evidence=diagnostic,
+                training_state=training_state, collected=262144,
+                optimizer_updates=0, normalizer_updates=0)
+  raise RuntimeError('PTR_R7_DIAGNOSTIC_TERMINAL_HOLD')
+"""
+    before='    training_state, state, key = carry\n'
+    edits=((remove,''),(tail,diagnostic),(rest,final),
+        (before,before+'    pre_environment_finite=h4x_dynamic_finite(state)\n'))
+    # Empty replacement is reversed by an exact unique next-function anchor.
+    s=h4c_once(base,remove+'  def training_step(', '  def training_step(')
+    for a,b in edits[1:]:s=h4c_once(s,a,b)
+    back=s
+    for a,b in reversed(edits[1:]):back=h4c_once(back,b,a)
+    back=h4c_once(back,'  def training_step(',remove+'  def training_step(')
+    if back!=base or s.count("  raise RuntimeError('R12_GENERATED_EXECUTION_HOLD')\n")!=1:
+        raise RuntimeError('PTR_R7_GENERATOR_REVERSE_OR_HOLD')
+    if any(k in s for k in ('gradient_update_fn(', 'running_statistics.update(', 'evaluator.run_evaluation(', 'm470_state_checkpoint_fn(current_step')):
+        raise RuntimeError('PTR_R7_FORBIDDEN_GENERATED_PATH')
+    compile(s,'<PTR R7 diagnostic held generated>','exec')
+    return s,original
+
+# H4M29_R7_DIAGNOSTIC_INSTRUMENT_END
 # H4M29_PTR_HELD_INSTRUMENT_END
