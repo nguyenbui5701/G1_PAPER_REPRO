@@ -678,3 +678,7 @@ Owner GO exact e10ce86809e21ceeaca715fea3da437a0994991d. HELD source historical 
 
 ## H4-M29-R29D (2026-11-28 ICT)
 Owner GO exact b499e30b2527051bec39bf62289f9542e60276e0. Focused host-static harness HELD; 25 ordered fixtures defined, 0 executed. Source commits a75236c2c2229561ffa71c7e37909d2e36596a21, 0d02c4bf84648df6139982d4ab415564be81de25, e6fcd3d20496c8cdb295f7ec86db86c37a4c813d; final evaluator db4337d1e5e05bc0481c4274b2c715ec876ad39e, launcher2e8091dff8458ead8ebf1c061a4c9812287e1a0e. Exact reverse evaluator/launcher to R29C, 8/8 unchanged source blobs, ten-file aggregate fe0944e79377207474aca53b0e206c45bc8649b4592b301a7599537c73c8e084, manifest2935c2d0c9b5198c78dcf1f74306dd271387f3a77495faff97ee536908486d0d. Historical worktree preparation/readiness required before distinct static GO; actual historical replay and syntax UNTESTED. Zero active GO, runtime Python and shell HOLD; no native/PPO/retry/comparator rerun/holdout/promotion. Governance v2.0.1 unchanged, A ACTIVE/B HOLD. See ACTIVE_EXPERIMENT R29D for exact contracts and limitations.
+
+
+## H4-M29-R29E — Historical Readiness Preparation / Static Authorization HELD (2026-11-28 ICT)
+Documentation-only R29E scope and source re-verification; governance v2.0.1 unchanged. E1 readiness pending, no active marker or runtime authorization. See ACTIVE_EXPERIMENT R29E.
