@@ -3401,4 +3401,49 @@ def make_r12_ptr_ctrl_v2_held_source(raw):
     if result.replace(b,a)!=base or result.count("  raise RuntimeError('R12_GENERATED_EXECUTION_HOLD')\n")!=1:
         raise RuntimeError('PTR_R12_GENERATOR_REVERSE_OR_HOLD')
     return result,original
+
+# H4M29_R12_CTRL_GENERATOR_PIN_BEGIN
+PTR_R12_HELD_GENERATED_SHA='5da8c9647db8565b7a35619bf552810df0121a8b1e33f35909d33c1afe5c09f0'
+PTR_R12_GUARDED_GENERATED_SHA='e1f447083a9fed0b2ae1b55109f347ecd426d5c82652c123475c147041dfe484'
+
+def make_r12_ptr_ctrl_v2_guarded_source(raw):
+    """Prospective guarded generated code; trainer guard remains unconditional HOLD."""
+    import hashlib
+    held,original=make_r12_ptr_ctrl_v2_held_source(raw)
+    hold="  raise RuntimeError('R12_GENERATED_EXECUTION_HOLD')\n"
+    guard=("  from m463_push_ppo_train import ptr_r12_ctrl_generated_guard\n"
+           "  ptr_r12_ctrl_generated_guard(h4x_audit_fn, __file__, environment, m470_resume_state_path, "
+           "'ctrl', r12_abort_fn, h4_chunk_fn)\n")
+    old,oldpin=make_r12_ptr_integrated_source(raw,'ctrl')
+    result=h4c_once(held,hold,guard)
+    if (h4c_once(result,guard,hold)!=held or original!=oldpin or
+        result.replace('ptr_r12_ctrl_generated_guard','ptr_generated_guard').replace(
+            'ptr_r12_actual_batch_contract','ptr_actual_batch_contract')!=old or
+        hashlib.sha256(held.encode()).hexdigest()!=PTR_R12_HELD_GENERATED_SHA or
+        hashlib.sha256(result.encode()).hexdigest()!=PTR_R12_GUARDED_GENERATED_SHA or
+        hashlib.sha256(old.encode()).hexdigest()!=
+        'c5cd4894838c9433b1049bb653f4df8d72263710e3ef37accb8b4054ecf5d120'):
+        raise RuntimeError('PTR_R12_GENERATED_PIN')
+    compile(held,'<PTR R12 CTRL V2 held>','exec')
+    compile(result,'<PTR R12 CTRL V2 prospective>','exec')
+    return result,original
+
+def ptr_r12_compare_masks(xp,data,before,after,before_done,after_done):
+    """Focused host-only equivalence witness, not historical report schema."""
+    counts={};union=xp.zeros(PTR_R7_SHAPE,dtype=xp.bool_)
+    def note(label,mask,actual=None,expected=None):
+        nonlocal union
+        if label not in PTR_R12_PREDICATES:raise RuntimeError('PTR_R12_UNKNOWN_PREDICATE')
+        ordinal=counts.get(label,0);counts[label]=ordinal+1
+        limit,paired=PTR_R12_PREDICATES[label]
+        if ordinal>=limit or paired!=(actual is not None and expected is not None):
+            raise RuntimeError('PTR_R12_PREDICATE_SCHEMA')
+        union=union|xp.broadcast_to(mask,PTR_R7_SHAPE)
+        return mask
+    traced=_ptr_r12_actual(xp,data,before,after,before_done,after_done,'ctrl',note)
+    if counts!={k:v[0] for k,v in PTR_R12_PREDICATES.items()}:
+        raise RuntimeError('PTR_R12_MANIFEST')
+    actual=ptr_r12_actual_batch_contract(xp,data,before,after,before_done,after_done,'ctrl')
+    return actual,traced,union
+# H4M29_R12_CTRL_GENERATOR_PIN_END
 # H4M29_R12_AUTO_RESET_HELD_END
