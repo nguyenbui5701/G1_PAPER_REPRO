@@ -12747,7 +12747,7 @@ if __name__=='__main__' and sys.argv[1:2]==['--h4ssrpc-full-static']:
     raise RuntimeError('SSRPC_V2_HISTORICAL_STATIC_CONSUMED_NO_RERUN')
 # SSRPC_5A_STATIC_SUPERVISOR_END
 # H4SSRPC_HELD_TRAINER_END
-if __name__=='__main__': main()
+if __name__=='__main__' and sys.argv[1:2] not in (['--h4ptr-continuation'],['--h4ptr-full-static']): main()
 
 # H4M29_PTR_HELD_TRAINER_BEGIN
 # No new CLI, worker, marker reader or supervisor. This is read-only admission
@@ -12800,6 +12800,11 @@ def ptr_project_sources(root):
         h4m12_require(raw.count(first)==raw.count(last)==1 and raw.endswith(last),
                       'PTR_PROJECTION_SENTINEL_'+name)
         old=raw[:raw.index(first)]
+        if label=='TRAINER':
+            a=b"if __name__=='__main__' and sys.argv[1:2] not in (['--h4ptr-continuation'],['--h4ptr-full-static']): main()\n"
+            b=b"if __name__=='__main__': main()\n"
+            h4m12_require(old.count(a)==1,'PTR_MAIN_PROJECTION')
+            old=old.replace(a,b,1)
         blob=hashlib.sha1(b'blob '+str(len(old)).encode()+b'\0'+old).hexdigest()
         h4m12_require(blob==PTR_BASE_BLOBS[name],'PTR_PROJECTION_'+name)
         result[name]=blob
@@ -12826,7 +12831,8 @@ def ptr_parent_evidence(root):
         last['normalizer']==416808960 and last['training_schema']==PTR_TRAIN_SCHEMA and
         r['r12_exposure']['decision']=='EXPOSURE_INCONCLUSIVE','PTR_PARENT_HISTORICAL_EDGE')
     return dict(parent_pins=dict(PTR_PARENT_PINS),manifest=m,edge=last,
-        historical_exposure=r['r12_exposure']['decision'],execution_authorized=False)
+        historical_exposure=r['r12_exposure']['decision'],original_contract=r['parent']['original_contract'],
+        config=r['hardware_scaled_config'],reward=r['reward'],dependencies=r['dependencies'],execution_authorized=False)
 
 def ptr_verify_typed_payload(jax,np,optax,serialization,template,payload,root):
     """Future authorized typed-restore audit callback, not a loader/dispatch.
@@ -12992,7 +12998,7 @@ PTR_NEW_POLICY='m463_easy_repeat_support_longtrain_step_020971520.msgpack'
 PTR_STATIC=Path('m463_runs/m470_h4_m29_ptr_static_v1')
 PTR_AUTH_KEYS={'id','arm','output','source_head','source_sha256','generated_sha256',
                'static_sha256','static_terminal_sha256','ctrl_report_sha256','ctrl_terminal_sha256'}
-PTR_SOURCE_NAMES=tuple(PTR_BASE_BLOBS)+('m463_gate3_cp_eval.py','train.py','paper_config.py')
+PTR_SOURCE_NAMES=(*H4_FILES,'m463_gate3_cp_eval.py','paper_config_preflight.json')
 
 def ptr_auth_schema(auth):
     import re
@@ -13278,7 +13284,7 @@ def ptr_worker_held(a,auth,root,out):
     h4m12_require(jax.__version__=='0.4.35' and jax.default_backend()=='gpu'
         and jax.process_count()==jax.local_device_count()==1,'CUDA')
     deps=h4c_dependency_pins(api)
-    h4m12_require(deps==old['h4x_brax_dependencies'],'DEPENDENCIES')
+    h4m12_require(deps==old['h4x_brax_dependencies']==parent['dependencies'],'DEPENDENCIES')
     wrapper=Path(inspect.getfile(brax_wrapper)).resolve()
     h4m12_require(h4c_git_blob(wrapper.read_bytes())=='2c09c8268a29d14c832dd07050575e4541ee98af','WRAPPER')
     for name,path in pins.items():
@@ -13298,12 +13304,12 @@ def ptr_worker_held(a,auth,root,out):
     scaled.num_evals=2
     cfg=scaled.to_dict()
     expected=dict(old['hardware_scaled_config'],num_timesteps=5242880,num_evals=2)
-    h4m12_require(json.loads(json.dumps(cfg))==expected and m470_fingerprint(cfg)==H3_FP,'CONFIG')
+    h4m12_require(json.loads(json.dumps(cfg))==expected==parent['config'] and m470_fingerprint(cfg)==H3_FP and train_cfg.to_dict()['reward_config']==parent['reward'],'CONFIG')
     net=cfg.pop('network_factory')
     cfg.update(seed=1,randomization_fn=api['randomizer'],restore_checkpoint_path=None,
         m470_resume_state_path=str(root/PTR_PARENT/PTR_FULL),m470_resume_expected_steps=15728640)
-    from m463_instrument_brax import make_r12_ptr_held_source
-    source,_=make_r12_ptr_held_source(Path(inspect.getfile(api['ppo'].train)).read_bytes(),arm)
+    from m463_instrument_brax import make_r12_ptr_integrated_source
+    source,_=make_r12_ptr_integrated_source(Path(inspect.getfile(api['ppo'].train)).read_bytes(),arm)
     raw=source.encode('utf8')
     h4m12_require(hashlib.sha256(raw).hexdigest()==auth['generated_sha256'],'GENERATED_SHA')
     generated=out/'m463_brax_ppo_instrumented.py'
@@ -13427,7 +13433,7 @@ def ptr_worker_held(a,auth,root,out):
             row=dict(**counters(carry[0],n+1),key=keylist(carry[2]),finite=True)
         elif event=='chunk_ledger':
             h4m12_require(v['index']==n+1 and len(r['h4_chunks'])==n+1 and
-                r['h4_chunks'][-1]['passed'] is True,'CHUNK_LEDGER')
+                r['h4_chunks'][-1]['passed'] is True and len(r['r12_chunks'])==len(r['ptr_chunks'])==n+1 and r['r12_chunks'][-1]['passed'] is True and r['ptr_chunks'][-1]['passed'] is True,'CHUNK_LEDGER')
             row=dict(chunk=n+1)
         elif event=='eval_before':
             same(v['key'],eval_key,'EVAL_BEFORE')
@@ -13565,4 +13571,38 @@ def ptr_supervisor_held(argv):
         if not (out/'attempt_result.json').exists():
             h4x_write_json(out/'attempt_result.json',failure,exclusive=True)
         raise
+
+def ptr_generated_guard(audit,generated_file,environment,resume,arm,abort_fn,chunk_fn):
+    """Guarded generated entry contract, independently bound to reservation."""
+    root=Path(__file__).resolve().parent;auth=ptr_authorization_held(root,arm)
+    out=root/ptr_spec(arm)['output']
+    from m463_coverage_env import PTRHeldCoverageJoystick
+    h4m12_require(type(environment) is PTRHeldCoverageJoystick and
+        getattr(environment,'_PTRHeldCoverageJoystick__ptr_arm',None)==arm and
+        getattr(environment,'_h4_arm',None)=='control' and getattr(environment,'_r12',False) is True and
+        all(not getattr(environment,k,False) for k in ('_h4red','_r11','_ffe','_h4m6_tech_capture','_h4m8_common')) and
+        all(getattr(environment,k,None) is None for k in ('_h4cc_arm','_h4m6_arm')),'PTR_GENERATED_ENV')
+    h4m12_require(callable(audit) and getattr(audit,'ptr_auth',None)==auth and callable(abort_fn) and
+        callable(chunk_fn) and Path(generated_file).resolve()==out/'m463_brax_ppo_instrumented.py' and
+        Path(resume).resolve()==root/PTR_PARENT/PTR_FULL,'PTR_GENERATED_BINDING')
+    h4x_file_pin(Path(generated_file),auth['generated_sha256'])
+    h4x_file_pin(Path(resume),PTR_PARENT_PINS[PTR_FULL])
+    h4m12_require(ssrpc_read_json(out/'attempt.json',65536)==dict(authorization=auth,parent_pid=os.getppid()) and
+        ssrpc_read_json(out/'worker.started.json',65536)==dict(authorization=auth,pid=os.getpid()),'PTR_GENERATED_RESERVATION')
+    ptr_require_control(root,auth)
+    # No release in R2C. The future reviewed guard may reach the exclusive
+    # dispatch write only after native authorization and static acceptance.
+    ptr_execution_hold()
+    h4x_write_json(out/'dispatch.started.json',{'authorization':auth},exclusive=True)
+
+def ptr_static_cli_held(argv):
+    # Separate entry point; a future one-use static supervisor must be reviewed.
+    ptr_execution_hold()
+
+if __name__=='__main__' and sys.argv[1:2]==['--h4ptr-continuation']:
+    ptr_supervisor_held(sys.argv[2:])
+    sys.exit(0)
+if __name__=='__main__' and sys.argv[1:2]==['--h4ptr-full-static']:
+    ptr_static_cli_held(sys.argv[2:])
+    sys.exit(0)
 # H4M29_PTR_HELD_TRAINER_END

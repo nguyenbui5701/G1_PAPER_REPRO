@@ -2840,6 +2840,19 @@ def make_r12_ptr_held_source(raw,arm):
         raise RuntimeError('PTR_GENERATOR_PROJECTION_OR_HOLD')
     return s,original
 
+
+def make_r12_ptr_integrated_source(raw,arm):
+    """Same R12/PTR loss and batch path; only the guarded entry is changed."""
+    base,original=make_r12_ptr_held_source(raw,arm)
+    hold="  raise RuntimeError('R12_GENERATED_EXECUTION_HOLD')\n"
+    guard=("  from m463_push_ppo_train import ptr_generated_guard\n"
+           "  ptr_generated_guard(h4x_audit_fn, __file__, environment, m470_resume_state_path, "
+           +repr(arm)+", r12_abort_fn, h4_chunk_fn)\n")
+    s=h4c_once(base,hold,guard)
+    if h4c_once(s,guard,hold)!=base:raise RuntimeError('PTR_INTEGRATED_REVERSE')
+    compile(s,'<PTR integrated generated '+arm+'>','exec')
+    return s,original
+
 # PTR host ledger. Historical R12 functions and receipt schemas stay unchanged.
 PTR_SUMS=('consumed_ptr_delta','consumed_dcr_delta','consumed_total_delta','native_sum',
           'intermediate_sum','delivered_sum','desired_sum','scored_risk_sum',
