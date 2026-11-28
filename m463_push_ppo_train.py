@@ -19426,6 +19426,8 @@ def ptr_r12_red_historical(root):
                        (PTR_R4B_DELTA,PTR_R7B_DELTA_PINS),(PTR_R10A_OUTPUT,PTR_R12_DIAG_PINS),
                        (PTR_R7B_OUT,PTR_R8A_STATIC_PINS)):
         for name,sha in hashes.items():h4x_file_pin(root/rel/name,sha)
+    h4x_file_pin(root/PTR_R12_FOCUSED_OUT/'report.json','9bf5a1dad5756dfca5a1e45e41c0ecc42939910314e4a40e8388e484f5176109')
+    h4x_file_pin(root/PTR_R12_FOCUSED_OUT/'supervisor.terminal.json','8c3e7500ca72404aceac9a40366c9e1c9e627218cd287233a4e5ed56bb6e0091')
     ptr_parent_evidence(root)
 
 def ptr_r12_red_validate_evidence(root,auth):
@@ -19892,8 +19894,9 @@ def ptr_r12_red_generated_guard(audit,generated_file,environment,resume,arm,abor
 
 
 def ptr_r12_red_claim_reserved_environment(environment,config):
-    from m463_coverage_env import PTRRedHeldCoverageJoystick
     c=_PTR_R12_RED_CONTEXT
+    h4m12_require(c is not None,'PTR_R12_RED_ENV_CLAIM')
+    from m463_coverage_env import PTRRedHeldCoverageJoystick
     h4m12_require(c is not None and c['environment'] is None and c['config'] is config and
         type(environment) is PTRRedHeldCoverageJoystick and
         getattr(environment,'_PTRHeldCoverageJoystick__ptr_arm',None)=='ctrl' and
@@ -20315,7 +20318,8 @@ def ptr_r12_red_focused_contract(root,source_head):
     git=lambda *v:subprocess.check_output(['git',*v],cwd=root,timeout=30)
     pins={name:hashlib.sha256(git('show',source_head+':'+name)).hexdigest() for name in PTR_SOURCE_NAMES}
     manifest=hashlib.sha256(ptr_r7b_canonical(list(PTR_R12_RED_FOCUSED_CASES)).encode()).hexdigest()
-    h4m12_require(len(set(PTR_R12_RED_FOCUSED_CASES))==13,'PTR_RED_STATIC_MANIFEST')
+    h4m12_require(len(set(PTR_R12_RED_FOCUSED_CASES))==13 and
+        manifest=='986524b94939b92662819013502ae860f72d3d0d962d44ff6c906855d97a254d','PTR_RED_STATIC_MANIFEST')
     a=dict(id=PTR_R12_RED_FOCUSED_ID,source_head=source_head,
         source_sha256=hashlib.sha256(ptr_r7b_canonical(pins).encode()).hexdigest(),
         fixture_manifest_sha256=manifest,held_generated_sha256=PTR_R12_RED_CTRL_HELD_PIN,
