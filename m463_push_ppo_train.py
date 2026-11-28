@@ -12843,6 +12843,18 @@ def ptr_typed_leaves(np,actual,template):
             x.dtype.kind in 'biuf' and np.isfinite(x).all(),'PTR_TYPED_LEAF')
     return True
 
+def ptr_typed_metadata(np,step,adam,norm,local,keys,ev,*,expected_keys_sha):
+    """Pure host check; production supplies the immutable R12 key digest."""
+    step,adam,norm,local,keys,ev=map(np.asarray,(step,adam,norm,local,keys,ev))
+    h4m12_require(step.shape==adam.shape==norm.shape==() and step.dtype.kind in 'iu' and
+        adam.dtype.kind in 'iu' and norm.dtype==np.float32 and step.item()==15728640 and
+        adam.item()==2400 and norm.item()==416808960,'PTR_TYPED_COUNTERS')
+    h4m12_require(local.dtype==keys.dtype==ev.dtype==np.uint32 and local.shape==ev.shape==(2,) and
+        keys.shape==(1,8192,2) and local.tolist()==[3994719248,2536063210] and
+        ev.tolist()==[3826574560,1155328204] and hashlib.sha256(keys.tobytes()).hexdigest()==expected_keys_sha,
+        'PTR_TYPED_RNG')
+    return True
+
 def ptr_verify_typed_payload(jax,np,optax,serialization,template,payload,root):
     """Future authorized typed-restore audit callback, not a loader/dispatch.
     Requires the existing native template and already restored payload.
@@ -12864,15 +12876,9 @@ def ptr_verify_typed_payload(jax,np,optax,serialization,template,payload,root):
         is_leaf=lambda x:isinstance(x,optax.ScaleByAdamState)) if isinstance(x,optax.ScaleByAdamState)]
     h4m12_require(len(a)==1,'PTR_ADAM_LAYOUT')
     step,adam,norm=(np.asarray(jax.device_get(x)) for x in (ts.env_steps,a[0].count,ts.normalizer_params.count))
-    h4m12_require(step.shape==adam.shape==norm.shape==() and step.dtype.kind in 'iu' and
-        adam.dtype.kind in 'iu' and norm.dtype==np.float32 and step.item()==15728640 and
-        adam.item()==2400 and norm.item()==416808960,'PTR_TYPED_COUNTERS')
     local,keys,ev=(np.asarray(jax.device_get(payload[k])) for k in ('local_key','key_envs','eval_key'))
-    h4m12_require(local.dtype==keys.dtype==ev.dtype==np.uint32 and local.shape==ev.shape==(2,) and
-        keys.shape==(1,8192,2) and local.tolist()==[3994719248,2536063210] and
-        ev.tolist()==[3826574560,1155328204] and
-        hashlib.sha256(keys.tobytes()).hexdigest()=='67c2e99b593813442e608ede12e01c7757ca1fb98e7daafaec8c36904280fd36',
-        'PTR_TYPED_RNG')
+    ptr_typed_metadata(np,step,adam,norm,local,keys,ev,
+        expected_keys_sha='67c2e99b593813442e608ede12e01c7757ca1fb98e7daafaec8c36904280fd36')
     h4x_file_pin(p/PTR_POLICY,PTR_PARENT_PINS[PTR_POLICY])
     policy_raw=(p/PTR_POLICY).read_bytes()
     h4m12_require(hashlib.sha256(policy_raw).hexdigest()==PTR_PARENT_PINS[PTR_POLICY],'PTR_POLICY_BYTES')
@@ -13763,8 +13769,9 @@ PTR_STATIC_CASES=(
     'reject_candidate_no_control','cross_chunk_prefix','cross_chunk_complete','reject_cross_chunk',
     'reject_host_reset','exposure_both_arms','exposure_late_floor','exposure_motion_floor',
     'exposure_dcr_floor','typed_template_leaves','reject_typed_shape','reject_typed_dtype',
-    'reject_typed_nonfinite','generated_invalid_no_sgd','generated_guard_order',
-    'candidate_off_reward_identity','positive_final_report','reject_final_counter',
+    'reject_typed_nonfinite','typed_metadata','reject_typed_counter','reject_typed_rng',
+    'generated_invalid_no_sgd','generated_guard_order',
+    'candidate_off_reward_identity','candidate_off_batch_identity','positive_final_report','reject_final_counter',
     'reject_final_artifact','terminal_receipt_positive','reject_terminal_failure',
     'failure_receipt_fallback','combined_exposure_pass','combined_exposure_dcr_inconclusive',
     'reject_combined_host_reset','no_native_imports')
@@ -13912,7 +13919,7 @@ def ptr_static_fixtures(root,raw,record):
     q,r=step(scored,coherent=b(False));check('incoherent_closes',q['ptr_close']==1 and q['ptr_close_reason']==5 and q['ptr_active']==0 and r==0)
     # Build actual composed extras from the two exact environment core functions,
     # not a separately fabricated reward. Synthetic clocks and obs are explicit.
-    def batch(arm,motion):
+    def batch(arm,motion,gravity=tilted):
         d=ns['r12_init'](np);p=init();start_d=dict(d);start_p=dict(p)
         rows=[];reward=[];clock=10
         source={k:np.zeros(sh,ii) for k in inst.R12_SOURCE_FLAGS}
@@ -13928,7 +13935,7 @@ def ptr_static_fixtures(root,raw,record):
             d,r1=ns['r12_env_transition'](np,d,sample,sample,event=b(ev),repeat=b(rep),direction=ii(2),
                 boundary=b(bound),coherent=b(motion==0),terminal=b(term),timeout=b(False),nominal=b(False),
                 native=f(-0.),joint_excess=b(False),ctrl_excess=b(False),force_excess=b(False),foot_foot=b(False))
-            p,r2=step(p,arm,base=r1,event=b(ev),repeat=b(rep),motion=ii(motion),boundary=b(bound),
+            p,r2=step(p,arm,gravity=gravity,base=r1,native=f(-0.),event=b(ev),repeat=b(rep),motion=ii(motion),boundary=b(bound),
                 pre_live=b(k!=31),terminal=b(term),pre_step=ii(clock))
             clock=0 if term else clock+1;p['ptr_after_step']=ii(clock)
             for name in ns['PTR_COMMANDS']:
@@ -14066,6 +14073,18 @@ def ptr_static_fixtures(root,raw,record):
     reject('reject_typed_shape',lambda:ptr_typed_leaves(np,[np.ones(6,f),values[1]],template),'PTR_TYPED_LEAF')
     reject('reject_typed_dtype',lambda:ptr_typed_leaves(np,[values[0].astype(np.float64),values[1]],template),'PTR_TYPED_LEAF')
     reject('reject_typed_nonfinite',lambda:ptr_typed_leaves(np,[np.full((2,3),np.nan,f),values[1]],template),'PTR_TYPED_LEAF')
+
+    local=np.array([3994719248,2536063210],np.uint32);ev=np.array([3826574560,1155328204],np.uint32)
+    # Synthetic key bytes are independently pinned for this host-only fixture.
+    # Production typed admission uses the immutable actual R12 key digest.
+    keys=np.arange(16384,dtype=np.uint32).reshape(1,8192,2)
+    key_sha=hashlib.sha256(keys.tobytes()).hexdigest()
+    meta=lambda step=15728640,adam=2400,norm=f(416808960),ks=keys:ptr_typed_metadata(
+        np,np.asarray(step,np.int32),np.asarray(adam,np.int32),np.asarray(norm),local,ks,ev,expected_keys_sha=key_sha)
+    check('typed_metadata',meta())
+    reject('reject_typed_counter',lambda:meta(adam=2401),'PTR_TYPED_COUNTERS')
+    corrupted=keys.copy();corrupted[0,0,0]=42
+    reject('reject_typed_rng',lambda:meta(ks=corrupted),'PTR_TYPED_RNG')
     # Source structural check: no generated train function is invoked.
     for arm in ('ctrl','cand'):
         src,_=inst.make_r12_ptr_integrated_source(raw,arm)
@@ -14092,6 +14111,20 @@ def ptr_static_fixtures(root,raw,record):
             p,v=step(opened,arm,base=value,native=value,gravity=gravity)
             h4m12_require(v.tobytes()==value.tobytes() and p['ptr_delta']==0,'PTR_OFF_IDENTITY')
     check('candidate_off_reward_identity',True)
+
+    # Same synthetic input, same original DCR, zero PTR dose. Compare exact
+    # bytes (including negative zero) for reward, obs, extras and final carry.
+    left,lp,lq,ld,lb=batch('ctrl',0,gravity=upright)
+    right,rp,rq,rd,rb=batch('cand',0,gravity=upright)
+    def byte_equal(a,b):
+        return a.shape==b.shape and a.dtype==b.dtype and a.tobytes()==b.tobytes()
+    h4m12_require(not np.any(lb) and not np.any(rb) and byte_equal(left.reward,right.reward) and
+        byte_equal(left.discount,right.discount) and byte_equal(ld,rd),'PTR_OFF_BATCH_REWARD')
+    for x,y in ((lp,rp),(lq,rq),(left.observation,right.observation),
+        (left.next_observation,right.next_observation),(left.extras['state_extras'],right.extras['state_extras'])):
+        h4m12_require(set(x)==set(y) and all(byte_equal(x[key],y[key]) for key in x),'PTR_OFF_BATCH_FIELDS')
+    check('candidate_off_batch_identity',True)
+    del left,right,lp,lq,rp,rq,ld,rd,lb,rb
     # Complete synthetic technical reader from independently pinned R12
     # historical ledger. Preserve original historical verdict; zero PTR
     # is deliberate in this CTRL-only fixture, not evidence of exposure.
