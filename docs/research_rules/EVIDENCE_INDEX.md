@@ -856,3 +856,18 @@ Owner explicit GO at 58ea190ef0e4217d30d8cf56f740f3e9d74f2774; governance v2.0.0
 
 ## H4-M29-R9 — accepted R8C evidence and native release authorization
 - [R8C adapter](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/7f4cf34daf093079df50c9cc0f724457c0d125e4), [source](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/d85d68493ea0e7f63cf749717a360721bdd584f3), [consumed marker](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/5825f43c79e9cb35433ea6c94b6dad290bf05cbb), [closure](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/4baccc36e564b6dd93a7f4070c36a2761faf6500). Exact six uploaded artifact hashes in CURRENT_STATE/ACTIVE_EXPERIMENT. Report bb3959431c049aea8a3de4ac733648492866d9d976567c5791822d49b1d87ea2; terminal e2b9084affa472cc05877c514eeb3260c055435a1fc68e9f590f3c77b3fe4dfd. Owner approves exact five-line release; native marker must be separate child of reviewed trainer release; native receipt pending. No historical evidence changed.
+
+
+## H4-M29-R10A — Native diagnostic counter repair / distinct DIAG-V2 HELD (2026-11-28 ICT)
+R9 NATIVE STOP accepted, 7/7 uploaded SHA256; [root-only closure](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/6e81f52070e018ed4aa996ce0c0ec4080f0e83f4); [trainer repair](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/78af74ec8a004ca3a6952fccba0a91c0d303beec) +210/-7, two float fixes, five re-HOLD replacements, 203-line V2 held block. 9/9 remote SHA256 independently recomputed, 8/8 unchanged, exact inverse to R9. New aggregate 4af7a2117b97693f18b576750f63de32f3a2e566477bbdea9d74a602b8eaff71; 14-case manifest 2f0f7e634a7d6821e881184f92eaf5aebbb798cc7c56e025b743e5d5c8f5a84d. No execution, authorization, new script or governance rule change; V2 integration HOLD. See CURRENT_STATE/ACTIVE_EXPERIMENT. Branch A ACTIVE/B HOLD.
+R9 exact uploaded evidence (bytes, SHA256): attempt.json 872 178edc99673892266fec3a57ac5d7d0080742ee73d0d535c3e1e358d15cbde0c; attempt_result.json 936 675fcbab3178dc12bddd8e436d1ab7519e7b9151b5f3950bcb938bdbde4ed396; dispatch.started.json 897 25a405152f537339c1d8412b72c18e7ed2951939a7ed18e9576c3c11155979fb; m463_brax_ppo_instrumented.py 24974 20ab3e2c58097d643e14ac0c3e3615e81e56532bc3b31399fe1f2c5e9567bcb4; supervisor.failed.json 1886 e91728bb62b409f5cca6664a7c1d6131008dcefe228d27daafba593bf9c4318a; worker.log 3755 071f35cc8c3616257b6ab83fc96bcf15d4fedf4d47a11f804dffb1188d8e0a63; worker.started.json 897 25a405152f537339c1d8412b72c18e7ed2951939a7ed18e9576c3c11155979fb.
+Exact post-repair remote source SHA256:
+- m462_ppo_warmstart_run.py 2b8846723287b6999db3cc27fbf50e556ce6b6bfd19822ff2bfd7a84a53d5328
+- m462_typed_orbax_stage.py 2dc81e3c3f515745954d189eeaec53bc014fe0e399b98dbe9a3219586dfb85cc
+- m463_coverage_env.py 81a42b7a0e6bb01090875b27098257e98f32b254ce6cf5acf7cfb263640d5d6a
+- m463_gate3_cp_eval.py 4fcccab1d3f57a76b14fa8108669dd2949e2467f804488feaae1282a25b047b7
+- m463_instrument_brax.py 654e8f7c7a64db3879a465a7572c335b59cd42bb759e9f7804a91048e6fff6b3
+- m463_push_ppo_train.py 5881d62fa6d20da23ff1e01b4829e7d06b6fb3f172518b4f1da416c785b68811
+- paper_config.py db3a6c7189bbd6d952d06e9b13a46929be8a79203510b18e12d8ddd53065c887
+- paper_config_preflight.json 36ab984a162e053a58d6f4313369a95dde77fd84a4db61b54d42ab856fadd19b
+- train.py 83e4371a29d96998461b7f5791e08b37bf3647e29c0212d873c6496ce07ed771
