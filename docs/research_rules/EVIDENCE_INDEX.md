@@ -852,3 +852,7 @@ Owner explicit GO at 58ea190ef0e4217d30d8cf56f740f3e9d74f2774; governance v2.0.0
 
 ## H4-M29-R8C — host adapter
 - [Exact adapter commit](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/7f4cf34daf093079df50c9cc0f724457c0d125e4), SHA256 e0018cb7747c864731cf6a18f4ba9011a392553ab6aca11af5ed27ad9a61b7bb. Six-case manifest unchanged. Output m463_runs/m470_h4_m29_ptr_r8c_static_v1; actual receipts pending. See CURRENT_STATE for authorization scope and limitations.
+
+
+## H4-M29-R9 — accepted R8C evidence and native release authorization
+- [R8C adapter](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/7f4cf34daf093079df50c9cc0f724457c0d125e4), [source](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/d85d68493ea0e7f63cf749717a360721bdd584f3), [consumed marker](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/5825f43c79e9cb35433ea6c94b6dad290bf05cbb), [closure](https://github.com/nguyenbui5701/G1_PAPER_REPRO/commit/4baccc36e564b6dd93a7f4070c36a2761faf6500). Exact six uploaded artifact hashes in CURRENT_STATE/ACTIVE_EXPERIMENT. Report bb3959431c049aea8a3de4ac733648492866d9d976567c5791822d49b1d87ea2; terminal e2b9084affa472cc05877c514eeb3260c055435a1fc68e9f590f3c77b3fe4dfd. Owner approves exact five-line release; native marker must be separate child of reviewed trainer release; native receipt pending. No historical evidence changed.
