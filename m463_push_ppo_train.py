@@ -13595,9 +13595,351 @@ def ptr_generated_guard(audit,generated_file,environment,resume,arm,abort_fn,chu
     ptr_execution_hold()
     h4x_write_json(out/'dispatch.started.json',{'authorization':auth},exclusive=True)
 
+
+# H4-M29-R2C host-only static contract. Source is not an authorization.
+PTR_STATIC_ID='H4-M29-R12-PTR-STATIC-V1'
+PTR_STATIC_CASES=(
+    'source_projection','historical_parent','bootstrap','pinned_dependencies','compile_modules',
+    'generator_ctrl','generator_cand','generator_invalid_arm','legacy_r12_core',
+    'risk_upright','risk_saturated','risk_invalid','event_zero','ctrl_identity','cand_penalty',
+    'window100_expiry','repeat_reopens','terminal_closes','boundary_closes','refresh_closes',
+    'nominal_zero','incoherent_closes',
+    'batch_ctrl_stand','batch_cand_stand','batch_ctrl_moving','batch_cand_moving',
+    'reject_reward','reject_command','reject_clock','reject_done','reject_support','reject_carry',
+    'reject_dtype','rejected_consumed_zero','chunk_conservation','reject_chunk_partition',
+    'reject_chunk_delta','no_native_imports')
+PTR_STATIC_REPORT_KEYS={'status','authorization','static_head','source_head','source_sha256',
+    'source_files','parent_pins','bootstrap_sha256','generated_sha256','held_generated_sha256',
+    'fixture_manifest_sha256','fixtures','zero_native_execution','zero_optimizer_updates','promotion_authorized'}
+
+def ptr_static_manifest():
+    return hashlib.sha256(json.dumps(list(PTR_STATIC_CASES),separators=(',',':')).encode()).hexdigest()
+
+def ptr_source_files(root,head):
+    import subprocess
+    root=Path(root).resolve();out={}
+    for name in PTR_SOURCE_NAMES:
+        p=root/name
+        h4m12_require(p.is_file() and not p.is_symlink(),'PTR_SOURCE_FILE_'+name)
+        raw=p.read_bytes()
+        h4m12_require(raw==subprocess.check_output(['git','show',head+':'+name],cwd=root,timeout=30)
+            and raw==subprocess.check_output(['git','show','HEAD:'+name],cwd=root,timeout=30),'PTR_SOURCE_BYTES_'+name)
+        out[name]=hashlib.sha256(raw).hexdigest()
+    h4m12_require(hashlib.sha256(json.dumps(out,sort_keys=True,separators=(',',':')).encode()).hexdigest()==h4x_source_digest(root),'PTR_SOURCE_AGGREGATE')
+    return out
+
+def ptr_static_auth_schema(auth):
+    import re
+    h4m12_require(type(auth) is dict and set(auth)=={'id','source_head','source_sha256','fixture_manifest_sha256'} and
+        all(type(x) is str for x in auth.values()) and auth['id']==PTR_STATIC_ID and
+        auth['fixture_manifest_sha256']==ptr_static_manifest() and
+        re.fullmatch('[0-9a-f]{40}',auth['source_head']) is not None and
+        re.fullmatch('[0-9a-f]{64}',auth['source_sha256']) is not None,'PTR_STATIC_AUTH_SCHEMA')
+    return auth
+
+def ptr_static_marker_at(root,head,auth):
+    import re,subprocess
+    ptr_static_auth_schema(auth);root=Path(root).resolve()
+    h4m12_require(re.fullmatch('[0-9a-f]{40}',head) is not None,'PTR_STATIC_HEAD')
+    git=lambda *args:subprocess.check_output(['git',*args],cwd=root,timeout=30)
+    parents=git('rev-list','--parents','-n','1',head).decode().split()
+    h4m12_require(parents==[head,auth['source_head']] and
+        git('diff','--name-only',head+'^',head).splitlines()==[b'G1_RESEARCH_RULES.md'],'PTR_STATIC_ROOT_ONLY')
+    prior=git('show',head+'^:G1_RESEARCH_RULES.md');current=git('show',head+':G1_RESEARCH_RULES.md')
+    h4m12_require(hashlib.sha1(b'blob '+str(len(prior)).encode()+b'\0'+prior).hexdigest()==
+        'e09c35a82f06a97fe5406ba36bb3fd9664913583','PTR_STATIC_CLOSED_ROOT')
+    line=b'H4PTR_STATIC_GO: '+json.dumps(auth,sort_keys=True,separators=(',',':'),allow_nan=False).encode()+b'\n'
+    h4m12_require(current.count(line)==1 and current.replace(line,b'',1)==prior and
+        re.findall(rb'(?m)^[A-Z0-9_]+_GO:.*$',current)==[line[:-1]],'PTR_STATIC_ROOT_EXACT')
+    return True
+
+def ptr_static_authorization(root):
+    import re,subprocess
+    root=Path(root).resolve();git=lambda *args:subprocess.check_output(['git',*args],cwd=root,timeout=30)
+    h4m12_require(git('symbolic-ref','--short','HEAD').strip()==b'experiment/b1-hardware-scaled' and
+        not git('status','--porcelain','--untracked-files=no'),'PTR_STATIC_TRACKED')
+    raw=(root/'G1_RESEARCH_RULES.md').read_bytes()
+    h4m12_require(raw==git('show','HEAD:G1_RESEARCH_RULES.md'),'PTR_STATIC_ROOT_BYTES')
+    marker=re.findall(rb'(?m)^H4PTR_STATIC_GO: (.+)$',raw)
+    h4m12_require(len(marker)==1,'PTR_STATIC_NO_GO')
+    auth=json.loads(marker[0]);head=git('rev-parse','HEAD').decode().strip()
+    ptr_static_marker_at(root,head,auth)
+    h4m12_require(auth['source_sha256']==h4x_source_digest(root),'PTR_STATIC_SOURCE')
+    ptr_source_files(root,auth['source_head'])
+    return auth,head
+
+def ptr_static_preflight(root,args):
+    from importlib import metadata
+    from importlib.machinery import PathFinder
+    from m463_instrument_brax import h4c_git_blob
+    h4m12_require(ssrpc_static_no_native(),'PTR_STATIC_NATIVE_IMPORT')
+    ptr_project_sources(root)
+    parent=ptr_parent_evidence(root)
+    ptr_bootstrap_held(args);bootstrap=ssrpc_bootstrap_identity(root)
+    for pkg,relative,expected in (
+        ('mujoco_playground','_src/wrapper.py','62e2823b80b692befe29e4640d0b7a816e52271c'),
+        ('brax','envs/wrappers/training.py','2c09c8268a29d14c832dd07050575e4541ee98af'),
+        ('mujoco_playground','_src/locomotion/g1/joystick.py','561a18948e3467ab924468eaf362150dadb9d4a6')):
+        spec=PathFinder.find_spec(pkg)
+        h4m12_require(spec is not None and spec.submodule_search_locations is not None,'PTR_STATIC_DEPENDENCY')
+        p=Path(next(iter(spec.submodule_search_locations)))/relative
+        raw=p.read_bytes();h4m12_require(h4c_git_blob(raw)==expected,'PTR_STATIC_DEPENDENCY_PIN')
+        compile(raw,str(p),'exec')
+    raw=Path(metadata.distribution('brax').locate_file('brax/training/agents/ppo/train.py')).read_bytes()
+    h4m12_require(hashlib.sha256(raw).hexdigest()=='e20613d42bf0868a13003e0312998816cc8d3593bb5ccaf9f1d070fd09c44bd7','PTR_STATIC_BRAX')
+    for name in PTR_BASE_BLOBS:compile((root/name).read_bytes(),name,'exec')
+    h4m12_require(ssrpc_static_no_native() and all(not (root/ptr_spec(a)['output']).exists() and
+        not (root/ptr_spec(a)['output']).is_symlink() for a in ('ctrl','cand')),'PTR_STATIC_RUNTIME_NAMESPACE')
+    return parent,raw,bootstrap
+
+def ptr_static_fixtures(root,raw,record):
+    """Actual isolated pure source fixtures; no env construction/JAX/native execution."""
+    import ast,numpy as np
+    from types import SimpleNamespace
+    import m463_instrument_brax as inst
+    f=np.float32;b=np.bool_;ii=np.int32;sh=(8192,32)
+    code=(root/'m463_coverage_env.py').read_text('utf8')
+    tree=ast.parse(code)
+    distance=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='r11_distance')
+    ns={};exec(compile(ast.Module(body=[distance],type_ignores=[]),'<PTR static distance>','exec'),ns)
+    a=code.index('# H4R12_CORE_BEGIN\n');z=code.index('# H4R12_CORE_END\n',a)
+    exec(compile(code[a:z],'<PTR original R12 core>','exec'),ns)
+    a=code.index('# H4M29_PTR_HELD_ENV_BEGIN\n');z=code.index('class PTRHeldCoverageJoystick(',a)
+    exec(compile(code[a:z],'<PTR isolated core>','exec'),ns)
+    h4m12_require(ns['PTR_FIELDS']==inst.PTR_FIELDS and ns['R12_FIELDS']==inst.R12_FIELDS,'PTR_EXTRA_IDENTITY')
+    def check(name,ok):
+        h4m12_require(ok,'PTR_FIXTURE_'+name);record(name)
+    def reject(name,fn,label):
+        try:fn()
+        except RuntimeError as exc:check(name,label in str(exc))
+        else:raise RuntimeError('PTR_EXPECTED_REJECT_'+name)
+    generated={};held={}
+    for arm in ('ctrl','cand'):
+        h,pin=inst.make_r12_ptr_held_source(raw,arm);s,pin2=inst.make_r12_ptr_integrated_source(raw,arm)
+        check('generator_'+arm,pin==pin2=='e20613d42bf0868a13003e0312998816cc8d3593bb5ccaf9f1d070fd09c44bd7' and
+            h.count('R12_GENERATED_EXECUTION_HOLD')==1 and s.count('ptr_generated_guard(')==1 and
+            'm470_resume_expected_steps != 15728640' in s and 'total_steps != 20971520' in s and
+            PTR_PARENT_PINS[PTR_FULL] in s and "k.startswith(('r12_','ptr_'))" in s)
+        compile(h,'<PTR held '+arm+'>','exec');compile(s,'<PTR integrated '+arm+'>','exec')
+        generated[arm]=hashlib.sha256(s.encode()).hexdigest();held[arm]=hashlib.sha256(h.encode()).hexdigest()
+    reject('generator_invalid_arm',lambda:inst.make_r12_ptr_integrated_source(raw,'invalid'),'PTR_GENERATOR_ARM')
+    check('legacy_r12_core',h4r12_core_fixtures(root) is True)
+    init=lambda:ns['ptr_init'](np)
+    upright=np.array([0,0,1],f);tilted=np.array([.5,0,np.sqrt(.75)],f)
+    risk=ns['ptr_risk']
+    theta,c,valid=risk(np,upright);check('risk_upright',theta==c==0 and valid)
+    theta,c,valid=risk(np,tilted);check('risk_saturated',theta>25 and c==1 and valid)
+    _,_,valid=risk(np,np.array([0,0,2],f));check('risk_invalid',not valid)
+    def step(old,arm='cand',**kw):
+        args=dict(arm=arm,gravity=tilted,base=f(-0.),native=f(-0.),event=b(False),repeat=b(False),
+            direction=ii(2),motion=ii(0),boundary=b(False),coherent=b(True),pre_live=b(True),
+            pre_step=ii(50),terminal=b(False),timeout=b(False),nominal=b(False),support_pre=ii(1))
+        args.update(kw);return ns['ptr_transition'](np,old,**args)
+    opened,r=step(init(),event=b(True))
+    check('event_zero',opened['ptr_open']==1 and opened['ptr_age']==0 and r==0 and np.signbit(r))
+    _,r=step(opened,'ctrl');check('ctrl_identity',r==0 and np.signbit(r))
+    scored,r=step(opened);check('cand_penalty',r<0 and r==f(-.04)*f(.02) and scored['ptr_scored']==1)
+    q=opened
+    for k in range(1,101):q,r=step(q)
+    check('window100_expiry',q['ptr_scored']==1 and q['ptr_active']==0 and q['ptr_close_reason']==7)
+    q,r=step(scored,event=b(True),repeat=b(True))
+    check('repeat_reopens',q['ptr_open']==q['ptr_close']==1 and q['ptr_kind']==2 and q['ptr_age']==0 and r==0)
+    for name,kwargs,reason in (('terminal_closes',dict(terminal=b(True)),3),
+        ('boundary_closes',dict(boundary=b(True)),2),('refresh_closes',dict(pre_step=ii(500)),5),
+        ('incoherent_closes',dict(coherent=b(False)),5)):
+        q,r=step(scored,**kwargs);check(name,q['ptr_close']==1 and q['ptr_close_reason']==reason and q['ptr_active']==0 and r==0)
+    q,r=step(init(),nominal=b(True));check('nominal_zero',q['ptr_active']==0 and r==0)
+    # Build actual composed extras from the two exact environment core functions,
+    # not a separately fabricated reward. Synthetic clocks and obs are explicit.
+    def batch(arm,motion):
+        d=ns['r12_init'](np);p=init();start_d=dict(d);start_p=dict(p)
+        rows=[];reward=[];clock=10
+        source={k:np.zeros(sh,ii) for k in inst.R12_SOURCE_FLAGS}
+        source['m463_support_side']=np.ones(sh,ii);source['h4_class'][:]=1
+        source['h4_motion'][:]=motion;source['h4_actor_motion'][:]=motion
+        discount=np.ones(sh,f)
+        command=np.asarray([0.,0.,0.] if motion==0 else [.6,0.,0.],f)
+        obs=np.zeros((32,12),f);obs[:,9:12]=command
+        rects=np.array([[-.2,0,1,0,0,1,.09,.03],[.2,0,1,0,0,1,.09,.03]],f)
+        for k in range(32):
+            ev=k in (0,15);rep=k==15;term=k==30;bound=k==31
+            sample=(np.array([.6,0],f),rects,np.array([.4,.1],f),f(0),b(True),b(True))
+            d,r1=ns['r12_env_transition'](np,d,sample,sample,event=b(ev),repeat=b(rep),direction=ii(2),
+                boundary=b(bound),coherent=b(motion==0),terminal=b(term),timeout=b(False),nominal=b(False),
+                native=f(-0.),joint_excess=b(False),ctrl_excess=b(False),force_excess=b(False),foot_foot=b(False))
+            p,r2=step(p,arm,base=r1,event=b(ev),repeat=b(rep),motion=ii(motion),boundary=b(bound),
+                pre_live=b(k!=31),terminal=b(term),pre_step=ii(clock))
+            clock=0 if term else clock+1;p['ptr_after_step']=ii(clock)
+            for name in ns['PTR_COMMANDS']:
+                for j in range(3):p['ptr_'+name+'_'+str(j)]=command[j]
+            rows.append(dict(d,**p));reward.append(r2)
+            for key,value in (('m463_event',ev),('m463_repeat',rep),('m463_direction',2),
+                ('h4_boundary',bound),('h4_source_terminal',term)):
+                source[key][:,k]=int(value)
+            if term:discount[:,k]=0
+        extra={key:np.broadcast_to(np.asarray([row[key] for row in rows]),sh).copy() for key in inst.R12_FIELDS+inst.PTR_FIELDS}
+        extra.update(source)
+        pre={prefix+k:np.full(8192,s[prefix+k],ii) for prefix,s,ks in (
+            ('r12_',start_d,inst.R12_CARRY),('ptr_',start_p,inst.PTR_CARRY)) for k in ks}
+        post={prefix+k:np.full(8192,s[prefix+k],ii) for prefix,s,ks in (
+            ('r12_',d,inst.R12_CARRY),('ptr_',p,inst.PTR_CARRY)) for k in ks}
+        pre['step']=np.full(8192,10,ii);post['step']=np.full(8192,clock,ii)
+        obs=np.broadcast_to(obs,(8192,32,12))
+        data=SimpleNamespace(reward=np.broadcast_to(np.asarray(reward,f),sh).copy(),discount=discount,
+            extras={'state_extras':extra},observation={'state':obs,'privileged_state':obs},
+            next_observation={'state':obs,'privileged_state':obs})
+        done=np.zeros(8192,f)
+        bad=inst.ptr_actual_batch_contract(np,data,pre,post,done,done,arm)
+        return data,pre,post,done,bad
+    selected=None
+    for arm in ('ctrl','cand'):
+        for motion,tag in ((0,'stand'),(2,'moving')):
+            data,pre,post,done,bad=batch(arm,motion)
+            ex=data.extras['state_extras']
+            check('batch_'+arm+'_'+tag,not np.any(bad) and
+                (np.any(ex['ptr_delta']<0)==(arm=='cand')) and
+                (motion==0 or not np.any(ex['r12_delta']<0)))
+            if arm=='cand' and motion==0:selected=(data,pre,post,done,bad)
+    data,pre,post,done,bad=selected;ex=data.extras['state_extras']
+    def replay(d=data,p=pre,q=post,pd=done):
+        return inst.ptr_actual_batch_contract(np,d,p,q,pd,done,'cand')
+    def mutated(field,value):
+        x=dict(ex);x[field]=ex[field].copy();x[field][0,1]=value
+        return SimpleNamespace(**dict(vars(data),extras={'state_extras':x}))
+    r=data.reward.copy();r[0,1]=f(.5)
+    check('reject_reward',replay(SimpleNamespace(**dict(vars(data),reward=r)))[0,1])
+    check('reject_command',replay(mutated('ptr_pre_actor_0',f(.5)))[0,1])
+    check('reject_clock',replay(mutated('ptr_pre_step',ii(99)))[0,1])
+    pd=done.copy();pd[0]=1;check('reject_done',replay(pd=pd)[0,0])
+    check('reject_support',replay(mutated('ptr_support_pre',ii(2)))[0,1])
+    check('reject_carry',replay(mutated('ptr_before_age',ii(20)))[0,1])
+    x=dict(ex);x['ptr_gx']=x['ptr_gx'].astype(np.float64)
+    reject('reject_dtype',lambda:replay(SimpleNamespace(**dict(vars(data),extras={'state_extras':x}))),'PTR_FIELD_SCHEMA')
+    rejected=inst.ptr_reduce(np,data.reward,ex,bad,b(False))
+    check('rejected_consumed_zero',rejected['ptr_nonzero_consumed']==0 and rejected['ptr_batch_rejected']==1 and rejected['ptr_consumed_total_delta']==0)
+    def totals(v,prefix):return {k[len(prefix):]:float(x)*5 for k,x in v.items()}
+    c=totals(inst.ptr_reduce(np,data.reward,ex,bad,b(True)),'ptr_')
+    d=totals(inst.r12_reduce(np,ex['ptr_base'],ex,bad,b(True)),'r12_')
+    broad={'m463_h4_first_events_per_rollout':8192*5,'m463_h4_repeat_events_per_rollout':8192*5}
+    check('chunk_conservation',inst.ptr_check_chunk(c,0,0,'cand',d,broad))
+    q=dict(c);q['consumed_side_1']+=1
+    reject('reject_chunk_partition',lambda:inst.ptr_check_chunk(q,0,0,'cand',d,broad),'SIDE_SUPPORT')
+    q=dict(c);q['consumed_total_delta']=1
+    reject('reject_chunk_delta',lambda:inst.ptr_check_chunk(q,0,0,'cand',d,broad),'SIGNS')
+    check('no_native_imports',ssrpc_static_no_native())
+    return generated,held
+
+def ptr_static_report_check(root,r):
+    import re
+    h4m12_require(type(r) is dict and set(r)==PTR_STATIC_REPORT_KEYS and
+        r['status']=='FULL_HOST_STATIC_PASS' and r['zero_native_execution'] is True and
+        r['zero_optimizer_updates'] is True and r['promotion_authorized'] is False,'PTR_STATIC_REPORT_KEYS')
+    auth=ptr_static_auth_schema(r['authorization'])
+    ptr_static_marker_at(root,r['static_head'],auth)
+    h4m12_require(r['source_head']==auth['source_head'] and r['source_sha256']==auth['source_sha256']==h4x_source_digest(root) and
+        r['source_files']==ptr_source_files(root,r['source_head']) and r['parent_pins']==PTR_PARENT_PINS and
+        r['fixture_manifest_sha256']==ptr_static_manifest() and
+        r['fixtures']==[dict(id=k,status='PASS') for k in PTR_STATIC_CASES],'PTR_STATIC_REPORT_CONTRACT')
+    for name in ('generated_sha256','held_generated_sha256'):
+        q=r[name];h4m12_require(type(q) is dict and set(q)=={'ctrl','cand'} and
+            all(type(x) is str and re.fullmatch('[0-9a-f]{64}',x) for x in q.values()) and
+            q['ctrl']!=q['cand'],'PTR_STATIC_GENERATED')
+    h4m12_require(type(r['bootstrap_sha256']) is str and
+        r['bootstrap_sha256']==ssrpc_bootstrap_identity(root),'PTR_STATIC_BOOTSTRAP')
+    ptr_parent_evidence(root)
+    return r
+
+def ptr_read_static(root,expected_sha,*,require_terminal):
+    root=Path(root).resolve();out=root/PTR_STATIC
+    h4x_file_pin(out/'report.json',expected_sha)
+    r=ptr_static_report_check(root,ssrpc_read_json(out/'report.json',H4X_SPEC['other_cap']))
+    auth=r['authorization']
+    a=ssrpc_read_json(out/'attempt.json',65536);w=ssrpc_read_json(out/'worker.started.json',65536)
+    h4m12_require(set(a)=={'authorization','parent_pid'} and a['authorization']==auth and
+        type(a['parent_pid']) is int and a['parent_pid']>0 and set(w)=={'authorization','pid','parent_pid'} and
+        w['authorization']==auth and w['parent_pid']==a['parent_pid'] and type(w['pid']) is int and w['pid']>0,'PTR_STATIC_RECEIPTS')
+    h4m12_require(ssrpc_read_json(out/'attempt_result.json',65536)==dict(status='COMPLETE',authorization=auth,
+        report_sha256=expected_sha,producer_rc=0),'PTR_STATIC_RESULT')
+    h4m12_require(not (out/'supervisor.failed.json').exists() and not (out/'supervisor.failed.json').is_symlink(),'PTR_STATIC_FAILURE')
+    if require_terminal:ssrpc_terminal_receipt(out,expected_sha,auth)
+    return r
+
+def ptr_static_worker(root,args,auth,head,out):
+    h4m12_require(ptr_static_authorization(root)==(auth,head) and ssrpc_static_no_native(),'PTR_STATIC_WORKER_AUTH')
+    h4m12_require(ssrpc_read_json(out/'attempt.json',65536)==dict(authorization=auth,parent_pid=os.getppid()),'PTR_STATIC_RESERVED')
+    ssrpc_static_write(out/'worker.started.json',dict(authorization=auth,pid=os.getpid(),parent_pid=os.getppid()))
+    parent,raw,bootstrap=ptr_static_preflight(root,args)
+    h4m12_require(os.environ.get('PTR_STATIC_BOOTSTRAP_SHA256')==bootstrap,'PTR_STATIC_PARENT_BOOTSTRAP')
+    cases=[]
+    def record(name):
+        h4m12_require(name in PTR_STATIC_CASES and name not in cases,'PTR_STATIC_CASE_ID')
+        cases.append(name)
+    for name in PTR_STATIC_CASES[:5]:record(name)
+    generated,held=ptr_static_fixtures(root,raw,record)
+    h4m12_require(set(cases)==set(PTR_STATIC_CASES) and len(cases)==len(PTR_STATIC_CASES) and
+        ptr_static_authorization(root)==(auth,head) and ssrpc_static_no_native() and
+        ssrpc_bootstrap_identity(root)==bootstrap,'PTR_STATIC_FINAL')
+    r=dict(status='FULL_HOST_STATIC_PASS',authorization=auth,static_head=head,source_head=auth['source_head'],
+        source_sha256=auth['source_sha256'],source_files=ptr_source_files(root,auth['source_head']),
+        parent_pins=parent['parent_pins'],bootstrap_sha256=bootstrap,generated_sha256=generated,
+        held_generated_sha256=held,fixture_manifest_sha256=ptr_static_manifest(),
+        fixtures=[dict(id=k,status='PASS') for k in PTR_STATIC_CASES],zero_native_execution=True,
+        zero_optimizer_updates=True,promotion_authorized=False)
+    ptr_static_report_check(root,r)
+    ssrpc_static_write(out/'report.json',r)
+
 def ptr_static_cli_held(argv):
-    # Separate entry point; a future one-use static supervisor must be reviewed.
+    # No static release under R2C; distinct Owner static GO and review required.
     ptr_execution_hold()
+    import subprocess,selectors,signal
+    p=argparse.ArgumentParser(description='R12 PTR one-use host-static verification')
+    p.add_argument('--checkpoint',type=Path,required=True)
+    p.add_argument('--restore-report',type=Path,required=True)
+    p.add_argument('--reward-report',type=Path,required=True)
+    p.add_argument('--worker',action='store_true')
+    a=p.parse_args(argv);root=Path(__file__).resolve().parent
+    h4m12_require(Path.cwd().resolve()==root and ssrpc_static_no_native(),'PTR_STATIC_WORKDIR')
+    auth,head=ptr_static_authorization(root);out=root/PTR_STATIC
+    if a.worker:return ptr_static_worker(root,a,auth,head,out)
+    h4m12_require(out.parent.is_dir() and not out.parent.is_symlink() and
+        not out.exists() and not out.is_symlink(),'PTR_STATIC_USED')
+    _,_,bootstrap=ptr_static_preflight(root,a)
+    h4m12_require('PTR_STATIC_BOOTSTRAP_SHA256' not in os.environ,'PTR_STATIC_PARENT_ENV')
+    h4x_storage(out,initial=True);out.mkdir(exist_ok=False)
+    ssrpc_static_write(out/'attempt.json',dict(authorization=auth,parent_pid=os.getpid()))
+    child=None;rc=None;total=0
+    try:
+        child=subprocess.Popen([sys.executable,'-B','-u',str(Path(__file__).resolve()),
+            '--h4ptr-full-static',*argv,'--worker'],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,
+            start_new_session=True,env=dict(os.environ,PTR_STATIC_BOOTSTRAP_SHA256=bootstrap))
+        deadline=time.monotonic()+H4M12_WATCHDOG_SECONDS
+        with selectors.DefaultSelector() as sel,(out/'worker.log').open('xb') as log:
+            sel.register(child.stdout,selectors.EVENT_READ)
+            while True:
+                h4m12_require(time.monotonic()<deadline,'PTR_STATIC_WATCHDOG')
+                if not sel.select(timeout=1):continue
+                data=os.read(child.stdout.fileno(),65536)
+                if not data:break
+                h4m12_require(total+len(data)<=H4M12_SPEC['external_log_reserve'],'PTR_STATIC_LOG_CAP')
+                log.write(data);log.flush();total+=len(data)
+        rc=child.wait(timeout=max(1,deadline-time.monotonic()))
+        h4m12_require(rc==0,'PTR_STATIC_PRODUCER_RC')
+        sha=digest(out/'report.json')
+        ptr_static_report_check(root,ssrpc_read_json(out/'report.json',H4X_SPEC['other_cap']))
+        ssrpc_static_write(out/'attempt_result.json',dict(status='COMPLETE',authorization=auth,report_sha256=sha,producer_rc=0))
+        ptr_read_static(root,sha,require_terminal=False)
+        ssrpc_static_write(out/'supervisor.terminal.json',dict(status='COMPLETE',authorization=auth,
+            report_sha256=sha,producer_rc=0,reader_rc=0,worker_log_sha256=digest(out/'worker.log'),stored_log_bytes=total))
+        ptr_read_static(root,sha,require_terminal=True)
+    except BaseException as exc:
+        if child is not None and child.poll() is None:
+            try:os.killpg(child.pid,signal.SIGKILL)
+            except ProcessLookupError:pass
+            child.wait()
+        failure=dict(status='STOP',authorization=auth,producer_rc=rc,stored_log_bytes=total,error=repr(exc)[:2048])
+        ssrpc_static_write(out/'supervisor.failed.json',failure)
+        if not (out/'attempt_result.json').exists():ssrpc_static_write(out/'attempt_result.json',failure)
+        raise
 
 if __name__=='__main__' and sys.argv[1:2]==['--h4ptr-continuation']:
     ptr_supervisor_held(sys.argv[2:])
