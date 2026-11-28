@@ -16842,9 +16842,7 @@ def ptr_red_dev_held_decision(official,r12,m12,fresh):
         r12_hard=not r12_cand['hard_failures'],
         matched_windows=not matched['missing_standing_windows'],
         incremental_nonlower=all(x>=0 for x in gains),incremental_gain=any(x>=1 for x in gains))
-    hard=all(v for k,v in checks.items() if k not in ('incremental_gain','matched_windows'))
-    decision=('NO_GO' if not hard else 'INCONCLUSIVE' if ceiling or not checks['matched_windows']
-        else 'DEV_PASS' if checks['incremental_gain'] else 'NO_GO')
+    decision=ptr_red_dev_d_disposition(checks,ceiling)
     return dict(decision=decision,checks=checks,counts=result,r12_case_losses=lost,
         moving_losses=moving_losses,matched_ceiling=ceiling,official_ctrl=oc_ctrl,
         official_cand=oc_cand,r12_cand=r12_cand,matched=matched,m12_descriptive=descriptive,
@@ -16900,7 +16898,7 @@ def ptr_red_dev_c_source(root):
         h4m12_req(p.is_file() and not p.is_symlink() and
             p.read_bytes()==ptr_red_dev_c_git(root,'show','HEAD:'+name),'PTR_DEVC_SOURCE_'+name)
         if name=='m463_gate3_cp_eval.py':
-            h4m12_req(ptr_red_dev_c_reverse(p.read_bytes())==
+            h4m12_req(ptr_red_dev_c_reverse(ptr_red_dev_d_reverse(p.read_bytes()))==
                 ptr_red_dev_c_git(root,'show',PTR_RED_DEV_C_BASE+':'+name),'PTR_DEVC_EVAL_BASE')
         elif name!=PTR_RED_DEV_C_LAUNCHER:
             h4m12_req(p.read_bytes()==ptr_red_dev_c_git(root,'show',PTR_RED_DEV_C_BASE+':'+name),
@@ -16957,6 +16955,7 @@ def ptr_red_dev_c_replay(root,role):
         and work!=root,'PTR_DEVC_HISTORY_PATH')
     git=lambda *a:ptr_red_dev_c_git(work,*a)
     def check():
+        ptr_red_dev_d_history_files(root,work)
         h4m12_req(git('rev-parse','HEAD').decode().strip()==head and
             git('rev-parse','HEAD^{tree}').decode().strip()==tree and
             not git('status','--porcelain','--untracked-files=no') and
@@ -17031,6 +17030,10 @@ def ptr_red_dev_c_inputs(root):
         ptr_red_dev_pin(root,rel,h);pins[str(rel)]=h
     for name,h in t.PTR_PARENT_PINS.items():
         rel=Path(t.PTR_PARENT)/name;ptr_red_dev_pin(root,rel,h);pins[str(rel)]=h
+    # Historical raw archive reward source is used by run() as well.
+    reward_path=Path('m463_runs/m470_h4_m1_2r_control_v1/report.json')
+    reward_sha=H4_EVAL_ARTIFACTS['report.json'][0]
+    ptr_red_dev_pin(root,reward_path,reward_sha);pins[str(reward_path)]=reward_sha
     replay_red=ptr_red_dev_c_replay(root,'red')
     replay_r12=ptr_red_dev_c_replay(root,'r12')
     h4m12_req(replay_red==dict(cand=PTR_RED_DEV_CAND_PINS['report.json'],
@@ -17106,8 +17109,7 @@ def ptr_red_dev_c_marker(root):
 def ptr_red_dev_c_authorize(root):
     raise RuntimeError('PTR_DEVC_RUNTIME_AUTHORIZATION_HELD')
     a=ptr_red_dev_c_marker(root)
-    h4m12_req(type(PTR_RED_DEV_C_ACCEPTANCE) is dict and
-        a['static_sha256']==PTR_RED_DEV_C_ACCEPTANCE['report_sha256'],'PTR_DEVC_STATIC_HOLD')
+    ptr_red_dev_d_accepted(root,a)
     pins=ptr_red_dev_c_source(root)
     h4m12_req(a['source_sha256']==h4m3_digest(pins)
         and a['launcher_sha256']==pins[PTR_RED_DEV_C_LAUNCHER],'PTR_DEVC_SOURCE_BIND')
@@ -17131,7 +17133,7 @@ def ptr_red_dev_c_session(a,inputs):
     return dict(status='RUNNING',authorization=a,spec=json.loads(json.dumps(PTR_RED_DEV_SPEC)),
         source_commit=PIN,brax_train_sha256=TRAIN_SHA,
         evaluator_sha256=inputs['sources']['m463_gate3_cp_eval.py'],
-        input_sha256=inputs['dependencies'],provenance_sha256=h4m3_digest(inputs),
+        input_sha256=inputs['dependencies'],provenance_sha256=ptr_red_dev_d_provenance(inputs),
         seeds=list(H3_EVAL_SEEDS),profiles=list(H3_EVAL_PROFILES),directions=['left','right'],
         push_step=300,push_magnitude_mps=.50,second_push_step=335,second_push_magnitude_mps=.35,
         max_steps=1000,dt_s=.02,training_performed=False,deterministic_actor=True,
@@ -17145,7 +17147,7 @@ def ptr_red_dev_c_worker(root,a):
     from m462_ppo_warmstart_run import GPUMonitor,sample_gpu
     out=root/PTR_RED_DEV_C_OUT;path=out/'report.json'
     inputs=ptr_red_dev_c_inputs(root)
-    h4m12_req(h4m3_digest(inputs)==a['provenance_sha256'],'PTR_DEVC_PROVENANCE')
+    h4m12_req(ptr_red_dev_d_provenance(inputs)==a['provenance_sha256'],'PTR_DEVC_PROVENANCE')
     att=json.loads((out/'attempt.json').read_bytes())
     h4m12_req(att==dict(authorization=a,parent_pid=os.getppid()),'PTR_DEVC_WORKER_PARENT')
     h4m6_write_bounded(out/'dispatch.started.json',dict(authorization=a,pid=os.getpid()),exclusive=True)
@@ -17171,7 +17173,7 @@ def ptr_red_dev_c_worker(root,a):
 def ptr_red_dev_c_read(root,a,*,partial):
     h4m3_no_runtime_imports()
     out=root/PTR_RED_DEV_C_OUT;path=out/'report.json'
-    h4m12_req(out.is_dir() and not out.is_symlink(),'PTR_DEVC_READ_PATH')
+    h4m12_req(out.is_dir() and not out.is_symlink() and out.resolve()==out,'PTR_DEVC_READ_PATH')
     h4m12_req((out/'attempt.json').is_file() and not (out/'attempt.json').is_symlink(),
         'PTR_DEVC_ATTEMPT_PATH')
     att=json.loads((out/'attempt.json').read_bytes())
@@ -17183,6 +17185,7 @@ def ptr_red_dev_c_read(root,a,*,partial):
     h4m12_req(path.is_file() and not path.is_symlink() and 0<path.stat().st_size<=PTR_RED_DEV_C_REPORT_CAP,
         'PTR_DEVC_REPORT_PATH')
     s=json.loads(path.read_bytes());inputs=ptr_red_dev_c_inputs(root)
+    ptr_red_dev_d_report_shape(s,partial=partial)
     initial=ptr_red_dev_c_session(a,inputs)
     fixed=set(initial)-{'status','frame_columns','groups','physical_transitions_attempted',
         'physical_transitions_recorded','logical_trajectories_completed','reset_lanes_attempted','reset_lanes_recorded'}
@@ -17191,8 +17194,7 @@ def ptr_red_dev_c_read(root,a,*,partial):
     h4m12_req((out/'dispatch.started.json').is_file() and not (out/'dispatch.started.json').is_symlink(),
         'PTR_DEVC_DISPATCH_PATH')
     dispatch=json.loads((out/'dispatch.started.json').read_bytes())
-    h4m12_req(set(dispatch)=={'authorization','pid'} and dispatch['authorization']==a and
-        type(dispatch['pid']) is int and dispatch['pid']>0 and dispatch['pid']!=att['parent_pid'],'PTR_DEVC_DISPATCH')
+    ptr_red_dev_d_receipt_pair(att,dispatch,a)
     ledger=ptr_red_dev_c_ledger(s,partial=partial)
     if s['groups']:
         if ledger['physical']>0:h4m12_req(tuple(s['frame_columns'])==H4M3_COLUMNS,'PTR_DEVC_COLUMNS')
@@ -17281,9 +17283,7 @@ def ptr_red_dev_c_main(argv):
             and (out/'reader.log').read_bytes().splitlines().count(b'PTR_DEVC_READER_COMPLETE')==1,
             'PTR_DEVC_READER')
         accepted=json.loads((out/'decision.json').read_bytes())
-        h4m12_req(accepted['status']=='READER_COMPLETE' and accepted['report_sha256']==sha256(out/'report.json')
-            and accepted['promotion_authorized'] is False and accepted['holdout_authorized'] is False
-            and accepted['further_training_authorized'] is False,'PTR_DEVC_READER_LINK')
+        ptr_red_dev_d_decision_link(accepted,sha256(out/'report.json'))
         expected={'attempt.json','dispatch.started.json','report.json','worker.log','reader.log','decision.json'}
         h4m12_req({p.name for p in out.iterdir()}==expected and
             all(p.is_file() and not p.is_symlink() for p in out.iterdir()) and
@@ -17301,3 +17301,354 @@ def ptr_red_dev_c_main(argv):
         raise
 
 # H4M29_R29C_RED_MATCHED_DEV_WIRING_END
+
+# H4M29_R29D_RED_MATCHED_DEV_STATIC_BEGIN
+PTR_RED_DEV_D_BASE='b499e30b2527051bec39bf62289f9542e60276e0'
+PTR_RED_DEV_D_STATIC_ID='H4-M29-R12-PTR-RED-MATCHED-DEV-STATIC-V1'
+PTR_RED_DEV_D_STATIC_MARKER='H4PTR_RED_MATCHED_DEV_STATIC_V1_GO'
+PTR_RED_DEV_D_STATIC_OUT=Path('m463_runs/m470_h4_m29_ptr_red_matched_dev_static_v1')
+PTR_RED_DEV_D_FIXTURES=["source_reverse","compile_only","held_runtime","held_launcher","marker_schema","history_checkout_contract","actual_historical_admission","archive_replay","ledger_complete","ledger_duplicate","ledger_budget","ledger_partial","receipt_pair","receipt_wrong_pid","report_shape","decision_link","decision_wrong_hash","scientific_gain","scientific_ceiling","scientific_safety_precedence","scientific_r12_loss","scientific_moving_loss","scientific_missing_windows","release_projection","no_native_import"]
+PTR_RED_DEV_D_PATCHES=[["ptr_red_dev_c_reverse(p.read_bytes())==","ptr_red_dev_c_reverse(ptr_red_dev_d_reverse(p.read_bytes()))=="],["provenance_sha256=h4m3_digest(inputs),","provenance_sha256=ptr_red_dev_d_provenance(inputs),"],["h4m12_req(h4m3_digest(inputs)==a['provenance_sha256'],'PTR_DEVC_PROVENANCE')","h4m12_req(ptr_red_dev_d_provenance(inputs)==a['provenance_sha256'],'PTR_DEVC_PROVENANCE')"],["    h4m12_req(type(PTR_RED_DEV_C_ACCEPTANCE) is dict and\n        a['static_sha256']==PTR_RED_DEV_C_ACCEPTANCE['report_sha256'],'PTR_DEVC_STATIC_HOLD')","    ptr_red_dev_d_accepted(root,a)"],["    replay_red=ptr_red_dev_c_replay(root,'red')","    # Historical raw archive reward source is used by run() as well.\n    reward_path=Path('m463_runs/m470_h4_m1_2r_control_v1/report.json')\n    reward_sha=H4_EVAL_ARTIFACTS['report.json'][0]\n    ptr_red_dev_pin(root,reward_path,reward_sha);pins[str(reward_path)]=reward_sha\n    replay_red=ptr_red_dev_c_replay(root,'red')"],["    hard=all(v for k,v in checks.items() if k not in ('incremental_gain','matched_windows'))\n    decision=('NO_GO' if not hard else 'INCONCLUSIVE' if ceiling or not checks['matched_windows']\n        else 'DEV_PASS' if checks['incremental_gain'] else 'NO_GO')","    decision=ptr_red_dev_d_disposition(checks,ceiling)"],["    out=root/PTR_RED_DEV_C_OUT;path=out/'report.json'\n    h4m12_req(out.is_dir() and not out.is_symlink(),'PTR_DEVC_READ_PATH')","    out=root/PTR_RED_DEV_C_OUT;path=out/'report.json'\n    h4m12_req(out.is_dir() and not out.is_symlink() and out.resolve()==out,'PTR_DEVC_READ_PATH')"],["    s=json.loads(path.read_bytes());inputs=ptr_red_dev_c_inputs(root)","    s=json.loads(path.read_bytes());inputs=ptr_red_dev_c_inputs(root)\n    ptr_red_dev_d_report_shape(s,partial=partial)"],["    h4m12_req(set(dispatch)=={'authorization','pid'} and dispatch['authorization']==a and\n        type(dispatch['pid']) is int and dispatch['pid']>0 and dispatch['pid']!=att['parent_pid'],'PTR_DEVC_DISPATCH')","    ptr_red_dev_d_receipt_pair(att,dispatch,a)"],["        h4m12_req(accepted['status']=='READER_COMPLETE' and accepted['report_sha256']==sha256(out/'report.json')\n            and accepted['promotion_authorized'] is False and accepted['holdout_authorized'] is False\n            and accepted['further_training_authorized'] is False,'PTR_DEVC_READER_LINK')","        ptr_red_dev_d_decision_link(accepted,sha256(out/'report.json'))"],["    def check():\n        h4m12_req(git('rev-parse','HEAD').decode().strip()==head","    def check():\n        ptr_red_dev_d_history_files(root,work)\n        h4m12_req(git('rev-parse','HEAD').decode().strip()==head"]]
+PTR_RED_DEV_D_ACCEPT_LINE=b'PTR_RED_DEV_C_ACCEPTANCE=None\n'
+PTR_RED_DEV_D_AUTH_LINE=b"    raise RuntimeError('PTR_DEVC_RUNTIME_AUTHORIZATION_HELD')\n"
+PTR_RED_DEV_D_SHELL_LINE=b"printf 'PTR_DEVC_LAUNCHER_HELD\\n' >&2; exit 2\n"
+PTR_RED_DEV_D_STATIC_ENTRY_HELD=True
+
+def ptr_red_dev_d_replace(raw,a,b):
+    h4m12_req(raw.count(a)==1,'PTR_DEVD_PROJECTION_ANCHOR')
+    return raw.replace(a,b,1)
+
+def ptr_red_dev_d_accept_line(accepted):
+    h4m12_req(type(accepted) is dict and set(accepted)=={
+        'source_head','authorization_head','closure_head','source_sha256','manifest_sha256',
+        'provenance_sha256','report_sha256','terminal_sha256','outer_log_sha256',
+        'outer_receipt_sha256','files'},'PTR_DEVD_ACCEPT_SCHEMA')
+    import re
+    for k,v in accepted.items():
+        if k=='files':continue
+        h4m12_req(type(v) is str and re.fullmatch('[0-9a-f]{40}' if k.endswith('_head') else '[0-9a-f]{64}',v)
+            is not None,'PTR_DEVD_ACCEPT_PIN')
+    h4m12_req(type(accepted['files']) is dict and set(accepted['files'])==
+        {'attempt.json','report.json','worker.log','supervisor.terminal.json'} and
+        all(type(v) is str and re.fullmatch('[0-9a-f]{64}',v) is not None
+            for v in accepted['files'].values()),'PTR_DEVD_ACCEPT_FILES')
+    return ('PTR_RED_DEV_C_ACCEPTANCE='+repr(dict(sorted(accepted.items())))+'\n').encode()
+
+def ptr_red_dev_d_release_projection(raw,launcher,accepted):
+    a=ptr_red_dev_d_accept_line(accepted)
+    held=ptr_red_dev_d_replace(raw,PTR_RED_DEV_D_ACCEPT_LINE,a)
+    released=ptr_red_dev_d_replace(held,PTR_RED_DEV_D_AUTH_LINE,b'')
+    shell=ptr_red_dev_d_replace(launcher,PTR_RED_DEV_D_SHELL_LINE,b'')
+    return held,released,shell
+
+def ptr_red_dev_d_normalize(raw):
+    # Conditional release normalization; runtime admission independently binds
+    # acceptance/release to immutable historical static artifacts and exact Git.
+    a=PTR_RED_DEV_C_ACCEPTANCE
+    if a is not None:
+        raw=ptr_red_dev_d_replace(raw,ptr_red_dev_d_accept_line(a),PTR_RED_DEV_D_ACCEPT_LINE)
+        if PTR_RED_DEV_D_AUTH_LINE not in raw:
+            anchor=b'def ptr_red_dev_c_authorize(root):\n'
+            raw=ptr_red_dev_d_replace(raw,anchor,anchor+PTR_RED_DEV_D_AUTH_LINE)
+    return raw
+
+def ptr_red_dev_d_reverse(raw):
+    raw=ptr_red_dev_d_normalize(raw)
+    begin=b'\n# H4M29_R29D_RED_MATCHED_DEV_STATIC_'+b'BEGIN\n'
+    end=b'# H4M29_R29D_RED_MATCHED_DEV_STATIC_'+b'END\n'
+    h4m12_req(raw.count(begin)==raw.count(end)==1 and raw.endswith(end),'PTR_DEVD_SENTINELS')
+    s=raw[:raw.index(begin)].decode()
+    for before,after in reversed(PTR_RED_DEV_D_PATCHES):
+        h4m12_req(s.count(after)==1,'PTR_DEVD_REVERSE_ANCHOR')
+        s=s.replace(after,before,1)
+    raw=s.encode()
+    h4m12_req(hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()==
+        '33c24f0247e7670ad0248b7f9b2126c800dcf468','PTR_DEVD_R29C')
+    return raw
+
+def ptr_red_dev_d_manifest():
+    return h4m3_digest(list(PTR_RED_DEV_D_FIXTURES))
+
+def ptr_red_dev_d_provenance(inputs):
+    # Source hash is independently bound in marker; release cannot change
+    # historical data provenance merely by changing evaluator/launcher bytes.
+    h4m12_req(set(inputs)=={'sources','pins','dependencies','external','historical_replay',
+        'promotion_authorized'} and inputs['promotion_authorized'] is False,'PTR_DEVD_INPUT_SCHEMA')
+    return h4m3_digest({k:v for k,v in inputs.items() if k!='sources'})
+
+def ptr_red_dev_d_history_files(root,work):
+    # Read-only checked snapshot prepared by Owner, no symlinked evidence.
+    # Complete pin/reader validation occurs in unchanged historical processes.
+    p=work/'m463_runs'
+    h4m12_req(p.is_dir() and not p.is_symlink() and p.resolve()==p,'PTR_DEVD_HISTORY_RUNS')
+    for q in p.rglob('*'):
+        h4m12_req(not q.is_symlink() and (q.is_file() or q.is_dir()),'PTR_DEVD_HISTORY_ALIAS')
+    # These are the current-root copies whose historical identities are
+    # consumed in both worktrees. The original readers check further inputs.
+    for rel,h in ((H4_EVAL_OUTPUT,H4CC_ARCHIVE_SHA),
+                  (H4M12_EVAL_OUTPUT,H4RED_EVAL_M12_PINS['report.json'])):
+        ptr_red_dev_pin(root,rel,h);ptr_red_dev_pin(work,rel,h)
+    return True
+
+def ptr_red_dev_d_disposition(checks,ceiling):
+    # Official hard/nominal/standing/tracking/moving + R12 strict case retention,
+    # matched nonlower and strict >=1 gain. Safety overrides ceiling.
+    hard=all(v for k,v in checks.items() if k not in ('incremental_gain','matched_windows'))
+    return ('NO_GO' if not hard else 'INCONCLUSIVE' if ceiling or not checks['matched_windows']
+        else 'DEV_PASS' if checks['incremental_gain'] else 'NO_GO')
+
+def ptr_red_dev_d_receipt_pair(att,dispatch,a):
+    h4m12_req(set(att)=={'authorization','parent_pid'} and att['authorization']==a and
+        type(att['parent_pid']) is int and att['parent_pid']>0 and
+        set(dispatch)=={'authorization','pid'} and dispatch['authorization']==a and
+        type(dispatch['pid']) is int and dispatch['pid']>0 and
+        dispatch['pid']!=att['parent_pid'],'PTR_DEVD_RECEIPT_PAIR')
+
+def ptr_red_dev_d_decision_link(result,pin):
+    h4m12_req(set(result)=={'status','report_sha256','ledger','decision','promotion_authorized',
+        'holdout_authorized','further_training_authorized'} and result['status']=='READER_COMPLETE'
+        and result['report_sha256']==pin and result['decision']['decision'] in
+        ('DEV_PASS','NO_GO','INCONCLUSIVE') and all(result[k] is False for k in
+        ('promotion_authorized','holdout_authorized','further_training_authorized')) and
+        all(result['decision'][k] is False for k in
+        ('promotion_authorized','holdout_authorized','further_training_authorized')),'PTR_DEVD_DECISION_LINK')
+
+def ptr_red_dev_d_report_shape(s,*,partial):
+    # Exact producer schema, partial permits only a prefix of runtime fields.
+    keys={'status','authorization','spec','source_commit','brax_train_sha256','evaluator_sha256',
+        'input_sha256','provenance_sha256','seeds','profiles','directions','push_step',
+        'push_magnitude_mps','second_push_step','second_push_magnitude_mps','max_steps','dt_s',
+        'training_performed','deterministic_actor','domain_randomization_enabled',
+        'random_source_push_enabled','original_reward_PD_termination','expected_logical_trajectories',
+        'max_physical_transitions','optimizer_updates','physical_transitions_attempted',
+        'physical_transitions_recorded','logical_trajectories_completed','reset_lanes_attempted',
+        'reset_lanes_recorded','frame_columns','groups','promotion_authorized',
+        'further_training_authorized','holdout_authorized','gpu_initial'}
+    runtime={'brax_source_verification','brax_train_path','jax_version','mjx_sources',
+        'playground_runtime','gpu','ledger'}
+    h4m12_req(type(s) is dict and keys<=set(s)<=keys|runtime|({'error'} if partial else set())
+        and s['optimizer_updates']==0 and s['training_performed'] is False and
+        all(s[k] is False for k in ('promotion_authorized','holdout_authorized','further_training_authorized')),
+        'PTR_DEVD_REPORT_SCHEMA')
+    if not partial:h4m12_req(set(s)==keys|runtime and s['status']=='RAW_COMPLETE','PTR_DEVD_FINAL_SCHEMA')
+    else:h4m12_req(s['status'] in ('RUNNING','STOP','RAW_COMPLETE') and
+        ('error' in s)==(s['status']=='STOP'),'PTR_DEVD_PARTIAL_SCHEMA')
+
+def ptr_red_dev_d_parse_static(raw):
+    import re
+    lines=re.findall(rb'(?m)^[A-Z0-9_]+_GO:.*$',raw)
+    prefix=(PTR_RED_DEV_D_STATIC_MARKER+': ').encode()
+    h4m12_req(len(lines)==1 and lines[0].startswith(prefix),'PTR_DEVD_STATIC_MARKER')
+    a=json.loads(lines[0][len(prefix):])
+    fields={'id','output','source_head','source_sha256','manifest_sha256'}
+    h4m12_req(type(a) is dict and set(a)==fields and a['id']==PTR_RED_DEV_D_STATIC_ID
+        and a['output']==str(PTR_RED_DEV_D_STATIC_OUT) and a['manifest_sha256']==ptr_red_dev_d_manifest()
+        and all(type(v) is str for v in a.values()) and
+        re.fullmatch('[0-9a-f]{40}',a['source_head']) is not None and
+        re.fullmatch('[0-9a-f]{64}',a['source_sha256']) is not None,'PTR_DEVD_STATIC_SCHEMA')
+    return a
+
+def ptr_red_dev_d_static_auth(root):
+    # R29D source preparation only. Separate static GO and reviewed release
+    # of this one static hold required before any fixture execution.
+    if PTR_RED_DEV_D_STATIC_ENTRY_HELD:raise RuntimeError('PTR_DEVD_STATIC_ENTRY_HELD')
+    root=Path(root).resolve()
+    raw=(root/'G1_RESEARCH_RULES.md').read_bytes();a=ptr_red_dev_d_parse_static(raw)
+    git=lambda *v:ptr_red_dev_c_git(root,*v)
+    prior=git('show','HEAD^:G1_RESEARCH_RULES.md')
+    line=(PTR_RED_DEV_D_STATIC_MARKER+': '+json.dumps(a,sort_keys=True,separators=(',',':'))+'\n').encode()
+    h4m12_req(raw==prior+line and hashlib.sha1(b'blob '+str(len(prior)).encode()+b'\0'+prior).hexdigest()==
+        'e09c35a82f06a97fe5406ba36bb3fd9664913583' and
+        git('rev-parse','HEAD^').decode().strip()==a['source_head'] and
+        git('diff','--name-only','HEAD^','HEAD').splitlines()==[b'G1_RESEARCH_RULES.md'] and
+        not git('status','--porcelain','--untracked-files=no'),'PTR_DEVD_STATIC_ROOT')
+    pins=ptr_red_dev_c_source(root)
+    h4m12_req(h4m3_digest(pins)==a['source_sha256'],'PTR_DEVD_STATIC_SOURCE')
+    return a,pins
+
+def ptr_red_dev_d_synthetic_ledger(n=24):
+    order=[(p,s,m) for s in H3_EVAL_SEEDS for m in H3_EVAL_PROFILES for p in PTR_RED_DEV_SPEC['policies']]
+    groups=[dict(policy=p,seed=s,profile=m,complete=True,physical_transitions=1,
+        nominal_frames=[[0.]],directions={}) for p,s,m in order[:n]]
+    return dict(groups=groups,reset_lanes_attempted=n,reset_lanes_recorded=n,
+        physical_transitions_attempted=n,physical_transitions_recorded=n,
+        logical_trajectories_completed=n*5)
+
+def ptr_red_dev_d_cases(root,a,pins,record):
+    import ast,copy
+    def reject(fn,reason):
+        try:fn()
+        except (RuntimeError,ValueError,KeyError,TypeError) as exc:
+            h4m12_req(reason in str(exc),'PTR_DEVD_WRONG_REJECTION_'+reason)
+            return
+        raise RuntimeError('PTR_DEVD_NEGATIVE_ACCEPTED_'+reason)
+    def run_case(name,fn):
+        h4m12_req(name==PTR_RED_DEV_D_FIXTURES[len(record)],'PTR_DEVD_FIXTURE_ORDER')
+        fn();h4m3_no_runtime_imports();record.append(dict(id=name,status='PASS'))
+        print('PTR_DEVD_FIXTURE_PASS',name,flush=True)
+    raw=(root/'m463_gate3_cp_eval.py').read_bytes()
+    launch=(root/PTR_RED_DEV_C_LAUNCHER).read_bytes()
+    run_case('source_reverse',lambda:h4m12_req(ptr_red_dev_d_reverse(raw)==
+        ptr_red_dev_c_git(root,'show',PTR_RED_DEV_D_BASE+':m463_gate3_cp_eval.py'),'PTR_DEVD_FIXTURE_REVERSE'))
+    def compile_only():
+        compile(raw,'m463_gate3_cp_eval.py','exec')
+        compile(PTR_RED_DEV_C_REPLAY_CHILD,'history_child','exec')
+        subprocess.check_call(['bash','-n',str(root/PTR_RED_DEV_C_LAUNCHER)],timeout=30)
+        tree=ast.parse(raw)
+        h4m12_req(sum(isinstance(x,ast.FunctionDef) and x.name=='ptr_red_dev_c_main' for x in tree.body)==1,
+            'PTR_DEVD_AST')
+    run_case('compile_only',compile_only)
+    run_case('held_runtime',lambda:reject(lambda:ptr_red_dev_c_authorize(root),'PTR_DEVC_RUNTIME_AUTHORIZATION_HELD'))
+    run_case('held_launcher',lambda:h4m12_req(PTR_RED_DEV_D_SHELL_LINE in launch and
+        subprocess.run(['bash',str(root/PTR_RED_DEV_C_LAUNCHER)],cwd=root,
+            stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=10).returncode==2,'PTR_DEVD_LAUNCHER_HOLD'))
+    marker=(PTR_RED_DEV_D_STATIC_MARKER+': '+json.dumps(a,sort_keys=True,separators=(',',':'))+'\n').encode()
+    def marker_case():
+        h4m12_req(ptr_red_dev_d_parse_static(marker)==a,'PTR_DEVD_MARKER_POSITIVE')
+        for x in (b'',marker+marker,marker+b'H4PTR_RED_MATCHED_DEV_V1_GO: {}\n'):
+            reject(lambda:ptr_red_dev_d_parse_static(x),'PTR_DEVD_STATIC_MARKER')
+    run_case('marker_schema',marker_case)
+    def checkout_case():
+        for role in PTR_RED_DEV_C_HISTORIES:
+            work=root.parent/(root.name+'_r29c_'+role+'_history')
+            h4m12_req(work.is_dir() and not work.is_symlink(),'PTR_DEVD_HISTORY_PRESENT')
+            ptr_red_dev_d_history_files(root,work)
+    run_case('history_checkout_contract',checkout_case)
+    inputs={}
+    run_case('actual_historical_admission',lambda:inputs.update(ptr_red_dev_c_inputs(root)))
+    def archive_case():
+        official=h4cc_read_archive(root/H4_EVAL_OUTPUT)
+        r12=json.loads((root/H4R12_DEV_OUTPUT).read_bytes())
+        m12=json.loads((root/H4M12_EVAL_OUTPUT).read_bytes())
+        h4m12_req(all(all(x[k]==official[k] for k in H4M12_PROTOCOL) for x in (r12,m12)),
+            'PTR_DEVD_ARCHIVE_PROTOCOL')
+        for label,report in (('CTRL',official),('R12',r12),('M12',m12)):
+            groups=[g for g in report['groups'] if g['policy']==label]
+            h4m12_req(len(groups)==12,'PTR_DEVD_ARCHIVE_GROUPS')
+            for g in groups:h4m12_validate_group(g,report['frame_columns'])
+        # Historical R12 replay already performed by unchanged reader.
+        h4m12_req(r12['decision']['decision']=='NO_PROMOTE','PTR_DEVD_ARCHIVE_DISPOSITION')
+    run_case('archive_replay',archive_case)
+    s=ptr_red_dev_d_synthetic_ledger()
+    run_case('ledger_complete',lambda:h4m12_req(ptr_red_dev_c_ledger(s,partial=False)['logical']==120,'PTR_DEVD_LEDGER'))
+    dup=copy.deepcopy(s);dup['groups'][1]=dup['groups'][0]
+    run_case('ledger_duplicate',lambda:reject(lambda:ptr_red_dev_c_ledger(dup,partial=False),'PTR_DEVC_GROUP_ORDER'))
+    over=dict(s,physical_transitions_attempted=89617)
+    run_case('ledger_budget',lambda:reject(lambda:ptr_red_dev_c_ledger(over,partial=False),'PTR_DEVC_LEDGER'))
+    partial=ptr_red_dev_d_synthetic_ledger(1)
+    run_case('ledger_partial',lambda:h4m12_req(ptr_red_dev_c_ledger(partial,partial=True)['logical']==5,'PTR_DEVD_PARTIAL'))
+    att=dict(authorization=a,parent_pid=11);dispatch=dict(authorization=a,pid=12)
+    run_case('receipt_pair',lambda:ptr_red_dev_d_receipt_pair(att,dispatch,a))
+    run_case('receipt_wrong_pid',lambda:reject(lambda:ptr_red_dev_d_receipt_pair(att,dict(dispatch,pid=11),a),
+        'PTR_DEVD_RECEIPT_PAIR'))
+    def report_case():
+        v=ptr_red_dev_c_session(a,inputs);v['gpu_initial']={}
+        ptr_red_dev_d_report_shape(v,partial=True)
+        reject(lambda:ptr_red_dev_d_report_shape(dict(v,optimizer_updates=1),partial=True),'PTR_DEVD_REPORT_SCHEMA')
+        reject(lambda:ptr_red_dev_d_report_shape(dict(v,decision='DEV_PASS'),partial=True),'PTR_DEVD_REPORT_SCHEMA')
+    run_case('report_shape',report_case)
+    no=dict(promotion_authorized=False,holdout_authorized=False,further_training_authorized=False)
+    d=dict(status='READER_COMPLETE',report_sha256='a'*64,ledger={},decision=dict(no,decision='DEV_PASS'),**no)
+    run_case('decision_link',lambda:ptr_red_dev_d_decision_link(d,'a'*64))
+    run_case('decision_wrong_hash',lambda:reject(lambda:ptr_red_dev_d_decision_link(d,'b'*64),'PTR_DEVD_DECISION_LINK'))
+    checks={k:True for k in ('official','nominal','stand_double','survival','recovery5','forward_double',
+        'no_r12_case_loss','no_moving_loss','matched_hard','r12_hard','matched_windows','incremental_nonlower',
+        'incremental_gain')}
+    def verdict(c,ceiling,expected):
+        h4m12_req(ptr_red_dev_d_disposition(c,ceiling)==expected,'PTR_DEVD_SCIENTIFIC')
+    run_case('scientific_gain',lambda:verdict(checks,False,'DEV_PASS'))
+    run_case('scientific_ceiling',lambda:verdict(dict(checks,incremental_gain=False),True,'INCONCLUSIVE'))
+    run_case('scientific_safety_precedence',lambda:verdict(dict(checks,matched_hard=False),True,'NO_GO'))
+    run_case('scientific_r12_loss',lambda:verdict(dict(checks,no_r12_case_loss=False),False,'NO_GO'))
+    run_case('scientific_moving_loss',lambda:verdict(dict(checks,no_moving_loss=False),False,'NO_GO'))
+    run_case('scientific_missing_windows',lambda:verdict(dict(checks,matched_windows=False),False,'INCONCLUSIVE'))
+    def projection_case():
+        accepted={k:'a'*40 for k in ('source_head','authorization_head','closure_head')}
+        accepted.update({k:'b'*64 for k in ('source_sha256','manifest_sha256','provenance_sha256','report_sha256',
+            'terminal_sha256','outer_log_sha256','outer_receipt_sha256')})
+        accepted['files']={k:'c'*64 for k in ('attempt.json','report.json','worker.log','supervisor.terminal.json')}
+        h,r,l=ptr_red_dev_d_release_projection(raw,launch,accepted)
+        h4m12_req(ptr_red_dev_d_replace(h,ptr_red_dev_d_accept_line(accepted),PTR_RED_DEV_D_ACCEPT_LINE)==raw
+            and r==ptr_red_dev_d_replace(h,PTR_RED_DEV_D_AUTH_LINE,b'')
+            and l==ptr_red_dev_d_replace(launch,PTR_RED_DEV_D_SHELL_LINE,b''),'PTR_DEVD_RELEASE_INVERSE')
+    run_case('release_projection',projection_case)
+    run_case('no_native_import',h4m3_no_runtime_imports)
+    return inputs
+
+def ptr_red_dev_d_static_main():
+    import shutil,contextlib
+    root=H4_EVAL_ROOT;a,pins=ptr_red_dev_d_static_auth(root)
+    out=root/PTR_RED_DEV_D_STATIC_OUT
+    h4m12_req(out.parent.is_dir() and not out.parent.is_symlink() and
+        shutil.disk_usage(out.parent).free>=2*1024**3+64*1024**2,'PTR_DEVD_STATIC_DISK')
+    out.mkdir(exist_ok=False)
+    head=ptr_red_dev_c_git(root,'rev-parse','HEAD').decode().strip()
+    attempt=dict(authorization=a,authorization_head=head,parent_pid=os.getpid())
+    h4m6_write_bounded(out/'attempt.json',attempt,exclusive=True)
+    rows=[];inputs=None;error=None
+    try:
+        # Static-only bounded subprocesses are used in actual historical replay.
+        with (out/'worker.log').open('x',encoding='utf8') as f,contextlib.redirect_stdout(f),contextlib.redirect_stderr(f):
+            inputs=ptr_red_dev_d_cases(root,a,pins,rows)
+        h4m12_req(len(rows)==len(PTR_RED_DEV_D_FIXTURES),'PTR_DEVD_STATIC_COMPLETENESS')
+        h4m12_req((out/'worker.log').stat().st_size<=PTR_RED_DEV_C_LOG_CAP,'PTR_DEVD_STATIC_LOG')
+    except BaseException as exc:error=repr(exc)[:2048]
+    report=dict(status='FOCUSED_HOST_STATIC_PASS' if error is None else 'STOP',authorization=a,
+        authorization_head=head,source_files=pins,manifest_sha256=ptr_red_dev_d_manifest(),
+        fixtures=rows,provenance_sha256=ptr_red_dev_d_provenance(inputs) if inputs is not None else None,
+        zero_native_execution=True,zero_optimizer_updates=True,zero_resets=True,promotion_authorized=False)
+    if error is not None:report['error']=error
+    h4m6_write_bounded(out/'report.json',report,exclusive=True)
+    files={p.name:sha256(p) for p in out.iterdir() if p.is_file() and not p.is_symlink()}
+    h4m6_write_bounded(out/'supervisor.terminal.json',dict(status=report['status'],authorization=a,
+        authorization_head=head,producer_rc=int(error is not None),files=files,promotion_authorized=False),exclusive=True)
+    if error is not None:raise RuntimeError(error)
+    print('PTR_DEVD_FOCUSED_HOST_STATIC_PASS',sha256(out/'report.json'),flush=True)
+
+def ptr_red_dev_d_accepted(root,a):
+    # Future release path; not reachable from held runtime authorization.
+    import m463_push_ppo_train as t
+    accepted=PTR_RED_DEV_C_ACCEPTANCE
+    ptr_red_dev_d_accept_line(accepted)
+    out=root/PTR_RED_DEV_D_STATIC_OUT
+    h4m12_req(out.is_dir() and not out.is_symlink() and
+        {p.name for p in out.iterdir()}==set(accepted['files']),'PTR_DEVD_ACCEPT_INVENTORY')
+    for n,h in accepted['files'].items():ptr_red_dev_pin(root,PTR_RED_DEV_D_STATIC_OUT/n,h)
+    for n,h in (('report.json',accepted['report_sha256']),('supervisor.terminal.json',accepted['terminal_sha256'])):
+        h4m12_req(accepted['files'][n]==h,'PTR_DEVD_ACCEPT_FILE_LINK')
+    r=json.loads((out/'report.json').read_bytes());term=json.loads((out/'supervisor.terminal.json').read_bytes())
+    sa=r['authorization'];head=accepted['authorization_head']
+    h4m12_req(r['status']=='FOCUSED_HOST_STATIC_PASS' and r['authorization_head']==head and
+        sa['source_head']==accepted['source_head'] and sa['source_sha256']==accepted['source_sha256'] and
+        r['manifest_sha256']==accepted['manifest_sha256']==ptr_red_dev_d_manifest() and
+        r['provenance_sha256']==accepted['provenance_sha256']==a['provenance_sha256'] and
+        r['fixtures']==[dict(id=k,status='PASS') for k in PTR_RED_DEV_D_FIXTURES] and
+        all(r[k] is True for k in ('zero_native_execution','zero_optimizer_updates','zero_resets')) and
+        r['promotion_authorized'] is False and a['static_sha256']==accepted['report_sha256'],'PTR_DEVD_ACCEPT_REPORT')
+    h4m12_req(term==dict(status=r['status'],authorization=sa,authorization_head=head,producer_rc=0,
+        files={k:v for k,v in accepted['files'].items() if k!='supervisor.terminal.json'},
+        promotion_authorized=False),'PTR_DEVD_ACCEPT_TERMINAL')
+    outer=ptr_red_dev_pin(root,str(PTR_RED_DEV_D_STATIC_OUT)+'_outer.log',accepted['outer_log_sha256'])
+    receipt=ptr_red_dev_pin(root,str(PTR_RED_DEV_D_STATIC_OUT)+'_outer.receipt.json',accepted['outer_receipt_sha256'])
+    h4m12_req(0<outer.stat().st_size<=PTR_RED_DEV_C_LOG_CAP and json.loads(receipt.read_bytes())==
+        dict(status='CAPTURE_COMPLETE',authorization_head=head,outer_rc=0,tee_rc=0,
+            stored_log_bytes=outer.stat().st_size,outer_log_sha256=accepted['outer_log_sha256'],
+            promotion_authorized=False),'PTR_DEVD_ACCEPT_OUTER')
+    lines=outer.read_bytes().splitlines()
+    inv=[f"ARTIFACT_BYTES {(out/n).stat().st_size} {h} {PTR_RED_DEV_D_STATIC_OUT/n}".encode()
+        for n,h in accepted['files'].items()]
+    h4m12_req(sorted(x for x in lines if x.startswith(b'ARTIFACT_BYTES '))==sorted(inv)
+        and lines.count(('PTR_DEVD_FOCUSED_HOST_STATIC_PASS '+accepted['report_sha256']).encode())==1,
+        'PTR_DEVD_ACCEPT_OUTER_LINK')
+    t.ptr_r10b_closed_marker(root,accepted['source_head'],head,accepted['closure_head'],PTR_RED_DEV_D_STATIC_MARKER,sa)
+    git=lambda *v:ptr_red_dev_c_git(root,*v)
+    old=git('show',accepted['source_head']+':m463_gate3_cp_eval.py')
+    old_l=git('show',accepted['source_head']+':'+PTR_RED_DEV_C_LAUNCHER)
+    held,released,shell=ptr_red_dev_d_release_projection(old,old_l,accepted)
+    h4m12_req(git('show',a['source_head']+':m463_gate3_cp_eval.py')==released and
+        git('show',a['source_head']+':'+PTR_RED_DEV_C_LAUNCHER)==shell,'PTR_DEVD_ACCEPT_RELEASE')
+    for n in t.PTR_SOURCE_NAMES:
+        if n!='m463_gate3_cp_eval.py':h4m12_req(git('show',a['source_head']+':'+n)==
+            git('show',accepted['source_head']+':'+n),'PTR_DEVD_ACCEPT_FROZEN_'+n)
+
+# H4M29_R29D_RED_MATCHED_DEV_STATIC_END
