@@ -649,3 +649,7 @@ Owner approved at 1f47bfec902a4e8d057c232d14b7a644e6af9e95; R20 FOCUSED_HOST_STA
 
 ## H4-M29-R23 — 2026-11-28 ICT
 Governance v2.0.1 unchanged. Accepted R22 technical/combined exposure, closed consumed marker via root-only commit27d84403f9d141c4bba97cba16b870aa211e7f4c; frozen CTRL artifacts and exact remote source. Appended distinct held CAND core in trainer-only commit791776d839eab32476f0a58dc960e2fe929b568f; no old CTRL code edits, no thresholds changed, no runtime wiring release, no project execution. Staged partial integration; next separate held wiring. A ACTIVE/B HOLD.
+
+
+## H4-M29-R24 — 2026-11-28 ICT
+Governance v2.0.1 unchanged. Added distinct RED CAND held runtime wiring in source commit2ba11c315e4659ac8ea57c90765c0fa5499c6725; exact historical inverse and new launcher, no CTRL-only guard weakening, no scientific or budget change. Two unconditional HOLDs, focused acceptance None, zero active GO, no project execution. A ACTIVE/B HOLD.
