@@ -994,3 +994,7 @@ Source bdc06fa3d4b7e5aaae3eaf27c3f72b69b38074e3 plus exact focused-to-release pr
 
 ## H4-M29-R19A — focused RED harness HELD
 Trainer-only commits 613dcc92bcc42c7c7769caf6fb9cb58f8aa744c9, 20d7b05d929f20bba51882abef2591cbe2f4673f; aggregate 63038002682b365c1fe6d8c631c48e1265b91a8db39456d848b8772d85178562, ordered13-case manifest 986524b94939b92662819013502ae860f72d3d0d962d44ff6c906855d97a254d. Constructor reject-before-native-import fixed; exact receipt replay implemented. 0/13 project fixtures executed, runtime HOLD/zero GO. See ACTIVE_EXPERIMENT R19A for exact identities, limits, next distinct Owner host-static authorization. Branch A ACTIVE/B HOLD.
+
+
+## H4-M29-R19B — distinct one-use RED focused static authorization
+Owner explicit GO accepted at 3ca622bdf59c7c43fae615c13eafa2b87a05e675; 9/9 remote source rehash, exact 13-case manifest and launcher pins, closed root prior to issue. Source unchanged. This docs record precedes separate root-only H4PTR_RED_CTRL_STATIC_GO authorization; only 13 host-static fixtures, one invocation, no native/PPO/retry/holdout/promotion. See ACTIVE_EXPERIMENT R19B for exact scope, outer capture and receipt requirements. Actual fixtures 0/13 before Owner invocation. A ACTIVE/B HOLD.
