@@ -16918,18 +16918,20 @@ root=Path.cwd().resolve(); role=sys.argv[1]
 sys.path.insert(0,str(root))
 import m463_gate3_cp_eval as e
 import m463_push_ppo_train as t
-assert Path(e.__file__).resolve()==root/'m463_gate3_cp_eval.py'
-assert Path(t.__file__).resolve()==root/'m463_push_ppo_train.py'
+def require(ok):
+    if not ok:raise RuntimeError('PTR_DEVC_HISTORICAL_REPLAY_CHECK')
+require(Path(e.__file__).resolve()==root/'m463_gate3_cp_eval.py')
+require(Path(t.__file__).resolve()==root/'m463_push_ppo_train.py')
 e.h4m3_no_runtime_imports()
 if role=='red':
     out=root/t.PTR_R23_CAND_OUT
     pin='28652df72ee1374b19bea54954677818b1176792010df5ecf65e9f0a947951e3'
     auth=json.loads((out/'report.json').read_bytes())['authorization']
     r=t.ptr_r24_cand_read_final(root,pin,auth,require_terminal=True)
-    assert r['ptr_exposure']['decision']=='EXPOSURE_PASS'
+    require(r['ptr_exposure']['decision']=='EXPOSURE_PASS')
     # The unchanged CAND reader already invokes unchanged CTRL evidence.
     c=t.ptr_r24_cand_control_evidence(root)
-    assert c['ptr_exposure']['decision']=='EXPOSURE_PASS' and c['parent']==r['parent']
+    require(c['ptr_exposure']['decision']=='EXPOSURE_PASS' and c['parent']==r['parent'])
     result={'cand':pin,'ctrl':t.PTR_R23_CTRL_PINS['report.json'],'parent':auth['parent_sha256']}
 elif role=='r12':
     p=root/e.H4R12_DEV_OUTPUT
@@ -16938,7 +16940,7 @@ elif role=='r12':
     r=e.h4m12_read_eval_final(root,pin,auth,red='r12')
     pins,archive,ext=e.h4m12_inputs(root,red='r12')
     m=e.h4red_eval_secondary(root,archive)
-    assert r['decision']['decision']=='NO_PROMOTE'
+    require(r['decision']['decision']=='NO_PROMOTE')
     result={'r12':pin,'official':e.H4CC_ARCHIVE_SHA,
         'm12':e.H4RED_EVAL_M12_PINS['report.json'],'pins':pins,'external':ext}
 else:
@@ -16965,7 +16967,8 @@ def ptr_red_dev_c_replay(root,role):
         h4m12_req(not re.findall(rb'(?m)^[A-Z0-9_]+_GO:.*$',(work/'G1_RESEARCH_RULES.md').read_bytes()),
             'PTR_DEVC_HISTORY_MARKER')
     check()
-    env=dict(os.environ);env['PYTHONDONTWRITEBYTECODE']='1'
+    env=dict(os.environ);env['PYTHONDONTWRITEBYTECODE']='1';env['GIT_OPTIONAL_LOCKS']='0'
+    env.pop('PYTHONOPTIMIZE',None)
     paths=[p for p in env.get('PYTHONPATH','').split(os.pathsep) if p and Path(p).resolve()!=root]
     env['PYTHONPATH']=os.pathsep.join([str(work),*paths])
     output=subprocess.check_output([sys.executable,'-B','-c',PTR_RED_DEV_C_REPLAY_CHILD,role],
@@ -17092,7 +17095,9 @@ def ptr_red_dev_c_marker(root):
     git=lambda *v:ptr_red_dev_c_git(root,*v)
     before=git('show','HEAD^:G1_RESEARCH_RULES.md')
     line=prefix+json.dumps(a,sort_keys=True,separators=(',',':'),allow_nan=False).encode()+b'\n'
-    h4m12_req(git('rev-parse','HEAD^').decode().strip()==a['source_head']
+    h4m12_req(hashlib.sha1(b'blob '+str(len(before)).encode()+b'\0'+before).hexdigest()==
+        'e09c35a82f06a97fe5406ba36bb3fd9664913583' and
+        git('rev-parse','HEAD^').decode().strip()==a['source_head']
         and git('diff','--name-only','HEAD^','HEAD').splitlines()==[b'G1_RESEARCH_RULES.md']
         and raw==before+line and not re.findall(rb'(?m)^[A-Z0-9_]+_GO:.*$',before)
         and not git('status','--porcelain','--untracked-files=no'),'PTR_DEVC_ROOT_CHILD')
@@ -17167,6 +17172,8 @@ def ptr_red_dev_c_read(root,a,*,partial):
     h4m3_no_runtime_imports()
     out=root/PTR_RED_DEV_C_OUT;path=out/'report.json'
     h4m12_req(out.is_dir() and not out.is_symlink(),'PTR_DEVC_READ_PATH')
+    h4m12_req((out/'attempt.json').is_file() and not (out/'attempt.json').is_symlink(),
+        'PTR_DEVC_ATTEMPT_PATH')
     att=json.loads((out/'attempt.json').read_bytes())
     h4m12_req(set(att)=={'authorization','parent_pid'} and att['authorization']==a and
         type(att['parent_pid']) is int and att['parent_pid']>0,'PTR_DEVC_ATTEMPT')
@@ -17181,6 +17188,8 @@ def ptr_red_dev_c_read(root,a,*,partial):
         'physical_transitions_recorded','logical_trajectories_completed','reset_lanes_attempted','reset_lanes_recorded'}
     h4m12_req(all(s[k]==initial[k] for k in fixed) and s['provenance_sha256']==a['provenance_sha256'],
         'PTR_DEVC_REPORT_BIND')
+    h4m12_req((out/'dispatch.started.json').is_file() and not (out/'dispatch.started.json').is_symlink(),
+        'PTR_DEVC_DISPATCH_PATH')
     dispatch=json.loads((out/'dispatch.started.json').read_bytes())
     h4m12_req(set(dispatch)=={'authorization','pid'} and dispatch['authorization']==a and
         type(dispatch['pid']) is int and dispatch['pid']>0 and dispatch['pid']!=att['parent_pid'],'PTR_DEVC_DISPATCH')
@@ -17196,7 +17205,10 @@ def ptr_red_dev_c_read(root,a,*,partial):
                     if rows:
                         ar=np.asarray(rows);h4m12_req(ar.shape==(len(rows),len(H4M3_COLUMNS))
                             and ar.dtype.kind in 'fiu' and np.isfinite(ar).all(),'PTR_DEVC_PARTIAL_ROWS')
-    if partial:return dict(status='STOP_PARTIAL',ledger=ledger,report_sha256=sha256(path),promotion_authorized=False)
+    if partial:
+        h4m12_req(s['status'] in ('RUNNING','STOP','RAW_COMPLETE'),'PTR_DEVC_PARTIAL_STATUS')
+        return dict(status='STOP_PARTIAL',ledger=ledger,report_sha256=sha256(path),
+            raw_complete_unaccepted=s['status']=='RAW_COMPLETE',promotion_authorized=False)
     h4m12_req(s['status']=='RAW_COMPLETE' and ledger==s['ledger'] and s['jax_version']=='0.4.35',
         'PTR_DEVC_RAW_COMPLETE')
     gpu=s['gpu'];h4m12_req(gpu['total_mib']==12288 and 0<gpu['peak_used_mib']<.95*12288
@@ -17256,12 +17268,22 @@ def ptr_red_dev_c_main(argv):
         shutil.disk_usage(out.parent).free>=2*1024**3+512*1024**2,'PTR_DEVC_PREFLIGHT')
     out.mkdir(exist_ok=False)
     h4m6_write_bounded(out/'attempt.json',dict(authorization=a,parent_pid=os.getpid()),exclusive=True)
+    import signal
+    def interrupted(signum,frame):
+        raise RuntimeError('PTR_DEVC_SUPERVISOR_SIGNAL_'+str(signum))
+    signal.signal(signal.SIGTERM,interrupted);signal.signal(signal.SIGINT,interrupted)
     rc=rr=None
     try:
         rc=ptr_red_dev_c_child(root,'worker',out/'worker.log')
         h4m12_req(rc==0,'PTR_DEVC_PRODUCER')
         rr=ptr_red_dev_c_child(root,'reader',out/'reader.log')
-        h4m12_req(rr==0 and (out/'decision.json').is_file(),'PTR_DEVC_READER')
+        h4m12_req(rr==0 and (out/'decision.json').is_file() and not (out/'decision.json').is_symlink()
+            and (out/'reader.log').read_bytes().splitlines().count(b'PTR_DEVC_READER_COMPLETE')==1,
+            'PTR_DEVC_READER')
+        accepted=json.loads((out/'decision.json').read_bytes())
+        h4m12_req(accepted['status']=='READER_COMPLETE' and accepted['report_sha256']==sha256(out/'report.json')
+            and accepted['promotion_authorized'] is False and accepted['holdout_authorized'] is False
+            and accepted['further_training_authorized'] is False,'PTR_DEVC_READER_LINK')
         expected={'attempt.json','dispatch.started.json','report.json','worker.log','reader.log','decision.json'}
         h4m12_req({p.name for p in out.iterdir()}==expected and
             all(p.is_file() and not p.is_symlink() for p in out.iterdir()) and
