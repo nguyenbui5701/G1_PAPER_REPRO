@@ -13825,6 +13825,8 @@ def ptr_generated_guard(audit,generated_file,environment,resume,arm,abort_fn,chu
     """Guarded generated entry contract, independently bound to reservation."""
     root=Path(__file__).resolve().parent;auth=ptr_authorization_held(root,arm)
     out=root/ptr_spec(arm)['output']
+    ptr_r4_reservation(root,out,auth,require_worker=True)
+    ptr_r4b_check_binding(environment,audit,abort_fn,chunk_fn,auth)
     from m463_coverage_env import PTRHeldCoverageJoystick
     h4m12_require(type(environment) is PTRHeldCoverageJoystick and
         getattr(environment,'_PTRHeldCoverageJoystick__ptr_arm',None)==arm and
@@ -13836,7 +13838,6 @@ def ptr_generated_guard(audit,generated_file,environment,resume,arm,abort_fn,chu
         Path(resume).resolve()==root/PTR_PARENT/PTR_FULL,'PTR_GENERATED_BINDING')
     h4x_file_pin(Path(generated_file),auth['generated_sha256'])
     h4x_file_pin(Path(resume),PTR_PARENT_PINS[PTR_FULL])
-    ptr_r4_reservation(root,out,auth,require_worker=True)
     report=ssrpc_read_json(out/'report.json',H4X_SPEC['other_cap'])
     h4m12_require(report['status']=='RUNNING' and report['authorization']==auth and report['operational_rows']==[] and
         report['artifacts']=={} and report['budget']==H4M12Budget().snapshot(),'PTR_R4_PRE_DISPATCH_REPORT')
@@ -13844,7 +13845,6 @@ def ptr_generated_guard(audit,generated_file,environment,resume,arm,abort_fn,chu
     h4m12_require(report['parent']==ptr_parent_evidence(root) and not report['report_history'] and
         all(not report[k] for k in ('h4_chunks','h4_epochs','r12_chunks','ptr_chunks')),'PTR_R4B_INITIAL_REPORT')
     ptr_require_control(root,auth)
-    ptr_r4b_check_binding(environment,audit,abort_fn,chunk_fn,auth)
     h4x_write_json(out/'dispatch.started.json',ptr_r4b_dispatch_receipt(ptr_attempt_read(out,auth),
         ssrpc_read_json(out/'worker.started.json',65536)),exclusive=True)
 
@@ -14425,7 +14425,8 @@ def ptr_static_worker(root,args,auth,head,out):
     ssrpc_static_write(out/'report.json',r)
 
 def ptr_static_cli_held(argv):
-    # R2D: no fixture before exact distinct static marker, branch and source pins.
+    raise RuntimeError('PTR_STATIC_V2_CLOSED')
+    # Historical R2D implementation retained only for exact source reconstruction.
     import subprocess,selectors,signal
     p=argparse.ArgumentParser(description='R12 PTR one-use host-static verification')
     p.add_argument('--checkpoint',type=Path,required=True)
@@ -14517,6 +14518,10 @@ def ptr_r4b_reverse(name,raw):
             ("    h4m12_require(jax.tree_util.tree_structure(ts)==jax.tree_util.tree_structure(template['training_state']),\n                  'PTR_TRAIN_TEMPLATE')","    h4m12_require(jax.tree_util.tree_structure(payload)==jax.tree_util.tree_structure(template) and\n        jax.tree_util.tree_structure(ts)==jax.tree_util.tree_structure(template['training_state']),\n                  'PTR_TRAIN_TEMPLATE')\n    ptr_typed_leaves(np,jax.device_get(jax.tree_util.tree_leaves(payload)),\n        jax.device_get(jax.tree_util.tree_leaves(template)))"),
             ("        h4m12_require(out.is_dir() and not out.is_symlink() and not out.parent.is_symlink(),'PTR_R4_STATIC_PATH')\n        for name,sha in PTR_R4_STATIC_ARTIFACTS.items():h4x_file_pin(out/name,sha)","        h4m12_require(out.is_dir() and not out.is_symlink() and not out.parent.is_symlink(),'PTR_R4_STATIC_PATH')\n        ptr_r4b_static_pins(out)"),
             ("if __name__=='__main__' and sys.argv[1:2]==['--h4ptr-full-static']:\n    ptr_static_cli_held(sys.argv[2:])","if __name__=='__main__' and sys.argv[1:2]==['--h4ptr-full-static']:\n    if sys.argv[2:3]==['--delta-r4b']:\n        ptr_r4b_delta_cli(sys.argv[3:])\n    else:\n        ptr_static_cli_held(sys.argv[2:])"),
+            ("def ptr_static_cli_held(argv):\n    # R2D: no fixture before exact distinct static marker, branch and source pins.","def ptr_static_cli_held(argv):\n    raise RuntimeError('PTR_STATIC_V2_CLOSED')\n    # Historical R2D implementation retained only for exact source reconstruction."),
+            ("    out=root/ptr_spec(arm)['output']\n    from m463_coverage_env import PTRHeldCoverageJoystick\n    h4m12_require(type(environment) is PTRHeldCoverageJoystick","    out=root/ptr_spec(arm)['output']\n    ptr_r4_reservation(root,out,auth,require_worker=True)\n    ptr_r4b_check_binding(environment,audit,abort_fn,chunk_fn,auth)\n    from m463_coverage_env import PTRHeldCoverageJoystick\n    h4m12_require(type(environment) is PTRHeldCoverageJoystick"),
+            ("    h4x_file_pin(Path(resume),PTR_PARENT_PINS[PTR_FULL])\n    ptr_r4_reservation(root,out,auth,require_worker=True)\n    report=ssrpc_read_json(out/'report.json',H4X_SPEC['other_cap'])","    h4x_file_pin(Path(resume),PTR_PARENT_PINS[PTR_FULL])\n    report=ssrpc_read_json(out/'report.json',H4X_SPEC['other_cap'])"),
+            ("    ptr_require_control(root,auth)\n    ptr_r4b_check_binding(environment,audit,abort_fn,chunk_fn,auth)\n    h4x_write_json(out/'dispatch.started.json',ptr_r4b_dispatch_receipt","    ptr_require_control(root,auth)\n    h4x_write_json(out/'dispatch.started.json',ptr_r4b_dispatch_receipt"),
         )
         expected='3c276c3b4f994ac53394f52ef96711ecd76fc7d5'
     elif name=='m463_coverage_env.py':
@@ -14602,7 +14607,7 @@ PTR_R4B_CASES=(
     'compile_changed_modules','exact_r4_and_v2_projection','reject_projection_drift','reject_projection_anchor',
     'historical_six_receipts','reject_static_hash','reject_static_missing','reject_static_tamper',
     'historical_generated_identity','delta_marker_exact','reject_extra_marker','reject_noncanonical_marker',
-    'reject_delta_as_runtime_marker','runtime_schema_ctrl','runtime_schema_cand','reject_runtime_missing_delta',
+    'reject_delta_as_runtime_marker','reject_direct_generated_under_delta','reject_legacy_static_cli','runtime_schema_ctrl','runtime_schema_cand','reject_runtime_missing_delta',
     'reject_runtime_cand_no_ctrl','reject_candidate_missing_control','reject_candidate_mismatched_control','reject_wrong_delta_binding',
     'runtime_source_lineage','reject_unrelated_lineage','unused_namespace','reject_consumed_namespace',
     'reject_symlink_namespace','worker_reservation','reject_worker_pid','reject_worker_bootstrap',
@@ -14740,6 +14745,8 @@ def ptr_r4b_delta_fixtures(root,a,head,sr):
     reject('reject_extra_marker',lambda:ptr_r4b_marker_bytes(prior,current+b'OTHER_GO: {}\n',a),'PTR_R4B_DELTA_MARKER')
     reject('reject_noncanonical_marker',lambda:ptr_r4b_marker_bytes(prior,prior+b'H4PTR_DELTA_GO: '+json.dumps(a).encode()+b'\n',a),'PTR_R4B_DELTA_MARKER')
     reject('reject_delta_as_runtime_marker',lambda:ptr_authorization_held(root,'ctrl'),'PTR_ROOT_EXACT_ADDITION')
+    reject('reject_direct_generated_under_delta',lambda:ptr_generated_guard(None,None,None,None,'ctrl',None,None),'PTR_ROOT_EXACT_ADDITION')
+    reject('reject_legacy_static_cli',lambda:ptr_static_cli_held([]),'PTR_STATIC_V2_CLOSED')
     ctrl=dict(id=ptr_spec('ctrl')['id'],arm='ctrl',output=ptr_spec('ctrl')['output'],source_head=a['source_head'],
         source_sha256=a['source_sha256'],generated_sha256=sr['generated_sha256']['ctrl'],
         static_sha256=PTR_R4_STATIC_ARTIFACTS['report.json'],static_terminal_sha256=PTR_R4_STATIC_ARTIFACTS['supervisor.terminal.json'],
@@ -14797,7 +14804,8 @@ def ptr_r4b_delta_fixtures(root,a,head,sr):
             ssrpc_static_write(out/'dispatch.started.json',dict(d,pid=-1))
             reject('reject_duplicate_dispatch',lambda:ptr_r4_reservation(t,out,ctrl,require_worker=True),'PTR_R4_DISPATCH_USED')
             reject('reject_dispatch_receipt_mismatch',lambda:ptr_receipt_stages(out,ctrl),'PTR_STAGE_DISPATCH')
-    with patch.dict(sys.modules,{'m463_push_ppo_train':sys.modules[__name__]}):
+    with patch.dict(sys.modules):
+        sys.modules.pop('m463_push_ppo_train',None)
         ptr_r4b_bind_module()
         ok('worker_module_identity',sys.modules['m463_push_ppo_train'] is sys.modules[__name__])
     with patch.dict(sys.modules,{'m463_push_ppo_train':object()}):
@@ -14821,7 +14829,7 @@ def ptr_r4b_delta_fixtures(root,a,head,sr):
     ok('generated_restore_order')
     ok('delta_report_schema',ptr_r4b_check_delta_report(root,dr,sr)==dr)
     reject('reject_delta_fixture_order',lambda:ptr_r4b_check_delta_report(root,dict(dr,fixtures=list(reversed(dr['fixtures']))),sr),'PTR_R4B_DELTA_REPORT')
-    reject('reject_delta_missing_report',lambda:ptr_r4b_read_delta(root,sr=sr),'PTR_R4B_DELTA_REPORT_PATH')
+    reject('reject_delta_missing_report',lambda:ptr_validate_auth_evidence(root,ctrl),'PTR_R4B_DELTA_REPORT_PATH')
     with tempfile.TemporaryDirectory(prefix='ptr-r4b-missing-terminal-') as tmp:
         t=Path(tmp);out=t/PTR_R4B_DELTA;out.mkdir(parents=True)
         (out/'report.json').write_bytes(b'fixture')
@@ -14848,12 +14856,13 @@ def ptr_r4b_delta_cli(argv):
     h4m12_require(Path.cwd().resolve()==root and ssrpc_static_no_native(),'PTR_R4B_DELTA_WORKDIR')
     a,head=ptr_r4b_delta_authorization(root);out=root/PTR_R4B_DELTA
     _,_,bootstrap=ptr_static_preflight(root,args)
-    sr=ptr_read_static(root,PTR_R4_STATIC_ARTIFACTS['report.json'],require_terminal=True,historical=True)
+    ptr_r4b_static_pins(root/PTR_STATIC)
     if args.worker:
         ptr_r4b_output_path(out)
         h4m12_require(ssrpc_read_json(out/'attempt.json',65536)==dict(authorization=a,delta_head=head,parent_pid=os.getppid()) and
             os.environ.get('PTR_DELTA_BOOTSTRAP_SHA256')==bootstrap,'PTR_R4B_DELTA_RESERVED')
         ssrpc_static_write(out/'worker.started.json',dict(authorization=a,pid=os.getpid(),parent_pid=os.getppid()))
+        sr=ptr_read_static(root,PTR_R4_STATIC_ARTIFACTS['report.json'],require_terminal=True,historical=True)
         ptr_r4b_delta_fixtures(root,a,head,sr)
         h4m12_require(ptr_r4b_delta_authorization(root)==(a,head) and ssrpc_bootstrap_identity(root)==bootstrap and
             ssrpc_static_no_native(),'PTR_R4B_DELTA_FINAL')
@@ -14881,6 +14890,7 @@ def ptr_r4b_delta_cli(argv):
         h4m12_require(rc==0 and ptr_r4b_delta_authorization(root)==(a,head) and ssrpc_static_no_native() and
             ssrpc_bootstrap_identity(root)==bootstrap,'PTR_R4B_DELTA_PRODUCER')
         h4x_storage(out)
+        sr=ptr_read_static(root,PTR_R4_STATIC_ARTIFACTS['report.json'],require_terminal=True,historical=True)
         sha=digest(out/'report.json')
         ptr_r4b_check_delta_report(root,ssrpc_read_json(out/'report.json',H4X_SPEC['other_cap']),sr)
         ssrpc_static_write(out/'attempt_result.json',dict(status='COMPLETE',authorization=a,report_sha256=sha,producer_rc=0))
