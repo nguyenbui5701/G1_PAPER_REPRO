@@ -2667,8 +2667,10 @@ def make_ssrpc_integrated_source(raw,arm):
 PTR_CARRY=('active','age','side','kind','motion')
 PTR_INTS=tuple(p+k for p in ('before_','after_') for k in PTR_CARRY)+(
     'open','close','close_reason','scored','coherent','pre_live','pre_step',
-    'support_pre','bad')
-PTR_FLOATS=('gx','gy','gz','tilt','risk','base','desired','delivered','delta','total_delta')
+    'support_pre','after_step','bad')
+PTR_COMMANDS=('pre_native','pre_actor','pre_critic','post_native','post_actor','post_critic')
+PTR_WITNESS=tuple(k+'_'+str(j) for k in PTR_COMMANDS for j in range(3))
+PTR_FLOATS=('gx','gy','gz','tilt','risk','base','desired','delivered','delta','total_delta')+PTR_WITNESS
 PTR_FIELDS=tuple('ptr_'+k for k in PTR_INTS+PTR_FLOATS)
 
 def ptr_batch_contract(xp,reward,discount,extras,before,after,arm):
@@ -2731,6 +2733,44 @@ def ptr_batch_contract(xp,reward,discount,extras,before,after,arm):
     bad=bad|~exact(x('desired'),desired)|~exact(x('delivered'),expected)|~exact(reward,expected)
     bad=bad|~exact(x('delta'),(reward-x('base')).astype(f))|~exact(
         x('total_delta'),(reward-z('r12_native')).astype(f))|(x('delta')>0)|(x('total_delta')>0)
+    bad=bad|(x('support_pre')!=z('m463_support_side'))
+    return bad
+
+def ptr_actual_batch_contract(xp,data,before,after,before_done,after_done,arm):
+    """Independent actual Transition observation and cross-row clock/done evidence."""
+    shape=(8192,32);f=xp.float32;i=xp.int32
+    extras=data.extras['state_extras'];x=lambda k:extras['ptr_'+k];z=lambda k:extras[k]
+    bad=ptr_batch_contract(xp,data.reward,data.discount,extras,before,after,arm)
+    command=xp.asarray([[0.,0.,0.],[.2,0.,0.],[.6,0.,0.],[.4,0.,.8],
+                        [.4,0.,-.8],[0.,.35,0.]],f)
+    vec=lambda k:xp.stack([x(k+'_'+str(j)) for j in range(3)],axis=-1)
+    pn,pa,pc,nn,na,nc=(vec(k) for k in PTR_COMMANDS)
+    motion=z('h4_motion');terminal=z('r12_terminal')==1;refresh=z('h4_refresh')==1
+    changed=xp.any(pn!=nn,axis=-1)
+    coherent=xp.all(pa==pn,axis=-1)&xp.all(pc==pn,axis=-1)&xp.all(nn==pn,axis=-1)&(
+        xp.all(na==pn,axis=-1))&xp.all(nc==pn,axis=-1)&xp.all(command[xp.clip(motion,0,5)]==pn,axis=-1)&(
+        z('h4_actor_motion')==motion)&~refresh&~changed&(x('pre_step')<500)
+    bad=bad|(coherent!=(x('coherent')==1))|(changed!=(z('h4_changed')==1))
+    for obs,witness,post in ((data.observation['state'],pa,False),
+        (data.observation['privileged_state'],pc,False),
+        (data.next_observation['state'],na,True),
+        (data.next_observation['privileged_state'],nc,True)):
+        if obs.ndim!=3 or obs.shape[:2]!=shape or obs.shape[2]<12 or obs.dtype!=f:
+            raise RuntimeError('PTR_ACTUAL_OBS_SCHEMA')
+        mismatch=xp.any(obs[:,:,9:12]!=witness,axis=-1)
+        bad=bad|(mismatch&~terminal if post else mismatch)
+    # Exact source-clock progression from historical FFE checker. No new reset.
+    clock=x('pre_step');nxt=x('after_step')
+    for q in (before['step'],after['step']):
+        if q.shape!=(8192,) or q.dtype!=i:raise RuntimeError('PTR_SOURCE_CLOCK_SCHEMA')
+    prev=xp.concatenate((before['step'][:,None],nxt[:,:-1]),axis=1)
+    bad=bad|(clock!=prev)|(clock<0)|(clock>500)|(
+        nxt!=xp.where(terminal|refresh,0,clock+1))|(nxt[:,-1:]!=after['step'][:,None])
+    for q in (before_done,after_done):
+        if q.shape!=(8192,) or q.dtype!=f:raise RuntimeError('PTR_DONE_SCHEMA')
+    prior=xp.concatenate((before_done[:,None],1-data.discount[:,:-1]),axis=1)
+    bad=bad|((prior!=0)&(prior!=1))|((prior==0)!=(x('pre_live')==1))|(
+        (1-data.discount[:,-1:])!=after_done[:,None])
     return bad
 
 def ptr_reduce(xp,reward,extras,bad,valid):
@@ -2747,7 +2787,12 @@ def ptr_reduce(xp,reward,extras,bad,valid):
         consumed_total_delta=xp.where(valid,xp.sum(reward-extras['r12_native']),0.),
         native_sum=xp.sum(extras['r12_native']),intermediate_sum=xp.sum(x('base')),
         delivered_sum=xp.sum(reward),desired_sum=xp.sum(x('desired')),
-        scored_risk_sum=xp.sum(xp.where(scored,x('risk'),0.)))
+        scored_risk_sum=xp.sum(xp.where(scored,x('risk'),0.)),
+        native_abs_sum=xp.sum(xp.abs(extras['r12_native'])),
+        intermediate_abs_sum=xp.sum(xp.abs(x('base'))),
+        delivered_abs_sum=xp.sum(xp.abs(reward)),
+        desired_base_abs_sum=xp.sum(xp.where(x('desired')<0,xp.abs(x('base')),0.)))
+    for kind in (1,2):out[f'open_kind_{kind}']=count(op&(x('after_kind')==kind))
     for motion in range(6):
         for kind in (1,2):
             m=(x('before_motion')==motion)&(x('before_kind')==kind)
@@ -2775,9 +2820,14 @@ def make_r12_ptr_held_source(raw,arm):
     guard="    r12_bad=r12_batch_contract(jnp,data.reward,data.discount,r12_extra,r12_before,state.info)\n"
     reduction="    coverage.update(r12_reduce(jnp,data.reward,r12_extra,r12_bad,r12_valid))\n"
     patches=((fmt(fields),fmt(fields+PTR_FIELDS)),
-        (capture,capture+"    ptr_before={k:state.info[k] for k in ('ptr_active','ptr_age','ptr_side','ptr_kind','ptr_motion')}\n"),
-        (guard,"    from m463_instrument_brax import ptr_batch_contract,ptr_reduce\n"
-         "    r12_bad=ptr_batch_contract(jnp,data.reward,data.discount,r12_extra,{**r12_before,**ptr_before},state.info,"+repr(arm)+")\n"),
+        ("      if k.startswith('r12_'):\n","      if k.startswith(('r12_','ptr_')):\n"),
+        ('m470_resume_expected_steps != 10485760','m470_resume_expected_steps != 15728640'),
+        ('total_steps != 15728640','total_steps != 20971520'),
+        ("_m470_sha(m470_raw).hexdigest() != '9b19312da08d71513ad8fa6638c632401bec20e09399fdf4a9f6f6e2b2619c80'", "_m470_sha(m470_raw).hexdigest() != 'b8540c6ab1b282d8605910515af4dc86065beb69417b28752f49178ba617ab1e'"),
+        (capture,capture+"    ptr_before={k:state.info[k] for k in ('ptr_active','ptr_age','ptr_side','ptr_kind','ptr_motion','step')}\n"
+         "    ptr_before_done=state.done\n"),
+        (guard,"    from m463_instrument_brax import ptr_actual_batch_contract,ptr_reduce\n"
+         "    r12_bad=ptr_actual_batch_contract(jnp,data,{**r12_before,**ptr_before},state.info,ptr_before_done,state.done,"+repr(arm)+")\n"),
         (reduction,"    coverage.update(r12_reduce(jnp,r12_extra['ptr_base'],r12_extra,r12_bad,r12_valid))\n"
          "    coverage.update(ptr_reduce(jnp,data.reward,r12_extra,r12_bad,r12_valid))\n"))
     s=base
@@ -2789,4 +2839,97 @@ def make_r12_ptr_held_source(raw,arm):
     if back!=base or s.count("  raise RuntimeError('R12_GENERATED_EXECUTION_HOLD')\n")!=1:
         raise RuntimeError('PTR_GENERATOR_PROJECTION_OR_HOLD')
     return s,original
+
+# PTR host ledger. Historical R12 functions and receipt schemas stay unchanged.
+PTR_SUMS=('consumed_ptr_delta','consumed_dcr_delta','consumed_total_delta','native_sum',
+          'intermediate_sum','delivered_sum','desired_sum','scored_risk_sum',
+          'native_abs_sum','intermediate_abs_sum','delivered_abs_sum','desired_base_abs_sum')
+PTR_COUNTS=('collected','batch_committed','batch_rejected','bad_rows','open','close','scored',
+            'nonzero_desired','nonzero_consumed','nominal_nonzero','open_kind_1','open_kind_2')+tuple(
+    f'{p}_motion_{m}_kind_{k}' for p in ('consumed','scored') for m in range(6) for k in (1,2))+tuple(
+    f'consumed_side_{j}' for j in range(1,7))+tuple(f'scored_pre_support_{j}' for j in range(4))+tuple(
+    f'close_reason_{j}' for j in range(1,8))+tuple(f'tail_{k}_{a}' for k in (1,2) for a in (1,10,25,50,100))
+
+def ptr_check_chunk(c,before,after,arm,dcr,broad):
+    import math
+    def req(ok,label):
+        if not ok:raise RuntimeError('PTR_CHUNK_'+label)
+    req(arm in ('ctrl','cand') and set(c)==set(PTR_COUNTS+PTR_SUMS),'SCHEMA')
+    for k,v in c.items():
+        req(type(v) in (int,float) and math.isfinite(v),'FINITE_'+k)
+        if k in PTR_COUNTS:req(0<=v<=1310720 and int(v)==v,'COUNT_'+k)
+    req(c['collected']==c['batch_committed']==5 and c['batch_rejected']==c['bad_rows']==0,'BATCH')
+    req(type(before) is int and type(after) is int and 0<=before<=8192 and 0<=after<=8192 and
+        before+c['open']-c['close']==after,'PENDING')
+    req(c['open']==c['open_kind_1']+c['open_kind_2'] and c['close']==sum(c[f'close_reason_{j}'] for j in range(1,8)),'EVENT_PARTITION')
+    req(c['close_reason_4']==c['close_reason_6']==c['nominal_nonzero']==0,'FORBIDDEN')
+    req(c['open_kind_1']<=broad['m463_h4_first_events_per_rollout'] and
+        c['open_kind_2']<=broad['m463_h4_repeat_events_per_rollout'],'ACTUAL_EVENTS')
+    req(c['nonzero_consumed']<=c['nonzero_desired']<=c['scored']<=100*(before+c['open']),'DOSE')
+    for p,key in (('consumed','nonzero_consumed'),('scored','scored')):
+        req(sum(c[f'{p}_motion_{m}_kind_{k}'] for m in range(6) for k in (1,2))==c[key],'MOTION_'+p)
+    for m in range(6):
+        for k in (1,2):
+            req(c[f'consumed_motion_{m}_kind_{k}']<=c[f'scored_motion_{m}_kind_{k}'],'JOINT_CELL')
+    req(sum(c[f'consumed_side_{j}'] for j in range(1,7))==c['nonzero_consumed'] and
+        sum(c[f'scored_pre_support_{j}'] for j in range(4))==c['scored'],'SIDE_SUPPORT')
+    for k in (1,2):
+        tails=[c[f'tail_{k}_{a}'] for a in (1,10,25,50,100)]
+        req(all(x<=sum(c[f'scored_motion_{m}_kind_{k}'] for m in range(6)) for x in tails),'TAIL_BOUND')
+        # A later age may enter from a prior chunk; only full-run monotonicity is required.
+    p,d,total=(c[k] for k in ('consumed_ptr_delta','consumed_dcr_delta','consumed_total_delta'))
+    n,b,a=(c[k] for k in ('native_sum','intermediate_sum','delivered_sum'))
+    na,ba,aa,da=(c[k] for k in ('native_abs_sum','intermediate_abs_sum','delivered_abs_sum','desired_base_abs_sum'))
+    wanted=c['desired_sum']
+    req(min(na,ba,aa,da)>=0 and max(p,d,total,wanted)<=0 and 0<=c['scored_risk_sum']<=c['scored']*(1+1e-6),'SIGNS')
+    req(all(abs(v)<=s+1e-5*max(1.,s) for v,s in ((n,na),(b,ba),(a,aa))) and da<=ba+1e-5*max(1.,ba),'ABS')
+    req(-wanted<=.0008*c['nonzero_desired']*(1+1e-6),'DESIRED_BOUND')
+    req((p==0)==(c['nonzero_consumed']==0) and (wanted==0)==(c['nonzero_desired']==0),'ZERO')
+    req(abs(p-wanted)<=2e-6*(da+abs(wanted)+1),'DELIVERED_ROUNDING')
+    # Direct total delta need not equal the sum of two rounded float32 deltas bit-for-bit.
+    req(abs(total-d-p)<=5e-6*(na+ba+aa+abs(total)+1) and
+        abs(b-n-d)<=5e-6*(na+ba+abs(d)+1) and abs(a-b-p)<=5e-6*(ba+aa+abs(p)+1) and
+        abs(a-n-total)<=5e-6*(na+aa+abs(total)+1),'COMPOSED_CONSERVATION')
+    for key,expected in (('native_sum',dcr['native_sum']),('intermediate_sum',dcr['consumed_reward']),
+                         ('consumed_dcr_delta',dcr['consumed_delta'])):
+        req(abs(c[key]-expected)<=1e-5*max(1.,abs(c[key]),abs(expected)),'DCR_'+key)
+    if arm=='ctrl':
+        req(c['nonzero_desired']==c['nonzero_consumed']==0 and wanted==p==0 and
+            b==a and ba==aa and d==total,'CTRL_IDENTITY')
+    return True
+
+def ptr_exposure_replay(rows,dcr_rows,broad_rows,arm,nominal,host_reset,*,complete):
+    """Replay only committed chunks; incomplete prefixes never imply PASS."""
+    if arm not in ('ctrl','cand') or len(rows)>4 or len(rows)!=len(dcr_rows) or len(rows)!=len(broad_rows):
+        raise RuntimeError('PTR_REPLAY_LENGTH')
+    pending=0;totals={k:0 for k in PTR_COUNTS+PTR_SUMS};halves=[0,0]
+    for j,(row,dr,br) in enumerate(zip(rows,dcr_rows,broad_rows),1):
+        if set(row)!={'index','before','after','metrics','passed'} or row['index']!=j or row['before']!=pending or row['passed'] is not True or dr['passed'] is not True or br['passed'] is not True:
+            raise RuntimeError('PTR_REPLAY_ROW')
+        ptr_check_chunk(row['metrics'],pending,row['after'],arm,dr['metrics'],br['counts'])
+        pending=row['after']
+        for k,v in row['metrics'].items():totals[k]+=v
+        halves[(j-1)//2]+=row['metrics']['nonzero_consumed']
+    if totals['open']-totals['close']!=pending:
+        raise RuntimeError('PTR_REPLAY_PENDING')
+    if not complete:
+        if host_reset is not None:raise RuntimeError('PTR_PARTIAL_RESET')
+        return dict(decision='INCOMPLETE',totals=totals,halves=halves,pending=pending)
+    if len(rows)!=4 or host_reset!=[0,0,pending] or totals['collected']!=20:
+        raise RuntimeError('PTR_REPLAY_COMPLETE')
+    for k in (1,2):
+        tails=[totals[f'tail_{k}_{a}'] for a in (1,10,25,50,100)]
+        if any(a<b for a,b in zip([totals[f'open_kind_{k}']]+tails,tails)):
+            raise RuntimeError('PTR_REPLAY_TAIL')
+    checks={'nominal':type(nominal) is int and 916743<=nominal<=5242880}
+    broad={f'm463_h4_broad_motion_{m}_per_rollout':sum(row['counts'][f'm463_h4_broad_motion_{m}_per_rollout'] for row in broad_rows) for m in range(1,6)}
+    for m,floor in enumerate((1271,1286,1360,1309,1368),1):
+        checks[f'broad_motion_{m}']=broad[f'm463_h4_broad_motion_{m}_per_rollout']>=floor
+    if arm=='cand':
+        checks.update(total=totals['nonzero_consumed']>=10000,first_half=halves[0]>=1000,second_half=halves[1]>=1000)
+        checks.update({f'motion_{m}_kind_{k}':totals[f'consumed_motion_{m}_kind_{k}']>0 for m in range(6) for k in (1,2)})
+        checks.update({f'direction_{j}':totals[f'consumed_side_{j}']>0 for j in range(1,7)})
+    else:checks['ptr_off']=totals['nonzero_consumed']==0
+    return dict(decision='EXPOSURE_PASS' if all(checks.values()) else 'EXPOSURE_INCONCLUSIVE',
+        checks=checks,totals=totals,halves=halves,pending=pending,broad=broad)
 # H4M29_PTR_HELD_INSTRUMENT_END

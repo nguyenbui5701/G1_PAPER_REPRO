@@ -1975,8 +1975,10 @@ class SSRPCCoverageJoystick(CoverageJoystick):
 PTR_CARRY=('active','age','side','kind','motion')
 PTR_INTS=tuple(p+k for p in ('before_','after_') for k in PTR_CARRY)+(
     'open','close','close_reason','scored','coherent','pre_live','pre_step',
-    'support_pre','bad')
-PTR_FLOATS=('gx','gy','gz','tilt','risk','base','desired','delivered','delta','total_delta')
+    'support_pre','after_step','bad')
+PTR_COMMANDS=('pre_native','pre_actor','pre_critic','post_native','post_actor','post_critic')
+PTR_WITNESS=tuple(k+'_'+str(j) for k in PTR_COMMANDS for j in range(3))
+PTR_FLOATS=('gx','gy','gz','tilt','risk','base','desired','delivered','delta','total_delta')+PTR_WITNESS
 PTR_FIELDS=tuple('ptr_'+k for k in PTR_INTS+PTR_FLOATS)
 
 def ptr_init(xp):
@@ -2061,7 +2063,8 @@ class PTRHeldCoverageJoystick(CoverageJoystick):
         old={k:state.info[k] for k in ptr_init(jp)}
         pre=state.info['command'];clock=state.info['step']
         pre_live=state.done==0
-        pre_equal=jp.all(state.obs['state'][9:12]==pre)&jp.all(state.obs['privileged_state'][9:12]==pre)
+        actor=state.obs['state'][9:12];critic=state.obs['privileged_state'][9:12]
+        pre_equal=jp.all(actor==pre)&jp.all(critic==pre)
         after=super().step(state,action)
         out=dict(after.info)
         motion=out['h4_motion']
@@ -2076,6 +2079,12 @@ class PTRHeldCoverageJoystick(CoverageJoystick):
             boundary=out['h4_boundary']==1,coherent=coherent,pre_live=pre_live,
             pre_step=clock,terminal=after.done>0,timeout=out['r12_timeout']==1,
             nominal=out['m463_no_push']==1,support_pre=out['m463_support_side'])
+        witnesses=(pre,actor,critic,out['command'],after.obs['state'][9:12],after.obs['privileged_state'][9:12])
+        for name,vec in zip(PTR_COMMANDS,witnesses):
+            if vec.shape!=(3,) or vec.dtype!=jp.float32:
+                raise RuntimeError('PTR_COMMAND_WITNESS_SCHEMA')
+            for j in range(3):extra['ptr_'+name+'_'+str(j)]=vec[j]
+        extra['ptr_after_step']=jp.asarray(out['step'],jp.int32)
         out.update(extra)
         return after.replace(info=out,reward=reward)
 # H4M29_PTR_HELD_ENV_END

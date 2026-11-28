@@ -12869,4 +12869,117 @@ def ptr_verify_typed_payload(jax,np,optax,serialization,template,payload,root):
 
 def ptr_execution_hold(*args,**kwargs):
     raise RuntimeError('H4M29_PTR_PARENT_ADMISSION_AND_RUNTIME_HOLD')
+
+def ptr_project_state(state,jax,np,*,reset=False):
+    from m463_coverage_env import ptr_init
+    info=dict(state.info);schema=ptr_init(np)
+    h4m12_require({k for k in info if k.startswith('ptr_')}==set(schema),'PTR_INFO_KEYS')
+    for k,v in schema.items():
+        x=info.pop(k)
+        h4m12_require(x.shape==(1,8192)+v.shape and np.dtype(x.dtype)==v.dtype,'PTR_INFO_LEAF_'+k)
+        if reset:
+            x=np.asarray(jax.device_get(x))
+            h4m12_require(np.isfinite(x).all() and np.all(x==0),'PTR_RESET_'+k)
+    projected=h4r12_project_state(state.replace(info=info),jax,np,reset=reset)
+    h4m12_require(h4x_tree_schema(jax,np,projected)==PTR_ENV_SCHEMA,'PTR_ENV_SCHEMA')
+    return projected
+
+def ptr_counters(ts,jax,np,optax,chunk,*,replicated):
+    h4m12_require(type(chunk) is int and 0<=chunk<=4,'PTR_COUNTER_CHUNK')
+    a=[v for v in jax.tree_util.tree_leaves(ts.optimizer_state,
+        is_leaf=lambda x:isinstance(x,optax.ScaleByAdamState)) if isinstance(v,optax.ScaleByAdamState)]
+    h4m12_require(len(a)==1,'PTR_ADAM_LAYOUT')
+    step,adam,norm=(np.asarray(jax.device_get(v)) for v in (ts.env_steps,a[0].count,ts.normalizer_params.count))
+    shape=(1,) if replicated else ()
+    h4m12_require(step.shape==adam.shape==norm.shape==shape and step.dtype.kind in 'iu' and
+        adam.dtype.kind in 'iu' and norm.dtype==np.float32 and step.item()==15728640+chunk*1310720 and
+        adam.item()==2400+chunk*200 and norm.item()==h4x_normalizer_expected(np,416808960,'float32',chunk*5).item(),'PTR_COUNTERS')
+    schema=h4x_tree_schema(jax,np,ts)
+    if replicated:h4m12_require(schema==PTR_TRAIN_SCHEMA,'PTR_REPLICATED_TRAIN_SCHEMA')
+    return dict(steps=int(step.item()),adam=int(adam.item()),normalizer=norm.item(),training_schema=schema)
+
+def ptr_reset_model_check(jax,np,model,axes):
+    h4m12_require(h4x_model_digest(jax,np,model,axes)==
+        '60a4e6999c4fbad089439fabe9de951ba063bc68db1380b46ad47cb2c2f96ebf','PTR_DR_PIN')
+
+def ptr_pending(state,jax,np):
+    from m463_coverage_env import PTR_CARRY
+    arrays={k:np.asarray(jax.device_get(state.info['ptr_'+k])) for k in PTR_CARRY}
+    h4m12_require(all(v.shape==(1,8192) and v.dtype==np.int32 for v in arrays.values()),'PTR_PENDING_SCHEMA')
+    a=arrays['active'];on=a==1
+    h4m12_require(np.isin(a,(0,1)).all(),'PTR_PENDING_ACTIVE')
+    for k,lo,hi in (('age',0,99),('side',1,6),('kind',1,2),('motion',0,5)):
+        v=arrays[k]
+        h4m12_require(np.where(on,(v>=lo)&(v<=hi),v==0).all(),'PTR_PENDING_'+k)
+    return int(np.count_nonzero(on))
+
+def ptr_chunk_guard(callback,r,persist,jax,np,arm):
+    """Compose after unchanged legacy + DCR ledgers; only accepted chunks counted."""
+    from m463_instrument_brax import ptr_check_chunk
+    r['ptr_chunks']=[]
+    def checked(index,state,env_state,metrics):
+        rows=r['ptr_chunks']
+        h4m12_require(index==len(rows)+1 and index<=4,'PTR_CHUNK_INDEX')
+        c={}
+        for k,v in metrics.items():
+            if k.startswith('ptr_'):
+                a=np.asarray(jax.device_get(v))
+                h4m12_require(a.shape==() and np.isfinite(a),'PTR_METRIC_SCHEMA')
+                c[k[4:]]=float(a)
+        before=rows[-1]['after'] if rows else 0
+        after=ptr_pending(env_state,jax,np)
+        row=dict(index=index,before=before,after=after,metrics=c,passed=False)
+        rows.append(row);persist()
+        callback(index,state,env_state,metrics)
+        h4m12_require(len(r['r12_chunks'])==len(r['h4_chunks'])==index,'PTR_LEGACY_CHUNK')
+        dr,br=r['r12_chunks'][-1],r['h4_chunks'][-1]
+        h4m12_require(dr['passed'] is True and br['passed'] is True,'PTR_LEGACY_COMMIT')
+        ptr_check_chunk(c,before,after,arm,dr['metrics'],br['counts'])
+        row['passed']=True;persist()
+    return checked
+
+def ptr_complete_exposure(r,arm):
+    """New endpoint replay. Historical reader must not be given a relabelled report."""
+    import math
+    from m463_instrument_brax import r12_exposure_replay,ptr_exposure_replay,R12_SUMS,PTR_SUMS
+    h4m12_require(len(r['h4_chunks'])==len(r['r12_chunks'])==len(r['ptr_chunks'])==4 and
+        len(r['h4_epochs'])==len(r['report_history'])==1,'PTR_COMPLETE_LENGTH')
+    counts={}
+    for j,row in enumerate(r['h4_chunks'],1):
+        h4m12_require(row['chunk']==j and row['steps']==j*1310720 and row['passed'] is True,'PTR_BROAD_ROW')
+        g=row['gpu'];h4m12_require(g['total_mib']==12288 and 0<g['peak_used_mib']<.95*12288 and not g['sampler_errors'],'PTR_BROAD_GPU')
+        for k,v in row['counts'].items():
+            h4m12_require(type(v) is int and 0<=v<=1310720,'PTR_BROAD_COUNT')
+            counts[k]=counts.get(k,0)+v
+        h4m12_require(sum(row['counts'][f'm463_h4_class_{j}_steps_per_rollout'] for j in range(4))==1310720 and
+            row['counts']['m463_h4_bad_per_rollout']==0,'PTR_BROAD_PARTITION')
+    ep=r['h4_epochs'][0];legacy=h4_legacy_audit(r['report_history'])
+    h4m12_require(r['report_history'][0]['additional_steps']==20971520 and ep['counts']==counts and
+        ep['audit']==h4_epoch_audit(counts,ep['pending_at_reset'],'control') and ep['audit']['passed'] and legacy['passed'] and
+        abs(legacy['push_events_observed']-counts['m463_h4_first_events_per_rollout']-counts['m463_h4_repeat_events_per_rollout'])<.1,'PTR_LEGACY_REPLAY')
+    nominal=counts['m463_h4_class_0_steps_per_rollout']
+    dcr=r12_exposure_replay(r['r12_chunks'],nominal)
+    for row,br in zip(r['r12_chunks'],r['h4_chunks']):
+        m=row['metrics'];c=br['counts']
+        h4m12_require(m['open_kind_1']<=c['m463_h4_first_events_per_rollout'] and
+            m['open_kind_2']<=c['m463_h4_repeat_events_per_rollout'],'PTR_DCR_ACTUAL')
+    resets=[x for x in r['operational_rows'] if x['event'].endswith('reset_after')]
+    h4m12_require(len(resets)==3 and [x['r12_host_reset_closed'] for x in resets]==[0,0,dcr['pending_at_host_reset']],'PTR_DCR_RESET')
+    ptr=ptr_exposure_replay(r['ptr_chunks'],r['r12_chunks'],r['h4_chunks'],arm,nominal,
+        [x['ptr_host_reset_closed'] for x in resets],complete=True)
+    hist=r['report_history'][0]['metrics']
+    h4m12_require(hist['training/r12_chunk_failed']==0,'PTR_EPOCH_FAILED')
+    for prefix,result,sums in (('r12_',dcr,R12_SUMS),('ptr_',ptr,PTR_SUMS)):
+        for k,v in result['totals'].items():
+            z=hist['training/'+prefix+k]*4
+            h4m12_require(math.isfinite(z) and (abs(z-v)<=1e-5*max(1.,abs(z),abs(v)) if k in sums else z==v),'PTR_EPOCH_'+prefix+k)
+    return dict(decision='EXPOSURE_PASS' if dcr['decision']==ptr['decision']=='EXPOSURE_PASS' else 'EXPOSURE_INCONCLUSIVE',
+        dcr=dcr,ptr=ptr,broad=counts,legacy=legacy)
+
+def ptr_checkpoint_meta(auth,full_sha,policy_sha):
+    return dict(format=ptr_spec(auth['arm'])['id'],authorization=auth,ptr_arm=auth['arm'],
+        cumulative_steps=20971520,adam_count=3200,normalizer_count=422051840,
+        fullstate_sha256=full_sha,policy_sha256=policy_sha,parent_resume_sha256=PTR_PARENT_PINS[PTR_FULL],
+        reset_edge=True,optimizer_state_included=True,training_rng_included=True,evaluator_rng_included=True,
+        h4_arm='control',h4_resume_forbidden=True,promotion_authorized=False)
 # H4M29_PTR_HELD_TRAINER_END
