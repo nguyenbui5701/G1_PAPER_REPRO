@@ -12988,15 +12988,153 @@ def ptr_checkpoint_meta(auth,full_sha,policy_sha):
 PTR_NEW_FULL='m470_fullstate_step_020971520.msgpack'
 PTR_NEW_POLICY='m463_easy_repeat_support_longtrain_step_020971520.msgpack'
 
-def ptr_authorization_held(root,arm):
-    # Future reviewed one-use marker must bind exact source/generated/static
-    # receipts, branch/HEAD, parent and matched CTRL evidence. Not issued here.
+# Prospective receipt schema, not an issued static/runtime authorization.
+PTR_STATIC=Path('m463_runs/m470_h4_m29_ptr_static_v1')
+PTR_AUTH_KEYS={'id','arm','output','source_head','source_sha256','generated_sha256',
+               'static_sha256','static_terminal_sha256','ctrl_report_sha256','ctrl_terminal_sha256'}
+PTR_SOURCE_NAMES=tuple(PTR_BASE_BLOBS)+('m463_gate3_cp_eval.py','train.py','paper_config.py')
+
+def ptr_auth_schema(auth):
+    import re
+    h4m12_require(type(auth) is dict and set(auth)==PTR_AUTH_KEYS and
+        all(type(v) is str for v in auth.values()),'PTR_AUTH_KEYS')
+    arm=auth['arm'];spec=ptr_spec(arm)
+    h4m12_require(auth['id']==spec['id'] and auth['output']==spec['output'] and
+        re.fullmatch('[0-9a-f]{40}',auth['source_head']) is not None,'PTR_AUTH_ID')
+    for k in ('source_sha256','generated_sha256','static_sha256','static_terminal_sha256'):
+        h4m12_require(re.fullmatch('[0-9a-f]{64}',auth[k]) is not None,'PTR_AUTH_HASH_'+k)
+    for k in ('ctrl_report_sha256','ctrl_terminal_sha256'):
+        h4m12_require(auth[k]=='' if arm=='ctrl' else re.fullmatch('[0-9a-f]{64}',auth[k]) is not None,'PTR_CTRL_BIND_'+k)
+    return auth
+
+def ptr_validate_auth_evidence(root,auth):
+    """Read-only prospective source/static binding; no attempt or execution."""
+    import subprocess
+    root=Path(root).resolve();ptr_auth_schema(auth);ptr_project_sources(root)
+    h4m12_require(not any((H4_EXECUTION_AUTHORIZED,H4R_EXECUTION_AUTHORIZED,
+        H4C_EXECUTION_AUTHORIZED,H4CC_EXECUTION_AUTHORIZED,H4M8_EXECUTION_AUTHORIZED)),'PTR_LEGACY_HOLD')
+    git=lambda *args:subprocess.check_output(['git',*args],cwd=root)
+    for name in PTR_SOURCE_NAMES:
+        p=root/name
+        h4m12_require(p.is_file() and not p.is_symlink() and p.read_bytes()==git('show',auth['source_head']+':'+name)==git('show','HEAD:'+name),'PTR_SOURCE_PIN_'+name)
+    h4m12_require(h4x_source_digest(root)==auth['source_sha256'],'PTR_SOURCE_DIGEST')
+    out=root/PTR_STATIC
+    h4x_file_pin(out/'report.json',auth['static_sha256'])
+    h4x_file_pin(out/'supervisor.terminal.json',auth['static_terminal_sha256'])
+    sr=ssrpc_read_json(out/'report.json',H4X_SPEC['other_cap'])
+    terminal=ssrpc_read_json(out/'supervisor.terminal.json',65536)
+    h4m12_require(sr['status']=='FULL_HOST_STATIC_PASS' and sr['source_head']==auth['source_head'] and
+        sr['source_sha256']==auth['source_sha256'] and sr['generated_sha256'][auth['arm']]==auth['generated_sha256'] and
+        sr['parent_pins']==PTR_PARENT_PINS and sr['zero_native_execution'] is True and
+        sr['zero_optimizer_updates'] is True and sr['promotion_authorized'] is False and
+        terminal['status']=='COMPLETE' and terminal['report_sha256']==auth['static_sha256'] and
+        terminal['producer_rc']==terminal['reader_rc']==0,'PTR_STATIC_BINDING')
+    # A dedicated static fixture manifest and strict static receipt reader
+    # must be frozen before any authorization can be issued.
     ptr_execution_hold()
 
-def ptr_bootstrap_held(a):
-    # Historical bootstrap performs exact raw-source projection. It cannot
-    # be reused unmodified against PTR suffixes. Do not bypass it.
-    ptr_execution_hold()
+def ptr_authorization_held(root,arm):
+    """Prospective root-only one-use parser; no marker has been issued."""
+    import re,subprocess
+    root=Path(root).resolve();git=lambda *args:subprocess.check_output(['git',*args],cwd=root)
+    h4m12_require(git('symbolic-ref','--short','HEAD').strip()==b'experiment/b1-hardware-scaled' and
+        not git('status','--porcelain','--untracked-files=no'),'PTR_TRACKED_STATE')
+    h4m12_require(len(git('rev-list','--parents','-n','1','HEAD').split())==2 and
+        git('diff','--name-only','HEAD^','HEAD').splitlines()==[b'G1_RESEARCH_RULES.md'],'PTR_ROOT_ONLY')
+    prior=git('show','HEAD^:G1_RESEARCH_RULES.md')
+    h4m12_require(hashlib.sha1(b'blob '+str(len(prior)).encode()+b'\0'+prior).hexdigest()==
+        'e09c35a82f06a97fe5406ba36bb3fd9664913583','PTR_CLOSED_ROOT')
+    current=(root/'G1_RESEARCH_RULES.md').read_bytes()
+    h4m12_require(current==git('show','HEAD:G1_RESEARCH_RULES.md'),'PTR_ROOT_BYTES')
+    markers=re.findall(rb'(?m)^[A-Z0-9_]+_GO:.*$',current)
+    h4m12_require(len(markers)==1 and markers[0].startswith(b'H4PTR_ACTIVE_GO: ') and
+        current.replace(markers[0]+b'\n',b'',1)==prior,'PTR_ROOT_EXACT_ADDITION')
+    raw=markers[0][len(b'H4PTR_ACTIVE_GO: '):]
+    auth=json.loads(raw)
+    h4m12_require(raw==json.dumps(auth,sort_keys=True,separators=(',',':'),allow_nan=False).encode(),'PTR_CANONICAL_MARKER')
+    ptr_auth_schema(auth);h4m12_require(auth['arm']==arm,'PTR_AUTH_ARM')
+    ptr_validate_auth_evidence(root,auth)
+    return auth
+
+def ptr_require_control(root,auth):
+    if auth['arm']=='ctrl':return
+    root=Path(root).resolve();out=root/ptr_spec('ctrl')['output']
+    h4x_file_pin(out/'report.json',auth['ctrl_report_sha256'])
+    h4x_file_pin(out/'supervisor.terminal.json',auth['ctrl_terminal_sha256'])
+    old=ssrpc_read_json(out/'attempt.json',65536)['authorization']
+    h4m12_require(old['arm']=='ctrl' and all(old[k]==auth[k] for k in (
+        'source_head','source_sha256','static_sha256','static_terminal_sha256')),'PTR_MATCHED_CONTROL')
+    report=ptr_read_final_held(root,auth['ctrl_report_sha256'],old)
+    h4m12_require(report['ptr_exposure']['decision']=='EXPOSURE_PASS' and report['parent']==ptr_parent_evidence(root),'PTR_CONTROL_EXPOSURE')
+
+def ptr_bootstrap_pins(args):
+    from importlib.machinery import PathFinder
+    root=Path(__file__).resolve().parent
+    compat=root.parent/'G1_M4_0_G1_PPO_ONE_UPDATE_SMOKE_V1'
+    paths={}
+    local_pins=dict(H4R_LOCAL_SHA)
+    ptr_project_sources(root)
+    local_pins['m463_coverage_env']=digest(root/'m463_coverage_env.py')
+    for name,expected in local_pins.items():
+        search=[str(compat),*sys.path] if name=='nvcc_compat' else sys.path
+        spec=PathFinder.find_spec(name,search)
+        h4r_require(spec is not None and spec.origin is not None,'MODULE_MISSING '+name)
+        actual=Path(spec.origin).resolve()
+        intended=(compat if name=='nvcc_compat' else root)/(name+'.py')
+        h4r_require(actual==intended.resolve() and digest(actual)==expected,'MODULE_PIN '+name)
+        paths[name]=str(actual)
+    for name,blob in (('train','b36b69a38d2ebb1a218342b3f34386d47624383e'),
+                      ('paper_config','6dc390de5eec3cd0b036b2d766c71e3164e1b17f')):
+        spec=PathFinder.find_spec(name,sys.path)
+        h4r_require(spec is not None and spec.origin is not None,'MODULE_MISSING '+name)
+        actual=Path(spec.origin).resolve()
+        raw=actual.read_bytes()
+        actual_blob=hashlib.sha1(('blob '+str(len(raw))+'\0').encode()+raw).hexdigest()
+        h4r_require(actual==root/(name+'.py') and actual_blob==blob,'MODULE_PIN '+name)
+        paths[name]=str(actual)
+    import subprocess
+    for name in ('m463_instrument_brax','m463_push_ppo_train'):
+        spec=PathFinder.find_spec(name,sys.path)
+        h4r_require(spec is not None and spec.origin is not None,'MODULE_MISSING '+name)
+        actual=Path(spec.origin).resolve()
+        h4r_require(actual==root/(name+'.py'),'MODULE_ORIGIN '+name)
+        tracked=subprocess.check_output(['git','show','HEAD:'+name+'.py'],cwd=root)
+        h4r_require(actual.read_bytes()==tracked,'TRACKED_SOURCE '+name)
+        if name=='m463_instrument_brax':
+            paths[name]=str(actual)
+    h4r_require(digest(root/'paper_config_preflight.json')==H4R_CONFIG_SHA,'PAPER_CONFIG_PIN')
+    for path,sha in ((args.checkpoint,SEED1_SHA),(args.restore_report,H3_CAUSAL_RESTORE_SHA),
+                     (args.h4_readiness_reward_report,H4R_REWARD_SHA)):
+        h4r_require(path.is_file() and not path.is_symlink() and digest(path)==sha,'INPUT_PIN '+str(path))
+    return paths
+
+def ptr_bootstrap_held(args):
+    from types import SimpleNamespace
+    proxy=SimpleNamespace(checkpoint=args.checkpoint,restore_report=args.restore_report,
+                          h4_readiness_reward_report=args.reward_report)
+    pins=ptr_bootstrap_pins(proxy)
+    # Exact launcher overlay resolution before JAX is imported.
+    from importlib import metadata
+    from importlib.machinery import PathFinder
+    root=Path(__file__).resolve().parent
+    base=root.parent
+    expected=[
+        base/'G1_M3_11E_PPO_CLOUDPICKLE_OVERLAY_V1/overlays/cloudpickle_20261107_111524_3962615',
+        base/'G1_M3_11D_PPO_GYM_ISOLATED_REPAIR_V1/overlays/wheels_20261107_111000_3952924',
+        base/'G1_M3_11C_PPO_MANIFEST_REPAIR_V1/overlays/wheels_20261107_110316_3940764',
+        base/'G1_M3_7_G1_MJX_GPU_ONE_STEP_V1/source/mujoco_playground_2025',root]
+    paths=[Path(p).resolve() for p in os.environ.get('PYTHONPATH','').split(os.pathsep)]
+    h4x_require(paths==[p.resolve() for p in expected],'LAUNCHER_PATH')
+    venv=base/'G1_M3_7_G1_MJX_GPU_ONE_STEP_V1/.venv_m37_jax0435_mjx327'
+    h4x_require(Path(sys.executable)==venv/'bin/python' and
+                Path(sys.prefix).resolve()==venv.resolve(),'LAUNCHER_PYTHON')
+    spec=PathFinder.find_spec('dm_env',sys.path)
+    origin=(expected[2]/'dm_env/__init__.py').resolve()
+    dist=metadata.distribution('dm-env')
+    h4x_require(spec is not None and spec.origin is not None and
+                Path(spec.origin).resolve()==origin and dist.version=='1.6' and
+                Path(dist.locate_file('dm_env/__init__.py')).resolve()==origin,'DM_ENV')
+    return pins
 
 def ptr_check_complete(out,r,auth):
     out=Path(out);arm=auth['arm']
@@ -13059,9 +13197,8 @@ def ptr_read_final_held(root,expected_sha,auth,*,require_terminal=True):
     ptr_check_complete(out,r,auth)
     if require_terminal:
         ssrpc_terminal_receipt(out,expected_sha,auth)
-    # Deliberate hold: exact source/static authorization and matched control
-    # receipt binding still need implementation, not just report validation.
-    ptr_execution_hold()
+    ptr_validate_auth_evidence(root,auth)
+    return r
 
 def ptr_read_partial_held(out,auth):
     out=Path(out);r=ssrpc_read_json(out/'report.json',H4X_SPEC['other_cap'])
@@ -13070,7 +13207,7 @@ def ptr_read_partial_held(out,auth):
         not (out/'supervisor.terminal.json').exists() and not (out/'supervisor.terminal.json').is_symlink(),'PTR_PARTIAL_STATUS')
     b=H4M12Budget()
     for row in r['operational_rows']:b.advance(row['event'])
-    h4m12_require(not b.complete and b.snapshot()==r['budget'],'PTR_PARTIAL_BUDGET')
+    h4m12_require(b.snapshot()==r['budget'],'PTR_PARTIAL_BUDGET')
     from m463_instrument_brax import ptr_exposure_replay,r12_check_chunk
     rows=r['ptr_chunks'];dr=r['r12_chunks'];br=r['h4_chunks']
     h4m12_require(max(len(rows),len(dr),len(br))<=4,'PTR_PARTIAL_LENGTH')
@@ -13092,9 +13229,16 @@ def ptr_read_partial_held(out,auth):
     fail=ssrpc_read_json(out/'supervisor.failed.json',65536)
     h4m12_require(result==fail and result['status']=='STOP' and result['authorization']==auth and
         type(result['stored_log_bytes']) is int and 0<=result['stored_log_bytes']<=H4M12_SPEC['external_log_reserve'],'PTR_PARTIAL_FAILURE')
-    # Partial receipts are evidence only. Until the strict provenance chain is
-    # completed, this draft deliberately does not emit a PASS receipt.
-    ptr_execution_hold()
+    root=out.parent.parent.resolve()
+    h4m12_require(out.resolve()==root/ptr_spec(auth['arm'])['output'] and r['parent']==ptr_parent_evidence(root),'PTR_PARTIAL_PARENT')
+    attempt=ssrpc_read_json(out/'attempt.json',65536);worker=ssrpc_read_json(out/'worker.started.json',65536)
+    h4m12_require(set(attempt)=={'authorization','parent_pid'} and attempt['authorization']==auth and type(attempt['parent_pid']) is int and attempt['parent_pid']>0 and set(worker)=={'authorization','pid'} and worker['authorization']==auth and type(worker['pid']) is int and worker['pid']>0,'PTR_PARTIAL_RECEIPTS')
+    for name,sha in r['artifacts'].items():
+        h4m12_require(name in (PTR_NEW_FULL,PTR_NEW_POLICY,Path(PTR_NEW_FULL).with_suffix('.json').name),'PTR_PARTIAL_ARTIFACT')
+        h4x_file_pin(out/name,sha)
+    h4x_file_pin(out/'m463_brax_ppo_instrumented.py',auth['generated_sha256'])
+    ptr_validate_auth_evidence(root,auth)
+    return dict(status='STOP_PARTIAL',budget=b.snapshot(),prefix=prefix,promotion_authorized=False)
 
 
 def ptr_worker_held(a,auth,root,out):
@@ -13105,6 +13249,7 @@ def ptr_worker_held(a,auth,root,out):
     authorize=lambda root:ptr_authorization_held(root,arm)
     parent_check=ptr_parent_evidence
     h4m12_require(authorize(root)==auth and out==root/ptr_spec(arm)['output'],'PTR_WORKER_AUTH')
+    ptr_require_control(root,auth)
     import inspect
     import importlib.util
     from m463_instrument_brax import make_h4m12_integrated_source,h4c_git_blob
@@ -13378,6 +13523,7 @@ def ptr_supervisor_held(argv):
     a=p.parse_args(argv);root=Path(__file__).resolve().parent
     h4m12_require(Path.cwd().resolve()==root,'PTR_WORKDIR')
     auth=ptr_authorization_held(root,a.arm);out=root/ptr_spec(a.arm)['output']
+    ptr_require_control(root,auth)
     if a.worker:return ptr_worker_held(a,auth,root,out)
     ptr_parent_evidence(root)
     ptr_bootstrap_held(a)
