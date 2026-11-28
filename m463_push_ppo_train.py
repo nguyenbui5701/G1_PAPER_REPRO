@@ -12868,8 +12868,11 @@ def ptr_verify_typed_payload(jax,np,optax,serialization,template,payload,root):
     independent=serialization.from_bytes(template,raw)
     h4m12_tree_equal(jax,np,payload,independent,'PTR_TYPED_PAYLOAD')
     ts=payload['training_state']
-    h4m12_require(jax.tree_util.tree_structure(ts)==jax.tree_util.tree_structure(template['training_state']),
+    h4m12_require(jax.tree_util.tree_structure(payload)==jax.tree_util.tree_structure(template) and
+        jax.tree_util.tree_structure(ts)==jax.tree_util.tree_structure(template['training_state']),
                   'PTR_TRAIN_TEMPLATE')
+    ptr_typed_leaves(np,jax.device_get(jax.tree_util.tree_leaves(payload)),
+        jax.device_get(jax.tree_util.tree_leaves(template)))
     ptr_typed_leaves(np,jax.device_get(jax.tree_util.tree_leaves(ts)),
         jax.device_get(jax.tree_util.tree_leaves(template['training_state'])))
     a=[x for x in jax.tree_util.tree_leaves(ts.optimizer_state,
@@ -13052,6 +13055,7 @@ def ptr_r4_static_projection(root,head):
         current=subprocess.check_output(['git','show','HEAD:'+name],cwd=root,timeout=30)
         historical=subprocess.check_output(['git','show',head+':'+name],cwd=root,timeout=30)
         h4m12_require(raw==current,'PTR_R4_CURRENT_BYTES_'+name)
+        raw=ptr_r4b_reverse(name,raw)
         if name=='m463_push_ppo_train.py':
             start=b'# H4M29_R4_STATIC_PROJECTION_'+b'BEGIN\n'
             stop=b'# H4M29_R4_STATIC_PROJECTION_'+b'END\n'
@@ -13097,7 +13101,7 @@ def ptr_r4_reservation(root,out,auth,*,require_worker):
 # H4M29_R4_STATIC_PROJECTION_END
 def ptr_validate_auth_evidence(root,auth):
     """Read-only historical evidence admission, not current native GO."""
-    root=Path(root).resolve();ptr_auth_schema(auth);ptr_project_sources(root)
+    root=Path(root).resolve();ptr_r4b_auth_schema(auth);ptr_project_sources(root)
     h4m12_require(not any((H4_EXECUTION_AUTHORIZED,H4R_EXECUTION_AUTHORIZED,H4C_EXECUTION_AUTHORIZED,H4CC_EXECUTION_AUTHORIZED,H4M8_EXECUTION_AUTHORIZED)),'PTR_LEGACY_HOLD')
     ptr_source_files(root,auth['source_head'])
     h4m12_require(h4x_source_digest(root)==auth['source_sha256'],'PTR_SOURCE_DIGEST')
@@ -13108,13 +13112,14 @@ def ptr_validate_auth_evidence(root,auth):
     sr=ptr_read_static(root,auth['static_sha256'],require_terminal=True,historical=True)
     h4m12_require(sr['source_head']==PTR_R4_STATIC_SOURCE_HEAD and sr['source_sha256']==PTR_R4_STATIC_SOURCE_SHA and
         sr['generated_sha256'][auth['arm']]==auth['generated_sha256'],'PTR_STATIC_BINDING')
+    ptr_r4b_read_delta(root,auth,sr=sr)
     return auth
 
 
 def ptr_runtime_marker_at(root,head,auth):
     """Historical runtime authorization identity, independent of current marker."""
     import re,subprocess
-    root=Path(root).resolve();ptr_auth_schema(auth)
+    root=Path(root).resolve();ptr_r4b_auth_schema(auth)
     h4m12_require(type(head) is str and re.fullmatch('[0-9a-f]{40}',head) is not None,'PTR_RUNTIME_HEAD')
     git=lambda *args:subprocess.check_output(['git',*args],cwd=root,timeout=30)
     h4m12_require(len(git('rev-list','--parents','-n','1',head).split())==2 and
@@ -13125,6 +13130,8 @@ def ptr_runtime_marker_at(root,head,auth):
     line=b'H4PTR_ACTIVE_GO: '+json.dumps(auth,sort_keys=True,separators=(',',':'),allow_nan=False).encode()+b'\n'
     h4m12_require(current.count(line)==1 and current.replace(line,b'',1)==prior and
         re.findall(rb'(?m)^[A-Z0-9_]+_GO:.*$',current)==[line[:-1]],'PTR_RUNTIME_MARKER_BYTES')
+    ptr_r4b_lineage(root,auth['source_head'],head+'^')
+    ptr_r4b_lineage(root,head,'HEAD')
     for name in PTR_SOURCE_NAMES:
         h4m12_require(git('show',head+':'+name)==git('show',auth['source_head']+':'+name),'PTR_RUNTIME_SOURCE_'+name)
     return True
@@ -13160,10 +13167,9 @@ def ptr_authorization_held(root,arm):
     raw=markers[0][len(b'H4PTR_ACTIVE_GO: '):]
     auth=json.loads(raw)
     h4m12_require(raw==json.dumps(auth,sort_keys=True,separators=(',',':'),allow_nan=False).encode(),'PTR_CANONICAL_MARKER')
-    ptr_auth_schema(auth);h4m12_require(auth['arm']==arm,'PTR_AUTH_ARM')
+    ptr_r4b_auth_schema(auth);h4m12_require(auth['arm']==arm,'PTR_AUTH_ARM')
     ptr_runtime_marker_at(root,ptr_head(root),auth)
     ptr_validate_auth_evidence(root,auth)
-    ptr_execution_hold()  # R2C native admission remains held.
     return auth
 
 def ptr_require_control(root,auth):
@@ -13173,7 +13179,7 @@ def ptr_require_control(root,auth):
     h4x_file_pin(out/'supervisor.terminal.json',auth['ctrl_terminal_sha256'])
     old=ssrpc_read_json(out/'attempt.json',65536)['authorization']
     h4m12_require(old['arm']=='ctrl' and all(old[k]==auth[k] for k in (
-        'source_head','source_sha256','static_sha256','static_terminal_sha256')),'PTR_MATCHED_CONTROL')
+        'source_head','source_sha256','static_sha256','static_terminal_sha256','delta_sha256','delta_terminal_sha256')),'PTR_MATCHED_CONTROL')
     report=ptr_read_final_held(root,auth['ctrl_report_sha256'],old)
     h4m12_require(report['ptr_exposure']['decision']=='EXPOSURE_PASS' and report['parent']==ptr_parent_evidence(root),'PTR_CONTROL_EXPOSURE')
 
@@ -13330,7 +13336,7 @@ def ptr_receipt_stages(out,auth):
     if w is not None:
         h4m12_require(set(w)=={'authorization','pid'} and w['authorization']==auth and
             type(w['pid']) is int and w['pid']>0 and w['pid']!=a['parent_pid'],'PTR_STAGE_WORKER')
-    if d is not None:h4m12_require(w is not None and d=={'authorization':auth},'PTR_STAGE_DISPATCH')
+    if d is not None:h4m12_require(w is not None and d==ptr_r4b_dispatch_receipt(a,w),'PTR_STAGE_DISPATCH')
     report=out/'report.json';generated=out/'m463_brax_ppo_instrumented.py';log=out/'worker.log'
     def sha(path):
         if not path.exists() and not path.is_symlink():return None
@@ -13406,12 +13412,13 @@ def ptr_check_complete(out,r,auth):
 
 def ptr_read_final_held(root,expected_sha,auth,*,require_terminal=True):
     root=Path(root).resolve();out=root/ptr_spec(auth['arm'])['output']
+    ptr_r4b_output_path(out)
     h4x_file_pin(out/'report.json',expected_sha)
     r=ssrpc_read_json(out/'report.json',H4X_SPEC['other_cap'])
     attempt=ptr_attempt_read(out,auth);worker=ssrpc_read_json(out/'worker.started.json',65536)
     h4m12_require(set(worker)=={'authorization','pid'} and worker['authorization']==auth and type(worker['pid']) is int and
         worker['pid']>0 and worker['pid']!=attempt['parent_pid'],'PTR_FINAL_RECEIPTS')
-    h4m12_require(ssrpc_read_json(out/'dispatch.started.json',65536)=={'authorization':auth} and
+    h4m12_require(ssrpc_read_json(out/'dispatch.started.json',65536)==ptr_r4b_dispatch_receipt(attempt,worker) and
         ssrpc_read_json(out/'attempt_result.json',65536)==dict(status='COMPLETE',authorization=auth,report_sha256=expected_sha,producer_rc=0),'PTR_FINAL_RECEIPT_LINK')
     h4m12_require(ptr_parent_evidence(root)==r['parent'],'PTR_FINAL_PARENT')
     ptr_check_complete(out,r,auth)
@@ -13424,14 +13431,19 @@ def ptr_read_final_held(root,expected_sha,auth,*,require_terminal=True):
 
 def ptr_read_partial_held(out,auth):
     """STOP-only evidence reader including pre-report and failed acceptance."""
-    out=Path(out);root=out.parent.parent.resolve();ptr_auth_schema(auth)
-    h4m12_require(out.resolve()==root/ptr_spec(auth['arm'])['output'],'PTR_PARTIAL_PATH')
+    out=Path(out);root=out.parent.parent.resolve();ptr_r4b_auth_schema(auth)
+    ptr_r4b_output_path(out)
+    h4m12_require(out==root/ptr_spec(auth['arm'])['output'],'PTR_PARTIAL_PATH')
     fail=ssrpc_read_json(out/'supervisor.failed.json',65536)
     if fail.get('stage')=='UNREADABLE_EVIDENCE':
         h4m12_require(set(fail)=={'status','authorization','producer_rc','error','stage','stage_error'} and
             fail['status']=='STOP' and fail['authorization']==auth and
             (fail['producer_rc'] is None or type(fail['producer_rc']) is int) and
             all(type(fail[k]) is str and 0<len(fail[k])<=2048 for k in ('error','stage_error')),'PTR_PARTIAL_FALLBACK')
+        result=ssrpc_read_json(out/'attempt_result.json',65536)
+        p=out/'report.json'
+        h4m12_require(result==fail or (p.is_file() and not p.is_symlink() and
+            result==dict(status='COMPLETE',authorization=auth,report_sha256=digest(p),producer_rc=0)),'PTR_R4B_FALLBACK_LINK')
         return dict(status='STOP_UNREADABLE_EVIDENCE',budget=None,promotion_authorized=False)
     stage=ptr_receipt_stages(out,auth)
     h4m12_require(set(fail)==set(stage)|{'status','authorization','producer_rc','error'} and
@@ -13474,8 +13486,9 @@ def ptr_read_partial_held(out,auth):
         complete_report_unaccepted=r['status']=='TECHNICAL_PASS',promotion_authorized=False)
 
 def ptr_worker_held(a,auth,root,out):
-    """Isolated R12-parent worker draft, unreachable pending full held review."""
-    ptr_execution_hold()
+    """Isolated R12-parent worker; requires a live reserved one-use attempt."""
+    h4m12_require(__name__=='__main__' and sys.argv[1:2]==['--h4ptr-continuation'] and a.worker and
+        ssrpc_static_no_native(),'PTR_R4B_WORKER_ENTRY')
     red=r11=ffe=False;r12=True
     arm=auth['arm']
     authorize=lambda root:ptr_authorization_held(root,arm)
@@ -13488,6 +13501,7 @@ def ptr_worker_held(a,auth,root,out):
     h4m12_require(ssrpc_static_no_native(),'PTR_R4_WORKER_NATIVE_IMPORT')
     ptr_r4_reservation(root,out,auth,require_worker=False)
     h4x_write_json(out/'worker.started.json',{'authorization':auth,'pid':os.getpid()},exclusive=True)
+    ptr_r4b_bind_module()
     h4ffe_mode(red,r11,r12,ffe)
     parent=parent_check(root)
     for path,sha in ((a.checkpoint,SEED1_SHA),(a.restore_report,H3_CAUSAL_RESTORE_SHA),(a.reward_report,H4R_REWARD_SHA)):
@@ -13522,6 +13536,7 @@ def ptr_worker_held(a,auth,root,out):
     train_cfg.push_config.enable=False
     h4m12_require(train_cfg.to_dict()['reward_config']==old['train_reward_config']
         ==json.loads(a.reward_report.read_bytes())['train_reward_config'],'REWARD')
+    ptr_r4b_prepare_environment(root,out,auth,train_cfg)
     env=PTRHeldCoverageJoystick(config=train_cfg,arm=arm)
     ev=api['locomotion'].load(api['env_name'],config=source_cfg)
     h4m12_require(env.action_size==29 and float(env.dt)==.02,'ENV')
@@ -13588,6 +13603,7 @@ def ptr_worker_held(a,auth,root,out):
         nonlocal restored_ts,last_reset,last_carry,model_ref,axes_ref
         nonlocal local,eval_key,env_keys,epoch_keys,next_chunk_key,policy_template
         safe()
+        ptr_r4b_audit_order(budget,event)
         n=budget.recorded['optimizer']//200
         row={}
         if event=='template_reset_before':
@@ -13617,8 +13633,9 @@ def ptr_worker_held(a,auth,root,out):
             else:
                 row.update(r12_host_reset_closed=0,ptr_host_reset_closed=0)
         elif event=='restore_payload':
-            payload=v['payload']; restored_ts=payload['training_state']
+            payload=v['payload']
             ptr_verify_typed_payload(jax,np,optax,serialization,v['template'],payload,root)
+            restored_ts=payload['training_state']
             counters(restored_ts,0,False)
             local,env_keys,eval_key=(payload[k] for k in ('local_key','key_envs','eval_key'))
             policy_template=(restored_ts.normalizer_params,restored_ts.params)
@@ -13716,6 +13733,7 @@ def ptr_worker_held(a,auth,root,out):
         r['ptr_abort']=dict(index=index,metrics={k:float(arr(v)) if np.isfinite(arr(v)) else 'NONFINITE' for k,v in metrics.items() if k.startswith(('r12_','ptr_')) or k=='h4x_finite'},complete=False)
         persist()
     cfg['r12_abort_fn']=ptr_abort
+    ptr_r4b_bind_callbacks(env,audit,ptr_abort,chunk_fn)
     persist()
     try:
         with monitor:
@@ -13743,8 +13761,7 @@ def ptr_worker_held(a,auth,root,out):
 
 
 def ptr_supervisor_held(argv):
-    """Prospective exclusive one-use supervisor; no new CLI is dispatched."""
-    ptr_execution_hold()
+    """Exclusive one-use supervisor; marker and accepted delta required."""
     import subprocess,selectors,signal
     p=argparse.ArgumentParser(description='R12 PTR isolated held continuation')
     p.add_argument('--checkpoint',type=Path,required=True)
@@ -13761,11 +13778,11 @@ def ptr_supervisor_held(argv):
     ptr_bootstrap_held(a)
     h4m12_require(ssrpc_static_no_native() and 'PTR_RUNTIME_BOOTSTRAP_SHA256' not in os.environ,'PTR_R4_SUPERVISOR_BOOTSTRAP')
     bootstrap=ssrpc_bootstrap_identity(root)
-    h4m12_require(not out.exists() and not out.is_symlink() and out.parent.is_dir() and not out.parent.is_symlink(),'PTR_OUTPUT_USED')
+    ptr_r4b_unused(out)
     h4x_storage(out,initial=True);out.mkdir(exist_ok=False)
-    h4x_write_json(out/'attempt.json',dict(authorization=auth,authorization_head=ptr_head(root),parent_pid=os.getpid()),exclusive=True)
     child=None;rc=None;total=0
     try:
+        h4x_write_json(out/'attempt.json',dict(authorization=auth,authorization_head=ptr_head(root),parent_pid=os.getpid()),exclusive=True)
         child=subprocess.Popen([sys.executable,'-B','-u',str(Path(__file__).resolve()),
             '--h4ptr-continuation',*argv,'--worker'],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,start_new_session=True,
             env=dict(os.environ,PTR_RUNTIME_BOOTSTRAP_SHA256=bootstrap))
@@ -13823,11 +13840,13 @@ def ptr_generated_guard(audit,generated_file,environment,resume,arm,abort_fn,chu
     report=ssrpc_read_json(out/'report.json',H4X_SPEC['other_cap'])
     h4m12_require(report['status']=='RUNNING' and report['authorization']==auth and report['operational_rows']==[] and
         report['artifacts']=={} and report['budget']==H4M12Budget().snapshot(),'PTR_R4_PRE_DISPATCH_REPORT')
+    ptr_report_schema(report,auth,complete=False)
+    h4m12_require(report['parent']==ptr_parent_evidence(root) and not report['report_history'] and
+        all(not report[k] for k in ('h4_chunks','h4_epochs','r12_chunks','ptr_chunks')),'PTR_R4B_INITIAL_REPORT')
     ptr_require_control(root,auth)
-    # No release in R2C. The future reviewed guard may reach the exclusive
-    # dispatch write only after native authorization and static acceptance.
-    ptr_execution_hold()
-    h4x_write_json(out/'dispatch.started.json',{'authorization':auth},exclusive=True)
+    ptr_r4b_check_binding(environment,audit,abort_fn,chunk_fn,auth)
+    h4x_write_json(out/'dispatch.started.json',ptr_r4b_dispatch_receipt(ptr_attempt_read(out,auth),
+        ssrpc_read_json(out/'worker.started.json',65536)),exclusive=True)
 
 
 # H4-M29-R2C host-only static contract. Source is not an authorization.
@@ -14364,7 +14383,7 @@ def ptr_read_static(root,expected_sha,*,require_terminal,historical=False):
     if historical:
         h4m12_require(require_terminal is True and expected_sha==PTR_R4_STATIC_ARTIFACTS['report.json'],'PTR_R4_STATIC_RECEIPT_MODE')
         h4m12_require(out.is_dir() and not out.is_symlink() and not out.parent.is_symlink(),'PTR_R4_STATIC_PATH')
-        for name,sha in PTR_R4_STATIC_ARTIFACTS.items():h4x_file_pin(out/name,sha)
+        ptr_r4b_static_pins(out)
     h4x_file_pin(out/'report.json',expected_sha)
     r=ptr_static_report_check(root,ssrpc_read_json(out/'report.json',H4X_SPEC['other_cap']),historical=historical)
     auth=r['authorization']
@@ -14461,10 +14480,136 @@ def ptr_static_cli_held(argv):
         if not (out/'attempt_result.json').exists():ssrpc_static_write(out/'attempt_result.json',failure)
         raise
 
+# H4M29_R4B_RELEASE_BEGIN
+def ptr_r4b_reverse(name,raw):
+    """Remove R4B only; R4's existing inverse projection then reconstructs V2."""
+    prefix=b''
+    if name=='m463_push_ppo_train.py':
+        scope=b'\n# H4M29_PTR_HELD_'+b'TRAINER_BEGIN\n'
+        h4m12_require(raw.count(scope)==1,'PTR_R4B_SCOPE')
+        i=raw.index(scope);prefix,raw=raw[:i],raw[i:]
+        first=b'# H4M29_R4B_RELEASE_'+b'BEGIN\n';last=b'# H4M29_R4B_RELEASE_'+b'END\n'
+        h4m12_require(raw.count(first)==raw.count(last)==1 and raw.index(first)<raw.index(last),'PTR_R4B_SENTINEL')
+        raw=raw[:raw.index(first)]+raw[raw.index(last)+len(last):]
+        edits=(
+            ("        if name=='m463_push_ppo_train.py':\n            start=b'# H4M29_R4_STATIC_PROJECTION_'","        raw=ptr_r4b_reverse(name,raw)\n        if name=='m463_push_ppo_train.py':\n            start=b'# H4M29_R4_STATIC_PROJECTION_'"),
+            ("    root=Path(root).resolve();ptr_auth_schema(auth);ptr_project_sources(root)","    root=Path(root).resolve();ptr_r4b_auth_schema(auth);ptr_project_sources(root)"),
+            ("    return auth\n\n\ndef ptr_runtime_marker_at(root,head,auth):","    ptr_r4b_read_delta(root,auth,sr=sr)\n    return auth\n\n\ndef ptr_runtime_marker_at(root,head,auth):"),
+            ("    root=Path(root).resolve();ptr_auth_schema(auth)\n    h4m12_require(type(head) is str","    root=Path(root).resolve();ptr_r4b_auth_schema(auth)\n    h4m12_require(type(head) is str"),
+            ("    for name in PTR_SOURCE_NAMES:\n        h4m12_require(git('show',head+':'+name)==git('show',auth['source_head']+':'+name),'PTR_RUNTIME_SOURCE_'+name)","    ptr_r4b_lineage(root,auth['source_head'],head+'^')\n    ptr_r4b_lineage(root,head,'HEAD')\n    for name in PTR_SOURCE_NAMES:\n        h4m12_require(git('show',head+':'+name)==git('show',auth['source_head']+':'+name),'PTR_RUNTIME_SOURCE_'+name)"),
+            ("    ptr_auth_schema(auth);h4m12_require(auth['arm']==arm,'PTR_AUTH_ARM')","    ptr_r4b_auth_schema(auth);h4m12_require(auth['arm']==arm,'PTR_AUTH_ARM')"),
+            ("    ptr_validate_auth_evidence(root,auth)\n    ptr_execution_hold()  # R2C native admission remains held.\n    return auth","    ptr_validate_auth_evidence(root,auth)\n    return auth"),
+            ("        'source_head','source_sha256','static_sha256','static_terminal_sha256')),'PTR_MATCHED_CONTROL')","        'source_head','source_sha256','static_sha256','static_terminal_sha256','delta_sha256','delta_terminal_sha256')),'PTR_MATCHED_CONTROL')"),
+            ("    if d is not None:h4m12_require(w is not None and d=={'authorization':auth},'PTR_STAGE_DISPATCH')","    if d is not None:h4m12_require(w is not None and d==ptr_r4b_dispatch_receipt(a,w),'PTR_STAGE_DISPATCH')"),
+            ("    h4x_file_pin(out/'report.json',expected_sha)\n    r=ssrpc_read_json(out/'report.json',H4X_SPEC['other_cap'])\n    attempt=ptr_attempt_read(out,auth);worker=ssrpc_read_json(out/'worker.started.json',65536)","    ptr_r4b_output_path(out)\n    h4x_file_pin(out/'report.json',expected_sha)\n    r=ssrpc_read_json(out/'report.json',H4X_SPEC['other_cap'])\n    attempt=ptr_attempt_read(out,auth);worker=ssrpc_read_json(out/'worker.started.json',65536)"),
+            ("    h4m12_require(ssrpc_read_json(out/'dispatch.started.json',65536)=={'authorization':auth} and\n        ssrpc_read_json(out/'attempt_result.json',65536)==dict(status='COMPLETE',authorization=auth,report_sha256=expected_sha,producer_rc=0),'PTR_FINAL_RECEIPT_LINK')","    h4m12_require(ssrpc_read_json(out/'dispatch.started.json',65536)==ptr_r4b_dispatch_receipt(attempt,worker) and\n        ssrpc_read_json(out/'attempt_result.json',65536)==dict(status='COMPLETE',authorization=auth,report_sha256=expected_sha,producer_rc=0),'PTR_FINAL_RECEIPT_LINK')"),
+            ("    out=Path(out);root=out.parent.parent.resolve();ptr_auth_schema(auth)\n    h4m12_require(out.resolve()==root/ptr_spec(auth['arm'])['output'],'PTR_PARTIAL_PATH')","    out=Path(out);root=out.parent.parent.resolve();ptr_r4b_auth_schema(auth)\n    ptr_r4b_output_path(out)\n    h4m12_require(out==root/ptr_spec(auth['arm'])['output'],'PTR_PARTIAL_PATH')"),
+            ("        return dict(status='STOP_UNREADABLE_EVIDENCE',budget=None,promotion_authorized=False)\n    stage=ptr_receipt_stages(out,auth)","        result=ssrpc_read_json(out/'attempt_result.json',65536)\n        p=out/'report.json'\n        h4m12_require(result==fail or (p.is_file() and not p.is_symlink() and\n            result==dict(status='COMPLETE',authorization=auth,report_sha256=digest(p),producer_rc=0)),'PTR_R4B_FALLBACK_LINK')\n        return dict(status='STOP_UNREADABLE_EVIDENCE',budget=None,promotion_authorized=False)\n    stage=ptr_receipt_stages(out,auth)"),
+            ("    \"\"\"Isolated R12-parent worker draft, unreachable pending full held review.\"\"\"\n    ptr_execution_hold()\n    red=r11=ffe=False;r12=True","    \"\"\"Isolated R12-parent worker; requires a live reserved one-use attempt.\"\"\"\n    h4m12_require(__name__=='__main__' and sys.argv[1:2]==['--h4ptr-continuation'] and a.worker and\n        ssrpc_static_no_native(),'PTR_R4B_WORKER_ENTRY')\n    red=r11=ffe=False;r12=True"),
+            ("    ptr_r4_reservation(root,out,auth,require_worker=False)\n    h4x_write_json(out/'worker.started.json',{'authorization':auth,'pid':os.getpid()},exclusive=True)\n    h4ffe_mode","    ptr_r4_reservation(root,out,auth,require_worker=False)\n    h4x_write_json(out/'worker.started.json',{'authorization':auth,'pid':os.getpid()},exclusive=True)\n    ptr_r4b_bind_module()\n    h4ffe_mode"),
+            ("    env=PTRHeldCoverageJoystick(config=train_cfg,arm=arm)\n    ev=api['locomotion'].load(api['env_name'],config=source_cfg)","    ptr_r4b_prepare_environment(root,out,auth,train_cfg)\n    env=PTRHeldCoverageJoystick(config=train_cfg,arm=arm)\n    ev=api['locomotion'].load(api['env_name'],config=source_cfg)"),
+            ("        safe()\n        n=budget.recorded['optimizer']//200\n        row={}\n        if event=='template_reset_before':","        safe()\n        ptr_r4b_audit_order(budget,event)\n        n=budget.recorded['optimizer']//200\n        row={}\n        if event=='template_reset_before':"),
+            ("            payload=v['payload']; restored_ts=payload['training_state']\n            ptr_verify_typed_payload(jax,np,optax,serialization,v['template'],payload,root)\n            counters(restored_ts,0,False)","            payload=v['payload']\n            ptr_verify_typed_payload(jax,np,optax,serialization,v['template'],payload,root)\n            restored_ts=payload['training_state']\n            counters(restored_ts,0,False)"),
+            ("    cfg['r12_abort_fn']=ptr_abort\n    persist()\n    try:\n        with monitor:","    cfg['r12_abort_fn']=ptr_abort\n    ptr_r4b_bind_callbacks(env,audit,ptr_abort,chunk_fn)\n    persist()\n    try:\n        with monitor:"),
+            ("    \"\"\"Prospective exclusive one-use supervisor; no new CLI is dispatched.\"\"\"\n    ptr_execution_hold()\n    import subprocess,selectors,signal","    \"\"\"Exclusive one-use supervisor; marker and accepted delta required.\"\"\"\n    import subprocess,selectors,signal"),
+            ("    h4m12_require(not out.exists() and not out.is_symlink() and out.parent.is_dir() and not out.parent.is_symlink(),'PTR_OUTPUT_USED')\n    h4x_storage(out,initial=True);out.mkdir(exist_ok=False)\n    h4x_write_json(out/'attempt.json',dict(authorization=auth,authorization_head=ptr_head(root),parent_pid=os.getpid()),exclusive=True)\n    child=None;rc=None;total=0\n    try:\n        child=subprocess.Popen","    ptr_r4b_unused(out)\n    h4x_storage(out,initial=True);out.mkdir(exist_ok=False)\n    child=None;rc=None;total=0\n    try:\n        h4x_write_json(out/'attempt.json',dict(authorization=auth,authorization_head=ptr_head(root),parent_pid=os.getpid()),exclusive=True)\n        child=subprocess.Popen"),
+            ("    ptr_require_control(root,auth)\n    # No release in R2C. The future reviewed guard may reach the exclusive\n    # dispatch write only after native authorization and static acceptance.\n    ptr_execution_hold()\n    h4x_write_json(out/'dispatch.started.json',{'authorization':auth},exclusive=True)","    ptr_report_schema(report,auth,complete=False)\n    h4m12_require(report['parent']==ptr_parent_evidence(root) and not report['report_history'] and\n        all(not report[k] for k in ('h4_chunks','h4_epochs','r12_chunks','ptr_chunks')),'PTR_R4B_INITIAL_REPORT')\n    ptr_require_control(root,auth)\n    ptr_r4b_check_binding(environment,audit,abort_fn,chunk_fn,auth)\n    h4x_write_json(out/'dispatch.started.json',ptr_r4b_dispatch_receipt(ptr_attempt_read(out,auth),\n        ssrpc_read_json(out/'worker.started.json',65536)),exclusive=True)"),
+            ("    h4m12_require(jax.tree_util.tree_structure(ts)==jax.tree_util.tree_structure(template['training_state']),\n                  'PTR_TRAIN_TEMPLATE')","    h4m12_require(jax.tree_util.tree_structure(payload)==jax.tree_util.tree_structure(template) and\n        jax.tree_util.tree_structure(ts)==jax.tree_util.tree_structure(template['training_state']),\n                  'PTR_TRAIN_TEMPLATE')\n    ptr_typed_leaves(np,jax.device_get(jax.tree_util.tree_leaves(payload)),\n        jax.device_get(jax.tree_util.tree_leaves(template)))"),
+            ("        h4m12_require(out.is_dir() and not out.is_symlink() and not out.parent.is_symlink(),'PTR_R4_STATIC_PATH')\n        for name,sha in PTR_R4_STATIC_ARTIFACTS.items():h4x_file_pin(out/name,sha)","        h4m12_require(out.is_dir() and not out.is_symlink() and not out.parent.is_symlink(),'PTR_R4_STATIC_PATH')\n        ptr_r4b_static_pins(out)"),
+            ("if __name__=='__main__' and sys.argv[1:2]==['--h4ptr-full-static']:\n    ptr_static_cli_held(sys.argv[2:])","if __name__=='__main__' and sys.argv[1:2]==['--h4ptr-full-static']:\n    if sys.argv[2:3]==['--delta-r4b']:\n        ptr_r4b_delta_cli(sys.argv[3:])\n    else:\n        ptr_static_cli_held(sys.argv[2:])"),
+        )
+        expected='3c276c3b4f994ac53394f52ef96711ecd76fc7d5'
+    elif name=='m463_coverage_env.py':
+        edits=(("        raise RuntimeError('H4M29_PTR_ENV_EXECUTION_HOLD')\n        # The exact intended construction is kept here for source review.","        from m463_push_ppo_train import ptr_r4b_environment_claim\n        ptr_r4b_environment_claim(self,arm,config)"),)
+        expected='f423ee4a4726a8a91d4c28c82e63e658c2ef4a77'
+    else:return raw
+    for old,new in reversed(edits):
+        a,b=old.encode(),new.encode()
+        h4m12_require(raw.count(b)==1,'PTR_R4B_INVERSE_ANCHOR')
+        raw=raw.replace(b,a,1)
+    raw=prefix+raw
+    h4m12_require(hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()==expected,'PTR_R4B_BASE_BLOB')
+    return raw
+
+def ptr_r4b_static_pins(out):
+    for name,sha in PTR_R4_STATIC_ARTIFACTS.items():h4x_file_pin(out/name,sha)
+    return True
+
+def ptr_r4b_auth_schema(auth):
+    import re
+    extra={'delta_sha256','delta_terminal_sha256'}
+    h4m12_require(type(auth) is dict and set(auth)==PTR_AUTH_KEYS|extra and
+        all(type(auth[k]) is str and re.fullmatch('[0-9a-f]{64}',auth[k]) for k in extra),'PTR_R4B_DELTA_AUTH_KEYS')
+    ptr_auth_schema({k:auth[k] for k in PTR_AUTH_KEYS})
+    return auth
+
+def ptr_r4b_lineage(root,ancestor,descendant):
+    import subprocess
+    h4m12_require(subprocess.run(['git','merge-base','--is-ancestor',ancestor,descendant],cwd=root,
+        stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=30).returncode==0,'PTR_R4B_LINEAGE')
+
+def ptr_r4b_output_path(out):
+    h4m12_require(out.is_dir() and not out.is_symlink() and not out.parent.is_symlink(),'PTR_R4B_OUTPUT_PATH')
+
+def ptr_r4b_unused(out):
+    h4m12_require(out.parent.is_dir() and not out.parent.is_symlink() and
+        not out.exists() and not out.is_symlink(),'PTR_OUTPUT_USED')
+
+def ptr_r4b_bind_module():
+    h4m12_require(__name__=='__main__' and
+        sys.modules.get('m463_push_ppo_train',sys.modules[__name__]) is sys.modules[__name__],'PTR_R4B_MODULE_IDENTITY')
+    sys.modules['m463_push_ppo_train']=sys.modules[__name__]
+
+_PTR_R4B_CONTEXT=None
+
+def ptr_r4b_prepare_environment(root,out,auth,config):
+    global _PTR_R4B_CONTEXT
+    h4m12_require(_PTR_R4B_CONTEXT is None and ptr_authorization_held(root,auth['arm'])==auth,'PTR_R4B_CONTEXT')
+    ptr_r4_reservation(root,out,auth,require_worker=True)
+    _PTR_R4B_CONTEXT=dict(root=root,out=out,auth=copy.deepcopy(auth),config=config,environment=None,callbacks=None)
+
+def ptr_r4b_environment_claim(environment,arm,config):
+    c=_PTR_R4B_CONTEXT
+    h4m12_require(c is not None and c['environment'] is None and c['auth']['arm']==arm and
+        c['config'] is config,'PTR_R4B_ENV_CLAIM')
+    h4m12_require(ptr_authorization_held(c['root'],arm)==c['auth'],'PTR_R4B_ENV_AUTH')
+    ptr_r4_reservation(c['root'],c['out'],c['auth'],require_worker=True)
+    c['environment']=environment
+
+def ptr_r4b_bind_callbacks(environment,audit,abort,chunk):
+    c=_PTR_R4B_CONTEXT
+    h4m12_require(c is not None and c['environment'] is environment and c['callbacks'] is None and
+        all(callable(x) for x in (audit,abort,chunk)),'PTR_R4B_CALLBACK_SETUP')
+    c['callbacks']=(audit,abort,chunk)
+
+def ptr_r4b_check_binding(environment,audit,abort,chunk,auth):
+    c=_PTR_R4B_CONTEXT
+    h4m12_require(c is not None and c['auth']==auth and c['environment'] is environment and
+        c['callbacks'] is not None and all(x is y for x,y in zip(c['callbacks'],(audit,abort,chunk))),'PTR_R4B_CALLBACK_BINDING')
+    return True
+
+def ptr_r4b_dispatch_receipt(a,w):
+    return dict(authorization=a['authorization'],authorization_head=a['authorization_head'],
+        parent_pid=a['parent_pid'],pid=w['pid'])
+
+def ptr_r4b_audit_order(budget,event):
+    schedule=h4m12_schedule();i=len(budget.events)
+    h4m12_require(i<len(schedule) and event==schedule[i] and not budget.complete,'PTR_R4B_AUDIT_ORDER')
+
+# R4B intermediate source remains fail-closed until delta producer/reader are integrated.
+def ptr_r4b_read_delta(*args,**kwargs):
+    raise RuntimeError('PTR_R4B_DELTA_IMPLEMENTATION_PENDING')
+
+def ptr_r4b_delta_cli(argv):
+    raise RuntimeError('PTR_R4B_DELTA_IMPLEMENTATION_PENDING')
+# H4M29_R4B_RELEASE_END
 if __name__=='__main__' and sys.argv[1:2]==['--h4ptr-continuation']:
     ptr_supervisor_held(sys.argv[2:])
     sys.exit(0)
 if __name__=='__main__' and sys.argv[1:2]==['--h4ptr-full-static']:
-    ptr_static_cli_held(sys.argv[2:])
+    if sys.argv[2:3]==['--delta-r4b']:
+        ptr_r4b_delta_cli(sys.argv[3:])
+    else:
+        ptr_static_cli_held(sys.argv[2:])
     sys.exit(0)
 # H4M29_PTR_HELD_TRAINER_END

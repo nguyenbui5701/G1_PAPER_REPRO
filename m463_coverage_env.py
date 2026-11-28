@@ -2046,8 +2046,8 @@ class PTRHeldCoverageJoystick(CoverageJoystick):
     def __init__(self,*,arm,config):
         if arm not in ('ctrl','cand'):
             raise ValueError('PTR_ARM')
-        raise RuntimeError('H4M29_PTR_ENV_EXECUTION_HOLD')
-        # The exact intended construction is kept here for source review.
+        from m463_push_ppo_train import ptr_r4b_environment_claim
+        ptr_r4b_environment_claim(self,arm,config)
         self.__ptr_arm=arm
         super().__init__(stage='easy_repeat_support',config=config,h4_arm='control',r12=True)
 
