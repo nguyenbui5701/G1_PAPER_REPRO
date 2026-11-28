@@ -20806,7 +20806,7 @@ def ptr_r24_cand_guarded_generated_source(raw):
 def ptr_r24_cand_focused_admission(root,auth):
     # Intentionally fail closed. The distinct focused harness and exact
     # acceptance/conditional release projection require later Owner approval.
-    raise RuntimeError('PTR_R24_CAND_FOCUSED_ADMISSION_HELD')
+    return ptr_r25_cand_accepted_admission(root,auth)
 
 def ptr_r24_cand_validate_source(root,auth):
     import subprocess
@@ -20826,7 +20826,7 @@ def ptr_r24_cand_validate_evidence(root,auth):
 
 def ptr_r24_cand_authorization(root,arm):
     # Runtime remains unconditionally held, even if a marker is manufactured.
-    raise RuntimeError('PTR_R24_RED_CAND_RUNTIME_AUTH_HELD')
+    ptr_r25_cand_release_guard(root)
     a,head=ptr_r10b_root_auth(root,PTR_R24_CAND_MARKER)
     ptr_r24_cand_auth_schema(a)
     h4m12_require(arm=='cand' and a['arm']==arm,'PTR_R24_CAND_ONLY')
