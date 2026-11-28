@@ -12748,3 +12748,125 @@ if __name__=='__main__' and sys.argv[1:2]==['--h4ssrpc-full-static']:
 # SSRPC_5A_STATIC_SUPERVISOR_END
 # H4SSRPC_HELD_TRAINER_END
 if __name__=='__main__': main()
+
+# H4M29_PTR_HELD_TRAINER_BEGIN
+# No new CLI, worker, marker reader or supervisor. This is read-only admission
+# and verification scaffolding, NOT a runtime authorization or restore bypass.
+PTR_BASE_BLOBS={
+    'm463_coverage_env.py':'3961ec7bc4d7f646a8c7515a0889427826f56f6c',
+    'm463_instrument_brax.py':'e38d4788bca4a7f965cab2f1a0f20f17aff632cc',
+    'm463_push_ppo_train.py':'c9fe53c2262f1a7c9a4647973f4ab7fec710a4db'}
+PTR_PARENT=Path('m463_runs/m470_h4_m16_r12_v1')
+PTR_FULL='m470_fullstate_step_015728640.msgpack'
+PTR_POLICY='m463_easy_repeat_support_longtrain_step_015728640.msgpack'
+PTR_MANIFEST='m470_fullstate_step_015728640.json'
+PTR_PARENT_PINS={
+    'report.json':'2b03cfd709ec81162a628407ff6a08d152fbfb64cdffa7be86dbe3d0415dbda6',
+    PTR_FULL:'b8540c6ab1b282d8605910515af4dc86065beb69417b28752f49178ba617ab1e',
+    PTR_POLICY:'081bac44336e778d82eebf094ad35d1f170b30386e56490bdc0ab4c5d8c67ae0',
+    PTR_MANIFEST:'b55f6e52d9adbfb862c2a90d0e99e6a7e6c0d6aa9499ccc480b6b0850013a29d',
+    'm463_brax_ppo_instrumented.py':'b1aebfb7b51a80816064abc4ac99227a07d259cf57026ab46c741682a1c1a8e7'}
+PTR_PARENT_AUTH=dict(id='H4-M16-R12-DCR-V1',output=str(PTR_PARENT),
+    source_sha256='91d72382142965414176ae4812b8b89c041dc3ddf1f70f31c03730b43f02a46e',
+    generated_sha256=PTR_PARENT_PINS['m463_brax_ppo_instrumented.py'],
+    static_path='m463_runs/m470_h4r12_static_20261127_122847_262258696.log',
+    static_sha256='6c414d24cbb7cf070741d0a6f9d91b1871c998b257ebbcb05b3e05779c81e205')
+PTR_TRAIN_SCHEMA='60b9f70f7526c364f777f349bc753929bf003c655c473381d191f575e0072c01'
+PTR_ENV_SCHEMA='64510c532b4a985b78dbb4cd6148f95df75b49f7fc2f0ea3ca55c6c90dc5157d'
+
+def ptr_spec(arm):
+    if arm not in ('ctrl','cand'):
+        raise ValueError('PTR_ARM')
+    return dict(id='H4-M29-R12-PTR-V1-'+arm.upper(),arm=arm,parent=str(PTR_PARENT),
+        output='m463_runs/m470_h4_m29_ptr_'+arm+'_v1',
+        start_steps=15728640,end_steps=20971520,start_adam=2400,end_adam=3200,
+        start_normalizer=416808960,end_normalizer=422051840,
+        training=5242880,optimizer=800,rollouts=20,chunks=4,evaluation=2000,
+        train_reset_lanes=24576,eval_reset_lanes=2,seed=1,
+        window=100,theta0=10.,theta_max=25.,weight=.04,dt=.02,
+        broad_floor=[1271,1286,1360,1309,1368],nominal_floor=916743,
+        ptr_min_consumed=10000,ptr_min_half=1000,execution_authorized=False,
+        promotion_authorized=False)
+
+def ptr_project_sources(root):
+    """Exact reverse projection to the three pre-PTR Git blobs; no imports/compile."""
+    import hashlib
+    root=Path(root).resolve()
+    result={}
+    for name,label in zip(PTR_BASE_BLOBS,('ENV','INSTRUMENT','TRAINER')):
+        raw=(root/name).read_bytes()
+        first=b'\n# H4M29_PTR_HELD_'+label.encode()+b'_BEGIN\n'
+        last=b'# H4M29_PTR_HELD_'+label.encode()+b'_END\n'
+        h4m12_require(raw.count(first)==raw.count(last)==1 and raw.endswith(last),
+                      'PTR_PROJECTION_SENTINEL_'+name)
+        old=raw[:raw.index(first)]
+        blob=hashlib.sha1(b'blob '+str(len(old)).encode()+b'\0'+old).hexdigest()
+        h4m12_require(blob==PTR_BASE_BLOBS[name],'PTR_PROJECTION_'+name)
+        result[name]=blob
+    return result
+
+def ptr_parent_evidence(root):
+    """Future read-only host admission: no deserialization, no writes, no runtime GO."""
+    root=Path(root).resolve();p=root/PTR_PARENT
+    h4m12_require(p.is_dir() and not p.is_symlink() and not p.parent.is_symlink(),'PTR_PARENT_PATH')
+    for name,sha in PTR_PARENT_PINS.items():
+        h4x_file_pin(p/name,sha)
+    h4x_file_pin(root/PTR_PARENT_AUTH['static_path'],PTR_PARENT_AUTH['static_sha256'])
+    # Reuse strict historical report/receipt reader, with historical counters,
+    # exposure verdict and manifest intact. Do not reinterpret the old result.
+    r=h4m12_read_final(root,PTR_PARENT_PINS['report.json'],PTR_PARENT_AUTH,r12=True)
+    m=json.loads((p/PTR_MANIFEST).read_bytes())
+    h4m12_require(m==h4m12_checkpoint_meta(PTR_PARENT_AUTH,PTR_PARENT_PINS[PTR_FULL],
+        PTR_PARENT_PINS[PTR_POLICY],r12=True),'PTR_PARENT_MANIFEST')
+    h4m12_require(m['h4_resume_forbidden'] is True and m['promotion_authorized'] is False and
+        m['reset_edge'] is True and m['optimizer_state_included'] is True and
+        m['training_rng_included'] is True and m['evaluator_rng_included'] is True,'PTR_PARENT_FLAGS')
+    last=r['operational_rows'][-1]
+    h4m12_require(last['event']=='finish' and last['steps']==15728640 and last['adam']==2400 and
+        last['normalizer']==416808960 and last['training_schema']==PTR_TRAIN_SCHEMA and
+        r['r12_exposure']['decision']=='EXPOSURE_INCONCLUSIVE','PTR_PARENT_HISTORICAL_EDGE')
+    return dict(parent_pins=dict(PTR_PARENT_PINS),manifest=m,edge=last,
+        historical_exposure=r['r12_exposure']['decision'],execution_authorized=False)
+
+def ptr_verify_typed_payload(jax,np,optax,serialization,template,payload,root):
+    """Future authorized typed-restore audit callback, not a loader/dispatch.
+    Requires the existing native template and already restored payload.
+    """
+    import hashlib
+    p=Path(root).resolve()/PTR_PARENT
+    h4x_file_pin(p/PTR_FULL,PTR_PARENT_PINS[PTR_FULL])
+    raw=(p/PTR_FULL).read_bytes()
+    h4m12_require(hashlib.sha256(raw).hexdigest()==PTR_PARENT_PINS[PTR_FULL],'PTR_TYPED_BYTES')
+    h4m12_require(set(payload)=={'training_state','local_key','key_envs','eval_key'},'PTR_PAYLOAD_KEYS')
+    independent=serialization.from_bytes(template,raw)
+    h4m12_tree_equal(jax,np,payload,independent,'PTR_TYPED_PAYLOAD')
+    ts=payload['training_state']
+    h4m12_require(jax.tree_util.tree_structure(ts)==jax.tree_util.tree_structure(template['training_state']),
+                  'PTR_TRAIN_TEMPLATE')
+    for x,y in zip(jax.tree_util.tree_leaves(ts),jax.tree_util.tree_leaves(template['training_state'])):
+        x,y=(np.asarray(jax.device_get(z)) for z in (x,y))
+        h4m12_require(x.shape==y.shape and x.dtype==y.dtype and np.isfinite(x).all(),'PTR_TYPED_LEAF')
+    a=[x for x in jax.tree_util.tree_leaves(ts.optimizer_state,
+        is_leaf=lambda x:isinstance(x,optax.ScaleByAdamState)) if isinstance(x,optax.ScaleByAdamState)]
+    h4m12_require(len(a)==1,'PTR_ADAM_LAYOUT')
+    step,adam,norm=(np.asarray(jax.device_get(x)) for x in (ts.env_steps,a[0].count,ts.normalizer_params.count))
+    h4m12_require(step.shape==adam.shape==norm.shape==() and step.dtype.kind in 'iu' and
+        adam.dtype.kind in 'iu' and norm.dtype==np.float32 and step.item()==15728640 and
+        adam.item()==2400 and norm.item()==416808960,'PTR_TYPED_COUNTERS')
+    local,keys,ev=(np.asarray(jax.device_get(payload[k])) for k in ('local_key','key_envs','eval_key'))
+    h4m12_require(local.dtype==keys.dtype==ev.dtype==np.uint32 and local.shape==ev.shape==(2,) and
+        keys.shape==(1,8192,2) and local.tolist()==[3994719248,2536063210] and
+        ev.tolist()==[3826574560,1155328204] and
+        hashlib.sha256(keys.tobytes()).hexdigest()=='67c2e99b593813442e608ede12e01c7757ca1fb98e7daafaec8c36904280fd36',
+        'PTR_TYPED_RNG')
+    h4x_file_pin(p/PTR_POLICY,PTR_PARENT_PINS[PTR_POLICY])
+    policy_raw=(p/PTR_POLICY).read_bytes()
+    h4m12_require(hashlib.sha256(policy_raw).hexdigest()==PTR_PARENT_PINS[PTR_POLICY],'PTR_POLICY_BYTES')
+    policy=(ts.normalizer_params,ts.params)
+    policy_other=serialization.from_bytes(policy,policy_raw)
+    h4m12_tree_equal(jax,np,policy,policy_other,'PTR_POLICY_EQUAL')
+    return True
+
+def ptr_execution_hold(*args,**kwargs):
+    raise RuntimeError('H4M29_PTR_PARENT_ADMISSION_AND_RUNTIME_HOLD')
+# H4M29_PTR_HELD_TRAINER_END

@@ -1969,3 +1969,113 @@ class SSRPCCoverageJoystick(CoverageJoystick):
     def ssrpc_arm(self):
         return self.__ssrpc_arm
 # H4SSRPC_HELD_ENV_END
+
+# H4M29_PTR_HELD_ENV_BEGIN
+# Held-only isolated extension; historical CoverageJoystick bytes unchanged.
+PTR_CARRY=('active','age','side','kind','motion')
+PTR_INTS=tuple(p+k for p in ('before_','after_') for k in PTR_CARRY)+(
+    'open','close','close_reason','scored','coherent','pre_live','pre_step',
+    'support_pre','bad')
+PTR_FLOATS=('gx','gy','gz','tilt','risk','base','desired','delivered','delta','total_delta')
+PTR_FIELDS=tuple('ptr_'+k for k in PTR_INTS+PTR_FLOATS)
+
+def ptr_init(xp):
+    result={'ptr_'+k:xp.asarray(0,xp.int32) for k in PTR_CARRY+PTR_INTS}
+    result.update({'ptr_'+k:xp.asarray(0.,xp.float32) for k in PTR_FLOATS})
+    return result
+
+def ptr_risk(xp,gravity):
+    """Evaluator torso convention; invalid sample remains invalid, not a zero risk."""
+    f=xp.float32
+    if gravity.shape!=(3,) or gravity.dtype!=f:
+        raise RuntimeError('PTR_GRAVITY_SCHEMA')
+    valid=xp.all(xp.isfinite(gravity)) & (xp.abs(xp.sum(gravity*gravity)-xp.asarray(1.,f))<=xp.asarray(1e-4,f))
+    valid=valid & xp.all(xp.abs(gravity)<=xp.asarray(1.00001,f))
+    theta=xp.degrees(xp.arccos(xp.clip(gravity[-1],xp.asarray(-1.,f),xp.asarray(1.,f)))).astype(f)
+    risk=xp.square(xp.clip((theta-xp.asarray(10.,f))/xp.asarray(15.,f),0.,1.)).astype(f)
+    return theta,risk,valid
+
+def ptr_transition(xp,old,*,arm,gravity,base,native,event,repeat,direction,
+                   motion,boundary,coherent,pre_live,pre_step,terminal,timeout,
+                   nominal,support_pre):
+    """After original R12 step, before wrapper autoreset. No physics or RNG calls."""
+    if arm not in ('ctrl','cand'):
+        raise RuntimeError('PTR_ARM')
+    f=xp.float32;i=xp.int32
+    x=lambda k:old['ptr_'+k]
+    theta,risk,geometry_ok=ptr_risk(xp,gravity)
+    was=x('active')==1; age=x('age')+1
+    carry_ok=((x('active')==0)|(x('active')==1)) & xp.where(
+        was,(x('age')>=0)&(x('age')<100)&(x('side')>=1)&(x('side')<=6)&
+        (x('kind')>=1)&(x('kind')<=2)&(x('motion')>=0)&(x('motion')<6),
+        (x('age')==0)&(x('side')==0)&(x('kind')==0)&(x('motion')==0))
+    valid=geometry_ok&carry_ok&xp.isfinite(base)&xp.isfinite(native)&(pre_step>=0)&(
+        motion>=0)&(motion<6)&(support_pre>=0)&(support_pre<=3)&(~repeat|event)&(
+        ~event|((direction>=0)&(direction<6)&~nominal))
+    allow=valid&coherent&pre_live&(~boundary)&(~terminal)&(~timeout)&(~nominal)&(pre_step<500)
+    same=motion==x('motion')
+    op=event&allow
+    scored=was&(~event)&allow&same&(age<=100)
+    keep=scored&(age<100);close=was&(~keep)
+    next_values=dict(active=op|keep,age=xp.where(keep,age,0),
+        side=xp.where(op,direction+1,xp.where(keep,x('side'),0)),
+        kind=xp.where(op,xp.where(repeat,2,1),xp.where(keep,x('kind'),0)),
+        motion=xp.where(op,motion,xp.where(keep,x('motion'),0)))
+    reason=xp.where(close,xp.where(~valid,6,xp.where(boundary,2,xp.where(
+        terminal,3,xp.where(timeout,4,xp.where(event,1,xp.where(~allow|~same,5,7)))))),0)
+    desired=xp.where(scored & (arm=='cand'),-xp.asarray(.04,f)*xp.asarray(.02,f)*risk,xp.asarray(0.,f)).astype(f)
+    delivered=xp.where(desired<0,base+desired,base).astype(f)
+    delta=(delivered-base).astype(f);total=(delivered-native).astype(f)
+    bad=~valid|~xp.isfinite(delivered)|~xp.isfinite(delta)|~xp.isfinite(total)|(delta>0)|(total>0)
+    out=ptr_init(xp)
+    out.update({'ptr_'+k:xp.asarray(v,i) for k,v in next_values.items()})
+    out.update({'ptr_before_'+k:xp.asarray(x(k),i) for k in PTR_CARRY})
+    out.update({'ptr_after_'+k:xp.asarray(v,i) for k,v in next_values.items()})
+    out.update({'ptr_'+k:xp.asarray(v,i) for k,v in dict(open=op,close=close,
+        close_reason=reason,scored=scored,coherent=coherent,pre_live=pre_live,
+        pre_step=pre_step,support_pre=support_pre,bad=bad).items()})
+    out.update({'ptr_'+k:xp.asarray(v,f) for k,v in dict(gx=gravity[0],gy=gravity[1],
+        gz=gravity[2],tilt=theta,risk=risk,base=base,desired=desired,delivered=delivered,
+        delta=delta,total_delta=total).items()})
+    return out,delivered
+
+class PTRHeldCoverageJoystick(CoverageJoystick):
+    """Source-only integration. Explicit construction HOLD until admission and supervisor review."""
+    def __init__(self,*,arm,config):
+        if arm not in ('ctrl','cand'):
+            raise ValueError('PTR_ARM')
+        raise RuntimeError('H4M29_PTR_ENV_EXECUTION_HOLD')
+        # The exact intended construction is kept here for source review.
+        self.__ptr_arm=arm
+        super().__init__(stage='easy_repeat_support',config=config,h4_arm='control',r12=True)
+
+    def reset(self,rng):
+        state=super().reset(rng)
+        info=dict(state.info);info.update(ptr_init(jp))
+        return state.replace(info=info)
+
+    def step(self,state,action):
+        # Capture exact pre-native fields before calling the unchanged R12 step.
+        if 'steps' not in state.info:
+            raise RuntimeError('PTR_WRAPPED_CLOCK_REQUIRED')
+        old={k:state.info[k] for k in ptr_init(jp)}
+        pre=state.info['command'];clock=state.info['step']
+        pre_live=state.done==0
+        pre_equal=jp.all(state.obs['state'][9:12]==pre)&jp.all(state.obs['privileged_state'][9:12]==pre)
+        after=super().step(state,action)
+        out=dict(after.info)
+        motion=out['h4_motion']
+        coherent=pre_equal&jp.all(out['command']==pre)&jp.all(after.obs['state'][9:12]==pre)&(
+            jp.all(after.obs['privileged_state'][9:12]==pre))&(
+            jp.all(COMMANDS[motion]==pre))&(out['h4_actor_motion']==motion)&(
+            out['h4_refresh']==0)&(out['h4_changed']==0)&(clock<500)
+        gravity=self.get_gravity(after.data,'torso')
+        extra,reward=ptr_transition(jp,old,arm=self.__ptr_arm,gravity=gravity,
+            base=after.reward,native=out['r12_native'],event=out['m463_event']==1,
+            repeat=out['m463_repeat']==1,direction=out['m463_direction'],motion=motion,
+            boundary=out['h4_boundary']==1,coherent=coherent,pre_live=pre_live,
+            pre_step=clock,terminal=after.done>0,timeout=out['r12_timeout']==1,
+            nominal=out['m463_no_push']==1,support_pre=out['m463_support_side'])
+        out.update(extra)
+        return after.replace(info=out,reward=reward)
+# H4M29_PTR_HELD_ENV_END

@@ -2661,3 +2661,132 @@ def make_ssrpc_integrated_source(raw,arm):
     return s,original
 # SSRPC_4B_GENERATED_END
 # H4SSRPC_HELD_INSTRUMENT_END
+
+# H4M29_PTR_HELD_INSTRUMENT_BEGIN
+# Isolated composed pre-SGD contract; existing historical R12 reader is untouched.
+PTR_CARRY=('active','age','side','kind','motion')
+PTR_INTS=tuple(p+k for p in ('before_','after_') for k in PTR_CARRY)+(
+    'open','close','close_reason','scored','coherent','pre_live','pre_step',
+    'support_pre','bad')
+PTR_FLOATS=('gx','gy','gz','tilt','risk','base','desired','delivered','delta','total_delta')
+PTR_FIELDS=tuple('ptr_'+k for k in PTR_INTS+PTR_FLOATS)
+
+def ptr_batch_contract(xp,reward,discount,extras,before,after,arm):
+    """Validate the composed actual Transition.reward r2, separately from r1."""
+    if arm not in ('ctrl','cand'):
+        raise RuntimeError('PTR_BATCH_ARM')
+    shape=(8192,32);f=xp.float32;i=xp.int32
+    if reward.shape!=shape or reward.dtype!=f:
+        raise RuntimeError('PTR_REWARD_SCHEMA')
+    for k in PTR_INTS+PTR_FLOATS:
+        v=extras['ptr_'+k]
+        if v.shape!=shape or v.dtype!=(i if k in PTR_INTS else f):
+            raise RuntimeError('PTR_FIELD_SCHEMA '+k)
+    x=lambda k:extras['ptr_'+k];z=lambda k:extras[k]
+    exact=lambda a,b:(a==b)&(xp.signbit(a)==xp.signbit(b))
+    bad=r12_batch_contract(xp,x('base'),discount,extras,before,after)
+    bad=bad|(~exact(x('base'),z('r12_delivered')))|(x('bad')!=0)
+    for k in PTR_FLOATS:
+        bad=bad|~xp.isfinite(x(k))
+    for k in ('before_active','after_active','open','close','scored','coherent','pre_live','bad'):
+        bad=bad|((x(k)!=0)&(x(k)!=1))
+    gravity=xp.stack([x('gx'),x('gy'),x('gz')],axis=-1)
+    bad=bad|(xp.abs(xp.sum(gravity*gravity,axis=-1)-xp.asarray(1.,f))>xp.asarray(1e-4,f))|(
+        xp.any(xp.abs(gravity)>xp.asarray(1.00001,f),axis=-1))
+    tilt=xp.degrees(xp.arccos(xp.clip(x('gz'),xp.asarray(-1.,f),xp.asarray(1.,f)))).astype(f)
+    risk=xp.square(xp.clip((tilt-xp.asarray(10.,f))/xp.asarray(15.,f),0.,1.)).astype(f)
+    bad=bad|~exact(x('tilt'),tilt)|~exact(x('risk'),risk)
+    was=x('before_active')==1;age=x('before_age')+1
+    event=z('m463_event')==1;repeat=z('m463_repeat')==1;boundary=z('h4_boundary')==1
+    terminal=z('r12_terminal')==1;timeout=z('r12_timeout')==1
+    nominal=z('h4_class')==0;motion=z('h4_motion');coherent=x('coherent')==1
+    bad=bad|(x('pre_step')<0)|((x('pre_step')>=500)!=(z('h4_refresh')==1))|(
+        (motion<0)|(motion>=6))|(x('support_pre')<0)|(x('support_pre')>3)
+    bad=bad|(coherent&((z('h4_changed')==1)|(z('h4_refresh')==1)|(motion!=z('h4_actor_motion'))))
+    bad=bad|xp.where(was,(x('before_age')<0)|(x('before_age')>=100)|
+        (x('before_side')<1)|(x('before_side')>6)|(x('before_kind')<1)|
+        (x('before_kind')>2)|(x('before_motion')<0)|(x('before_motion')>=6),
+        (x('before_age')!=0)|(x('before_side')!=0)|(x('before_kind')!=0)|(x('before_motion')!=0))
+    allow=coherent&(x('pre_live')==1)&~boundary&~terminal&~timeout&~nominal&(x('pre_step')<500)
+    same=motion==x('before_motion')
+    op=event&allow;scored=was&~event&allow&same&(age<=100)
+    keep=scored&(age<100);close=was&~keep
+    reason=xp.where(close,xp.where(boundary,2,xp.where(terminal,3,xp.where(timeout,4,
+        xp.where(event,1,xp.where(~allow|~same,5,7))))),0)
+    wants=dict(open=op,close=close,scored=scored,close_reason=reason,
+        after_active=op|keep,after_age=xp.where(keep,age,0),
+        after_side=xp.where(op,z('m463_direction')+1,xp.where(keep,x('before_side'),0)),
+        after_kind=xp.where(op,xp.where(repeat,2,1),xp.where(keep,x('before_kind'),0)),
+        after_motion=xp.where(op,motion,xp.where(keep,x('before_motion'),0)))
+    for k,v in wants.items():
+        bad=bad|(x(k)!=v)
+    for k in PTR_CARRY:
+        initial=before['ptr_'+k];last=after['ptr_'+k]
+        if initial.shape!=(8192,) or last.shape!=(8192,) or initial.dtype!=i or last.dtype!=i:
+            raise RuntimeError('PTR_CARRY_SCHEMA '+k)
+        prev=xp.concatenate((initial[:,None],x('after_'+k)[:,:-1]),axis=1)
+        bad=bad|(x('before_'+k)!=prev)|(x('after_'+k)[:,-1:]!=last[:,None])
+    desired=xp.where(scored&(arm=='cand'),-xp.asarray(.04,f)*xp.asarray(.02,f)*risk,xp.asarray(0.,f)).astype(f)
+    expected=xp.where(desired<0,x('base')+desired,x('base')).astype(f)
+    bad=bad|~exact(x('desired'),desired)|~exact(x('delivered'),expected)|~exact(reward,expected)
+    bad=bad|~exact(x('delta'),(reward-x('base')).astype(f))|~exact(
+        x('total_delta'),(reward-z('r12_native')).astype(f))|(x('delta')>0)|(x('total_delta')>0)
+    return bad
+
+def ptr_reduce(xp,reward,extras,bad,valid):
+    """Fixed scalar per-rollout metrics; never treat rejected rows as consumed."""
+    x=lambda k:extras['ptr_'+k]
+    count=lambda v:xp.sum(v.astype(xp.float32))
+    consume=(x('delta')<0)&valid;scored=x('scored')==1;op=x('open')==1;cl=x('close')==1
+    out=dict(collected=xp.asarray(1.,xp.float32),batch_committed=valid.astype(xp.float32),
+        batch_rejected=(~valid).astype(xp.float32),bad_rows=count(bad),open=count(op),
+        close=count(cl),scored=count(scored),nonzero_desired=count(x('desired')<0),
+        nonzero_consumed=count(consume),nominal_nonzero=count(consume&(extras['h4_class']==0)),
+        consumed_ptr_delta=xp.where(valid,xp.sum(reward-x('base')),0.),
+        consumed_dcr_delta=xp.where(valid,xp.sum(x('base')-extras['r12_native']),0.),
+        consumed_total_delta=xp.where(valid,xp.sum(reward-extras['r12_native']),0.),
+        native_sum=xp.sum(extras['r12_native']),intermediate_sum=xp.sum(x('base')),
+        delivered_sum=xp.sum(reward),desired_sum=xp.sum(x('desired')),
+        scored_risk_sum=xp.sum(xp.where(scored,x('risk'),0.)))
+    for motion in range(6):
+        for kind in (1,2):
+            m=(x('before_motion')==motion)&(x('before_kind')==kind)
+            out[f'consumed_motion_{motion}_kind_{kind}']=count(consume&m)
+            out[f'scored_motion_{motion}_kind_{kind}']=count(scored&m)
+    for side in range(1,7):
+        out[f'consumed_side_{side}']=count(consume&(x('before_side')==side))
+    for support in range(4):
+        out[f'scored_pre_support_{support}']=count(scored&(x('support_pre')==support))
+    for reason in range(1,8):
+        out[f'close_reason_{reason}']=count(cl&(x('close_reason')==reason))
+    for kind in (1,2):
+        for age in (1,10,25,50,100):
+            out[f'tail_{kind}_{age}']=count(scored&(x('before_kind')==kind)&(x('before_age')+1==age))
+    return {'ptr_'+k:v for k,v in out.items()}
+
+def make_r12_ptr_held_source(raw,arm):
+    """Compose into the frozen R12 pre-SGD conditional; generated train stays HOLD."""
+    if arm not in ('ctrl','cand'):
+        raise RuntimeError('PTR_GENERATOR_ARM')
+    base,original=make_r12_held_source(raw)
+    fmt=lambda fields:"extra_fields=('truncation', "+', '.join(repr(k) for k in fields)+'),'
+    fields=EXT_FIELDS+H4_EXT_FIELDS+R12_FIELDS
+    capture="    r12_before={k:state.info[k] for k in ('r12_active','r12_age','r12_side','r12_kind')}\n"
+    guard="    r12_bad=r12_batch_contract(jnp,data.reward,data.discount,r12_extra,r12_before,state.info)\n"
+    reduction="    coverage.update(r12_reduce(jnp,data.reward,r12_extra,r12_bad,r12_valid))\n"
+    patches=((fmt(fields),fmt(fields+PTR_FIELDS)),
+        (capture,capture+"    ptr_before={k:state.info[k] for k in ('ptr_active','ptr_age','ptr_side','ptr_kind','ptr_motion')}\n"),
+        (guard,"    from m463_instrument_brax import ptr_batch_contract,ptr_reduce\n"
+         "    r12_bad=ptr_batch_contract(jnp,data.reward,data.discount,r12_extra,{**r12_before,**ptr_before},state.info,"+repr(arm)+")\n"),
+        (reduction,"    coverage.update(r12_reduce(jnp,r12_extra['ptr_base'],r12_extra,r12_bad,r12_valid))\n"
+         "    coverage.update(ptr_reduce(jnp,data.reward,r12_extra,r12_bad,r12_valid))\n"))
+    s=base
+    for a,b in patches:
+        s=h4c_once(s,a,b)
+    back=s
+    for a,b in reversed(patches):
+        back=h4c_once(back,b,a)
+    if back!=base or s.count("  raise RuntimeError('R12_GENERATED_EXECUTION_HOLD')\n")!=1:
+        raise RuntimeError('PTR_GENERATOR_PROJECTION_OR_HOLD')
+    return s,original
+# H4M29_PTR_HELD_INSTRUMENT_END
