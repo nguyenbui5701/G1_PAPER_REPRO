@@ -14596,12 +14596,177 @@ def ptr_r4b_audit_order(budget,event):
     schedule=h4m12_schedule();i=len(budget.events)
     h4m12_require(i<len(schedule) and event==schedule[i] and not budget.complete,'PTR_R4B_AUDIT_ORDER')
 
-# R4B intermediate source remains fail-closed until delta producer/reader are integrated.
-def ptr_r4b_read_delta(*args,**kwargs):
-    raise RuntimeError('PTR_R4B_DELTA_IMPLEMENTATION_PENDING')
+PTR_R4B_DELTA=Path('m463_runs/m470_h4_m29_ptr_delta_r4b_v1')
+PTR_R4B_DELTA_ID='H4-M29-R12-PTR-DELTA-R4B-V1'
+PTR_R4B_CASES=(
+    'compile_changed_modules','exact_r4_and_v2_projection','reject_projection_drift','reject_projection_anchor',
+    'historical_six_receipts','reject_static_hash','reject_static_missing','reject_static_tamper',
+    'historical_generated_identity','delta_marker_exact','reject_extra_marker','reject_noncanonical_marker',
+    'reject_delta_as_runtime_marker','runtime_schema_ctrl','runtime_schema_cand','reject_runtime_missing_delta',
+    'reject_runtime_cand_no_ctrl','reject_candidate_missing_control','reject_wrong_delta_binding',
+    'runtime_source_lineage','reject_unrelated_lineage','unused_namespace','reject_consumed_namespace',
+    'reject_symlink_namespace','worker_reservation','reject_worker_pid','reject_worker_bootstrap',
+    'reject_worker_duplicate','reject_unbound_environment','reject_wrong_environment_config','environment_claim',
+    'reject_duplicate_environment','callback_binding','reject_wrong_callback','dispatch_receipt_binding',
+    'reject_duplicate_dispatch','reject_dispatch_receipt_mismatch','audit_order','reject_restore_before_template',
+    'reject_chunk_before_restore','generated_restore_order','delta_report_schema','reject_delta_fixture_order',
+    'reject_delta_missing_report','terminal_receipt_link','reject_terminal_failure','no_native_imports')
+
+def ptr_r4b_delta_manifest():
+    return hashlib.sha256(json.dumps(list(PTR_R4B_CASES),separators=(',',':')).encode()).hexdigest()
+
+def ptr_r4b_delta_schema(a):
+    import re
+    h4m12_require(type(a) is dict and set(a)=={'id','source_head','source_sha256','fixture_manifest_sha256'} and
+        all(type(v) is str for v in a.values()) and a['id']==PTR_R4B_DELTA_ID and
+        re.fullmatch('[0-9a-f]{40}',a['source_head']) and re.fullmatch('[0-9a-f]{64}',a['source_sha256']) and
+        a['fixture_manifest_sha256']==ptr_r4b_delta_manifest(),'PTR_R4B_DELTA_SCHEMA')
+    return a
+
+def ptr_r4b_marker_bytes(prior,current,a):
+    import re
+    line=b'H4PTR_DELTA_GO: '+json.dumps(a,sort_keys=True,separators=(',',':'),allow_nan=False).encode()+b'\n'
+    h4m12_require(hashlib.sha1(b'blob '+str(len(prior)).encode()+b'\0'+prior).hexdigest()==
+        'e09c35a82f06a97fe5406ba36bb3fd9664913583' and current.count(line)==1 and
+        current.replace(line,b'',1)==prior and re.findall(rb'(?m)^[A-Z0-9_]+_GO:.*$',current)==[line[:-1]],'PTR_R4B_DELTA_MARKER')
+    return True
+
+def ptr_r4b_delta_marker_at(root,head,a):
+    import subprocess,re
+    ptr_r4b_delta_schema(a)
+    h4m12_require(type(head) is str and re.fullmatch('[0-9a-f]{40}',head),'PTR_R4B_DELTA_HEAD')
+    git=lambda *args:subprocess.check_output(['git',*args],cwd=root,timeout=30)
+    h4m12_require(git('rev-list','--parents','-n','1',head).decode().split()==[head,a['source_head']] and
+        git('diff','--name-only',head+'^',head).splitlines()==[b'G1_RESEARCH_RULES.md'],'PTR_R4B_DELTA_ROOT_ONLY')
+    ptr_r4b_marker_bytes(git('show',head+'^:G1_RESEARCH_RULES.md'),git('show',head+':G1_RESEARCH_RULES.md'),a)
+    ptr_r4b_lineage(root,head,'HEAD')
+
+def ptr_r4b_delta_authorization(root):
+    import subprocess,re
+    git=lambda *args:subprocess.check_output(['git',*args],cwd=root,timeout=30)
+    h4m12_require(git('symbolic-ref','--short','HEAD').strip()==b'experiment/b1-hardware-scaled' and
+        not git('status','--porcelain','--untracked-files=no'),'PTR_R4B_DELTA_TRACKED')
+    raw=(root/'G1_RESEARCH_RULES.md').read_bytes()
+    h4m12_require(raw==git('show','HEAD:G1_RESEARCH_RULES.md'),'PTR_R4B_DELTA_ROOT_BYTES')
+    matches=re.findall(rb'(?m)^H4PTR_DELTA_GO: (.+)$',raw)
+    h4m12_require(len(matches)==1,'PTR_R4B_DELTA_NO_GO')
+    a=json.loads(matches[0]);head=ptr_head(root)
+    ptr_r4b_delta_marker_at(root,head,a)
+    h4m12_require(a['source_sha256']==h4x_source_digest(root),'PTR_R4B_DELTA_SOURCE')
+    ptr_source_files(root,a['source_head'])
+    return a,head
+
+def ptr_r4b_delta_report(root,a,head,sr):
+    return dict(status='DELTA_HOST_STATIC_PASS',authorization=a,delta_head=head,
+        source_files=ptr_source_files(root,a['source_head']),bootstrap_sha256=sr['bootstrap_sha256'],
+        historical_report_sha256=PTR_R4_STATIC_ARTIFACTS['report.json'],
+        historical_terminal_sha256=PTR_R4_STATIC_ARTIFACTS['supervisor.terminal.json'],
+        generated_sha256=sr['generated_sha256'],held_generated_sha256=sr['held_generated_sha256'],
+        fixtures=[dict(id=k,status='PASS') for k in PTR_R4B_CASES],
+        zero_native_execution=True,zero_optimizer_updates=True,promotion_authorized=False)
+
+def ptr_r4b_check_delta_report(root,r,sr):
+    a=ptr_r4b_delta_schema(r['authorization']);head=r['delta_head']
+    ptr_r4b_delta_marker_at(root,head,a)
+    h4m12_require(a['source_sha256']==h4x_source_digest(root),'PTR_R4B_DELTA_REPORT_SOURCE')
+    expected=ptr_r4b_delta_report(root,a,head,sr)
+    h4m12_require(type(r) is dict and set(r)==set(expected) and
+        all(type(r[k]) is type(expected[k]) for k in expected) and r==expected,'PTR_R4B_DELTA_REPORT')
+    return r
+
+def ptr_r4b_delta_bind(r,auth):
+    a=r['authorization']
+    h4m12_require(a['source_head']==auth['source_head'] and a['source_sha256']==auth['source_sha256'] and
+        r['historical_report_sha256']==auth['static_sha256'] and r['historical_terminal_sha256']==auth['static_terminal_sha256'] and
+        r['generated_sha256'][auth['arm']]==auth['generated_sha256'],'PTR_R4B_DELTA_BINDING')
+
+def ptr_r4b_read_delta(root,auth=None,*,require_terminal=True,sr=None):
+    out=root/PTR_R4B_DELTA;ptr_r4b_output_path(out)
+    p=out/'report.json';h4m12_require(p.is_file() and not p.is_symlink(),'PTR_R4B_DELTA_REPORT_PATH')
+    sha=digest(p)
+    if auth is not None:
+        h4m12_require(require_terminal is True,'PTR_R4B_DELTA_TERMINAL_REQUIRED')
+        h4x_file_pin(p,auth['delta_sha256'])
+        h4x_file_pin(out/'supervisor.terminal.json',auth['delta_terminal_sha256'])
+    if sr is None:sr=ptr_read_static(root,PTR_R4_STATIC_ARTIFACTS['report.json'],require_terminal=True,historical=True)
+    r=ptr_r4b_check_delta_report(root,ssrpc_read_json(p,H4X_SPEC['other_cap']),sr)
+    a=r['authorization'];head=r['delta_head']
+    attempt=ssrpc_read_json(out/'attempt.json',65536);worker=ssrpc_read_json(out/'worker.started.json',65536)
+    h4m12_require(set(attempt)=={'authorization','delta_head','parent_pid'} and attempt['authorization']==a and
+        attempt['delta_head']==head and type(attempt['parent_pid']) is int and attempt['parent_pid']>0 and
+        set(worker)=={'authorization','pid','parent_pid'} and worker['authorization']==a and
+        type(worker['pid']) is int and worker['pid']>0 and worker['pid']!=attempt['parent_pid'] and
+        worker['parent_pid']==attempt['parent_pid'],'PTR_R4B_DELTA_RECEIPTS')
+    h4m12_require(ssrpc_read_json(out/'attempt_result.json',65536)==dict(status='COMPLETE',authorization=a,
+        report_sha256=sha,producer_rc=0),'PTR_R4B_DELTA_RESULT')
+    h4m12_require(not (out/'supervisor.failed.json').exists() and not (out/'supervisor.failed.json').is_symlink(),'PTR_R4B_DELTA_FAILURE')
+    if require_terminal:ssrpc_terminal_receipt(out,sha,a)
+    if auth is not None:ptr_r4b_delta_bind(r,auth)
+    return r
+
+def ptr_r4b_delta_fixtures(root,a,head,sr):
+    raise RuntimeError('PTR_R4B_DELTA_FIXTURE_IMPLEMENTATION_PENDING')
 
 def ptr_r4b_delta_cli(argv):
-    raise RuntimeError('PTR_R4B_DELTA_IMPLEMENTATION_PENDING')
+    import subprocess,selectors,signal
+    p=argparse.ArgumentParser(description='PTR R4B focused one-use host-only delta')
+    p.add_argument('--checkpoint',type=Path,required=True)
+    p.add_argument('--restore-report',type=Path,required=True)
+    p.add_argument('--reward-report',type=Path,required=True)
+    p.add_argument('--worker',action='store_true')
+    args=p.parse_args(argv);root=Path(__file__).resolve().parent
+    h4m12_require(Path.cwd().resolve()==root and ssrpc_static_no_native(),'PTR_R4B_DELTA_WORKDIR')
+    a,head=ptr_r4b_delta_authorization(root);out=root/PTR_R4B_DELTA
+    _,_,bootstrap=ptr_static_preflight(root,args)
+    sr=ptr_read_static(root,PTR_R4_STATIC_ARTIFACTS['report.json'],require_terminal=True,historical=True)
+    if args.worker:
+        ptr_r4b_output_path(out)
+        h4m12_require(ssrpc_read_json(out/'attempt.json',65536)==dict(authorization=a,delta_head=head,parent_pid=os.getppid()) and
+            os.environ.get('PTR_DELTA_BOOTSTRAP_SHA256')==bootstrap,'PTR_R4B_DELTA_RESERVED')
+        ssrpc_static_write(out/'worker.started.json',dict(authorization=a,pid=os.getpid(),parent_pid=os.getppid()))
+        ptr_r4b_delta_fixtures(root,a,head,sr)
+        h4m12_require(ptr_r4b_delta_authorization(root)==(a,head) and ssrpc_bootstrap_identity(root)==bootstrap and
+            ssrpc_static_no_native(),'PTR_R4B_DELTA_FINAL')
+        ssrpc_static_write(out/'report.json',ptr_r4b_delta_report(root,a,head,sr))
+        return
+    ptr_r4b_unused(out)
+    h4m12_require('PTR_DELTA_BOOTSTRAP_SHA256' not in os.environ,'PTR_R4B_DELTA_PARENT_ENV')
+    h4x_storage(out,initial=True);out.mkdir(exist_ok=False)
+    child=None;rc=None;total=0
+    try:
+        ssrpc_static_write(out/'attempt.json',dict(authorization=a,delta_head=head,parent_pid=os.getpid()))
+        child=subprocess.Popen([sys.executable,'-B','-u',str(Path(__file__).resolve()),'--h4ptr-full-static','--delta-r4b',*argv,'--worker'],
+            stdout=subprocess.PIPE,stderr=subprocess.STDOUT,start_new_session=True,env=dict(os.environ,PTR_DELTA_BOOTSTRAP_SHA256=bootstrap))
+        deadline=time.monotonic()+H4M12_WATCHDOG_SECONDS
+        with selectors.DefaultSelector() as sel,(out/'worker.log').open('xb') as log:
+            sel.register(child.stdout,selectors.EVENT_READ)
+            while True:
+                h4m12_require(time.monotonic()<deadline,'PTR_R4B_DELTA_WATCHDOG')
+                if not sel.select(timeout=1):continue
+                data=os.read(child.stdout.fileno(),65536)
+                if not data:break
+                h4m12_require(total+len(data)<=H4M12_SPEC['external_log_reserve'],'PTR_R4B_DELTA_LOG_CAP')
+                log.write(data);log.flush();total+=len(data)
+        rc=child.wait(timeout=max(1,deadline-time.monotonic()))
+        h4m12_require(rc==0 and ptr_r4b_delta_authorization(root)==(a,head) and ssrpc_static_no_native() and
+            ssrpc_bootstrap_identity(root)==bootstrap,'PTR_R4B_DELTA_PRODUCER')
+        h4x_storage(out)
+        sha=digest(out/'report.json')
+        ptr_r4b_check_delta_report(root,ssrpc_read_json(out/'report.json',H4X_SPEC['other_cap']),sr)
+        ssrpc_static_write(out/'attempt_result.json',dict(status='COMPLETE',authorization=a,report_sha256=sha,producer_rc=0))
+        ptr_r4b_read_delta(root,require_terminal=False,sr=sr)
+        ssrpc_static_write(out/'supervisor.terminal.json',dict(status='COMPLETE',authorization=a,
+            report_sha256=sha,producer_rc=0,reader_rc=0,worker_log_sha256=digest(out/'worker.log'),stored_log_bytes=total))
+        ptr_r4b_read_delta(root,sr=sr)
+    except BaseException as exc:
+        if child is not None and child.poll() is None:
+            try:os.killpg(child.pid,signal.SIGKILL)
+            except ProcessLookupError:pass
+            child.wait()
+        failure=dict(status='STOP',authorization=a,delta_head=head,producer_rc=rc,stored_log_bytes=total,error=repr(exc)[:2048])
+        ssrpc_static_write(out/'supervisor.failed.json',failure)
+        if not (out/'attempt_result.json').exists():ssrpc_static_write(out/'attempt_result.json',failure)
+        raise
 # H4M29_R4B_RELEASE_END
 if __name__=='__main__' and sys.argv[1:2]==['--h4ptr-continuation']:
     ptr_supervisor_held(sys.argv[2:])
