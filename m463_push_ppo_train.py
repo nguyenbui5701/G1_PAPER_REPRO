@@ -15339,5 +15339,337 @@ def ptr_r7_focused_fixtures(root,raw,record):
 
 def ptr_r7_native_held(*args,**kwargs):
     raise RuntimeError('PTR_R7_NATIVE_DIAGNOSTIC_HELD')
+
+# H4M29_R7B_FOCUSED_STATIC_BEGIN
+# Held by distinct root-only authorization; no marker issued here.
+PTR_R7B_BASE_HEAD='4c5b15c2c1e9a3ab1a81fab157f3874fe7ae1cd8'
+PTR_R7B_BASE_SHA='6d86e2d9480c3c5333a9332137f9ef800ebdaa0539cd4784dca9d5ae7729449e'
+PTR_R7B_BASE_TRAINER_SHA='583b8ee28155995eb542ee50d999b961fd49cab6360b3630818519d239ace126'
+PTR_R7B_ID='H4-M29-R12-PTR-DIAG-FOCUSED-STATIC-V1'
+PTR_R7B_OUT=Path('m463_runs/m470_h4_m29_ptr_diag_static_v1')
+PTR_R7B_MARKER='H4PTR_R7_STATIC_GO'
+PTR_R7B_MANIFEST='1d1ee31cd2c3cf5e1703336fab4a2c7be9d9f955765b99f4ce3c79c0386144a4'
+PTR_R7B_GENERATED='53181a60be5371ff5ea4638eb8b8d61b79546f31b69d6cd0ce16dd1ef6b5c41c'
+PTR_R7B_HELD_CTRL='fa948f6e1a4fa690ef360dd6b49604fda691fd00eda71aea2884040cb0205b25'
+PTR_R7B_CLOSED_ROOT='e09c35a82f06a97fe5406ba36bb3fd9664913583'
+PTR_R7B_V1=Path('m463_runs/m470_h4_m29_ptr_ctrl_v1')
+PTR_R7B_V1_PINS={
+    'attempt.json':'3ec2aab1b20243337708076491197d7e870ae6e49887b4d44f096ade53946c0d',
+    'dispatch.started.json':'5f304747866b9c1eab591b62c525dfa49c27b227837d53858b745d27af9ead0c',
+    'worker.started.json':'8af84eedc7510021b8129987bed1d65eed16733ef121b1ebeb75d9ca23754e51',
+    'm463_brax_ppo_instrumented.py':PTR_R7_V1_GENERATED,
+    'worker.log':'18e20a44b9f7f5471a063d0ba0b109458c8b902ff026585e5287a56373512130',
+    'report.json':PTR_R7_V1_REPORT,'attempt_result.json':PTR_R7_V1_TERMINAL,
+    'supervisor.failed.json':PTR_R7_V1_TERMINAL}
+PTR_R7B_DELTA_PINS={
+    'attempt.json':'51429c3f9d9b9dc46357f3be6468e318ca0f374b724357218d2427fecbc65f39',
+    'worker.started.json':'9559dd05d4268e332634d2aed837c9c1d7e5b6ea141f71ce61840ab10270a581',
+    'worker.log':'0697573dec6dc087f4d971f6a5ed444dc78010fd01d82060442d8032581ad4b7',
+    'attempt_result.json':'0d224c03dd69a9d6b801011d9076b7e829b7879a416e5bed5978853764b5d2cc',
+    'report.json':'1f77f9586874a41c224c6779baf2395e6b6fdb1a93bca4b83f3b64985acd6e85',
+    'supervisor.terminal.json':'f46205b5a8caba18b91c6d9e6a8d430f53b7d61190cd3a4680c1e682ed22de0b'}
+PTR_R7B_ROLE='PTR_R7B_CHILD_ROLE'
+PTR_R7B_BOOT='PTR_R7B_BOOTSTRAP_SHA256'
+PTR_R7B_CASE_PREFIX='PTR_R7B_CASE_PASS='
+
+def ptr_r7b_manifest():
+    return hashlib.sha256(json.dumps(list(PTR_R7_CASES),separators=(',',':')).encode()).hexdigest()
+
+def ptr_r7b_canonical(v):
+    return json.dumps(v,sort_keys=True,separators=(',',':'),allow_nan=False)
+
+def ptr_r7b_exact(actual,expected,label):
+    h4m12_require(ptr_r7b_canonical(actual)==ptr_r7b_canonical(expected),label)
+
+def ptr_r7b_reverse(raw):
+    first=b'\n# H4M29_R7B_FOCUSED_STATIC_'+b'BEGIN\n'
+    last=b'# H4M29_R7B_FOCUSED_STATIC_'+b'END\n'
+    h4m12_require(raw.count(first)==raw.count(last)==1 and raw.index(first)<raw.index(last),'PTR_R7B_REVERSE_SENTINELS')
+    old=raw[:raw.index(first)]+raw[raw.index(last)+len(last):]
+    h4m12_require(hashlib.sha256(old).hexdigest()==PTR_R7B_BASE_TRAINER_SHA,'PTR_R7B_REVERSE_SHA')
+    return old
+
+def ptr_r7b_project(root):
+    import subprocess
+    root=Path(root).resolve();result={}
+    for name in PTR_SOURCE_NAMES:
+        p=root/name
+        h4m12_require(p.is_file() and not p.is_symlink(),'PTR_R7B_PROJECT_PATH')
+        raw=p.read_bytes()
+        current=subprocess.check_output(['git','show','HEAD:'+name],cwd=root,timeout=30)
+        old=subprocess.check_output(['git','show',PTR_R7B_BASE_HEAD+':'+name],cwd=root,timeout=30)
+        projected=ptr_r7b_reverse(raw) if name=='m463_push_ppo_train.py' else raw
+        h4m12_require(raw==current and projected==old,'PTR_R7B_PROJECT_'+name)
+        result[name]=hashlib.sha256(old).hexdigest()
+    h4m12_require(hashlib.sha256(ptr_r7b_canonical(result).encode()).hexdigest()==PTR_R7B_BASE_SHA,'PTR_R7B_BASE_AGGREGATE')
+    ptr_r7_project_sources(root)
+    return result
+
+def ptr_r7b_auth_schema(a):
+    import re
+    fields={'id','source_head','source_sha256','fixture_manifest_sha256','generated_sha256'}
+    h4m12_require(type(a) is dict and set(a)==fields and all(type(v) is str for v in a.values())
+        and a['id']==PTR_R7B_ID and re.fullmatch('[0-9a-f]{40}',a['source_head']) is not None
+        and re.fullmatch('[0-9a-f]{64}',a['source_sha256']) is not None
+        and a['fixture_manifest_sha256']==PTR_R7B_MANIFEST==ptr_r7b_manifest()
+        and a['generated_sha256']==PTR_R7B_GENERATED,'PTR_R7B_AUTH_SCHEMA')
+    return a
+
+def ptr_r7b_authorization(root):
+    import re,subprocess
+    root=Path(root).resolve()
+    git=lambda *args:subprocess.check_output(['git',*args],cwd=root,timeout=30)
+    h4m12_require(Path.cwd().resolve()==root and ssrpc_static_no_native()
+        and git('symbolic-ref','--short','HEAD').strip()==b'experiment/b1-hardware-scaled'
+        and not git('status','--porcelain','--untracked-files=no'),'PTR_R7B_TRACKED')
+    rp=root/'G1_RESEARCH_RULES.md'
+    h4m12_require(rp.is_file() and not rp.is_symlink(),'PTR_R7B_ROOT_PATH')
+    raw=rp.read_bytes();head=ptr_head(root)
+    h4m12_require(git('rev-parse','refs/remotes/origin/experiment/b1-hardware-scaled').decode().strip()==head,
+        'PTR_R7B_REMOTE_TRACKING_HEAD')
+    h4m12_require(raw==git('show','HEAD:G1_RESEARCH_RULES.md'),'PTR_R7B_ROOT_BYTES')
+    lines=re.findall(rb'(?m)^[A-Z0-9_]+_GO:.*$',raw);prefix=(PTR_R7B_MARKER+': ').encode()
+    h4m12_require(len(lines)==1 and lines[0].startswith(prefix),'PTR_R7B_NO_GO_OR_CONFLICT')
+    a=ptr_r7b_auth_schema(json.loads(lines[0][len(prefix):]))
+    prior=git('show',head+'^:G1_RESEARCH_RULES.md')
+    h4m12_require(hashlib.sha1(b'blob '+str(len(prior)).encode()+b'\0'+prior).hexdigest()==PTR_R7B_CLOSED_ROOT
+        and raw==prior+prefix+ptr_r7b_canonical(a).encode()+b'\n'
+        and git('rev-list','--parents','-n','1',head).decode().split()==[head,a['source_head']]
+        and git('diff','--name-only',head+'^',head).splitlines()==[b'G1_RESEARCH_RULES.md'],'PTR_R7B_ROOT_ONLY')
+    ptr_r4b_lineage(root,PTR_R7B_BASE_HEAD,a['source_head'])
+    h4m12_require(a['source_sha256']==h4x_source_digest(root),'PTR_R7B_CURRENT_SOURCE')
+    ptr_source_files(root,a['source_head']);ptr_r7b_project(root)
+    return a,head
+
+def ptr_r7b_historical(root):
+    root=Path(root).resolve()
+    pins={'v1':(PTR_R7B_V1,PTR_R7B_V1_PINS),'v2':(PTR_STATIC,PTR_R4_STATIC_ARTIFACTS),
+          'delta':(PTR_R4B_DELTA,PTR_R7B_DELTA_PINS)}
+    for rel,values in pins.values():
+        out=root/rel;ptr_r4b_output_path(out)
+        for name,sha in values.items():h4x_file_pin(out/name,sha)
+    ptr_parent_evidence(root)
+    return {k:dict(v[1]) for k,v in pins.items()}
+
+def ptr_r7b_preflight(root,args,a):
+    from importlib import metadata
+    from importlib.machinery import PathFinder
+    from m463_instrument_brax import (h4c_git_blob,make_ptr_r7_diagnostic_held_source,
+        make_r12_ptr_held_source,make_r12_ptr_integrated_source)
+    h4m12_require(ssrpc_static_no_native(),'PTR_R7B_PRE_NATIVE')
+    history=ptr_r7b_historical(root)
+    ptr_bootstrap_held(args);bootstrap=ssrpc_bootstrap_identity(root)
+    for pkg,relative,expected in (
+        ('mujoco_playground','_src/wrapper.py','62e2823b80b692befe29e4640d0b7a816e52271c'),
+        ('brax','envs/wrappers/training.py','2c09c8268a29d14c832dd07050575e4541ee98af'),
+        ('mujoco_playground','_src/locomotion/g1/joystick.py','561a18948e3467ab924468eaf362150dadb9d4a6')):
+        spec=PathFinder.find_spec(pkg)
+        h4m12_require(spec is not None and spec.submodule_search_locations is not None,'PTR_R7B_DEPENDENCY')
+        p=Path(next(iter(spec.submodule_search_locations)))/relative
+        h4m12_require(p.is_file() and h4c_git_blob(p.read_bytes())==expected,'PTR_R7B_DEPENDENCY_PIN')
+    raw=Path(metadata.distribution('brax').locate_file('brax/training/agents/ppo/train.py')).read_bytes()
+    pin='e20613d42bf0868a13003e0312998816cc8d3593bb5ccaf9f1d070fd09c44bd7'
+    h4m12_require(hashlib.sha256(raw).hexdigest()==pin,'PTR_R7B_BRAX')
+    generated,original=make_ptr_r7_diagnostic_held_source(raw)
+    held,hpin=make_r12_ptr_held_source(raw,'ctrl')
+    integrated,ipin=make_r12_ptr_integrated_source(raw,'ctrl')
+    h4m12_require(original==hpin==ipin==pin and hashlib.sha256(generated.encode()).hexdigest()==a['generated_sha256']
+        and hashlib.sha256(held.encode()).hexdigest()==PTR_R7B_HELD_CTRL
+        and hashlib.sha256(integrated.encode()).hexdigest()==PTR_R7_V1_GENERATED,'PTR_R7B_GENERATED_IDENTITY')
+    h4m12_require(ssrpc_static_no_native(),'PTR_R7B_POST_NATIVE')
+    return raw,bootstrap,history
+
+def ptr_r7b_attempt(a,head,bootstrap,pid):
+    h4m12_require(type(pid) is int and pid>0,'PTR_R7B_PID')
+    return dict(authorization=a,authorization_head=head,bootstrap_sha256=bootstrap,parent_pid=pid)
+
+def ptr_r7b_worker_receipt(out,attempt):
+    w=ssrpc_read_json(out/'worker.started.json',65536)
+    h4m12_require(type(w) is dict and set(w)==set(attempt)|{'worker_pid'}
+        and type(w['worker_pid']) is int and w['worker_pid']>0 and w['worker_pid']!=attempt['parent_pid'],'PTR_R7B_WORKER_PID')
+    ptr_r7b_exact({k:w[k] for k in attempt},attempt,'PTR_R7B_WORKER_LINK')
+    return w
+
+def ptr_r7b_report(root,a,head,bootstrap,history,seen,generated):
+    h4m12_require(tuple(seen)==PTR_R7_CASES and generated==a['generated_sha256'],'PTR_R7B_CASES')
+    return dict(status='FOCUSED_HOST_STATIC_PASS',authorization=a,authorization_head=head,
+        source_files=ptr_source_files(root,a['source_head']),bootstrap_sha256=bootstrap,
+        historical_artifacts=history,parent_pins=dict(PTR_PARENT_PINS),
+        original_brax_sha256='e20613d42bf0868a13003e0312998816cc8d3593bb5ccaf9f1d070fd09c44bd7',
+        held_ctrl_sha256=PTR_R7B_HELD_CTRL,diagnostic_generated_sha256=generated,
+        fixtures=[dict(id=k,status='PASS') for k in seen],zero_native_execution=True,
+        zero_optimizer_updates=True,zero_normalizer_updates=True,promotion_authorized=False)
+
+def ptr_r7b_log_cases(out,*,complete):
+    p=out/'worker.log'
+    h4m12_require(p.is_file() and not p.is_symlink() and p.stat().st_size<=H4M12_SPEC['external_log_reserve'],'PTR_R7B_LOG_PATH')
+    prefix=PTR_R7B_CASE_PREFIX.encode()
+    rows=[s[len(prefix):].decode('ascii') for s in p.read_bytes().splitlines() if s.startswith(prefix)]
+    h4m12_require(len(rows)<=len(PTR_R7_CASES) and tuple(rows)==PTR_R7_CASES[:len(rows)]
+        and (not complete or tuple(rows)==PTR_R7_CASES),'PTR_R7B_LOG_CASES')
+    return rows
+
+def ptr_r7b_check_report(root,out,a,head,bootstrap,history,attempt):
+    h4m12_require(out==Path(root).resolve()/PTR_R7B_OUT,'PTR_R7B_EXACT_OUTPUT')
+    ptr_r4b_output_path(out);ptr_r7b_worker_receipt(out,attempt)
+    rows=ptr_r7b_log_cases(out,complete=True)
+    r=ssrpc_read_json(out/'report.json',SSRPC_STATIC_REPORT_CAP)
+    ptr_r7b_exact(r,ptr_r7b_report(root,a,head,bootstrap,history,rows,a['generated_sha256']),'PTR_R7B_REPORT_SCHEMA')
+    return r
+
+def ptr_r7b_optional_hash(out,name):
+    p=out/name
+    if not p.exists() and not p.is_symlink():return None
+    h4m12_require(p.is_file() and not p.is_symlink(),'PTR_R7B_RECEIPT_PATH')
+    return digest(p)
+
+def ptr_r7b_result(out,a,head,rc):
+    h4m12_require(rc is None or type(rc) is int,'PTR_R7B_PRODUCER_RC')
+    rs=ptr_r7b_optional_hash(out,'report.json')
+    return dict(status='PRODUCED' if rc==0 and rs is not None else 'STOP',authorization=a,
+        authorization_head=head,producer_rc=rc,report_sha256=rs)
+
+def ptr_r7b_terminal_payload(out,attempt,rc,rr,error):
+    log=ptr_r7b_optional_hash(out,'worker.log')
+    n=(out/'worker.log').stat().st_size if log is not None else 0
+    h4m12_require(n<=H4M12_SPEC['external_log_reserve'],'PTR_R7B_TERMINAL_LOG_CAP')
+    w=ptr_r7b_worker_receipt(out,attempt) if ptr_r7b_optional_hash(out,'worker.started.json') is not None else None
+    stage='REPORT_WRITTEN' if ptr_r7b_optional_hash(out,'report.json') is not None else 'WORKER_STARTED' if w is not None else 'RESERVATION_ONLY'
+    return dict(status='COMPLETE' if error is None and rc==rr==0 else 'STOP',
+        authorization=attempt['authorization'],authorization_head=attempt['authorization_head'],
+        bootstrap_sha256=attempt['bootstrap_sha256'],parent_pid=attempt['parent_pid'],
+        worker_pid=None if w is None else w['worker_pid'],stage=stage,producer_rc=rc,reader_rc=rr,error=error,
+        attempt_sha256=ptr_r7b_optional_hash(out,'attempt.json'),
+        worker_sha256=ptr_r7b_optional_hash(out,'worker.started.json'),
+        result_sha256=ptr_r7b_optional_hash(out,'attempt_result.json'),
+        report_sha256=ptr_r7b_optional_hash(out,'report.json'),worker_log_sha256=log,stored_log_bytes=n)
+
+def ptr_r7b_check_terminal(root,out,a,head,bootstrap,history,*,complete,expected_sha=None):
+    h4m12_require(out==Path(root).resolve()/PTR_R7B_OUT and ptr_r7b_authorization(root)==(a,head),
+        'PTR_R7B_TERMINAL_AUTH_OUTPUT')
+    ptr_r4b_output_path(out)
+    name='supervisor.terminal.json' if complete else 'supervisor.failed.json'
+    other='supervisor.failed.json' if complete else 'supervisor.terminal.json'
+    if expected_sha is not None:h4x_file_pin(out/name,expected_sha)
+    h4m12_require(ptr_r7b_optional_hash(out,other) is None,'PTR_R7B_TERMINAL_CONFLICT')
+    t=ssrpc_read_json(out/name,65536);attempt=ssrpc_read_json(out/'attempt.json',65536)
+    ptr_r7b_exact(attempt,ptr_r7b_attempt(a,head,bootstrap,attempt['parent_pid']),'PTR_R7B_ATTEMPT_SCHEMA')
+    rc=t['producer_rc'];rr=t['reader_rc'];error=t['error']
+    h4m12_require((rc is None or type(rc) is int) and (rr is None or type(rr) is int)
+        and (rr is None or rc==0),'PTR_R7B_RC_SCHEMA')
+    if complete:h4m12_require(type(rc) is type(rr) is int and rc==rr==0 and error is None,'PTR_R7B_COMPLETE_RC')
+    else:h4m12_require(type(error) is str and 0<len(error)<=2048,'PTR_R7B_STOP_ERROR')
+    ptr_r7b_exact(t,ptr_r7b_terminal_payload(out,attempt,rc,rr,error),'PTR_R7B_TERMINAL_SCHEMA')
+    result=ssrpc_read_json(out/'attempt_result.json',65536)
+    ptr_r7b_exact(result,ptr_r7b_result(out,a,head,rc),'PTR_R7B_RESULT_SCHEMA')
+    if complete:
+        expected_files={'attempt.json','worker.started.json','worker.log','report.json',
+            'attempt_result.json','supervisor.terminal.json'}
+        h4m12_require({p.name for p in out.iterdir()}==expected_files and
+            all(p.is_file() and not p.is_symlink() for p in out.iterdir()),'PTR_R7B_INVENTORY')
+        h4m12_require(t['stage']=='REPORT_WRITTEN' and t['worker_pid'] is not None
+            and t['worker_log_sha256'] is not None and result['status']=='PRODUCED'
+            and (out/'worker.log').read_bytes().splitlines().count(b'PTR_R7B_INDEPENDENT_READER_PASS')==1,'PTR_R7B_COMPLETE_STAGE')
+        return ptr_r7b_check_report(root,out,a,head,bootstrap,history,attempt)
+    h4m12_require(t['report_sha256'] is None or t['worker_pid'] is not None,'PTR_R7B_STOP_STAGE')
+    rows=ptr_r7b_log_cases(out,complete=False) if t['worker_log_sha256'] is not None else []
+    return dict(status='STOP',stage=t['stage'],completed_log_prefix=rows,promotion_authorized=False)
+
+def ptr_r7b_child(root,out,a,head,raw,bootstrap,history):
+    role=os.environ.get(PTR_R7B_ROLE)
+    h4m12_require(role in ('producer','reader') and os.environ.get(PTR_R7B_BOOT)==bootstrap,'PTR_R7B_CHILD_ENV')
+    attempt=ptr_r7b_attempt(a,head,bootstrap,os.getppid())
+    ptr_r4b_output_path(out)
+    ptr_r7b_exact(ssrpc_read_json(out/'attempt.json',65536),attempt,'PTR_R7B_RESERVATION')
+    if role=='reader':
+        ptr_r7b_exact(ssrpc_read_json(out/'attempt_result.json',65536),ptr_r7b_result(out,a,head,0),'PTR_R7B_READER_RESULT')
+        ptr_r7b_check_report(root,out,a,head,bootstrap,history,attempt)
+        h4m12_require(ptr_r7b_authorization(root)==(a,head) and ssrpc_bootstrap_identity(root)==bootstrap
+            and ssrpc_static_no_native(),'PTR_R7B_READER_FINAL')
+        print('PTR_R7B_INDEPENDENT_READER_PASS',flush=True)
+        return
+    ssrpc_static_write(out/'worker.started.json',dict(attempt,worker_pid=os.getpid()))
+    seen=[]
+    def record(name):
+        h4m12_require(len(seen)<len(PTR_R7_CASES) and name==PTR_R7_CASES[len(seen)],'PTR_R7B_RECORD_ORDER')
+        seen.append(name);print(PTR_R7B_CASE_PREFIX+name,flush=True)
+    r=ptr_r7_focused_fixtures(root,raw,record)
+    h4m12_require(tuple(seen)==PTR_R7_CASES and r['cases']==tuple(seen)
+        and r['zero_native_execution'] is True and r['zero_optimizer_updates'] is True
+        and r['promotion_authorized'] is False,'PTR_R7B_PRODUCER_FIXTURES')
+    h4m12_require(ptr_r7b_authorization(root)==(a,head) and ssrpc_bootstrap_identity(root)==bootstrap
+        and ptr_r7b_historical(root)==history and ssrpc_static_no_native(),'PTR_R7B_PRODUCER_FINAL')
+    ssrpc_static_write(out/'report.json',ptr_r7b_report(root,a,head,bootstrap,history,seen,r['generated_sha256']))
+
+def ptr_r7b_static_held(argv):
+    """Distinct -c module entry; future canonical root-only GO required."""
+    import selectors,signal,subprocess
+    p=argparse.ArgumentParser(description='R7B focused one-use host-static only')
+    p.add_argument('--checkpoint',type=Path,required=True)
+    p.add_argument('--restore-report',type=Path,required=True)
+    p.add_argument('--reward-report',type=Path,required=True)
+    args=p.parse_args(argv);root=Path(__file__).resolve().parent;out=root/PTR_R7B_OUT
+    a,head=ptr_r7b_authorization(root);role=os.environ.get(PTR_R7B_ROLE)
+    if role is None:
+        h4m12_require(PTR_R7B_BOOT not in os.environ,'PTR_R7B_PARENT_ENV');ptr_r4b_unused(out)
+    else:h4m12_require(role in ('producer','reader'),'PTR_R7B_ROLE')
+    raw,bootstrap,history=ptr_r7b_preflight(root,args,a)
+    if role is not None:return ptr_r7b_child(root,out,a,head,raw,bootstrap,history)
+    h4m12_require(ptr_r7b_authorization(root)==(a,head),'PTR_R7B_RESERVE_AUTH')
+    h4x_storage(out,initial=True);out.mkdir(exist_ok=False)
+    attempt=ptr_r7b_attempt(a,head,bootstrap,os.getpid())
+    rc=rr=None;total=0;child=None;child_role=None;producer_pid=None
+    deadline=time.monotonic()+H4M12_WATCHDOG_SECONDS
+    def drain(log,role):
+        nonlocal child,total,child_role,producer_pid
+        child_role=role
+        code='import sys;import m463_push_ppo_train as t;t.ptr_r7b_static_held(sys.argv[1:])'
+        child=subprocess.Popen([sys.executable,'-B','-u','-c',code,*argv],stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,start_new_session=True,env=dict(os.environ,**{PTR_R7B_ROLE:role,PTR_R7B_BOOT:bootstrap}))
+        if role=='producer':producer_pid=child.pid
+        with selectors.DefaultSelector() as sel:
+            sel.register(child.stdout,selectors.EVENT_READ)
+            while True:
+                h4m12_require(time.monotonic()<deadline,'PTR_R7B_WATCHDOG')
+                if not sel.select(timeout=1):continue
+                data=os.read(child.stdout.fileno(),65536)
+                if not data:break
+                h4m12_require(total+len(data)<=H4M12_SPEC['external_log_reserve'],'PTR_R7B_LOG_CAP')
+                log.write(data);log.flush();total+=len(data)
+        value=child.wait(timeout=max(.001,deadline-time.monotonic()))
+        child.stdout.close();child=None;log.flush();os.fsync(log.fileno())
+        return value
+    try:
+        ssrpc_static_write(out/'attempt.json',attempt)
+        with (out/'worker.log').open('xb') as log:
+            rc=drain(log,'producer')
+            ssrpc_static_write(out/'attempt_result.json',ptr_r7b_result(out,a,head,rc))
+            h4m12_require(rc==0,'PTR_R7B_PRODUCER_RC')
+            h4m12_require(ptr_r7b_worker_receipt(out,attempt)['worker_pid']==producer_pid,'PTR_R7B_ACTUAL_CHILD_PID')
+            ptr_r7b_check_report(root,out,a,head,bootstrap,history,attempt)
+            rr=drain(log,'reader')
+            h4m12_require(rr==0,'PTR_R7B_READER_RC')
+        h4x_storage(out)
+        h4m12_require(ptr_r7b_authorization(root)==(a,head) and ssrpc_bootstrap_identity(root)==bootstrap
+            and ptr_r7b_historical(root)==history and ssrpc_static_no_native(),'PTR_R7B_SUPERVISOR_FINAL')
+        ptr_r7b_check_report(root,out,a,head,bootstrap,history,attempt)
+        h4m12_require((out/'worker.log').read_bytes().splitlines().count(b'PTR_R7B_INDEPENDENT_READER_PASS')==1,'PTR_R7B_READER_LOG')
+        ssrpc_static_write(out/'supervisor.terminal.json',ptr_r7b_terminal_payload(out,attempt,rc,rr,None))
+        ptr_r7b_check_terminal(root,out,a,head,bootstrap,history,complete=True)
+    except BaseException as exc:
+        if child is not None:
+            if child.poll() is None:
+                try:os.killpg(child.pid,signal.SIGKILL)
+                except ProcessLookupError:pass
+            actual_rc=child.wait()
+            if child_role=='producer':rc=actual_rc
+            elif child_role=='reader':rr=actual_rc
+            if child.stdout is not None:child.stdout.close()
+        if not (out/'attempt_result.json').exists() and not (out/'attempt_result.json').is_symlink():
+            ssrpc_static_write(out/'attempt_result.json',ptr_r7b_result(out,a,head,rc))
+        ssrpc_static_write(out/'supervisor.failed.json',ptr_r7b_terminal_payload(out,attempt,rc,rr,repr(exc)[:2048]))
+        raise
+
+# H4M29_R7B_FOCUSED_STATIC_END
 # H4M29_R7_DIAGNOSTIC_TRAINER_END
 # H4M29_PTR_HELD_TRAINER_END
