@@ -15886,7 +15886,7 @@ def ptr_r8a2_reservation(root,out,binding,*,worker=False):
 
 def ptr_r8a2_reserve(root,binding):
     """Future supervisor-only reservation, still unconditionally held."""
-    raise RuntimeError('PTR_R8A2_RESERVATION_HELD')
+    ptr_r8b_release_gate('PTR_R8A2_RESERVATION_HELD')
     out=root/PTR_R7_OUTPUT
     h4m12_require(ssrpc_static_no_native() and PTR_R8A2_ROLE not in os.environ and
         PTR_R8A2_BOOT not in os.environ,'PTR_R8A2_PARENT_ENTRY')
@@ -15902,7 +15902,7 @@ def ptr_r8a2_make_environment(root,out,binding,config):
     """Reuse exact PTR reset/step via a diagnostic-only constructor.
     Never install or impersonate the historical PPO R4B context.
     """
-    raise RuntimeError('PTR_R8A2_ENVIRONMENT_HELD')
+    ptr_r8b_release_gate('PTR_R8A2_ENVIRONMENT_HELD')
     global _PTR_R8A2_CONTEXT
     h4m12_require(_PTR_R8A2_CONTEXT is None,'PTR_R8A2_CONTEXT')
     ptr_r8a2_reservation(root,out,binding,worker=True)
@@ -15933,7 +15933,7 @@ def ptr_r8a2_bind_callbacks(environment,audit,abort,chunk):
 
 def ptr_r8a2_generated_guard(audit,generated_file,environment,resume,abort,chunk):
     """Prospective guarded entry; the actual held generator is unchanged."""
-    raise RuntimeError('PTR_R8A2_GENERATED_ENTRY_HELD')
+    ptr_r8b_release_gate('PTR_R8A2_GENERATED_ENTRY_HELD')
     c=_PTR_R8A2_CONTEXT
     h4m12_require(c is not None and not c['dispatched'] and c['environment'] is environment and
         c['callbacks'] is not None and all(x is y for x,y in zip(c['callbacks'],(audit,abort,chunk))),
@@ -16108,7 +16108,7 @@ def ptr_r8a3_preflight(root,args,a):
 
 def ptr_r8a3_worker(root,out,args,a,head,binding,source,pins,boot,history):
     """Held native worker draft. No imports of native packages above the barrier."""
-    raise RuntimeError('PTR_R8A3_WORKER_HELD')
+    ptr_r8b_release_gate('PTR_R8A3_WORKER_HELD')
     import inspect,importlib.util
     h4m12_require(ssrpc_static_no_native() and os.environ.get(PTR_R8A2_ROLE)=='producer' and
         os.environ.get(PTR_R8A2_BOOT)==boot,'PTR_R8A3_WORKER_ENTRY')
@@ -16315,7 +16315,7 @@ def ptr_r8a3_read_terminal(root,out,binding,boot,*,complete):
 
 def ptr_r8a3_main(argv):
     """Distinct prospective supervisor/producer/reader. No public execution release."""
-    raise RuntimeError('PTR_R8A3_SUPERVISOR_HELD')
+    ptr_r8b_release_gate('PTR_R8A3_SUPERVISOR_HELD')
     import selectors,signal,subprocess
     p=argparse.ArgumentParser(description='R12 PTR one-rollout zero-update diagnostic')
     for name in ('checkpoint','restore-report','reward-report'):p.add_argument('--'+name,type=Path,required=True)
