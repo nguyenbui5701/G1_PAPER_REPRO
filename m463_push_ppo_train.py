@@ -13766,7 +13766,8 @@ PTR_STATIC_CASES=(
     'reject_typed_nonfinite','generated_invalid_no_sgd','generated_guard_order',
     'candidate_off_reward_identity','positive_final_report','reject_final_counter',
     'reject_final_artifact','terminal_receipt_positive','reject_terminal_failure',
-    'failure_receipt_fallback','no_native_imports')
+    'failure_receipt_fallback','combined_exposure_pass','combined_exposure_dcr_inconclusive',
+    'reject_combined_host_reset','no_native_imports')
 PTR_STATIC_REPORT_KEYS={'status','authorization','static_head','source_head','source_sha256',
     'source_files','parent_pins','bootstrap_sha256','generated_sha256','held_generated_sha256',
     'fixture_manifest_sha256','fixtures','zero_native_execution','zero_optimizer_updates','promotion_authorized'}
@@ -14151,6 +14152,50 @@ def ptr_static_fixtures(root,raw,record):
         reject('reject_terminal_failure',lambda:ssrpc_terminal_receipt(out,sha,fake),'FFE2_SUPERVISOR_FAILURE')
         failure=ptr_failure_record(out,fake,1,RuntimeError('synthetic malformed reservation'))
         check('failure_receipt_fallback',failure['status']=='STOP' and failure['stage']=='UNREADABLE_EVIDENCE')
+
+    # Positive combined endpoint replay, using historical broad counters as a
+    # fixture basis and explicitly synthetic DCR/PTR counts. This is not a
+    # relabelled historical outcome or a claim about training exposure.
+    combined=copy.deepcopy(report)
+    combined['ptr_chunks'],combined['r12_chunks'],_=replay_rows('cand')
+    for j,(row,dr,br) in enumerate(zip(combined['ptr_chunks'],combined['r12_chunks'],combined['h4_chunks'])):
+        m=row['metrics'];dm=dr['metrics'];counts=br['counts']
+        m.update(open_kind_1=51,open_kind_2=10,tail_1_1=50,tail_2_1=10)
+        dm.update(open=60,close=60,scored=3000,nonzero_desired=3000,nonzero_consumed=3000,
+            desired_sum=-2.4,delivered_delta=-2.4,consumed_delta=-2.4,consumed_reward=-2.4,
+            consumed_reward_abs_sum=2.4,open_kind_1=50,open_kind_2=10,open_side_1=60,
+            scored_kind_1=2500,scored_kind_2=500,scored_side_1=3000,close_reason_5=60)
+        for mode in (1,2,3):
+            dm[f'consumed_mode_{mode}']=dm[f'scored_mode_{mode}']=1000
+        h4m12_require(counts['m463_h4_first_events_per_rollout']>=51 and counts['m463_h4_repeat_events_per_rollout']>=10,'PTR_FIXTURE_ARCHIVE_EVENTS')
+        m.update(intermediate_sum=-2.4,intermediate_abs_sum=2.4,delivered_sum=-4.8,
+            delivered_abs_sum=4.8,consumed_dcr_delta=-2.4,consumed_total_delta=-4.8,
+            desired_base_abs_sum=2.4)
+    for row in combined['operational_rows']:
+        if row['event'].endswith('reset_after'):
+            row['r12_host_reset_closed']=0
+            row['ptr_host_reset_closed']=int(row['event']=='reset_after')
+    def sync_epoch(q):
+        hist=q['report_history'][0]['metrics']
+        for prefix,key in (('r12_','r12_chunks'),('ptr_','ptr_chunks')):
+            for field in q[key][0]['metrics']:
+                hist['training/'+prefix+field]=sum(row['metrics'][field] for row in q[key])/4
+    sync_epoch(combined)
+    check('combined_exposure_pass',ptr_complete_exposure(combined,'cand')['decision']=='EXPOSURE_PASS')
+    deficient=copy.deepcopy(combined)
+    for dr,pr in zip(deficient['r12_chunks'][2:],deficient['ptr_chunks'][2:]):
+        m=dr['metrics']
+        for field in m:m[field]=0
+        m.update(collected=5,batch_committed=5)
+        pr['metrics'].update(intermediate_sum=0.,intermediate_abs_sum=0.,delivered_sum=-2.4,
+            delivered_abs_sum=2.4,consumed_dcr_delta=0.,consumed_total_delta=-2.4,desired_base_abs_sum=0.)
+    sync_epoch(deficient)
+    result=ptr_complete_exposure(deficient,'cand')
+    check('combined_exposure_dcr_inconclusive',result['decision']=='EXPOSURE_INCONCLUSIVE' and
+        result['ptr']['decision']=='EXPOSURE_PASS' and not result['dcr']['checks']['second_half'])
+    invalid=copy.deepcopy(combined)
+    next(row for row in invalid['operational_rows'] if row['event']=='reset_after')['ptr_host_reset_closed']=0
+    reject('reject_combined_host_reset',lambda:ptr_complete_exposure(invalid,'cand'),'PTR_REPLAY_COMPLETE')
     check('no_native_imports',ssrpc_static_no_native())
     return generated,held
 
@@ -14194,9 +14239,9 @@ def ptr_read_static(root,expected_sha,*,require_terminal):
     r=ptr_static_report_check(root,ssrpc_read_json(out/'report.json',H4X_SPEC['other_cap']))
     auth=r['authorization']
     a=ssrpc_read_json(out/'attempt.json',65536);w=ssrpc_read_json(out/'worker.started.json',65536)
-    h4m12_require(set(a)=={'authorization','parent_pid'} and a['authorization']==auth and
+    h4m12_require(set(a)=={'authorization','static_head','parent_pid'} and a['authorization']==auth and a['static_head']==r['static_head'] and
         type(a['parent_pid']) is int and a['parent_pid']>0 and set(w)=={'authorization','pid','parent_pid'} and
-        w['authorization']==auth and w['parent_pid']==a['parent_pid'] and type(w['pid']) is int and w['pid']>0,'PTR_STATIC_RECEIPTS')
+        w['authorization']==auth and w['parent_pid']==a['parent_pid'] and type(w['pid']) is int and w['pid']>0 and w['pid']!=a['parent_pid'],'PTR_STATIC_RECEIPTS')
     h4m12_require(ssrpc_read_json(out/'attempt_result.json',65536)==dict(status='COMPLETE',authorization=auth,
         report_sha256=expected_sha,producer_rc=0),'PTR_STATIC_RESULT')
     h4m12_require(not (out/'supervisor.failed.json').exists() and not (out/'supervisor.failed.json').is_symlink(),'PTR_STATIC_FAILURE')
@@ -14205,7 +14250,7 @@ def ptr_read_static(root,expected_sha,*,require_terminal):
 
 def ptr_static_worker(root,args,auth,head,out):
     h4m12_require(ptr_static_authorization(root)==(auth,head) and ssrpc_static_no_native(),'PTR_STATIC_WORKER_AUTH')
-    h4m12_require(ssrpc_read_json(out/'attempt.json',65536)==dict(authorization=auth,parent_pid=os.getppid()),'PTR_STATIC_RESERVED')
+    h4m12_require(ssrpc_read_json(out/'attempt.json',65536)==dict(authorization=auth,static_head=head,parent_pid=os.getppid()),'PTR_STATIC_RESERVED')
     ssrpc_static_write(out/'worker.started.json',dict(authorization=auth,pid=os.getpid(),parent_pid=os.getppid()))
     parent,raw,bootstrap=ptr_static_preflight(root,args)
     h4m12_require(os.environ.get('PTR_STATIC_BOOTSTRAP_SHA256')==bootstrap,'PTR_STATIC_PARENT_BOOTSTRAP')
@@ -14246,7 +14291,7 @@ def ptr_static_cli_held(argv):
     _,_,bootstrap=ptr_static_preflight(root,a)
     h4m12_require('PTR_STATIC_BOOTSTRAP_SHA256' not in os.environ,'PTR_STATIC_PARENT_ENV')
     h4x_storage(out,initial=True);out.mkdir(exist_ok=False)
-    ssrpc_static_write(out/'attempt.json',dict(authorization=auth,parent_pid=os.getpid()))
+    ssrpc_static_write(out/'attempt.json',dict(authorization=auth,static_head=head,parent_pid=os.getpid()))
     child=None;rc=None;total=0
     try:
         child=subprocess.Popen([sys.executable,'-B','-u',str(Path(__file__).resolve()),
