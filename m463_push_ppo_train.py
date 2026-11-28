@@ -16184,8 +16184,7 @@ def ptr_r8a3_worker(root,out,args,a,head,binding,source,pins,boot,history):
         h4m12_require(ret is None and _PTR_R8A2_CONTEXT['dispatched'] is True and
             tuple(x['event'] for x in rows)==PTR_R8A2_EVENTS and bool(result),'PTR_R8A3_RETURN')
         # Preserve completed evidence even if a subsequent resource or provenance check stops.
-        h4x_storage(out,len((json.dumps(result,sort_keys=True,allow_nan=False,indent=2)+'\n').encode()))
-        ssrpc_static_write(out/'report.json',result)
+        ptr_r8b_write_payload(out/'report.json',result)
         safe()
     gpu=monitor.snapshot()
     h4m12_require(not monitor.thread.is_alive() and ptr_parent_evidence(root)==parent and
@@ -16195,8 +16194,7 @@ def ptr_r8a3_worker(root,out,args,a,head,binding,source,pins,boot,history):
     ptr_r8a2_audit_reader(root,rows,result,binding,gpu)
     audit_payload=dict(binding=binding,report_sha256=digest(out/'report.json'),
         bootstrap_sha256=boot,rows=rows,gpu=gpu,promotion_authorized=False)
-    h4x_storage(out,len((json.dumps(audit_payload,sort_keys=True,allow_nan=False,indent=2)+'\n').encode()))
-    ssrpc_static_write(out/PTR_R8A3_AUDIT,audit_payload)
+    ptr_r8b_write_payload(out/PTR_R8A3_AUDIT,audit_payload)
 
 def ptr_r8a3_stage(out):
     return ('REPORT_DISPATCHED' if ptr_r7b_optional_hash(out,'dispatch.started.json') is not None else
@@ -16432,6 +16430,14 @@ PTR_R8B_RELEASE_LABELS=('PTR_R8A2_RESERVATION_HELD','PTR_R8A2_ENVIRONMENT_HELD',
 PTR_R8B_CASES=('historical_and_source_pins','local_generated_identity_and_compile',
     'exact_release_projection','native_schema_and_closed_gate','audit_log_prefix',
     'partial_receipt_envelope')
+
+def ptr_r8b_write_payload(path,value):
+    """Exclusive durable payload using the frozen native cap, not static 64KiB cap."""
+    raw=(json.dumps(value,sort_keys=True,allow_nan=False,indent=2)+'\n').encode()
+    h4m12_require(len(raw)<=H4X_SPEC['other_cap'],'PTR_R8B_PAYLOAD_CAP')
+    h4x_storage(path.parent,len(raw))
+    with path.open('xb') as f:
+        f.write(raw);f.flush();os.fsync(f.fileno())
 
 def ptr_r8b_manifest():
     return hashlib.sha256(json.dumps(list(PTR_R8B_CASES),separators=(',',':')).encode()).hexdigest()
