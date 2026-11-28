@@ -14603,14 +14603,14 @@ PTR_R4B_CASES=(
     'historical_six_receipts','reject_static_hash','reject_static_missing','reject_static_tamper',
     'historical_generated_identity','delta_marker_exact','reject_extra_marker','reject_noncanonical_marker',
     'reject_delta_as_runtime_marker','runtime_schema_ctrl','runtime_schema_cand','reject_runtime_missing_delta',
-    'reject_runtime_cand_no_ctrl','reject_candidate_missing_control','reject_wrong_delta_binding',
+    'reject_runtime_cand_no_ctrl','reject_candidate_missing_control','reject_candidate_mismatched_control','reject_wrong_delta_binding',
     'runtime_source_lineage','reject_unrelated_lineage','unused_namespace','reject_consumed_namespace',
     'reject_symlink_namespace','worker_reservation','reject_worker_pid','reject_worker_bootstrap',
     'reject_worker_duplicate','reject_unbound_environment','reject_wrong_environment_config','environment_claim',
     'reject_duplicate_environment','callback_binding','reject_wrong_callback','dispatch_receipt_binding',
-    'reject_duplicate_dispatch','reject_dispatch_receipt_mismatch','audit_order','reject_restore_before_template',
+    'reject_duplicate_dispatch','reject_dispatch_receipt_mismatch','worker_module_identity','reject_worker_module_conflict','audit_order','reject_restore_before_template',
     'reject_chunk_before_restore','generated_restore_order','delta_report_schema','reject_delta_fixture_order',
-    'reject_delta_missing_report','terminal_receipt_link','reject_terminal_failure','no_native_imports')
+    'reject_delta_missing_report','reject_delta_missing_terminal','terminal_receipt_link','reject_terminal_failure','no_native_imports')
 
 def ptr_r4b_delta_manifest():
     return hashlib.sha256(json.dumps(list(PTR_R4B_CASES),separators=(',',':')).encode()).hexdigest()
@@ -14705,7 +14705,137 @@ def ptr_r4b_read_delta(root,auth=None,*,require_terminal=True,sr=None):
     return r
 
 def ptr_r4b_delta_fixtures(root,a,head,sr):
-    raise RuntimeError('PTR_R4B_DELTA_FIXTURE_IMPLEMENTATION_PENDING')
+    """Focused actual host checks; synthetic reservation/context negatives are isolated."""
+    import tempfile,shutil,subprocess
+    from unittest.mock import patch
+    cases=[]
+    def ok(name,value=True):
+        h4m12_require(value and len(cases)<len(PTR_R4B_CASES) and PTR_R4B_CASES[len(cases)]==name,'PTR_R4B_CASE_'+name)
+        cases.append(name)
+        print('PTR_R4B_CASE_PASS',name,flush=True)
+    def reject(name,fn,reason):
+        try:fn()
+        except Exception as exc:h4m12_require(reason in str(exc),'PTR_R4B_REJECTION_'+name+': '+repr(exc)[:512])
+        else:raise RuntimeError('PTR_R4B_EXPECTED_REJECT_'+name)
+        ok(name)
+    for name in ('m463_push_ppo_train.py','m463_coverage_env.py'):
+        compile((root/name).read_bytes(),name,'exec')
+    ok('compile_changed_modules')
+    ok('exact_r4_and_v2_projection',ptr_r4_static_projection(root,PTR_R4_STATIC_SOURCE_HEAD)==sr['source_files'] and ptr_project_sources(root)==PTR_BASE_BLOBS)
+    raw=(root/'m463_coverage_env.py').read_bytes()
+    reject('reject_projection_drift',lambda:ptr_r4b_reverse('m463_coverage_env.py',raw+b'\n'),'PTR_R4B_BASE_BLOB')
+    reject('reject_projection_anchor',lambda:ptr_r4b_reverse('m463_coverage_env.py',raw.replace(b'ptr_r4b_environment_claim(self,arm,config)',b'wrong_claim(self,arm,config)')),'PTR_R4B_INVERSE_ANCHOR')
+    ok('historical_six_receipts',ptr_r4b_static_pins(root/PTR_STATIC))
+    reject('reject_static_hash',lambda:ptr_read_static(root,'0'*64,require_terminal=True,historical=True),'PTR_R4_STATIC_RECEIPT_MODE')
+    with tempfile.TemporaryDirectory(prefix='ptr-r4b-') as tmp:
+        t=Path(tmp)
+        reject('reject_static_missing',lambda:ptr_r4b_static_pins(t),'INPUT_PIN')
+        for n in PTR_R4_STATIC_ARTIFACTS:shutil.copyfile(root/PTR_STATIC/n,t/n)
+        (t/'worker.log').write_bytes(b'tamper')
+        reject('reject_static_tamper',lambda:ptr_r4b_static_pins(t),'INPUT_PIN')
+    ok('historical_generated_identity',ptr_generated_identity()==(sr['generated_sha256'],sr['held_generated_sha256']))
+    prior=subprocess.check_output(['git','show',head+'^:G1_RESEARCH_RULES.md'],cwd=root,timeout=30)
+    current=(root/'G1_RESEARCH_RULES.md').read_bytes()
+    ok('delta_marker_exact',ptr_r4b_marker_bytes(prior,current,a))
+    reject('reject_extra_marker',lambda:ptr_r4b_marker_bytes(prior,current+b'OTHER_GO: {}\n',a),'PTR_R4B_DELTA_MARKER')
+    reject('reject_noncanonical_marker',lambda:ptr_r4b_marker_bytes(prior,prior+b'H4PTR_DELTA_GO: '+json.dumps(a).encode()+b'\n',a),'PTR_R4B_DELTA_MARKER')
+    reject('reject_delta_as_runtime_marker',lambda:ptr_authorization_held(root,'ctrl'),'PTR_ROOT_EXACT_ADDITION')
+    ctrl=dict(id=ptr_spec('ctrl')['id'],arm='ctrl',output=ptr_spec('ctrl')['output'],source_head=a['source_head'],
+        source_sha256=a['source_sha256'],generated_sha256=sr['generated_sha256']['ctrl'],
+        static_sha256=PTR_R4_STATIC_ARTIFACTS['report.json'],static_terminal_sha256=PTR_R4_STATIC_ARTIFACTS['supervisor.terminal.json'],
+        delta_sha256='1'*64,delta_terminal_sha256='2'*64,ctrl_report_sha256='',ctrl_terminal_sha256='')
+    cand=dict(ctrl,id=ptr_spec('cand')['id'],arm='cand',output=ptr_spec('cand')['output'],generated_sha256=sr['generated_sha256']['cand'],
+        ctrl_report_sha256='3'*64,ctrl_terminal_sha256='4'*64)
+    ok('runtime_schema_ctrl',ptr_r4b_auth_schema(ctrl)==ctrl)
+    ok('runtime_schema_cand',ptr_r4b_auth_schema(cand)==cand)
+    reject('reject_runtime_missing_delta',lambda:ptr_r4b_auth_schema({k:v for k,v in ctrl.items() if k!='delta_sha256'}),'PTR_R4B_DELTA_AUTH_KEYS')
+    reject('reject_runtime_cand_no_ctrl',lambda:ptr_r4b_auth_schema(dict(cand,ctrl_report_sha256='')),'PTR_CTRL_BIND')
+    reject('reject_candidate_missing_control',lambda:ptr_require_control(root,cand),'INPUT_PIN')
+    with tempfile.TemporaryDirectory(prefix='ptr-r4b-match-') as tmp:
+        t=Path(tmp);out=t/ptr_spec('ctrl')['output'];out.mkdir(parents=True)
+        (out/'report.json').write_bytes(b'fixture')
+        (out/'supervisor.terminal.json').write_bytes(b'fixture')
+        ssrpc_static_write(out/'attempt.json',dict(authorization=dict(ctrl,delta_sha256='0'*64)))
+        mismatch=dict(cand,ctrl_report_sha256=digest(out/'report.json'),ctrl_terminal_sha256=digest(out/'supervisor.terminal.json'))
+        reject('reject_candidate_mismatched_control',lambda:ptr_require_control(t,mismatch),'PTR_MATCHED_CONTROL')
+    dr=ptr_r4b_delta_report(root,a,head,sr)
+    reject('reject_wrong_delta_binding',lambda:ptr_r4b_delta_bind(dr,dict(ctrl,source_sha256='0'*64)),'PTR_R4B_DELTA_BINDING')
+    ptr_r4b_lineage(root,a['source_head'],head);ok('runtime_source_lineage')
+    reject('reject_unrelated_lineage',lambda:ptr_r4b_lineage(root,head,a['source_head']),'PTR_R4B_LINEAGE')
+    with tempfile.TemporaryDirectory(prefix='ptr-r4b-reservation-') as tmp:
+        t=Path(tmp).resolve();out=t/ptr_spec('ctrl')['output'];out.parent.mkdir()
+        ptr_r4b_unused(out);ok('unused_namespace')
+        out.mkdir();reject('reject_consumed_namespace',lambda:ptr_r4b_unused(out),'PTR_OUTPUT_USED')
+        link=out.parent/'link';link.symlink_to(out,target_is_directory=True)
+        reject('reject_symlink_namespace',lambda:ptr_r4b_output_path(link),'PTR_R4B_OUTPUT_PATH')
+        attempt=dict(authorization=ctrl,authorization_head=head,parent_pid=os.getppid())
+        worker=dict(authorization=ctrl,pid=os.getpid())
+        module=sys.modules[__name__]
+        with patch.multiple(module,ptr_attempt_read=lambda *_:attempt,ptr_head=lambda *_:head,
+                ssrpc_bootstrap_identity=lambda *_:'boot',ptr_authorization_held=lambda *_:ctrl),patch.dict(os.environ,{'PTR_RUNTIME_BOOTSTRAP_SHA256':'boot'}):
+            ok('worker_reservation',ptr_r4_reservation(t,out,ctrl,require_worker=False))
+            attempt['parent_pid']=-1
+            reject('reject_worker_pid',lambda:ptr_r4_reservation(t,out,ctrl,require_worker=False),'PTR_R4_RESERVED_PID')
+            attempt['parent_pid']=os.getppid()
+            with patch.dict(os.environ,{'PTR_RUNTIME_BOOTSTRAP_SHA256':'bad'}):
+                reject('reject_worker_bootstrap',lambda:ptr_r4_reservation(t,out,ctrl,require_worker=False),'PTR_R4_RESERVED_BOOTSTRAP')
+            ssrpc_static_write(out/'worker.started.json',worker)
+            reject('reject_worker_duplicate',lambda:ptr_r4_reservation(t,out,ctrl,require_worker=False),'PTR_R4_WORKER_USED')
+            with patch.object(module,'_PTR_R4B_CONTEXT',None):
+                config=object();env=object()
+                reject('reject_unbound_environment',lambda:ptr_r4b_environment_claim(env,'ctrl',config),'PTR_R4B_ENV_CLAIM')
+                ptr_r4b_prepare_environment(t,out,ctrl,config)
+                reject('reject_wrong_environment_config',lambda:ptr_r4b_environment_claim(env,'ctrl',object()),'PTR_R4B_ENV_CLAIM')
+                ptr_r4b_environment_claim(env,'ctrl',config);ok('environment_claim')
+                reject('reject_duplicate_environment',lambda:ptr_r4b_environment_claim(env,'ctrl',config),'PTR_R4B_ENV_CLAIM')
+                audit=lambda:None;abort=lambda:None;chunk=lambda:None
+                ptr_r4b_bind_callbacks(env,audit,abort,chunk)
+                ok('callback_binding',ptr_r4b_check_binding(env,audit,abort,chunk,ctrl))
+                reject('reject_wrong_callback',lambda:ptr_r4b_check_binding(env,audit,lambda:None,chunk,ctrl),'PTR_R4B_CALLBACK_BINDING')
+            d=ptr_r4b_dispatch_receipt(attempt,worker)
+            ok('dispatch_receipt_binding',d==dict(authorization=ctrl,authorization_head=head,parent_pid=os.getppid(),pid=os.getpid()))
+            ssrpc_static_write(out/'dispatch.started.json',dict(d,pid=-1))
+            reject('reject_duplicate_dispatch',lambda:ptr_r4_reservation(t,out,ctrl,require_worker=True),'PTR_R4_DISPATCH_USED')
+            reject('reject_dispatch_receipt_mismatch',lambda:ptr_receipt_stages(out,ctrl),'PTR_STAGE_DISPATCH')
+    with patch.dict(sys.modules,{'m463_push_ppo_train':sys.modules[__name__]}):
+        ptr_r4b_bind_module()
+        ok('worker_module_identity',sys.modules['m463_push_ppo_train'] is sys.modules[__name__])
+    with patch.dict(sys.modules,{'m463_push_ppo_train':object()}):
+        reject('reject_worker_module_conflict',ptr_r4b_bind_module,'PTR_R4B_MODULE_IDENTITY')
+    b=H4M12Budget();ptr_r4b_audit_order(b,'template_reset_before');ok('audit_order')
+    reject('reject_restore_before_template',lambda:ptr_r4b_audit_order(b,'restore_payload'),'PTR_R4B_AUDIT_ORDER')
+    reject('reject_chunk_before_restore',lambda:ptr_r4b_audit_order(b,'chunk_before'),'PTR_R4B_AUDIT_ORDER')
+    from importlib import metadata
+    from m463_instrument_brax import make_r12_ptr_integrated_source
+    raw=Path(metadata.distribution('brax').locate_file('brax/training/agents/ppo/train.py')).read_bytes()
+    for arm in ('ctrl','cand'):
+        src,_=make_r12_ptr_integrated_source(raw,arm)
+        # Chunk callback is inside a helper, not in lexical call order.
+        names=('ptr_generated_guard(',"h4x_audit_fn('template_reset_before'","h4x_audit_fn('template_reset_after'",
+            "h4x_audit_fn('restore_payload'","h4x_audit_fn('restore_reset_before'","h4x_audit_fn('restore_reset_after'",
+            "h4x_audit_fn('initial'","h4x_audit_fn('epoch'")
+        positions=[src.index(x) for x in names]
+        h4m12_require(positions==sorted(set(positions)) and
+            src.index("h4x_audit_fn('chunk_before'")<src.index('carry, metrics = h4_chunk(*carry)') and
+            src.index("if float(metrics['r12_chunk_failed']) != 0.:")<src.index("h4x_audit_fn('chunk_after'"),'PTR_R4B_GENERATED_ORDER')
+    ok('generated_restore_order')
+    ok('delta_report_schema',ptr_r4b_check_delta_report(root,dr,sr)==dr)
+    reject('reject_delta_fixture_order',lambda:ptr_r4b_check_delta_report(root,dict(dr,fixtures=list(reversed(dr['fixtures']))),sr),'PTR_R4B_DELTA_REPORT')
+    reject('reject_delta_missing_report',lambda:ptr_r4b_read_delta(root,sr=sr),'PTR_R4B_DELTA_REPORT_PATH')
+    with tempfile.TemporaryDirectory(prefix='ptr-r4b-missing-terminal-') as tmp:
+        t=Path(tmp);out=t/PTR_R4B_DELTA;out.mkdir(parents=True)
+        (out/'report.json').write_bytes(b'fixture')
+        reject('reject_delta_missing_terminal',lambda:ptr_r4b_read_delta(t,dict(ctrl,delta_sha256=digest(out/'report.json')),sr=sr),'INPUT_PIN')
+    with tempfile.TemporaryDirectory(prefix='ptr-r4b-terminal-') as tmp:
+        t=Path(tmp);(t/'worker.log').write_bytes(b'delta fixture')
+        sha='5'*64
+        ssrpc_static_write(t/'supervisor.terminal.json',dict(status='COMPLETE',authorization=a,report_sha256=sha,
+            producer_rc=0,reader_rc=0,worker_log_sha256=digest(t/'worker.log'),stored_log_bytes=(t/'worker.log').stat().st_size))
+        ok('terminal_receipt_link',ssrpc_terminal_receipt(t,sha,a))
+        ssrpc_static_write(t/'supervisor.failed.json',dict(status='STOP'))
+        reject('reject_terminal_failure',lambda:ssrpc_terminal_receipt(t,sha,a),'FFE2_SUPERVISOR_FAILURE')
+    ok('no_native_imports',ssrpc_static_no_native())
+    h4m12_require(tuple(cases)==PTR_R4B_CASES,'PTR_R4B_DELTA_ORDER')
 
 def ptr_r4b_delta_cli(argv):
     import subprocess,selectors,signal
