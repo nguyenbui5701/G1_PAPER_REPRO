@@ -16639,3 +16639,195 @@ if __name__=='__main__':
     elif len(sys.argv)>1 and sys.argv[1]=='--h4absd':h4absd_cli(sys.argv[2:])
     elif len(sys.argv)>1 and sys.argv[1]=='--h4abs':h4abs_cli(sys.argv[2:])
     else:main()
+
+# H4M29_R29_RED_MATCHED_DEV_HELD_BEGIN
+# Isolated host-only core. Historical functions, dispatch and CLI remain unchanged.
+PTR_RED_DEV_BASE = '8d349d661f7f3f2c457c779b3f55e3429be573b7'
+PTR_RED_DEV_CAND_SOURCE = '1a248e1c7f00b25e6980726aa71a408abde007eb'
+PTR_RED_DEV_CAND_AUTH = 'eca771be705b5c15279fd6f05901bed09178b2d8'
+PTR_RED_DEV_CAND_PINS = {
+    'attempt.json':'d4b1137c7efc23785ce0274c51d3f888ca5ee1b1677e286fc90deacc361b0b2d',
+    'attempt_result.json':'d97b929788b98b7915e0df542636a36b1d514f3232b6e64513dc067481d4909b',
+    'dispatch.started.json':'0053a113731771d60331f169d87d9a424250fee2abe1e8fd2c9df7ff7446b368',
+    'm463_brax_ppo_instrumented.py':'1ddc1ecf752a9b6b1f0b0b80d38e84c08aaa3cf552cb2d5dac57c079e0d2c3c8',
+    'm463_easy_repeat_support_longtrain_step_020971520.msgpack':'443f6546a67f4a41f4ffffea1719813adc156603ada451f9e76db72d0add6b85',
+    'm470_fullstate_step_020971520.json':'147d72d30a32582e4ff6d6273b93ffa2670e3a90029051d691cbf5ce88368f5e',
+    'm470_fullstate_step_020971520.msgpack':'ea09b2e1ad3b1ada8c9e92acffbc76304ecbd6f40da627618ce03ad8160cd36e',
+    'report.json':'28652df72ee1374b19bea54954677818b1176792010df5ecf65e9f0a947951e3',
+    'supervisor.terminal.json':'c47c15c425f6fe79c5c701f77d767a2bb0a5a7f56fe1520998076ba361c1cd84',
+    'worker.log':'f790e281e5b6cbd7ed1d83765dddf8355955c40547fb34fcb33f1f5db3d56f7d',
+    'worker.started.json':'5a1719be6fd4a286e81046ef0b9b5940b12764f03afb3a88cbd46e15cfcbf8db',
+}
+PTR_RED_DEV_SPEC = dict(id='H4-M29-R12-PTR-RED-MATCHED-DEV-V1',
+    policies=('RED_CTRL','RED_CAND'),seeds=H3_EVAL_SEEDS,profiles=H3_EVAL_PROFILES,
+    directions=('left','right'),push_step=300,push_magnitude_mps=.50,
+    second_push_step=335,second_push_magnitude_mps=.35,max_steps=1000,
+    max_groups=24,max_logical=120,max_physical=89616,max_reset_lanes=24,
+    optimizer_updates=0,execution_authorized=False,promotion_authorized=False)
+
+def ptr_red_dev_reverse(raw):
+    """Remove only this exact isolated suffix; verify against historical blob."""
+    begin=b'\n# H4M29_R29_RED_MATCHED_DEV_HELD_'+b'BEGIN\n'
+    end=b'# H4M29_R29_RED_MATCHED_DEV_HELD_'+b'END\n'
+    h4m12_req(raw.count(begin)==raw.count(end)==1 and raw.endswith(end),'PTR_DEV_SUFFIX')
+    old=raw[:raw.index(begin)]
+    h4m12_req(hashlib.sha1(b'blob '+str(len(old)).encode()+b'\0'+old).hexdigest()
+        =='dd0edd9f38dc52f383db2aef2c951fefbc682bbd','PTR_DEV_REVERSE')
+    return old
+
+def ptr_red_dev_pin(root,relative,expected):
+    p=root/relative
+    h4m12_req(p.is_file() and not p.is_symlink() and not p.parent.is_symlink()
+        and p.resolve()==p.absolute() and sha256(p)==expected,'PTR_DEV_PIN_'+str(relative))
+    return p
+
+def ptr_red_dev_pinned_inputs(root):
+    """Host-only pin admission draft, NOT a replacement for complete historical readers."""
+    import subprocess
+    import m463_push_ppo_train as t
+    root=Path(root).resolve()
+    h4m3_no_runtime_imports()
+    git=lambda *v:subprocess.check_output(['git',*v],cwd=root,timeout=30)
+    h4m12_req(ptr_red_dev_reverse((root/'m463_gate3_cp_eval.py').read_bytes())==
+        git('show',PTR_RED_DEV_BASE+':m463_gate3_cp_eval.py'),'PTR_DEV_BASE')
+    for name in t.PTR_SOURCE_NAMES:
+        if name!='m463_gate3_cp_eval.py':
+            p=root/name
+            h4m12_req(p.is_file() and not p.is_symlink() and p.read_bytes()==
+                git('show',PTR_RED_DEV_BASE+':'+name),'PTR_DEV_TRAIN_SOURCE_'+name)
+    reports={};pins={}
+    for label,rel,expected,source,head,closure,marker,outer_sha,receipt_sha,size in (
+        ('RED_CTRL',t.PTR_R12_RED_OUT,t.PTR_R23_CTRL_PINS,t.PTR_R23_CTRL_SOURCE,
+         t.PTR_R23_CTRL_AUTH,t.PTR_R23_CTRL_CLOSED,t.PTR_R12_RED_MARKER,
+         t.PTR_R23_CTRL_OUTER_LOG,'775a99e3b8e4324be3b36b83d8d5895aedb66e26cf3b4833ac5c69b8da1e0f',5284),
+        ('RED_CAND',t.PTR_R23_CAND_OUT,PTR_RED_DEV_CAND_PINS,PTR_RED_DEV_CAND_SOURCE,
+         PTR_RED_DEV_CAND_AUTH,PTR_RED_DEV_BASE,t.PTR_R24_CAND_MARKER,
+         '04a9e74ddfa6719c4f394abe3b334e222bea0efe05250a2f4582d0391d13d9f3',
+         'fb8237f8a0294f4559faa8cf612b42eba3a7c63340a468b943d1bf0208c3ec14',5478)):
+        out=root/rel
+        h4m12_req(out.is_dir() and not out.is_symlink() and
+            {p.name for p in out.iterdir()}==set(expected),'PTR_DEV_INVENTORY')
+        for n,h in expected.items():
+            p=Path(rel)/n;ptr_red_dev_pin(root,p,h);pins[str(p)]=h
+        log=ptr_red_dev_pin(root,str(rel)+'_outer.log',outer_sha)
+        receipt=ptr_red_dev_pin(root,str(rel)+'_outer.receipt.json',receipt_sha)
+        pins[str(rel)+'_outer.log']=outer_sha;pins[str(rel)+'_outer.receipt.json']=receipt_sha
+        h4m12_req(log.stat().st_size==size and json.loads(receipt.read_bytes())==
+            dict(authorization_head=head,outer_log_sha256=outer_sha,outer_rc=0,tee_rc=0,
+                stored_log_bytes=size,status='CAPTURE_COMPLETE',promotion_authorized=False),'PTR_DEV_OUTER')
+        r=json.loads((out/'report.json').read_bytes());a=r['authorization']
+        t.ptr_r10b_closed_marker(root,source,head,closure,marker,a)
+        h4m12_req(r['status']=='TECHNICAL_PASS' and r['ptr_exposure']['decision']=='EXPOSURE_PASS'
+            and r['promotion_authorized'] is False and r['budget']['complete'] is True
+            and a['arm']==('ctrl' if label=='RED_CTRL' else 'cand')
+            and a['parent_sha256']=='b8540c6ab1b282d8605910515af4dc86065beb69417b28752f49178ba617ab1e'
+            and r['budget']['recorded']==r['budget']['attempted']==
+            dict(training=5242880,optimizer=800,evaluation=2000,train_reset_lanes=24576,eval_reset_lanes=2)
+            and all(expected[n]==h for n,h in r['artifacts'].items()),'PTR_DEV_TRAIN_WITNESS')
+        reports[label]=r
+    c,d=reports['RED_CTRL'],reports['RED_CAND']
+    h4m12_req(all(c[k]==d[k] for k in ('parent','hardware_scaled_config','reward','dependencies')),
+        'PTR_DEV_MATCHED_TRAIN')
+    for rel,h in ((H4_EVAL_OUTPUT,H4CC_ARCHIVE_SHA),
+                  (H4R12_DEV_OUTPUT,'516b0d3ae7aebc461435bb4a423118fac08779bb43576a3d947d73a74d9984a1')):
+        ptr_red_dev_pin(root,rel,h);pins[str(rel)]=h
+    for n,h in H4RED_EVAL_M12_PINS.items():
+        rel=H4M12_EVAL_OUTPUT.parent/n;ptr_red_dev_pin(root,rel,h);pins[str(rel)]=h
+    h4m3_no_runtime_imports()
+    return dict(pins=pins,training_reports=reports,full_reader_replay_verified=False,
+        execution_authorized=False,promotion_authorized=False)
+
+def ptr_red_dev_pair_view(protocol,old,new):
+    """Reuse unchanged H3 metrics and hard gates, with explicit comparator roles."""
+    groups=[dict(g,policy='CTRL') for g in old]+[dict(g,policy='CAND') for g in new]
+    n=sum(g['physical_transitions'] for g in groups)
+    h4m12_req(len(old)==len(new)==12 and n<=89616,'PTR_DEV_PAIR_BUDGET')
+    for g in groups:h4m12_validate_group(g,protocol['frame_columns'])
+    return h3_decide(dict(protocol,groups=groups,logical_trajectories_completed=120,
+        physical_transitions_attempted=n,physical_transitions_recorded=n),
+        policies=H4_EVAL_POLICIES,comparator='CTRL',candidate='CAND',
+        logical_cap=120,physical_cap=89616)
+
+def ptr_red_dev_held_decision(official,r12,m12,fresh):
+    """Offline scoring core for already authenticated reports; not a final reader."""
+    h4m3_no_runtime_imports()
+    h4m12_req(all(all(a[k]==fresh[k] for k in H4M12_PROTOCOL)
+        for a in (official,r12,m12)) and tuple(fresh['frame_columns'])==H4M3_COLUMNS,
+        'PTR_DEV_PROTOCOL')
+    h4m12_req(fresh['seeds']==list(H3_EVAL_SEEDS) and
+        fresh['profiles']==list(H3_EVAL_PROFILES) and fresh['directions']==['left','right']
+        and fresh['push_step']==300 and fresh['push_magnitude_mps']==.50
+        and fresh['second_push_step']==335 and fresh['second_push_magnitude_mps']==.35
+        and fresh['max_steps']==1000 and fresh['dt_s']==.02
+        and fresh['training_performed'] is False and fresh['deterministic_actor'] is True
+        and fresh['domain_randomization_enabled'] is False
+        and fresh['random_source_push_enabled'] is False
+        and fresh['original_reward_PD_termination'] is True,'PTR_DEV_FROZEN_PROTOCOL')
+    groups=fresh['groups']
+    expected={(p,s,m) for p in PTR_RED_DEV_SPEC['policies'] for s in H3_EVAL_SEEDS for m in H3_EVAL_PROFILES}
+    h4m12_req(len(groups)==24 and {(g['policy'],g['seed'],g['profile']) for g in groups}==expected
+        and all(g['complete'] is True for g in groups)
+        and fresh['reset_lanes_attempted']==fresh['reset_lanes_recorded']==24
+        and fresh['logical_trajectories_completed']==120
+        and fresh['physical_transitions_attempted']==fresh['physical_transitions_recorded']
+        ==sum(g['physical_transitions'] for g in groups)<=89616,'PTR_DEV_LEDGER')
+    for g in groups:
+        rows=len(g['nominal_frames'])+sum(len(v['single_suffix'])+len(v['double_suffix'])
+            for v in g['directions'].values())
+        h4m12_req(rows==g['physical_transitions'] and 0<rows<=3734,'PTR_DEV_GROUP_ROWS')
+    select=lambda report,label:[g for g in report['groups'] if g['policy']==label]
+    oc=select(official,'CTRL');rp=select(r12,'R12');mp=select(m12,'M12')
+    ctrl=select(fresh,'RED_CTRL');cand=select(fresh,'RED_CAND')
+    h4m12_req(sum(g['physical_transitions'] for g in oc)==41052 and
+        sum(g['physical_transitions'] for g in rp)==42240 and
+        sum(g['physical_transitions'] for g in mp)==42246,'PTR_DEV_ARCHIVE_ROWS')
+    oc_ctrl=ptr_red_dev_pair_view(fresh,oc,ctrl)
+    oc_cand=ptr_red_dev_pair_view(fresh,oc,cand)
+    r12_cand=ptr_red_dev_pair_view(fresh,rp,cand)
+    matched=ptr_red_dev_pair_view(fresh,ctrl,cand)
+    descriptive=ptr_red_dev_pair_view(fresh,mp,cand)
+    h4m12_req(all(v['CTRL']==6 for v in oc_cand['primary_stand_double'].values()),
+        'PTR_DEV_OFFICIAL_PRIMARY')
+    primary=matched['primary_stand_double']
+    gains=[v['CAND']-v['CTRL'] for v in primary.values()]
+    ceiling=all(v['CTRL']==v['CAND']==8 for v in primary.values())
+    pairs=r12_cand['paired_cases']
+    lost=[dict(case=p['case'],metric=m) for p in pairs for m in ('survival','recovery5')
+        if m in p and p[m]['CTRL'] and not p[m]['CAND']]
+    def counts(d,label):
+        p=d['paired_cases']
+        return dict(survival=sum(x['survival'][label] for x in p),
+            recovery5=sum(x['recovery5'][label] for x in p if 'recovery5' in x),
+            forward_double=sum(x['recovery5'][label] for x in p
+                if x['case'][1:3]==['forward_fast','double']))
+    baseline=counts(r12_cand,'CTRL');result=counts(r12_cand,'CAND')
+    h4m12_req(baseline==dict(survival=56,recovery5=41,forward_double=8),'PTR_DEV_R12_BASELINE')
+    moving_losses=[]
+    for role,d in (('R12',r12_cand),('RED_CTRL',matched)):
+        for p in ('forward_fast','turn_left'):
+            for k in ('single','double'):
+                rows=[x for x in d['paired_cases'] if x['case'][1:3]==[p,k]]
+                for metric in ('survival','recovery5'):
+                    if sum(x[metric]['CAND'] for x in rows)<sum(x[metric]['CTRL'] for x in rows):
+                        moving_losses.append([role,p,k,metric])
+    checks=dict(official=oc_cand['decision']=='DEV_PASS',
+        nominal=oc_cand['nominal_survivors']['CAND']==12,
+        stand_double=all(v['CAND']==8 for v in oc_cand['primary_stand_double'].values()),
+        survival=result['survival']>=56,recovery5=result['recovery5']>=41,
+        forward_double=result['forward_double']==8,no_r12_case_loss=not lost,
+        no_moving_loss=not moving_losses,matched_hard=not matched['hard_failures'],
+        r12_hard=not r12_cand['hard_failures'],
+        matched_windows=not matched['missing_standing_windows'],
+        incremental_nonlower=all(x>=0 for x in gains),incremental_gain=any(x>=1 for x in gains))
+    hard=all(v for k,v in checks.items() if k not in ('incremental_gain','matched_windows'))
+    decision=('NO_GO' if not hard else 'INCONCLUSIVE' if ceiling or not checks['matched_windows']
+        else 'DEV_PASS' if checks['incremental_gain'] else 'NO_GO')
+    return dict(decision=decision,checks=checks,counts=result,r12_case_losses=lost,
+        moving_losses=moving_losses,matched_ceiling=ceiling,official_ctrl=oc_ctrl,
+        official_cand=oc_cand,r12_cand=r12_cand,matched=matched,m12_descriptive=descriptive,
+        promotion_authorized=False,further_training_authorized=False,holdout_authorized=False)
+
+def ptr_red_dev_runtime_main(*args,**kwargs):
+    raise RuntimeError('PTR_RED_MATCHED_DEV_RUNTIME_HELD')
+
+# H4M29_R29_RED_MATCHED_DEV_HELD_END
