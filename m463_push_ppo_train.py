@@ -16043,6 +16043,304 @@ def ptr_r8a2_audit_reader(root,rows,report,binding,gpu):
     return True
 
 # H4M29_R8A2_HELD_BINDING_END
+
+# H4M29_R8A3_HELD_SUPERVISOR_BEGIN
+PTR_R8A3_GENERATED='m463_brax_ppo_instrumented.py'
+PTR_R8A3_AUDIT='diagnostic.audit.json'
+PTR_R8A3_READER_PASS='PTR_R8A3_INDEPENDENT_READER_PASS'
+PTR_R8A3_BASE_FILES={'attempt.json','worker.started.json','dispatch.started.json',
+    PTR_R8A3_GENERATED,'report.json',PTR_R8A3_AUDIT,'worker.log','attempt_result.json'}
+
+def ptr_r8a3_generated_projection(raw):
+    """Source text for review only. The derived entry guard also remains HELD."""
+    from m463_instrument_brax import h4c_once
+    held,original=ptr_r8a_held_state_output_source(raw)
+    entry="  raise RuntimeError('R12_GENERATED_EXECUTION_HOLD')\n"
+    guard=("  from m463_push_ppo_train import ptr_r8a2_generated_guard\n"
+        "  ptr_r8a2_generated_guard(h4x_audit_fn, __file__, environment, "
+        "m470_resume_state_path, r12_abort_fn, h4_chunk_fn)\n")
+    end="  raise RuntimeError('PTR_R7_DIAGNOSTIC_TERMINAL_HOLD')\n"
+    finish="  return None\n"
+    projected=h4c_once(h4c_once(held,entry,guard),end,finish)
+    h4m12_require(h4c_once(h4c_once(projected,finish,end),guard,entry)==held
+        and not any(k in projected for k in ('gradient_update_fn(', 'running_statistics.update(',
+            'evaluator.run_evaluation(', 'm470_state_checkpoint_fn(current_step')),
+        'PTR_R8A3_GENERATED_REVERSE')
+    return projected,original
+
+def ptr_r8a3_preflight(root,args,a):
+    """Host-only future preflight; does not release any native gate."""
+    from importlib import metadata
+    from importlib.machinery import PathFinder
+    from m463_instrument_brax import h4c_git_blob
+    h4m12_require(ssrpc_static_no_native(),'PTR_R8A3_PRE_NATIVE')
+    history=ptr_r8a_historical(root);pins=ptr_bootstrap_held(args)
+    boot=ssrpc_bootstrap_identity(root)
+    for pkg,relative,expected in (
+        ('mujoco_playground','_src/wrapper.py','62e2823b80b692befe29e4640d0b7a816e52271c'),
+        ('brax','envs/wrappers/training.py','2c09c8268a29d14c832dd07050575e4541ee98af'),
+        ('mujoco_playground','_src/locomotion/g1/joystick.py','561a18948e3467ab924468eaf362150dadb9d4a6')):
+        spec=PathFinder.find_spec(pkg)
+        h4m12_require(spec is not None and spec.submodule_search_locations is not None,'PTR_R8A3_DEP_SPEC')
+        p=Path(next(iter(spec.submodule_search_locations)))/relative
+        h4m12_require(p.is_file() and h4c_git_blob(p.read_bytes())==expected,'PTR_R8A3_DEP_PIN')
+    raw=Path(metadata.distribution('brax').locate_file('brax/training/agents/ppo/train.py')).read_bytes()
+    source,original=ptr_r8a3_generated_projection(raw)
+    h4m12_require(original==hashlib.sha256(raw).hexdigest()==
+        'e20613d42bf0868a13003e0312998816cc8d3593bb5ccaf9f1d070fd09c44bd7' and
+        hashlib.sha256(source.encode()).hexdigest()==a['generated_sha256'] and
+        ssrpc_static_no_native(),'PTR_R8A3_SOURCE_PIN')
+    return source,pins,boot,history
+
+def ptr_r8a3_worker(root,out,args,a,head,binding,source,pins,boot,history):
+    """Held native worker draft. No imports of native packages above the barrier."""
+    raise RuntimeError('PTR_R8A3_WORKER_HELD')
+    import inspect,importlib.util
+    h4m12_require(ssrpc_static_no_native() and os.environ.get(PTR_R8A2_ROLE)=='producer' and
+        os.environ.get(PTR_R8A2_BOOT)==boot,'PTR_R8A3_WORKER_ENTRY')
+    attempt=ptr_r8a2_reservation(root,out,binding)
+    h4m12_require(os.getppid()==attempt['parent_pid'] and os.getpid()!=attempt['parent_pid'],
+        'PTR_R8A3_WORKER_PARENT')
+    ssrpc_static_write(out/'worker.started.json',dict(attempt,worker_pid=os.getpid()))
+    ptr_r8a2_reservation(root,out,binding,worker=True)
+    from m462_ppo_warmstart_run import read_restore_gate,sample_gpu,GPUMonitor,check_source_and_config
+    from m463_instrument_brax import h4c_git_blob
+    parent=ptr_parent_evidence(root);monitor=GPUMonitor()
+    def safe():
+        h4m12_require(ptr_r8a2_auth(root)==(a,head),'PTR_R8A3_AUTH_CHANGED')
+        h4x_storage(out)
+        g=sample_gpu();snap=monitor.snapshot()
+        h4m12_require(g['total_mib']==12288 and 0<=g['used_mib']<.95*12288 and
+            not snap['sampler_errors'] and (snap['peak_used_mib'] is None or
+            snap['peak_used_mib']<.95*12288),'PTR_R8A3_GPU')
+    def forbidden(*unused,**kwargs):
+        raise RuntimeError('PTR_R8A3_FORBIDDEN_UPDATE_OR_EVALUATION')
+    with monitor:
+        safe()
+        gate,_=read_restore_gate(args.restore_report,args.checkpoint)
+        h4m12_require(gate['orbax_dir_sha256']==H4_ORBAX_SHA,'PTR_R8A3_RESTORE_GATE')
+        api=check_source_and_config('A')
+        jax,np=api['jax'],api['numpy']
+        import optax
+        from flax import serialization
+        from brax.envs.wrappers import training as brax_wrapper
+        h4m12_require(jax.__version__=='0.4.35' and jax.default_backend()=='gpu' and
+            jax.process_count()==jax.local_device_count()==1,'PTR_R8A3_CUDA')
+        deps=h4c_dependency_pins(api)
+        old=json.loads((root/H4M12_PARENT/'report.json').read_bytes())
+        h4m12_require(deps==old['h4x_brax_dependencies']==parent['dependencies'],'PTR_R8A3_DEPENDENCIES')
+        wrapper=Path(inspect.getfile(brax_wrapper)).resolve()
+        h4m12_require(h4c_git_blob(wrapper.read_bytes())=='2c09c8268a29d14c832dd07050575e4541ee98af',
+            'PTR_R8A3_WRAPPER')
+        for name,path in pins.items():
+            mod=sys.modules.get(name)
+            h4m12_require(mod is not None and Path(mod.__file__).resolve()==Path(path),'PTR_R8A3_MODULE_'+name)
+        source_cfg=api['source_cfg'];train_cfg=copy.deepcopy(source_cfg)
+        h4m12_require(bool(source_cfg.push_config.enable),'PTR_R8A3_SOURCE_PUSH')
+        train_cfg.push_config.enable=False
+        h4m12_require(train_cfg.to_dict()['reward_config']==old['train_reward_config']
+            ==json.loads(args.reward_report.read_bytes())['train_reward_config']==parent['reward'],
+            'PTR_R8A3_REWARD')
+        scaled=api['scaled'];scaled.num_timesteps=5242880;scaled.num_evals=2
+        cfg=scaled.to_dict();expected=dict(old['hardware_scaled_config'],num_timesteps=5242880,num_evals=2)
+        h4m12_require(json.loads(json.dumps(cfg))==expected==parent['config'] and
+            m470_fingerprint(cfg)==H3_FP,'PTR_R8A3_CONFIG')
+        net=cfg.pop('network_factory')
+        cfg.update(seed=1,randomization_fn=api['randomizer'],restore_checkpoint_path=None,
+            m470_resume_state_path=str(root/PTR_PARENT/PTR_FULL),m470_resume_expected_steps=15728640,
+            r12_abort_fn=forbidden)
+        env=ptr_r8a2_make_environment(root,out,binding,train_cfg)
+        actual,original=ptr_r8a3_generated_projection(Path(inspect.getfile(api['ppo'].train)).read_bytes())
+        h4m12_require(actual==source and original=='e20613d42bf0868a13003e0312998816cc8d3593bb5ccaf9f1d070fd09c44bd7',
+            'PTR_R8A3_GENERATED_ACTUAL')
+        generated=out/PTR_R8A3_GENERATED;raw=source.encode()
+        h4x_storage(out,len(raw))
+        with generated.open('xb') as f:f.write(raw);f.flush();os.fsync(f.fileno())
+        spec=importlib.util.spec_from_file_location('m463_ptr_r8_diagnostic_generated',str(generated))
+        h4m12_require(spec is not None and spec.loader is not None,'PTR_R8A3_MODULE_SPEC')
+        mod=importlib.util.module_from_spec(spec);spec.loader.exec_module(mod)
+        audit,rows,result=ptr_r8a2_audit_factory(root,binding,jax,np,optax,serialization,safe)
+        ptr_r8a2_bind_callbacks(env,audit,forbidden,forbidden)
+        safe()
+        ret=mod.train(environment=env,eval_env=None,wrap_env_fn=api['wrapper'].wrap_for_brax_training,
+            network_factory=functools.partial(api['networks'].make_ppo_networks,**net),
+            progress_fn=forbidden,policy_params_fn=forbidden,m470_state_checkpoint_fn=forbidden,
+            h4x_audit_fn=audit,h4_chunk_fn=forbidden,**cfg)
+        h4m12_require(ret is None and _PTR_R8A2_CONTEXT['dispatched'] is True and
+            tuple(x['event'] for x in rows)==PTR_R8A2_EVENTS and bool(result),'PTR_R8A3_RETURN')
+        safe()
+    gpu=monitor.snapshot()
+    h4m12_require(not monitor.thread.is_alive() and ptr_parent_evidence(root)==parent and
+        ptr_bootstrap_held(args)==pins and h4c_dependency_pins(api)==deps and
+        ssrpc_bootstrap_identity(root)==boot and ptr_r8a_historical(root)==history and
+        ptr_r8a2_auth(root)==(a,head),'PTR_R8A3_FINAL_IMMUTABILITY')
+    ptr_r8a2_audit_reader(root,rows,result,binding,gpu)
+    h4x_write_json(out/'report.json',result,exclusive=True)
+    h4x_write_json(out/PTR_R8A3_AUDIT,dict(binding=binding,report_sha256=digest(out/'report.json'),
+        bootstrap_sha256=boot,rows=rows,gpu=gpu,promotion_authorized=False),exclusive=True)
+
+def ptr_r8a3_stage(out):
+    return ('REPORT_DISPATCHED' if ptr_r7b_optional_hash(out,'dispatch.started.json') is not None else
+        'WORKER_STARTED' if ptr_r7b_optional_hash(out,'worker.started.json') is not None else 'RESERVATION_ONLY')
+
+def ptr_r8a3_artifact_hashes(out):
+    return {name:ptr_r7b_optional_hash(out,name) for name in sorted(PTR_R8A3_BASE_FILES)}
+
+def ptr_r8a3_check_payload(root,out,binding,boot,*,complete):
+    ptr_r4b_output_path(out);h4m12_require(out==root/PTR_R7_OUTPUT,'PTR_R8A3_PAYLOAD_PATH')
+    attempt=ptr_r8a2_reservation(root,out,binding);hashes=ptr_r8a3_artifact_hashes(out)
+    worker=dispatch=None
+    if hashes['worker.started.json'] is not None:
+        worker=ssrpc_read_json(out/'worker.started.json',65536)
+        pid=worker['worker_pid'];h4m12_require(type(pid) is int and pid>0 and pid!=attempt['parent_pid'],
+            'PTR_R8A3_RECEIPT_PID')
+        ptr_r7b_exact(worker,dict(attempt,worker_pid=pid),'PTR_R8A3_RECEIPT_WORKER')
+    if hashes['dispatch.started.json'] is not None:
+        dispatch=ssrpc_read_json(out/'dispatch.started.json',65536)
+        h4m12_require(worker is not None,'PTR_R8A3_DISPATCH_WORKER')
+        ptr_r7b_exact(dispatch,worker,'PTR_R8A3_DISPATCH')
+    h4m12_require(hashes[PTR_R8A3_GENERATED] in (None,binding['generated_sha256']) and
+        (hashes[PTR_R8A3_GENERATED] is None or worker is not None) and
+        (dispatch is None or hashes[PTR_R8A3_GENERATED] is not None) and
+        (hashes['report.json'] is None or dispatch is not None) and
+        (hashes[PTR_R8A3_AUDIT] is None or hashes['report.json'] is not None),'PTR_R8A3_STAGE_LINK')
+    evidence=None
+    if hashes['report.json'] is not None:
+        report=ssrpc_read_json(out/'report.json',H4X_SPEC['other_cap'])
+        evidence=ptr_r7_check_report(report,binding)
+        if hashes[PTR_R8A3_AUDIT] is not None:
+            audit=ssrpc_read_json(out/PTR_R8A3_AUDIT,H4X_SPEC['other_cap'])
+            h4m12_require(type(audit) is dict and set(audit)=={'binding','report_sha256','bootstrap_sha256',
+                'rows','gpu','promotion_authorized'} and audit['binding']==binding and
+                audit['report_sha256']==hashes['report.json'] and audit['bootstrap_sha256']==boot and
+                audit['promotion_authorized'] is False,'PTR_R8A3_AUDIT_LINK')
+            ptr_r8a2_audit_reader(root,audit['rows'],report,binding,audit['gpu'])
+    if complete:
+        h4m12_require(all(hashes[k] is not None for k in PTR_R8A3_BASE_FILES) and
+            evidence is not None and dispatch is not None,'PTR_R8A3_COMPLETE_PAYLOAD')
+    return dict(stage=ptr_r8a3_stage(out),worker_pid=None if worker is None else worker['worker_pid'],
+        actual_rollouts=None if evidence is None else 1,evidence=evidence)
+
+def ptr_r8a3_result(out,binding,rc):
+    h4m12_require(rc is None or type(rc) is int,'PTR_R8A3_RC')
+    return dict(id=PTR_R7_ID,binding=binding,producer_rc=rc,
+        status='PRODUCED' if rc==0 and ptr_r7b_optional_hash(out,PTR_R8A3_AUDIT) is not None else 'STOP',
+        report_sha256=ptr_r7b_optional_hash(out,'report.json'),audit_sha256=ptr_r7b_optional_hash(out,PTR_R8A3_AUDIT))
+
+def ptr_r8a3_terminal(out,binding,boot,rc,rr,error):
+    attempt=ssrpc_read_json(out/'attempt.json',65536)
+    worker=(ssrpc_read_json(out/'worker.started.json',65536) if
+        ptr_r7b_optional_hash(out,'worker.started.json') is not None else None)
+    log=out/'worker.log';n=log.stat().st_size if ptr_r7b_optional_hash(out,'worker.log') is not None else 0
+    h4m12_require(n<=ptr_r7_spec()['log_cap_bytes'],'PTR_R8A3_LOG_CAP')
+    return dict(id=PTR_R7_ID,binding=binding,bootstrap_sha256=boot,
+        parent_pid=attempt['parent_pid'],worker_pid=None if worker is None else worker['worker_pid'],
+        status='COMPLETE' if error is None and rc==rr==0 else 'STOP',stage=ptr_r8a3_stage(out),
+        producer_rc=rc,reader_rc=rr,error=error,artifact_sha256=ptr_r8a3_artifact_hashes(out),
+        stored_log_bytes=n,promotion_authorized=False)
+
+def ptr_r8a3_read_terminal(root,out,binding,boot,*,complete):
+    name='supervisor.terminal.json' if complete else 'supervisor.failed.json'
+    other='supervisor.failed.json' if complete else 'supervisor.terminal.json'
+    h4m12_require(ptr_r7b_optional_hash(out,other) is None,'PTR_R8A3_TERMINAL_CONFLICT')
+    t=ssrpc_read_json(out/name,65536);rc,rr,error=(t[k] for k in ('producer_rc','reader_rc','error'))
+    h4m12_require((rc is None or type(rc) is int) and (rr is None or type(rr) is int)
+        and (rr is None or rc==0),'PTR_R8A3_TERMINAL_RC')
+    ptr_r7b_exact(t,ptr_r8a3_terminal(out,binding,boot,rc,rr,error),'PTR_R8A3_TERMINAL_SCHEMA')
+    ptr_r7b_exact(ssrpc_read_json(out/'attempt_result.json',65536),ptr_r8a3_result(out,binding,rc),
+        'PTR_R8A3_RESULT_LINK')
+    entries={p.name for p in out.iterdir()}
+    h4m12_require(entries<=PTR_R8A3_BASE_FILES|{name} and
+        all(p.is_file() and not p.is_symlink() for p in out.iterdir()),'PTR_R8A3_INVENTORY')
+    if complete:
+        h4m12_require(type(rc) is type(rr) is int and rc==rr==0 and error is None and
+            entries==PTR_R8A3_BASE_FILES|{name} and
+            (out/'worker.log').read_bytes().splitlines().count(PTR_R8A3_READER_PASS.encode())==1,
+            'PTR_R8A3_TERMINAL_COMPLETE')
+    else:h4m12_require(type(error) is str and 0<len(error)<=2048,'PTR_R8A3_TERMINAL_ERROR')
+    payload=ptr_r8a3_check_payload(root,out,binding,boot,complete=complete)
+    return dict(status=t['status'],**payload,promotion_authorized=False)
+
+def ptr_r8a3_main(argv):
+    """Distinct prospective supervisor/producer/reader. No public execution release."""
+    raise RuntimeError('PTR_R8A3_SUPERVISOR_HELD')
+    import selectors,signal,subprocess
+    p=argparse.ArgumentParser(description='R12 PTR one-rollout zero-update diagnostic')
+    for name in ('checkpoint','restore-report','reward-report'):p.add_argument('--'+name,type=Path,required=True)
+    args=p.parse_args(argv);root=Path(__file__).resolve().parent
+    a,head=ptr_r8a2_auth(root);binding=ptr_r8a2_binding(a,head);out=root/PTR_R7_OUTPUT
+    source,pins,boot,history=ptr_r8a3_preflight(root,args,a)
+    role=os.environ.get(PTR_R8A2_ROLE)
+    if role is not None:
+        h4m12_require(role in ('producer','reader') and os.environ.get(PTR_R8A2_BOOT)==boot,
+            'PTR_R8A3_ROLE')
+        attempt=ptr_r8a2_reservation(root,out,binding)
+        h4m12_require(os.getppid()==attempt['parent_pid'],'PTR_R8A3_CHILD_PARENT')
+        if role=='producer':return ptr_r8a3_worker(root,out,args,a,head,binding,source,pins,boot,history)
+        ptr_r8a3_check_payload(root,out,binding,boot,complete=True)
+        ptr_r7b_exact(ssrpc_read_json(out/'attempt_result.json',65536),ptr_r8a3_result(out,binding,0),
+            'PTR_R8A3_READER_RESULT')
+        h4m12_require(ptr_r8a2_auth(root)==(a,head) and ptr_r8a_historical(root)==history and
+            ssrpc_bootstrap_identity(root)==boot and ssrpc_static_no_native(),'PTR_R8A3_READER_FINAL')
+        print(PTR_R8A3_READER_PASS,flush=True);return
+    out,attempt=ptr_r8a2_reserve(root,binding)
+    rc=rr=None;child=None;child_role=None;producer_pid=None;total=0
+    deadline=time.monotonic()+ptr_r7_spec()['watchdog_seconds']
+    def drain(log,which):
+        nonlocal child,child_role,producer_pid,total
+        child_role=which
+        code='import sys;import m463_push_ppo_train as t;t.ptr_r8a3_main(sys.argv[1:])'
+        child=subprocess.Popen([sys.executable,'-B','-u','-c',code,*argv],stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,start_new_session=True,
+            env=dict(os.environ,**{PTR_R8A2_ROLE:which,PTR_R8A2_BOOT:boot}))
+        if which=='producer':producer_pid=child.pid
+        with selectors.DefaultSelector() as sel:
+            sel.register(child.stdout,selectors.EVENT_READ)
+            while True:
+                h4m12_require(time.monotonic()<deadline,'PTR_R8A3_WATCHDOG')
+                if not sel.select(timeout=1):continue
+                data=os.read(child.stdout.fileno(),65536)
+                if not data:break
+                h4m12_require(total+len(data)<=ptr_r7_spec()['log_cap_bytes'],'PTR_R8A3_LOG_CAP')
+                log.write(data);log.flush();total+=len(data)
+        value=child.wait(timeout=max(.001,deadline-time.monotonic()))
+        child.stdout.close();child=None;log.flush();os.fsync(log.fileno())
+        return value
+    try:
+        with (out/'worker.log').open('xb') as log:
+            rc=drain(log,'producer')
+            ssrpc_static_write(out/'attempt_result.json',ptr_r8a3_result(out,binding,rc))
+            h4m12_require(rc==0,'PTR_R8A3_PRODUCER_RC')
+            payload=ptr_r8a3_check_payload(root,out,binding,boot,complete=True)
+            h4m12_require(payload['worker_pid']==producer_pid,'PTR_R8A3_ACTUAL_PID')
+            rr=drain(log,'reader');h4m12_require(rr==0,'PTR_R8A3_READER_RC')
+        h4x_storage(out)
+        h4m12_require(ptr_r8a2_auth(root)==(a,head) and ptr_r8a_historical(root)==history and
+            ssrpc_bootstrap_identity(root)==boot,'PTR_R8A3_SUPERVISOR_FINAL')
+        ptr_r8a3_check_payload(root,out,binding,boot,complete=True)
+        h4m12_require((out/'worker.log').read_bytes().splitlines().count(PTR_R8A3_READER_PASS.encode())==1,
+            'PTR_R8A3_READER_LOG')
+        ssrpc_static_write(out/'supervisor.terminal.json',ptr_r8a3_terminal(out,binding,boot,rc,rr,None))
+        ptr_r8a3_read_terminal(root,out,binding,boot,complete=True)
+    except BaseException as exc:
+        if child is not None:
+            if child.poll() is None:
+                try:os.killpg(child.pid,signal.SIGKILL)
+                except ProcessLookupError:pass
+            value=child.wait()
+            if child_role=='producer':rc=value
+            elif child_role=='reader':rr=value
+            if child.stdout is not None:child.stdout.close()
+        if ptr_r7b_optional_hash(out,'attempt_result.json') is None:
+            ssrpc_static_write(out/'attempt_result.json',ptr_r8a3_result(out,binding,rc))
+        # A terminal already written is immutable; reader failure must not forge a second terminal.
+        if ptr_r7b_optional_hash(out,'supervisor.terminal.json') is None:
+            ssrpc_static_write(out/'supervisor.failed.json',ptr_r8a3_terminal(out,binding,boot,rc,rr,repr(exc)[:2048]))
+            try:ptr_r8a3_read_terminal(root,out,binding,boot,complete=False)
+            except Exception as reader_error:print('PTR_R8A3_PARTIAL_READER_STOP',repr(reader_error)[:1024],flush=True)
+        raise
+
+# H4M29_R8A3_HELD_SUPERVISOR_END
 # H4M29_R8A_NATIVE_HELD_END
 # H4M29_R7B_FOCUSED_STATIC_END
 # H4M29_R7_DIAGNOSTIC_TRAINER_END
