@@ -6593,4 +6593,3 @@ for name in ("report.json","attempt.json","dispatch.started.json","attempt_resul
         print("H4FFE2_DEV_ARTIFACT",str(p),p.stat().st_size,digest(p),flush=True)
 raise SystemExit(0 if ok else 1)
 # H4FFE2_DEV_OWNER_LAUNCHER_END
-H4PTR_ACTIVE_GO: {"arm":"ctrl","ctrl_report_sha256":"","ctrl_terminal_sha256":"","delta_sha256":"1f77f9586874a41c224c6779baf2395e6b6fdb1a93bca4b83f3b64985acd6e85","delta_terminal_sha256":"f46205b5a8caba18b91c6d9e6a8d430f53b7d61190cd3a4680c1e682ed22de0b","generated_sha256":"c5cd4894838c9433b1049bb653f4df8d72263710e3ef37accb8b4054ecf5d120","id":"H4-M29-R12-PTR-V1-CTRL","output":"m463_runs/m470_h4_m29_ptr_ctrl_v1","source_head":"d208cc6923de7ba03ed9b687521c134613636083","source_sha256":"3b1d41f1041d113209c58c2740e34fc882065227aa1481db22ed4ada6506063f","static_sha256":"4568f986ac28b6bfc91a648a34ad6f807b2b2e0dd28c48820f4ba30b4401bb89","static_terminal_sha256":"6e65ca499a3b606301cbee9445f0474ab986ec87d0cfc9e7b0ab199313404937"}
