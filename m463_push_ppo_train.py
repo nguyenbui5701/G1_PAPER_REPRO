@@ -15799,6 +15799,8 @@ def ptr_r8a_held_state_output_source(raw):
         and s.count("  raise RuntimeError('PTR_R7_DIAGNOSTIC_TERMINAL_HOLD')\n")==1
         and not any(k in s for k in ('gradient_update_fn(', 'running_statistics.update(',
             'evaluator.run_evaluation(', 'm470_state_checkpoint_fn(current_step')),'PTR_R8A_DERIVED_HOLD')
+    h4m12_require(len(s.encode())==24864 and hashlib.sha256(s.encode()).hexdigest()==PTR_R8B_STATE_HELD_SHA,
+        'PTR_R8B_STATE_HELD_PIN')
     return s,original
 
 def ptr_r8a_native_admission_held(*args,**kwargs):
@@ -15824,6 +15826,7 @@ def ptr_r8a2_auth_schema(a):
         all(type(v) is str and re.fullmatch('[0-9a-f]{40}' if k=='source_head' else '[0-9a-f]{64}',v)
             for k,v in a.items() if k!='id') and
         a['held_generated_sha256']==PTR_R7B_GENERATED and
+        a['generated_sha256']==PTR_R8B_GENERATED_SHA and
         a['focused_static_sha256']==PTR_R8A_STATIC_PINS['report.json'] and
         a['focused_terminal_sha256']==PTR_R8A_STATIC_PINS['supervisor.terminal.json'] and
         a['parent_sha256']==PTR_PARENT_PINS[PTR_FULL],'PTR_R8A2_AUTH_SCHEMA')
@@ -16068,6 +16071,9 @@ def ptr_r8a3_generated_projection(raw):
         and not any(k in projected for k in ('gradient_update_fn(', 'running_statistics.update(',
             'evaluator.run_evaluation(', 'm470_state_checkpoint_fn(current_step')),
         'PTR_R8A3_GENERATED_REVERSE')
+    h4m12_require(len(projected.encode())==24974 and hashlib.sha256(projected.encode()).hexdigest()==PTR_R8B_GENERATED_SHA,
+        'PTR_R8B_GENERATED_PIN')
+    compile(projected,'<PTR R8B guarded diagnostic>','exec')
     return projected,original
 
 def ptr_r8a3_preflight(root,args,a):
@@ -16178,7 +16184,8 @@ def ptr_r8a3_worker(root,out,args,a,head,binding,source,pins,boot,history):
         h4m12_require(ret is None and _PTR_R8A2_CONTEXT['dispatched'] is True and
             tuple(x['event'] for x in rows)==PTR_R8A2_EVENTS and bool(result),'PTR_R8A3_RETURN')
         # Preserve completed evidence even if a subsequent resource or provenance check stops.
-        h4x_write_json(out/'report.json',result,exclusive=True)
+        h4x_storage(out,len((json.dumps(result,sort_keys=True,allow_nan=False,indent=2)+'\n').encode()))
+        ssrpc_static_write(out/'report.json',result)
         safe()
     gpu=monitor.snapshot()
     h4m12_require(not monitor.thread.is_alive() and ptr_parent_evidence(root)==parent and
@@ -16186,8 +16193,10 @@ def ptr_r8a3_worker(root,out,args,a,head,binding,source,pins,boot,history):
         ssrpc_bootstrap_identity(root)==boot and ptr_r8a_historical(root)==history and
         ptr_r8a2_auth(root)==(a,head),'PTR_R8A3_FINAL_IMMUTABILITY')
     ptr_r8a2_audit_reader(root,rows,result,binding,gpu)
-    h4x_write_json(out/PTR_R8A3_AUDIT,dict(binding=binding,report_sha256=digest(out/'report.json'),
-        bootstrap_sha256=boot,rows=rows,gpu=gpu,promotion_authorized=False),exclusive=True)
+    audit_payload=dict(binding=binding,report_sha256=digest(out/'report.json'),
+        bootstrap_sha256=boot,rows=rows,gpu=gpu,promotion_authorized=False)
+    h4x_storage(out,len((json.dumps(audit_payload,sort_keys=True,allow_nan=False,indent=2)+'\n').encode()))
+    ssrpc_static_write(out/PTR_R8A3_AUDIT,audit_payload)
 
 def ptr_r8a3_stage(out):
     return ('REPORT_DISPATCHED' if ptr_r7b_optional_hash(out,'dispatch.started.json') is not None else
@@ -16258,6 +16267,8 @@ def ptr_r8a3_check_payload(root,out,binding,boot,*,complete):
             ptr_r8a2_audit_reader(root,audit['rows'],report,binding,audit['gpu'])
     logged=ptr_r8a3_log_prefix(root,out,report,complete=complete)
     if hashes[PTR_R8A3_AUDIT] is not None:ptr_r7b_exact(logged,audit['rows'],'PTR_R8A3_LOG_AUDIT')
+    h4m12_require(not logged or dispatch is not None,'PTR_R8B_AUDIT_DISPATCH')
+    h4m12_require(report is None or len(logged)==len(PTR_R8A2_EVENTS),'PTR_R8B_REPORT_AUDIT_EDGE')
     if complete:
         h4m12_require(all(hashes[k] is not None for k in PTR_R8A3_BASE_FILES) and
             evidence is not None and dispatch is not None,'PTR_R8A3_COMPLETE_PAYLOAD')
@@ -16409,6 +16420,126 @@ def ptr_r8a3_main(argv):
         raise
 
 # H4M29_R8A3_HELD_SUPERVISOR_END
+
+# H4M29_R8B_HELD_CONTRACT_BEGIN
+# Independently derived from Brax v0.12.1 exact 22881-byte original and five
+# matching historical generated hashes. No generated native code was executed.
+PTR_R8B_STATE_HELD_SHA='ae19352a46756f529597f4c7ee8490225115b69283e1062054ed9583ed4e76e1'
+PTR_R8B_GENERATED_SHA='20ab3e2c58097d643e14ac0c3e3615e81e56532bc3b31399fe1f2c5e9567bcb4'
+PTR_R8B_REVIEW_BASE='9443a5468b4834d833ff3046f734fb395df75159'
+PTR_R8B_RELEASE_LABELS=('PTR_R8A2_RESERVATION_HELD','PTR_R8A2_ENVIRONMENT_HELD',
+    'PTR_R8A2_GENERATED_ENTRY_HELD','PTR_R8A3_WORKER_HELD','PTR_R8A3_SUPERVISOR_HELD')
+PTR_R8B_CASES=('historical_and_source_pins','local_generated_identity_and_compile',
+    'exact_release_projection','native_schema_and_closed_gate','audit_log_prefix',
+    'partial_receipt_envelope')
+
+def ptr_r8b_manifest():
+    return hashlib.sha256(json.dumps(list(PTR_R8B_CASES),separators=(',',':')).encode()).hexdigest()
+
+def ptr_r8b_release_projection(raw):
+    """Compute the future five-line guarded source projection; never write it."""
+    edits=tuple(('    raise RuntimeError('+repr(label)+')\n',
+                 '    ptr_r8b_release_gate('+repr(label)+')\n') for label in PTR_R8B_RELEASE_LABELS)
+    s=raw
+    for a,b in edits:
+        h4m12_require(s.count(a.encode())==1,'PTR_R8B_RELEASE_ANCHOR')
+        s=s.replace(a.encode(),b.encode(),1)
+    back=s
+    for a,b in reversed(edits):
+        h4m12_require(back.count(b.encode())==1,'PTR_R8B_RELEASE_INVERSE_ANCHOR')
+        back=back.replace(b.encode(),a.encode(),1)
+    h4m12_require(back==raw and ptr_r8a_reverse(back)==ptr_r8a_reverse(s),
+        'PTR_R8B_RELEASE_REVERSE')
+    return s
+
+def ptr_r8b_release_gate(label):
+    """Future exact release guard. Currently no callers: all five raises retained."""
+    import subprocess
+    root=Path(__file__).resolve().parent
+    h4m12_require(label in PTR_R8B_RELEASE_LABELS,'PTR_R8B_RELEASE_LABEL')
+    a,head=ptr_r8a2_auth(root)
+    git=lambda *v:subprocess.check_output(['git',*v],cwd=root,timeout=30)
+    sh=a['source_head']
+    lineage=git('rev-list','--parents','-n','1',sh).decode().split()
+    h4m12_require(len(lineage)==2 and lineage[0]==sh,'PTR_R8B_RELEASE_PARENT')
+    prior=lineage[1]
+    ptr_r4b_lineage(root,PTR_R8B_REVIEW_BASE,prior)
+    h4m12_require(git('diff','--name-only',prior,sh).splitlines()==[b'm463_push_ppo_train.py']
+        and git('show',prior+':G1_RESEARCH_RULES.md')==git('show',sh+':G1_RESEARCH_RULES.md'),
+        'PTR_R8B_RELEASE_SCOPE')
+    held=git('show',prior+':m463_push_ppo_train.py')
+    released=git('show',sh+':m463_push_ppo_train.py')
+    h4m12_require(released==ptr_r8b_release_projection(held) and
+        released==(root/'m463_push_ppo_train.py').read_bytes() and
+        head==ptr_head(root),'PTR_R8B_RELEASE_EXACT')
+    return a,head
+
+def ptr_r8b_focus_cases(root,args,record):
+    """Prepared minimal host checks. No native imports, no native output writes.
+    Invocation is NOT authorized by R8B preparation. A distinct host GO must
+    bind exact source/manifest and authorize the wrapper before calling this.
+    """
+    import tempfile
+    root=Path(root).resolve()
+    seen=[]
+    def check(name,ok):
+        h4m12_require(len(seen)<len(PTR_R8B_CASES) and name==PTR_R8B_CASES[len(seen)]
+            and bool(ok) and ssrpc_static_no_native(),'PTR_R8B_FOCUS_'+name)
+        seen.append(name);record(name)
+    def rejects(fn,label):
+        try:fn()
+        except RuntimeError as exc:return label in str(exc)
+        return False
+    h4m12_require(ssrpc_static_no_native(),'PTR_R8B_FOCUS_PRE_NATIVE')
+    source_pins=ptr_source_files(root,ptr_head(root))
+    history=ptr_r8a_historical(root)
+    check('historical_and_source_pins',set(source_pins)==set(PTR_SOURCE_NAMES) and
+        history['static_artifacts']==PTR_R8A_STATIC_PINS)
+    source,pins,boot,again=ptr_r8a3_preflight(root,args,dict(generated_sha256=PTR_R8B_GENERATED_SHA))
+    held=(root/'m463_push_ppo_train.py').read_bytes()
+    compile(held,'<PTR R8B held trainer>','exec')
+    check('local_generated_identity_and_compile',hashlib.sha256(source.encode()).hexdigest()==PTR_R8B_GENERATED_SHA
+        and again==history and boot==PTR_R8A_STATIC_BOOT and bool(pins))
+    release=ptr_r8b_release_projection(held)
+    compile(release,'<PTR R8B projected trainer>','exec')
+    check('exact_release_projection',release!=held and ptr_r8a_reverse(release)==ptr_r8a_reverse(held))
+    a=dict(id=PTR_R7_ID,source_head=ptr_head(root),source_sha256=h4x_source_digest(root),
+        generated_sha256=PTR_R8B_GENERATED_SHA,held_generated_sha256=PTR_R7B_GENERATED,
+        focused_static_sha256=PTR_R8A_STATIC_PINS['report.json'],
+        focused_terminal_sha256=PTR_R8A_STATIC_PINS['supervisor.terminal.json'],parent_sha256=PTR_PARENT_PINS[PTR_FULL])
+    ptr_r8a2_auth_schema(a)
+    check('native_schema_and_closed_gate',all(rejects(lambda k=k:ptr_r8a2_auth_schema(dict(a,**{k:'0'*64})),
+        'PTR_R8A2_AUTH_SCHEMA') for k in ('generated_sha256','held_generated_sha256','focused_static_sha256',
+            'focused_terminal_sha256','parent_sha256')) and
+        rejects(lambda:ptr_r8b_release_gate(PTR_R8B_RELEASE_LABELS[0]),'PTR_R8A2_MARKER'))
+    with tempfile.TemporaryDirectory(prefix='ptr_r8b_focus_') as temp:
+        out=Path(temp);log=out/'worker.log';rows=ptr_r8a2_expected_prefix(root)
+        def emit(rs):
+            log.write_bytes(b''.join(b'PTR_R8A2_AUDIT_ROW='+ptr_r7b_canonical(x).encode()+b'\n' for x in rs))
+        emit(rows[:3])
+        good=ptr_r8a3_log_prefix(root,out,complete=False)==rows[:3]
+        emit(rows[:2][::-1])
+        bad=rejects(lambda:ptr_r8a3_log_prefix(root,out,complete=False),'PTR_R8A3_LOG_ORDER')
+        emit(rows)
+        check('audit_log_prefix',good and bad and
+            rejects(lambda:ptr_r8a3_log_prefix(root,out,complete=True),'PTR_R8A3_LOG_COMPLETE'))
+        binding=ptr_r8a2_binding(a,'b'*40)
+        attempt=dict(id=PTR_R7_ID,binding=binding,parent_pid=111)
+        ssrpc_static_write(out/'attempt.json',attempt)
+        ssrpc_static_write(out/'worker.started.json',dict(attempt,worker_pid=222))
+        ssrpc_static_write(out/'attempt_result.json',ptr_r8a3_result(out,binding,1))
+        terminal=ptr_r8a3_terminal(out,binding,boot,1,None,None,'fixture STOP')
+        check('partial_receipt_envelope',terminal['status']=='STOP' and terminal['stage']=='WORKER_STARTED'
+            and terminal['worker_pid']==222 and terminal['artifact_sha256']['report.json'] is None
+            and terminal['artifact_sha256']['attempt_result.json']==digest(out/'attempt_result.json')
+            and terminal['stored_log_bytes']==log.stat().st_size and terminal['promotion_authorized'] is False)
+    h4m12_require(tuple(seen)==PTR_R8B_CASES and ssrpc_static_no_native(),'PTR_R8B_FOCUS_FINAL')
+    return dict(cases=seen,manifest_sha256=ptr_r8b_manifest(),source_files=source_pins,
+        source_sha256=h4x_source_digest(root),generated_sha256=PTR_R8B_GENERATED_SHA,
+        projected_trainer_sha256=hashlib.sha256(release).hexdigest(),
+        bootstrap_sha256=boot,zero_native_execution=True,promotion_authorized=False)
+
+# H4M29_R8B_HELD_CONTRACT_END
 # H4M29_R8A_NATIVE_HELD_END
 # H4M29_R7B_FOCUSED_STATIC_END
 # H4M29_R7_DIAGNOSTIC_TRAINER_END
