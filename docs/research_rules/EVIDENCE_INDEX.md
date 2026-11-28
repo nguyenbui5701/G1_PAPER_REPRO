@@ -986,3 +986,7 @@ See ACTIVE_EXPERIMENT R17; exact historical archive 7d5961158420ad2053ed00cc1342
 
 ## H4-M29-R18A — held RED core
 Source bd3b3c7eea081008bfa38bc448a53964e85c98e5; exact +110/-2 across three existing files, 3/3 reverse projections, nine-file aggregate 9d1e5d02a6e6ff0166f9e85bd16dfa68352a7e12f2fa49abc3de89c836fedc9c; held CTRL generated ac6fe6dc56fa9dc875c862e72590f7a0b935781739a9d2ca3c112d4141227bac (uploaded R15 inverse + held sentinel compile-only). No active GO. Core COMPLETE/HELD, R18B distinct supervisor/admission/reader wiring incomplete; no project static/native/PPO execution, no retry/promotion. See ACTIVE_EXPERIMENT R18A for all source/evidence/limitations. Governance v2.0.1 unchanged; A ACTIVE/B HOLD.
+
+
+## H4-M29-R18B — isolated CTRL-RED wiring HELD
+Source bdc06fa3d4b7e5aaae3eaf27c3f72b69b38074e3 plus exact focused-to-release projection strengthening 27e0e81dcc22af7a89e8a99fc712520a36318c16. Final nine-file aggregate a63b9c11050746ae38f449f7efb3655bf9891ff088efe06d2aa735f37563208a; guarded generated 9ba23fe8bb1378d83632d803b5ea2ec4059989f8138d6ea2423b2a9aa0ccf4c6; separate pinned launcher 5f53fa53be1922374392d1a0af4f9538d5b1509611fa80ce41bb65bb98d1c07c. 2/2 reverse and seven unchanged sources; bash -n and isolated mock success/failure/reuse verified, generated projection compile-only. No project fixture execution, no new GO; new focused harness/manifest/acceptance pending. See ACTIVE_EXPERIMENT R18B for exact evidence, checks and limitations. Branch A ACTIVE/B HOLD, R15 immutable, CAND HOLD, no promotion.
