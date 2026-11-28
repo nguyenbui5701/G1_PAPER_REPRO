@@ -657,3 +657,7 @@ Governance v2.0.1 unchanged. Added distinct RED CAND held runtime wiring in sour
 
 ## H4-M29-R25 — 2026-11-28 ICT
 Governance v2.0.1 unchanged. Added focused CAND harness and prospective acceptance/release in ad3ba4f52920cb1e44131c153c652d40d02d4715, trainer +434/-1 with exact inverse, 12 cases/0 executed. Both HOLDs, zero marker, all frozen evidence and scientific thresholds retained. No native/PPO. See ACTIVE_EXPERIMENT R25.
+
+
+## H4-M29-R26 — 2026-11-28 ICT
+Governance v2.0.1 unchanged. Accepted R25 and recorded distinct one-use RED CAND static scope, exact root-only marker child to follow. All executable bytes/identities and science unchanged; no fixture/native/PPO by SA. A ACTIVE/B HOLD.

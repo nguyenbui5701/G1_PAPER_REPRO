@@ -632,3 +632,7 @@ Owner accepted R23 and approved held wiring at dc878c73ad7b1cb42ebbdce5a0de89377
 
 ## H4-M29-R25 — focused RED CAND harness HELD (2026-11-28 ICT)
 Owner GO exact d662d6945cd2cf8b8b4b03a56d0aa5b7467b36b4. Source ad3ba4f52920cb1e44131c153c652d40d02d4715 trainer +434/-1, exact inverse, eight unchanged source blobs, aggregate b02c53ceb5060acc4d143c6595516f594d64306836858a3d5140caeff41a70c3; 12-case manifest ef9e20901965d8dcd05f7c50a3d3def62dfc6ca7b28c1a5116b63ebe69691ad4, zero executed. Distinct static supervisor/producer/reader and prospective acceptance/two-site release implemented; two HOLDs and acceptance None unchanged, zero GO. No project compile/import/fixture/native/PPO. Next R26 separate Owner focused host-static GO only; parent/CTRL/generated/launcher/science unchanged. A ACTIVE/B HOLD; see ACTIVE_EXPERIMENT R25.
+
+
+## H4-M29-R26 — distinct focused RED CAND host-static GO (2026-11-28 ICT)
+Owner GO exact fa01fb207c16b965ad9f30ab499fd455f2912239; R25 accepted, nine source SHA256, exact manifest and launcher rehashed, exact inverse verified. Aggregate b02c53ceb5060acc4d143c6595516f594d64306836858a3d5140caeff41a70c3; manifest ef9e20901965d8dcd05f7c50a3d3def62dfc6ca7b28c1a5116b63ebe69691ad4. This docs commit precedes separate root-only H4PTR_RED_CAND_STATIC_V1_GO child, contingent on exact readback. One Owner host-only invocation, 12 ordered cases plus reader, complete outer tee/receipt. Zero SA fixtures; two runtime HOLDs unchanged, no release/native/PPO/retry/comparator/holdout/promotion. A ACTIVE/B HOLD; see ACTIVE_EXPERIMENT R26.

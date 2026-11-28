@@ -638,3 +638,7 @@ Owner GO dc878c73ad7b1cb42ebbdce5a0de8937736ed009. HELD RUNTIME WIRING SOURCE IM
 
 ## H4-M29-R25 (2026-11-28 ICT)
 Owner GO d662d6945cd2cf8b8b4b03a56d0aa5b7467b36b4. HELD focused harness/admission source ad3ba4f52920cb1e44131c153c652d40d02d4715 trainer +434/-1, exact inverse, eight unchanged sources; aggregate b02c53ceb5060acc4d143c6595516f594d64306836858a3d5140caeff41a70c3, manifest ef9e20901965d8dcd05f7c50a3d3def62dfc6ca7b28c1a5116b63ebe69691ad4, 0/12 executed, two HOLDs and zero GO. Next R26 distinct one-use host-static only. A ACTIVE/B HOLD; see ACTIVE_EXPERIMENT R25 for exact contract/limits.
+
+
+## H4-M29-R26 (2026-11-28 ICT)
+Owner GO fa01fb207c16b965ad9f30ab499fd455f2912239; R25 accepted, nine source hashes and manifest/launcher reverified, exact inverse. Separate root-only static marker child required after this docs commit. One Owner invocation, 12 focused cases and reader, complete outer tee; no SA execution. CAND runtime HOLD, no release/native/PPO/retry/comparator/holdout/promotion. See ACTIVE_EXPERIMENT R26.
