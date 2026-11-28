@@ -908,7 +908,7 @@ class CoverageJoystick(joystick.Joystick):
     boundary for re-sampling push targets and counters.  Tracking `age` also
     supports a direct/unwrapped one-env diagnostic.
     """
-    def __init__(self, *, stage: str, config, task='flat_terrain', h1_m1=False, h1_m2=False, h3_m1=False, h4_arm=None, h4cc_arm=None, h4m6_arm=None, h4m6_tech_capture=False, h4m8_common=False, h4red=False, r11=False, r12=False, ffe=False, ffe2=False):
+    def __init__(self, *, stage: str, config, task='flat_terrain', h1_m1=False, h1_m2=False, h3_m1=False, h4_arm=None, h4cc_arm=None, h4m6_arm=None, h4m6_tech_capture=False, h4m8_common=False, h4red=False, r11=False, r12=False, ffe=False, ffe2=False, r12_red_timing=False):
         if stage not in STAGES:
             raise ValueError('M463_BAD_STAGE')
         if bool(config.push_config.enable):
@@ -969,6 +969,17 @@ class CoverageJoystick(joystick.Joystick):
                 h4cc_arm is not None or h4m6_arm is not None or h4m6_tech_capture or h4m8_common or
                 len(config.reward_config.scales)!=24 or int(config.episode_length)!=1000)):
             raise ValueError('M470_FFE_ENV_CONTRACT')
+        if type(r12_red_timing) is not bool or (r12_red_timing and (
+                not r12 or stage!='easy_repeat_support' or h4_arm!='control' or
+                h4red or r11 or ffe or ffe2 or h1_m1 or h1_m2 or h3_m1 or
+                h4cc_arm is not None or h4m6_arm is not None or
+                h4m6_tech_capture or h4m8_common or
+                len(config.reward_config.scales)!=24 or int(config.episode_length)!=1000)):
+            raise ValueError('PTR_R12_RED_ENV_CONTRACT')
+        if r12_red_timing:
+            from m463_push_ppo_train import ptr_r12_red_environment_claim
+            ptr_r12_red_environment_claim(self,config)
+        self._r12_red_timing = r12_red_timing
         self._ffe = ffe
         self._r12 = r12
         self._r11 = r11
@@ -1173,7 +1184,7 @@ class CoverageJoystick(joystick.Joystick):
                 early
             )
         else:
-            target_first = jax.random.randint(k_time, (), 12, 344 if self._h4red else 25)
+            target_first = jax.random.randint(k_time, (), 12, 344 if (self._h4red or getattr(self,'_r12_red_timing',False)) else 25)
         next_step = jp.where(boundary, target_first, info['m463_next'])
         disabled = jp.where(boundary, jax.random.bernoulli(k_start, p=0.20),
                             info['m463_no_push'] > 0)
@@ -2088,3 +2099,14 @@ class PTRHeldCoverageJoystick(CoverageJoystick):
         out.update(extra)
         return after.replace(info=out,reward=reward)
 # H4M29_PTR_HELD_ENV_END
+
+# H4M29_R18_RED_ENV_BEGIN
+class PTRRedHeldCoverageJoystick(PTRHeldCoverageJoystick):
+    """Distinct scheduler-only mode; construction held by trainer claim."""
+    def __init__(self,*,arm,config):
+        if type(arm) is not str or arm not in ('ctrl','cand'):
+            raise ValueError('PTR_R12_RED_ARM')
+        self._PTRHeldCoverageJoystick__ptr_arm=arm
+        CoverageJoystick.__init__(self,stage='easy_repeat_support',config=config,
+            h4_arm='control',r12=True,r12_red_timing=True)
+# H4M29_R18_RED_ENV_END

@@ -19204,3 +19204,69 @@ def ptr_r12_ctrl_runtime_main(argv):
         raise
 # H4M29_R12_CTRL_V2_WIRING_END
 # H4M29_R12_CTRL_V2_HELD_END
+
+# H4M29_R18_RED_CORE_BEGIN
+PTR_R12_RED_IDS={'ctrl':'H4-M29-R12-PTR-RED-CTRL-V1',
+                 'cand':'H4-M29-R12-PTR-RED-CAND-V1'}
+PTR_R12_RED_OUTPUTS={'ctrl':'m463_runs/m470_h4_m29_ptr_red_ctrl_v1',
+                     'cand':'m463_runs/m470_h4_m29_ptr_red_cand_v1'}
+
+def ptr_r12_red_environment_claim(environment,config):
+    """No new context, reservation, worker, or authorization in R18A."""
+    raise RuntimeError('PTR_R12_RED_ENVIRONMENT_HELD')
+
+def ptr_r12_red_timing_replay(r):
+    """Read-only timing subgate; not an authorization or full exposure reader."""
+    h4m12_require(len(r['h4_chunks'])==4 and len(r['h4_epochs'])==1
+        and len(r['report_history'])==1,'PTR_R12_RED_REPLAY_LENGTH')
+    bins=((0,32),(33,239),(240,308),(309,348),(349,639))
+    chunks=[]
+    for j,row in enumerate(r['h4_chunks'],1):
+        h4m12_require(row['chunk']==j and row['steps']==j*1310720 and
+            row['passed'] is True,'PTR_R12_RED_REPLAY_ORDER')
+        c=row['counts']
+        result={}
+        for kind,name in ((1,'first'),(2,'repeat')):
+            key='m463_h4_'+name+'_events_per_rollout'
+            keys=[key]+[f'm463_h4_age_{kind}_{lo}_{hi}_per_rollout' for lo,hi in bins]
+            vals=[c[k] for k in keys]
+            h4m12_require(all(type(v) is int and 0<=v<=1310720 for v in vals)
+                and vals[0]==sum(vals[1:]),'PTR_R12_RED_AGE_PARTITION')
+            result[name]=vals[0];result['late_'+name]=sum(vals[3:])
+        chunks.append(result)
+    ep=r['h4_epochs'][0]['counts'];hist=r['report_history'][0]['metrics']
+    for kind,name in ((1,'first'),(2,'repeat')):
+        keys=['m463_h4_'+name+'_events_per_rollout']+[
+            f'm463_h4_age_{kind}_{lo}_{hi}_per_rollout' for lo,hi in bins]
+        for k in keys:
+            n=sum(row['counts'][k] for row in r['h4_chunks'])
+            h4m12_require(type(ep[k]) is int and ep[k]==n and
+                h4_integer_count(hist['training/'+k],rollouts=20)==n,
+                'PTR_R12_RED_EPOCH_RECONCILE')
+    totals={k:sum(row[k] for row in chunks) for k in chunks[0]}
+    checks={name+'_late':totals[name]>0 and 5*totals['late_'+name]>=totals[name]
+        for name in ('first','repeat')}
+    return dict(decision='EXPOSURE_PASS' if all(checks.values()) else 'EXPOSURE_INCONCLUSIVE',
+        chunks=chunks,totals=totals,checks=checks)
+
+def ptr_r12_red_reverse(name,raw):
+    """Exact byte inverse; new path only, not a bypass of frozen readers."""
+    tags={'m463_coverage_env.py':b'H4M29_R18_RED_ENV',
+          'm463_instrument_brax.py':b'H4M29_R18_RED_GENERATOR',
+          'm463_push_ppo_train.py':b'H4M29_R18_RED_CORE'}
+    if name not in tags:return raw
+    tag=tags[name];begin=b'\n# '+tag+b'_BEGIN\n';end=b'# '+tag+b'_END\n'
+    h4m12_require(raw.count(begin)==raw.count(end)==1 and raw.endswith(end),
+        'PTR_R12_RED_REVERSE_SENTINEL')
+    old=raw[:raw.index(begin)]
+    if name=='m463_coverage_env.py':
+        edits=(
+            ("r12=False, ffe=False, ffe2=False):".encode(),"r12=False, ffe=False, ffe2=False, r12_red_timing=False):".encode()),
+            ("        self._ffe = ffe\n        self._r12 = r12\n".encode(),"        if type(r12_red_timing) is not bool or (r12_red_timing and (\n                not r12 or stage!='easy_repeat_support' or h4_arm!='control' or\n                h4red or r11 or ffe or ffe2 or h1_m1 or h1_m2 or h3_m1 or\n                h4cc_arm is not None or h4m6_arm is not None or\n                h4m6_tech_capture or h4m8_common or\n                len(config.reward_config.scales)!=24 or int(config.episode_length)!=1000)):\n            raise ValueError('PTR_R12_RED_ENV_CONTRACT')\n        if r12_red_timing:\n            from m463_push_ppo_train import ptr_r12_red_environment_claim\n            ptr_r12_red_environment_claim(self,config)\n        self._r12_red_timing = r12_red_timing\n        self._ffe = ffe\n        self._r12 = r12\n".encode()),
+            ("            target_first = jax.random.randint(k_time, (), 12, 344 if self._h4red else 25)\n".encode(),"            target_first = jax.random.randint(k_time, (), 12, 344 if (self._h4red or getattr(self,'_r12_red_timing',False)) else 25)\n".encode()),
+        )
+        for a,b in reversed(edits):
+            h4m12_require(old.count(b)==1,'PTR_R12_RED_REVERSE_ANCHOR')
+            old=old.replace(b,a,1)
+    return old
+# H4M29_R18_RED_CORE_END

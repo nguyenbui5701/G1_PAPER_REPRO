@@ -3447,3 +3447,23 @@ def ptr_r12_compare_masks(xp,data,before,after,before_done,after_done):
     return actual,traced,union
 # H4M29_R12_CTRL_GENERATOR_PIN_END
 # H4M29_R12_AUTO_RESET_HELD_END
+
+# H4M29_R18_RED_GENERATOR_BEGIN
+PTR_R12_RED_CTRL_HELD_GENERATED_SHA='ac6fe6dc56fa9dc875c862e72590f7a0b935781739a9d2ca3c112d4141227bac'
+
+def make_r12_ptr_red_ctrl_held_source(raw):
+    """Source-only projection from repaired R15 CTRL; execution held."""
+    import hashlib
+    base,original=make_r12_ptr_ctrl_v2_held_source(raw)
+    a="  raise RuntimeError('R12_GENERATED_EXECUTION_HOLD')\n"
+    b="  raise RuntimeError('PTR_R12_RED_GENERATED_EXECUTION_HOLD')\n"
+    if (hashlib.sha256(base.encode()).hexdigest()!=PTR_R12_HELD_GENERATED_SHA
+            or base.count(a)!=1 or b in base):
+        raise RuntimeError('PTR_R12_RED_GENERATOR_BASE')
+    result=h4c_once(base,a,b)
+    if (h4c_once(result,b,a)!=base or
+            hashlib.sha256(result.encode()).hexdigest()!=PTR_R12_RED_CTRL_HELD_GENERATED_SHA):
+        raise RuntimeError('PTR_R12_RED_GENERATOR_PIN')
+    compile(result,'<PTR R12 RED CTRL held>','exec')
+    return result,original
+# H4M29_R18_RED_GENERATOR_END
