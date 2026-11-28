@@ -13009,7 +13009,7 @@ PTR_NEW_FULL='m470_fullstate_step_020971520.msgpack'
 PTR_NEW_POLICY='m463_easy_repeat_support_longtrain_step_020971520.msgpack'
 
 # Prospective receipt schema, not an issued static/runtime authorization.
-PTR_STATIC=Path('m463_runs/m470_h4_m29_ptr_static_v1')
+PTR_STATIC=Path('m463_runs/m470_h4_m29_ptr_static_v2')
 PTR_AUTH_KEYS={'id','arm','output','source_head','source_sha256','generated_sha256',
                'static_sha256','static_terminal_sha256','ctrl_report_sha256','ctrl_terminal_sha256'}
 PTR_SOURCE_NAMES=(*H4_FILES,'m463_gate3_cp_eval.py','paper_config_preflight.json')
@@ -13754,7 +13754,7 @@ def ptr_generated_guard(audit,generated_file,environment,resume,arm,abort_fn,chu
 
 
 # H4-M29-R2C host-only static contract. Source is not an authorization.
-PTR_STATIC_ID='H4-M29-R12-PTR-STATIC-V1'
+PTR_STATIC_ID='H4-M29-R12-PTR-STATIC-V2'
 PTR_STATIC_CASES=(
     'source_projection','historical_parent','bootstrap','pinned_dependencies','compile_modules',
     'generator_ctrl','generator_cand','generator_invalid_arm','legacy_r12_core',
@@ -13960,8 +13960,8 @@ def ptr_static_fixtures(root,raw,record):
         bad=inst.ptr_actual_batch_contract(np,data,pre,post,done,done,arm)
         return data,pre,post,done,bad
     selected=None
-    for arm in ('ctrl','cand'):
-        for motion,tag in ((0,'stand'),(2,'moving')):
+    for motion,tag in ((0,'stand'),(2,'moving')):
+        for arm in ('ctrl','cand'):
             data,pre,post,done,bad=batch(arm,motion)
             ex=data.extras['state_extras']
             check('batch_'+arm+'_'+tag,not np.any(bad) and
@@ -14304,9 +14304,10 @@ def ptr_static_worker(root,args,auth,head,out):
         cases.append(name)
     for name in PTR_STATIC_CASES[:5]:record(name)
     generated,held=ptr_static_fixtures(root,raw,record)
-    h4m12_require(tuple(cases)==PTR_STATIC_CASES and
-        ptr_static_authorization(root)==(auth,head) and ssrpc_static_no_native() and
-        ssrpc_bootstrap_identity(root)==bootstrap,'PTR_STATIC_FINAL')
+    h4m12_require(tuple(cases)==PTR_STATIC_CASES,'PTR_STATIC_FINAL_CASE_ORDER')
+    h4m12_require(ptr_static_authorization(root)==(auth,head),'PTR_STATIC_FINAL_AUTHORIZATION')
+    h4m12_require(ssrpc_static_no_native(),'PTR_STATIC_FINAL_NATIVE_IMPORT')
+    h4m12_require(ssrpc_bootstrap_identity(root)==bootstrap,'PTR_STATIC_FINAL_BOOTSTRAP')
     r=dict(status='FULL_HOST_STATIC_PASS',authorization=auth,static_head=head,source_head=auth['source_head'],
         source_sha256=auth['source_sha256'],source_files=ptr_source_files(root,auth['source_head']),
         parent_pins=parent['parent_pins'],bootstrap_sha256=bootstrap,generated_sha256=generated,
