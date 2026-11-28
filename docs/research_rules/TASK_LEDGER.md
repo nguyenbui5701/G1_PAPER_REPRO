@@ -614,3 +614,7 @@ Trainer-only commits 613dcc92bcc42c7c7769caf6fb9cb58f8aa744c9, 20d7b05d929f20bba
 
 ## H4-M29-R19B — distinct one-use RED focused static authorization
 Owner explicit GO accepted at 3ca622bdf59c7c43fae615c13eafa2b87a05e675; 9/9 remote source rehash, exact 13-case manifest and launcher pins, closed root prior to issue. Source unchanged. This docs record precedes separate root-only H4PTR_RED_CTRL_STATIC_GO authorization; only 13 host-static fixtures, one invocation, no native/PPO/retry/holdout/promotion. See ACTIVE_EXPERIMENT R19B for exact scope, outer capture and receipt requirements. Actual fixtures 0/13 before Owner invocation. A ACTIVE/B HOLD.
+
+
+## H4-M29-R19C — R19B CLOSED / V2 harness refrozen HELD
+Owner accepted R19B STOP/CONSUMED 3/13, exact root-only closure 2cb12213cc978d878f3cf5f79cd4c4789f17e631, trainer-only repair 42294f338f061d40fd636f830c800cddf309ee15, exact candidate blob 322981ac9da8ede43a94c721bfbfad9ac16c0152 and aggregate f37d53427c89cf975309d7b134e03e3ff366b54ae6e8c1612d18fe79926f16c9. Exact forward/reverse, eight unchanged source blobs, zero active GO, runtime held and acceptance None. Seven uploaded artifacts rehashed; see ACTIVE_EXPERIMENT R19C for evidence, limits and V2 identity. No project fixture/native/PPO execution or promotion. Next distinct R20 Owner GO for V2 host-static only; no retry R19B. Governance v2.0.1 unchanged; A ACTIVE/B HOLD.
