@@ -617,3 +617,7 @@ Owner-approved documentation-only complete outer terminal capture rule in RUNTIM
 
 ## H4-M29-R17 — historical scheduler reuse design
 Owner approved offline R17. RED-first selected prospectively, exact prior NO_GO preserved; R15 closed/EXPOSURE_INCONCLUSIVE, no active GO. See ACTIVE_EXPERIMENT R17 for complete source locations, arithmetic, constraints, matched design, falsifiers and proposed held R18. No executable changes or runtime; no guarantee of policy gain. Governance v2.0.1 unchanged.
+
+
+## H4-M29-R18A — held RED core
+Source bd3b3c7eea081008bfa38bc448a53964e85c98e5; exact +110/-2 across three existing files, 3/3 reverse projections, nine-file aggregate 9d1e5d02a6e6ff0166f9e85bd16dfa68352a7e12f2fa49abc3de89c836fedc9c; held CTRL generated ac6fe6dc56fa9dc875c862e72590f7a0b935781739a9d2ca3c112d4141227bac (uploaded R15 inverse + held sentinel compile-only). No active GO. Core COMPLETE/HELD, R18B distinct supervisor/admission/reader wiring incomplete; no project static/native/PPO execution, no retry/promotion. See ACTIVE_EXPERIMENT R18A for all source/evidence/limitations. Governance v2.0.1 unchanged; A ACTIVE/B HOLD.

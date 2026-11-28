@@ -982,3 +982,7 @@ NEXT HELD: offline prospective matched experiment feasibility/design only after 
 
 ## H4-M29-R17 evidence pointer
 See ACTIVE_EXPERIMENT R17; exact historical archive 7d5961158420ad2053ed00cc1342aa2a54a12ce9 L2663–2678,2721–2730,2910–2921,3504–3525; source env fd754f40c38729a896056d329e037fb011a1f408, trainer e1da9b7441dc24a004f7b26627583afa9dc962b2, instrumenter 96283b5f2d2323732c3891c700e0ca12ccf45607; R15 report SHA256 795fc96ba81563d13a181156df21fbeb3baac9f5fbd2e5da3ed26f6daf15888c rehashed. Pure integer enumeration430272 RED tuples vs16848 original; no runtime. Historical raw binaries not rehashed. Design only, source pinned, zero active GO.
+
+
+## H4-M29-R18A — held RED core
+Source bd3b3c7eea081008bfa38bc448a53964e85c98e5; exact +110/-2 across three existing files, 3/3 reverse projections, nine-file aggregate 9d1e5d02a6e6ff0166f9e85bd16dfa68352a7e12f2fa49abc3de89c836fedc9c; held CTRL generated ac6fe6dc56fa9dc875c862e72590f7a0b935781739a9d2ca3c112d4141227bac (uploaded R15 inverse + held sentinel compile-only). No active GO. Core COMPLETE/HELD, R18B distinct supervisor/admission/reader wiring incomplete; no project static/native/PPO execution, no retry/promotion. See ACTIVE_EXPERIMENT R18A for all source/evidence/limitations. Governance v2.0.1 unchanged; A ACTIVE/B HOLD.
