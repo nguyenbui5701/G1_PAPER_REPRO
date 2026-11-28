@@ -6593,3 +6593,4 @@ for name in ("report.json","attempt.json","dispatch.started.json","attempt_resul
         print("H4FFE2_DEV_ARTIFACT",str(p),p.stat().st_size,digest(p),flush=True)
 raise SystemExit(0 if ok else 1)
 # H4FFE2_DEV_OWNER_LAUNCHER_END
+H4PTR_DELTA_GO: {"fixture_manifest_sha256":"b5d82c5b8f90586676c7242402bb9ebf437d1ad8acf7bb16f036e7edb2afa5c2","id":"H4-M29-R12-PTR-DELTA-R4B-V1","source_head":"d208cc6923de7ba03ed9b687521c134613636083","source_sha256":"3b1d41f1041d113209c58c2740e34fc882065227aa1481db22ed4ada6506063f"}
