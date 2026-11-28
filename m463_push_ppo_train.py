@@ -20847,7 +20847,7 @@ def ptr_r24_cand_source_inverse(root):
         h4m12_require(p.is_file() and not p.is_symlink(),'PTR_R23_SOURCE_PATH')
         raw=p.read_bytes()
         h4m12_require(raw==git('show','HEAD:'+name),'PTR_R23_SOURCE_TRACKED')
-        if name=='m463_push_ppo_train.py':raw=ptr_r24_cand_reverse(raw)
+        if name=='m463_push_ppo_train.py':raw=ptr_r24_cand_reverse(ptr_r25_cand_reverse(raw))
         h4m12_require(raw==git('show',PTR_R24_BASE_HEAD+':'+name),'PTR_R24_R23_EXACT_'+name)
         base=git('show',PTR_R23_CTRL_SOURCE+':'+name)
         if name=='m463_push_ppo_train.py':
@@ -21717,3 +21717,436 @@ def ptr_r24_cand_runtime_main(argv):
         raise
 
 # H4M29_R24_RED_CAND_HELD_WIRING_END
+
+# H4M29_R25_RED_CAND_FOCUSED_HELD_BEGIN
+PTR_R25_BASE_HEAD='d662d6945cd2cf8b8b4b03a56d0aa5b7467b36b4'
+PTR_R25_BASE_TRAINER_SHA='6a3c9a30d3bb80e56bbe145343ad7f80ad4362ff99f86152fd2e18c11448b26f'
+PTR_R25_BASE_AGGREGATE='3c37dc75bd226f7c58889c395c8a1f14110aeae424befb4e146dd84799b3cc27'
+PTR_R25_FOCUSED_ID='H4-M29-R12-PTR-RED-CAND-V1-FOCUSED-STATIC-V1'
+PTR_R25_FOCUSED_MARKER='H4PTR_RED_CAND_STATIC_V1_GO'
+PTR_R25_FOCUSED_ROLE='PTR_R12_RED_CAND_STATIC_V1_CHILD_ROLE'
+PTR_R25_FOCUSED_OUT=Path('m463_runs/m470_h4_m29_ptr_red_cand_v1_static_v1')
+PTR_R25_FOCUSED_PREFIX='PTR_R25_CAND_FOCUSED_CASE_PASS='
+PTR_R25_FOCUSED_PASS='PTR_R25_CAND_FOCUSED_INDEPENDENT_READER_PASS'
+PTR_R25_FOCUSED_FILES={'attempt.json','worker.started.json','worker.log','report.json','attempt_result.json'}
+PTR_R25_FOCUSED_CASES=('source_compile_and_reverse',
+    'held_auth_and_arm_isolation',
+    'constructor_context_rejection',
+    'generated_cand_exact_projection',
+    'frozen_ctrl_parent_admission',
+    'ptr_material_boundaries',
+    'ptr_joint_direction_mutations',
+    'combined_exposure_decision',
+    'report_envelope_mutations',
+    'partial_stop_and_terminal',
+    'launcher_capture_isolation',
+    'acceptance_release_projection')
+PTR_R25_MANIFEST='ef9e20901965d8dcd05f7c50a3d3def62dfc6ca7b28c1a5116b63ebe69691ad4'
+
+def ptr_r25_replace(raw,old,new):
+    h4m12_require(raw.count(old)==1 and raw.count(new)==0,'PTR_R25_EXACT_ANCHOR')
+    return raw.replace(old,new,1)
+
+def ptr_r25_acceptance_pair(accepted):
+    return (b'PTR_R24_CAND_FOCUSED_ACCEPTANCE='+b'None\n',
+        b'PTR_R24_CAND_FOCUSED_ACCEPTANCE='+ptr_r7b_canonical(accepted).encode()+b'\n')
+
+def ptr_r25_release_pairs():
+    return ((b'    raise RuntimeError('+repr('PTR_R24_RED_CAND_RUNTIME_AUTH_HELD').encode()+b')\n',
+             b'    ptr_r25_cand_release_guard('+b'root)\n'),
+            (b'    raise RuntimeError('+repr('PTR_R24_CAND_FOCUSED_ADMISSION_HELD').encode()+b')\n',
+             b'    return ptr_r25_cand_accepted_admission('+b'root,auth)\n'))
+
+def ptr_r25_cand_acceptance_projection(raw,accepted):
+    old,new=ptr_r25_acceptance_pair(accepted)
+    return ptr_r25_replace(raw,old,new)
+
+def ptr_r25_cand_release_projection(raw):
+    for old,new in ptr_r25_release_pairs():raw=ptr_r25_replace(raw,old,new)
+    return raw
+
+def ptr_r25_cand_reverse(raw):
+    # Normalize only the two prospective release sites and exact accepted dict.
+    accepted=PTR_R24_CAND_FOCUSED_ACCEPTANCE
+    for old,new in reversed(ptr_r25_release_pairs()):
+        if raw.count(new):raw=ptr_r25_replace(raw,new,old)
+    if accepted is not None:
+        old,new=ptr_r25_acceptance_pair(accepted);raw=ptr_r25_replace(raw,new,old)
+    begin=b'\n# H4M29_R25_RED_CAND_FOCUSED_HELD_BEGIN\n'
+    end=b'# H4M29_R25_RED_CAND_FOCUSED_HELD_END\n'
+    h4m12_require(raw.count(begin)==raw.count(end)==1 and raw.endswith(end),'PTR_R25_REVERSE_SENTINEL')
+    prior=raw[:raw.index(begin)]
+    new=b"        if name=='m463_push_ppo_train.py':raw=ptr_r24_cand_reverse(ptr_r25_cand_reverse(raw))\n"
+    old=b"        if name=='m463_push_ppo_train.py':raw=ptr_r24_cand_reverse(raw)\n"
+    prior=ptr_r25_replace(prior,new,old)
+    h4m12_require(hashlib.sha256(prior).hexdigest()==PTR_R25_BASE_TRAINER_SHA,'PTR_R25_R24_PIN')
+    return prior
+
+def ptr_r25_focused_contract(root,source_head):
+    import subprocess
+    root=Path(root).resolve()
+    git=lambda *v:subprocess.check_output(['git',*v],cwd=root,timeout=30)
+    pins={n:hashlib.sha256(git('show',source_head+':'+n)).hexdigest() for n in PTR_SOURCE_NAMES}
+    base={n:hashlib.sha256(git('show',PTR_R25_BASE_HEAD+':'+n)).hexdigest() for n in PTR_SOURCE_NAMES}
+    h4m12_require(hashlib.sha256(ptr_r7b_canonical(base).encode()).hexdigest()==PTR_R25_BASE_AGGREGATE and
+        all(pins[n]==base[n] for n in pins if n!='m463_push_ppo_train.py') and
+        len(set(PTR_R25_FOCUSED_CASES))==12 and
+        hashlib.sha256(ptr_r7b_canonical(list(PTR_R25_FOCUSED_CASES)).encode()).hexdigest()==PTR_R25_MANIFEST,
+        'PTR_R25_FOCUSED_MANIFEST_SOURCE')
+    a=dict(id=PTR_R25_FOCUSED_ID,source_head=source_head,
+        source_sha256=hashlib.sha256(ptr_r7b_canonical(pins).encode()).hexdigest(),
+        fixture_manifest_sha256=PTR_R25_MANIFEST,held_generated_sha256=PTR_R23_CAND_HELD_GEN,
+        guarded_generated_sha256=PTR_R24_CAND_GUARDED_GEN,launcher_sha256=PTR_R24_CAND_LAUNCHER_SHA,
+        ctrl_report_sha256=PTR_R23_CTRL_PINS['report.json'],ctrl_terminal_sha256=PTR_R23_CTRL_PINS['supervisor.terminal.json'])
+    return a,pins
+
+def ptr_r25_focused_auth(root):
+    h4m12_require(ssrpc_static_no_native() and PTR_R24_CAND_FOCUSED_ACCEPTANCE is None,'PTR_R25_STATIC_HELD')
+    a,head=ptr_r10b_root_auth(root,PTR_R25_FOCUSED_MARKER)
+    expected,pins=ptr_r25_focused_contract(root,a['source_head'])
+    ptr_r7b_exact(a,expected,'PTR_R25_STATIC_AUTH')
+    ptr_r7b_exact(ptr_source_files(root,a['source_head']),pins,'PTR_R25_STATIC_SOURCE')
+    ptr_r24_cand_source_inverse(root)
+    h4x_file_pin(Path(root)/PTR_R24_CAND_LAUNCHER,PTR_R24_CAND_LAUNCHER_SHA)
+    return a,head
+
+def ptr_r25_cand_accepted_admission(root,auth):
+    # Prospective only: never reached through R24 unconditional admission HOLD.
+    import subprocess
+    root=Path(root).resolve();accepted=PTR_R24_CAND_FOCUSED_ACCEPTANCE
+    fields={'report_sha256','terminal_sha256','source_head','source_sha256','fixture_manifest_sha256',
+        'files','authorization_head','closure_head','outer_log_sha256','outer_receipt_sha256'}
+    h4m12_require(type(accepted) is dict and set(accepted)==fields and
+        accepted['fixture_manifest_sha256']==PTR_R25_MANIFEST and
+        auth['focused_static_sha256']==accepted['report_sha256'] and
+        auth['focused_terminal_sha256']==accepted['terminal_sha256'],'PTR_R25_ACCEPTANCE_SCHEMA')
+    out=root/PTR_R25_FOCUSED_OUT;ptr_r4b_output_path(out)
+    h4m12_require(set(accepted['files'])==PTR_R25_FOCUSED_FILES|{'supervisor.terminal.json'} and
+        {p.name for p in out.iterdir()}==set(accepted['files']),'PTR_R25_ACCEPTANCE_INVENTORY')
+    for name,pin in accepted['files'].items():h4x_file_pin(out/name,pin)
+    h4x_file_pin(out/'report.json',accepted['report_sha256'])
+    h4x_file_pin(out/'supervisor.terminal.json',accepted['terminal_sha256'])
+    report=ssrpc_read_json(out/'report.json',SSRPC_STATIC_REPORT_CAP)
+    a=report['authorization'];head=accepted['authorization_head']
+    h4m12_require(a['source_head']==accepted['source_head'] and a['source_sha256']==accepted['source_sha256'],
+        'PTR_R25_ACCEPTANCE_SOURCE')
+    ptr_r7b_exact(report,ptr_r25_focused_report(root,a,head),'PTR_R25_ACCEPTED_REPORT')
+    att,_=ptr_r25_focused_payload(root,out,a,head,reader=True)
+    ptr_r7b_exact(ssrpc_read_json(out/'supervisor.terminal.json',65536),
+        ptr_r25_focused_terminal(out,a,head,att,0,0,None),'PTR_R25_ACCEPTED_TERMINAL')
+    outer=Path(str(out)+'_outer.log');receipt=Path(str(out)+'_outer.receipt.json')
+    h4x_file_pin(outer,accepted['outer_log_sha256']);h4x_file_pin(receipt,accepted['outer_receipt_sha256'])
+    h4m12_require(0<outer.stat().st_size<=16*1024**2 and
+        ssrpc_read_json(receipt,65536)==dict(status='CAPTURE_COMPLETE',authorization_head=head,
+            outer_rc=0,tee_rc=0,stored_log_bytes=outer.stat().st_size,
+            outer_log_sha256=accepted['outer_log_sha256'],promotion_authorized=False) and
+        outer.read_bytes().splitlines().count(b'PTR_R25_CAND_STATIC_OUTER_BODY_RC=0')==1 and
+        outer.read_bytes().splitlines().count(PTR_R25_FOCUSED_PASS.encode())==1 and
+        b'===== ARTIFACT INVENTORY =====' in outer.read_bytes() and
+        b'===== supervisor.terminal.json =====' in outer.read_bytes(),'PTR_R25_ACCEPTED_OUTER')
+    inventory=[f"ARTIFACT_BYTES {(out/name).stat().st_size} {pin} {PTR_R25_FOCUSED_OUT/name}".encode()
+        for name,pin in accepted['files'].items()]
+    lines=outer.read_bytes().splitlines()
+    h4m12_require(sorted(x for x in lines if x.startswith(b'ARTIFACT_BYTES '))==sorted(inventory),
+        'PTR_R25_ACCEPTED_OUTER_INVENTORY')
+    ptr_r10b_closed_marker(root,accepted['source_head'],head,accepted['closure_head'],PTR_R25_FOCUSED_MARKER,a)
+    ptr_r4b_lineage(root,accepted['closure_head'],auth['source_head'])
+    git=lambda *v:subprocess.check_output(['git',*v],cwd=root,timeout=30)
+    for name in (*PTR_SOURCE_NAMES,PTR_R24_CAND_LAUNCHER):
+        before=git('show',accepted['source_head']+':'+name)
+        after=git('show',auth['source_head']+':'+name)
+        expected=ptr_r25_cand_release_projection(ptr_r25_cand_acceptance_projection(before,accepted)) if name=='m463_push_ppo_train.py' else before
+        h4m12_require(after==expected,'PTR_R25_ACCEPTED_RELEASE_'+name)
+
+def ptr_r25_cand_release_guard(root):
+    # Prospective runtime gate: release commit must be trainer-only exact child.
+    import subprocess
+    root=Path(root).resolve();a,head=ptr_r10b_root_auth(root,PTR_R24_CAND_MARKER)
+    ptr_r24_cand_auth_schema(a)
+    h4m12_require(PTR_R25_FOCUSED_ROLE not in os.environ,'PTR_R25_RUNTIME_ROLE_CONFLICT')
+    git=lambda *v:subprocess.check_output(['git',*v],cwd=root,timeout=30)
+    sh=a['source_head'];parents=git('rev-list','--parents','-n','1',sh).decode().split()
+    h4m12_require(len(parents)==2 and parents[0]==sh,'PTR_R25_RELEASE_PARENT')
+    before=git('show',parents[1]+':m463_push_ppo_train.py')
+    after=git('show',sh+':m463_push_ppo_train.py')
+    h4m12_require(git('diff','--name-only',parents[1],sh).splitlines()==[b'm463_push_ppo_train.py'] and
+        after==ptr_r25_cand_release_projection(before) and after==(root/'m463_push_ppo_train.py').read_bytes(),
+        'PTR_R25_RELEASE_EXACT')
+    ptr_r25_cand_accepted_admission(root,a)
+    return a,head
+
+
+def ptr_r25_focused_cases(root,args,record):
+    import ast,subprocess,tempfile
+    from importlib import metadata
+    from unittest.mock import patch
+    from types import SimpleNamespace as NS
+    import m463_instrument_brax as inst
+    root=Path(root).resolve();seen=[]
+    def check(name,ok):
+        h4m12_require(len(seen)<len(PTR_R25_FOCUSED_CASES) and name==PTR_R25_FOCUSED_CASES[len(seen)]
+            and bool(ok) and ssrpc_static_no_native(),'PTR_R25_CASE_'+name)
+        seen.append(name);record(name)
+    def rejects(call,token=None):
+        try:call()
+        except (RuntimeError,ValueError) as exc:return token is None or token in str(exc)
+        return False
+    trainer=(root/'m463_push_ppo_train.py').read_bytes()
+    for name in PTR_SOURCE_NAMES:
+        if name.endswith('.py'):
+            raw=(root/name).read_bytes();ast.parse(raw);compile(raw,name,'exec')
+    prior=ptr_r25_cand_reverse(trainer)
+    ptr_r24_cand_source_inverse(root);ptr_r24_cand_base_projection(root)
+    check('source_compile_and_reverse',hashlib.sha256(prior).hexdigest()==PTR_R25_BASE_TRAINER_SHA)
+    a=dict(id=PTR_R23_CAND_ID,arm='cand',output=PTR_R24_CAND_OUT,source_head=ptr_head(root),
+        source_sha256=h4x_source_digest(root),generated_sha256=PTR_R24_CAND_GUARDED_GEN,
+        parent_sha256=PTR_PARENT_PINS[PTR_FULL],launcher_sha256=PTR_R24_CAND_LAUNCHER_SHA,
+        focused_static_sha256='1'*64,focused_terminal_sha256='2'*64,
+        ctrl_report_sha256=PTR_R23_CTRL_PINS['report.json'],ctrl_terminal_sha256=PTR_R23_CTRL_PINS['supervisor.terminal.json'])
+    check('held_auth_and_arm_isolation',ptr_r24_cand_auth_schema(a)==a and
+        all(rejects(lambda m=m:ptr_r24_cand_auth_schema(dict(a,**m))) for m in (
+            dict(arm='ctrl'),dict(output=PTR_R12_RED_OUT),dict(generated_sha256=PTR_R12_RED_GUARDED_GEN),
+            dict(parent_sha256=PTR_R23_CTRL_PINS[PTR_NEW_FULL]),dict(ctrl_report_sha256='3'*64))) and
+        rejects(lambda:ptr_r24_cand_authorization(root,'cand'),'PTR_R24_RED_CAND_RUNTIME_AUTH_HELD') and
+        rejects(lambda:ptr_r24_cand_focused_admission(root,a),'PTR_R24_CAND_FOCUSED_ADMISSION_HELD'))
+    dummy=NS();setattr(dummy,'_PTRHeldCoverageJoystick__ptr_arm','cand')
+    check('constructor_context_rejection',_PTR_R24_CAND_CONTEXT is None and _PTR_R12_RED_CONTEXT is None and
+        rejects(lambda:ptr_r24_cand_make_environment(object())) and
+        rejects(lambda:ptr_r12_red_environment_claim(dummy,object()),'PTR_R24_CAND_ENV_CLAIM') and
+        rejects(lambda:ptr_r24_cand_prepare_environment(root,root/PTR_R24_CAND_OUT,a,object()),
+            'PTR_R24_RED_CAND_RUNTIME_AUTH_HELD') and rejects(lambda:ptr_r24_cand_bind_callbacks(dummy,lambda:None,lambda:None,lambda:None)))
+    raw=Path(metadata.distribution('brax').locate_file('brax/training/agents/ppo/train.py')).read_bytes()
+    held,pin=ptr_r23_cand_held_generated_source(raw);guarded,pin2=ptr_r24_cand_guarded_generated_source(raw)
+    ctrl,pin3=inst.make_r12_ptr_red_ctrl_guarded_source(raw)
+    check('generated_cand_exact_projection',pin==pin2==pin3==hashlib.sha256(raw).hexdigest()==
+        'e20613d42bf0868a13003e0312998816cc8d3593bb5ccaf9f1d070fd09c44bd7' and
+        hashlib.sha256(held.encode()).hexdigest()==PTR_R23_CAND_HELD_GEN and
+        hashlib.sha256(guarded.encode()).hexdigest()==PTR_R24_CAND_GUARDED_GEN and
+        hashlib.sha256(ctrl.encode()).hexdigest()==PTR_R12_RED_GUARDED_GEN and
+        "ptr_r12_actual_batch_contract(jnp,data,{**r12_before,**ptr_before},state.info,ptr_before_done,state.done,'cand')" in guarded)
+    report=ptr_r24_cand_control_evidence(root);parent=ptr_parent_evidence(root)
+    check('frozen_ctrl_parent_admission',report['parent']==parent and report['authorization']['arm']=='ctrl' and
+        report['ptr_exposure']['decision']=='EXPOSURE_PASS' and
+        a['parent_sha256']!=PTR_R23_CTRL_PINS[PTR_NEW_FULL])
+    def rows(ns,missing_cell=False,missing_side=False):
+        ps=[];ds=[];bs=[]
+        for j,n in enumerate(ns,1):
+            c={k:0 for k in inst.PTR_COUNTS+inst.PTR_SUMS}
+            c.update(collected=5,batch_committed=5,open=(n+99)//100,close=(n+99)//100,
+                open_kind_1=(n+99)//100,close_reason_1=(n+99)//100,
+                scored=n,nonzero_desired=n,nonzero_consumed=n,desired_sum=-n*.0004,
+                consumed_ptr_delta=-n*.0004,consumed_total_delta=-n*.0004,
+                delivered_sum=-n*.0004,delivered_abs_sum=n*.0004,scored_risk_sum=n*.5)
+            cells=[(m,k) for m in range(6) for k in (1,2) if not (missing_cell and (m,k)==(5,2))]
+            sides=list(range(1,6 if missing_side else 7))
+            for i,(m,k) in enumerate(cells):
+                v=n//len(cells)+(i<n%len(cells))
+                c[f'consumed_motion_{m}_kind_{k}']=c[f'scored_motion_{m}_kind_{k}']=v
+            for i,k in enumerate(sides):c[f'consumed_side_{k}']=n//len(sides)+(i<n%len(sides))
+            for k in (1,2):
+                c[f'open_kind_{k}']=(sum(c[f'scored_motion_{m}_kind_{k}'] for m in range(6))+99)//100
+            c['open']=c['close']=c['close_reason_1']=c['open_kind_1']+c['open_kind_2']
+            c['scored_pre_support_0']=n
+            ps.append(dict(index=j,before=0,after=0,metrics=c,passed=True))
+            ds.append(dict(passed=True,metrics=dict(native_sum=0,consumed_reward=0,consumed_delta=0)))
+            bs.append(dict(passed=True,counts=dict(m463_h4_first_events_per_rollout=1000,
+                m463_h4_repeat_events_per_rollout=1000,**{f'm463_h4_broad_motion_{m}_per_rollout':1000 for m in range(1,6)})))
+        return ps,ds,bs
+    def replay(ns,**kw):return inst.ptr_exposure_replay(*rows(ns,**kw),'cand',916743,[0,0,0],complete=True)
+    good=replay([4500,4500,500,500])
+    badtotal=replay([4499,4500,500,500]);badhalf=replay([4501,4500,499,500])
+    check('ptr_material_boundaries',good['decision']=='EXPOSURE_PASS' and
+        badtotal['decision']=='EXPOSURE_INCONCLUSIVE' and not badtotal['checks']['total'] and
+        badhalf['decision']=='EXPOSURE_INCONCLUSIVE' and not badhalf['checks']['second_half'])
+    m=replay([4500,4500,500,500],missing_cell=True);s=replay([4500,4500,500,500],missing_side=True)
+    check('ptr_joint_direction_mutations',m['decision']==s['decision']=='EXPOSURE_INCONCLUSIVE' and
+        not m['checks']['motion_5_kind_2'] and not s['checks']['direction_6'] and
+        rejects(lambda:inst.ptr_exposure_replay(*rows([4500,4500,500,500]),'ctrl',916743,[0,0,0],complete=True)))
+    # Stub the already-verified common/timing replays, exercise only new CAND composition.
+    with patch.dict(ptr_r23_cand_exposure.__globals__,{'ptr_complete_exposure':lambda r,arm:dict(decision=r[0]),
+        'ptr_r12_red_timing_replay':lambda r:dict(decision=r[1])}):
+        ok=all(ptr_r24_cand_complete_exposure((x,y),'cand')['decision']==('EXPOSURE_PASS' if x==y=='EXPOSURE_PASS' else 'EXPOSURE_INCONCLUSIVE')
+            for x in ('EXPOSURE_PASS','EXPOSURE_INCONCLUSIVE') for y in ('EXPOSURE_PASS','EXPOSURE_INCONCLUSIVE'))
+    check('combined_exposure_decision',ok and rejects(lambda:ptr_r24_cand_complete_exposure({},'ctrl')))
+    p=dict(config={},reward={},dependencies={})
+    env=dict(status='RUNNING',authorization=a,spec=ptr_r23_cand_spec(),parent=p,
+        operational_rows=[],budget=H4M12Budget().snapshot(),report_history=[],artifacts={},
+        promotion_authorized=False,hardware_scaled_config={},reward={},dependencies={},
+        h4_chunks=[],h4_epochs=[],r12_chunks=[],ptr_chunks=[])
+    ptr_r24_cand_report_schema(env,a,complete=False)
+    check('report_envelope_mutations',rejects(lambda:ptr_r24_cand_report_schema(dict(env,promotion_authorized=True),a,complete=False))
+        and rejects(lambda:ptr_r24_cand_report_schema(dict(env,spec=ptr_r12_red_spec()),a,complete=False))
+        and rejects(lambda:ptr_r24_cand_report_schema(env,a,complete=True)))
+    with tempfile.TemporaryDirectory() as tmp:
+        out=Path(tmp)/PTR_R24_CAND_OUT;out.mkdir(parents=True)
+        fail=dict(status='STOP',authorization=a,producer_rc=1,error='fixture',stage='UNREADABLE_EVIDENCE',stage_error='fixture')
+        for name in ('supervisor.failed.json','attempt_result.json'):ssrpc_static_write(out/name,fail)
+        result=ptr_r24_cand_read_partial(out,a)
+        (out/'supervisor.failed.json').unlink()
+        log=out/'worker.log';log.write_bytes(b'fixture\n')
+        term=dict(status='COMPLETE',authorization=a,report_sha256='3'*64,producer_rc=0,reader_rc=0,
+            worker_log_sha256=digest(log),stored_log_bytes=log.stat().st_size)
+        ssrpc_static_write(out/'supervisor.terminal.json',term)
+        valid=ssrpc_terminal_receipt(out,'3'*64,a);log.write_bytes(b'changed\n')
+        check('partial_stop_and_terminal',result==dict(status='STOP_UNREADABLE_EVIDENCE',budget=None,promotion_authorized=False)
+            and valid and rejects(lambda:ssrpc_terminal_receipt(out,'3'*64,a)))
+    launcher=root/PTR_R24_CAND_LAUNCHER;h4x_file_pin(launcher,PTR_R24_CAND_LAUNCHER_SHA)
+    subprocess.run(['bash','-n',str(launcher)],check=True,timeout=20)
+    with tempfile.TemporaryDirectory() as tmp:
+        p=Path(tmp);(p/'m463_runs').mkdir();(p/'bin').mkdir()
+        shell=p/PTR_R24_CAND_LAUNCHER;shell.write_bytes(launcher.read_bytes())
+        git=p/'bin/git';git.write_text('#!/bin/sh\necho MOCK_CAND_PREFLIGHT_STDERR >&2\nexit 9\n');git.chmod(0o755)
+        en=dict(os.environ,PATH=str(p/'bin')+os.pathsep+os.environ['PATH'])
+        cmd=['bash',str(shell),'a'*40];res=subprocess.run(cmd,env=en,capture_output=True,timeout=30)
+        log=p/(PTR_R24_CAND_OUT+'_outer.log');receipt=p/(PTR_R24_CAND_OUT+'_outer.receipt.json')
+        b=log.read_bytes();v=json.loads(receipt.read_bytes());again=subprocess.run(cmd,env=en,capture_output=True,timeout=20)
+        check('launcher_capture_isolation',res.returncode!=0 and again.returncode==66 and
+            v['status']=='STOP' and v['outer_rc']!=0 and v['tee_rc']==0 and
+            v['outer_log_sha256']==hashlib.sha256(b).hexdigest() and v['stored_log_bytes']==len(b) and
+            b'MOCK_CAND_PREFLIGHT_STDERR' in b and b'===== ARTIFACT INVENTORY =====' in b and
+            log.read_bytes()==b and not (p/PTR_R12_RED_OUT).exists())
+    # Prospective projection tested on bytes only, not imported/executed.
+    dummy_acceptance={'fixture':'not a real acceptance'}
+    accepted=ptr_r25_cand_acceptance_projection(trainer,dummy_acceptance)
+    released=ptr_r25_cand_release_projection(accepted)
+    for old,new in reversed(ptr_r25_release_pairs()):released=ptr_r25_replace(released,new,old)
+    old,new=ptr_r25_acceptance_pair(dummy_acceptance)
+    check('acceptance_release_projection',ptr_r25_replace(released,new,old)==trainer and
+        rejects(lambda:ptr_r25_cand_release_projection(ptr_r25_cand_release_projection(accepted))))
+    return tuple(seen)
+
+def ptr_r25_focused_report(root,a,head):
+    expected,pins=ptr_r25_focused_contract(root,a['source_head'])
+    ptr_r7b_exact(a,expected,'PTR_RED_STATIC_REPORT_AUTH')
+    return dict(status='FOCUSED_HOST_STATIC_PASS',authorization=a,authorization_head=head,
+        source_head=a['source_head'],source_sha256=a['source_sha256'],
+        fixture_manifest_sha256=a['fixture_manifest_sha256'],guarded_generated_sha256=a['guarded_generated_sha256'],
+        launcher_sha256=a['launcher_sha256'],bootstrap_sha256=PTR_R8A_STATIC_BOOT,source_files=pins,
+        parent_pins=dict(PTR_PARENT_PINS),fixtures=[dict(id=k,status='PASS') for k in PTR_R25_FOCUSED_CASES],
+        zero_native_execution=True,zero_optimizer_updates=True,zero_normalizer_updates=True,promotion_authorized=False)
+
+def ptr_r25_focused_payload(root,out,a,head,*,reader):
+    att=ssrpc_read_json(out/'attempt.json',65536)
+    ptr_r7b_exact(att,ptr_r7b_attempt(a,head,PTR_R8A_STATIC_BOOT,att['parent_pid']),'PTR_R25_FOCUSED_ATTEMPT')
+    w=ptr_r7b_worker_receipt(out,att)
+    ptr_r7b_exact(ssrpc_read_json(out/'report.json',SSRPC_STATIC_REPORT_CAP),
+        ptr_r25_focused_report(root,a,head),'PTR_R25_FOCUSED_REPORT')
+    ptr_r7b_exact(ssrpc_read_json(out/'attempt_result.json',65536),
+        ptr_r7b_result(out,a,head,0),'PTR_R25_FOCUSED_RESULT')
+    lines=[(PTR_R25_FOCUSED_PREFIX+k).encode() for k in PTR_R25_FOCUSED_CASES]
+    if reader:lines.append(PTR_R25_FOCUSED_PASS.encode())
+    log=out/'worker.log'
+    h4m12_require(log.is_file() and not log.is_symlink() and
+        log.stat().st_size<=ptr_r10a_spec()['log_cap_bytes'] and
+        log.read_bytes().splitlines()==lines,'PTR_R25_FOCUSED_LOG')
+    return att,w
+
+def ptr_r25_focused_terminal(out,a,head,att,rc,rr,error):
+    w=ptr_r7b_worker_receipt(out,att) if ptr_r7b_optional_hash(out,'worker.started.json') is not None else None
+    hashes={k:ptr_r7b_optional_hash(out,k) for k in PTR_R25_FOCUSED_FILES}
+    n=(out/'worker.log').stat().st_size if hashes['worker.log'] is not None else 0
+    h4m12_require(n<=ptr_r10a_spec()['log_cap_bytes'],'PTR_R25_FOCUSED_LOG_CAP')
+    return dict(status='COMPLETE' if error is None and rc==rr==0 else 'STOP',
+        authorization=a,authorization_head=head,bootstrap_sha256=PTR_R8A_STATIC_BOOT,
+        parent_pid=att['parent_pid'],worker_pid=None if w is None else w['worker_pid'],
+        producer_rc=rc,reader_rc=rr,error=error,stage='REPORT_WRITTEN' if hashes['report.json'] else
+            'WORKER_STARTED' if w else 'RESERVATION_ONLY',artifact_sha256=hashes,
+        report_sha256=hashes['report.json'],stored_log_bytes=n,promotion_authorized=False)
+
+def ptr_r25_focused_main(argv):
+    """Distinct host-only one-use entry, closed unless the separate host marker exists."""
+    import selectors,signal,subprocess
+    root=Path(__file__).resolve().parent;a,head=ptr_r25_focused_auth(root)
+    p=argparse.ArgumentParser(description='R12 PTR RED CAND focused host verification')
+    for name in ('checkpoint','restore-report','reward-report'):p.add_argument('--'+name,type=Path,required=True)
+    args=p.parse_args(argv);out=root/PTR_R25_FOCUSED_OUT
+    ptr_r24_cand_bootstrap_held(args)
+    h4m12_require(ssrpc_bootstrap_identity(root)==PTR_R8A_STATIC_BOOT and ssrpc_static_no_native(),
+        'PTR_R10B_HOST_BOOTSTRAP')
+    role=os.environ.get(PTR_R25_FOCUSED_ROLE)
+    h4m12_require(all(k not in os.environ for k in (PTR_R10B_ROLE,PTR_R10B_BOOT,
+        PTR_R10B_TERMINAL_CANDIDATE,PTR_R8A2_ROLE,PTR_R8A2_BOOT,PTR_R12_CTRL_ROLE,PTR_R12_CTRL_BOOT,PTR_R12_RED_ROLE,PTR_R12_RED_BOOT,PTR_R12_RED_FOCUSED_ROLE,PTR_R24_CAND_ROLE,PTR_R24_CAND_BOOT,PTR_R12_FOCUSED_ROLE,'PTR_RUNTIME_BOOTSTRAP_SHA256',PTR_R10B_HOST_ROLE)),'PTR_R10B_HOST_ROLE_CONFLICT')
+    if role is not None:
+        h4m12_require(role in ('producer','reader'),'PTR_R25_FOCUSED_ROLE')
+        ptr_r4b_output_path(out)
+        att=ptr_r7b_attempt(a,head,PTR_R8A_STATIC_BOOT,os.getppid())
+        ptr_r7b_exact(ssrpc_read_json(out/'attempt.json',65536),att,'PTR_R10B_HOST_CHILD_ATTEMPT')
+        if role=='producer':
+            ssrpc_static_write(out/'worker.started.json',dict(att,worker_pid=os.getpid()))
+            seen=[]
+            def record(name):
+                h4m12_require(len(seen)<len(PTR_R25_FOCUSED_CASES) and name==PTR_R25_FOCUSED_CASES[len(seen)]
+                    and ssrpc_static_no_native(),'PTR_R10B_HOST_ORDER')
+                seen.append(name);print(PTR_R25_FOCUSED_PREFIX+name,flush=True)
+            h4m12_require(ptr_r25_focused_cases(root,args,record)==tuple(seen)==PTR_R25_FOCUSED_CASES,
+                'PTR_R10B_HOST_PRODUCER_CASES')
+            ssrpc_static_write(out/'report.json',ptr_r25_focused_report(root,a,head))
+        else:
+            _,w=ptr_r25_focused_payload(root,out,a,head,reader=False)
+            h4m12_require(w['worker_pid']!=os.getpid(),'PTR_R10B_HOST_READER_PID')
+            ptr_r24_cand_control_evidence(root);ptr_r24_cand_bootstrap_held(args)
+            h4m12_require(ssrpc_bootstrap_identity(root)==PTR_R8A_STATIC_BOOT,'PTR_R10B_HOST_READER_BOOT')
+        h4m12_require(ptr_r25_focused_auth(root)==(a,head) and ssrpc_static_no_native(),
+            'PTR_R10B_HOST_CHILD_FINAL')
+        if role=='reader':print(PTR_R25_FOCUSED_PASS,flush=True)
+        return
+    outer=Path(str(out)+'_outer.log');receipt=Path(str(out)+'_outer.receipt.json')
+    h4m12_require(outer.is_file() and not outer.is_symlink() and receipt.is_file() and not receipt.is_symlink() and receipt.stat().st_size==0,'PTR_R25_OUTER_RESERVATION')
+    ptr_r4b_unused(out);h4x_storage(out,initial=True);out.mkdir(exist_ok=False)
+    att=ptr_r7b_attempt(a,head,PTR_R8A_STATIC_BOOT,os.getpid())
+    rc=rr=None;child=None;which=None;producer_pid=None;total=0
+    deadline=time.monotonic()+ptr_r10a_spec()['watchdog_seconds']
+    def drain(log,child_role):
+        nonlocal child,which,producer_pid,total
+        which=child_role
+        code='import sys;import m463_push_ppo_train as t;t.ptr_r25_focused_main(sys.argv[1:])'
+        child=subprocess.Popen([sys.executable,'-B','-u','-c',code,*argv],cwd=root,
+            env=dict(os.environ,**{PTR_R25_FOCUSED_ROLE:which}),stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,start_new_session=True)
+        if which=='producer':producer_pid=child.pid
+        with selectors.DefaultSelector() as sel:
+            sel.register(child.stdout,selectors.EVENT_READ)
+            while True:
+                h4m12_require(time.monotonic()<deadline,'PTR_R10B_HOST_WATCHDOG')
+                if not sel.select(timeout=1):continue
+                data=os.read(child.stdout.fileno(),65536)
+                if not data:break
+                h4m12_require(total+len(data)<=ptr_r10a_spec()['log_cap_bytes'],'PTR_R10B_HOST_LOG_CAP')
+                log.write(data);log.flush();total+=len(data)
+                sys.stdout.buffer.write(data);sys.stdout.buffer.flush()
+        value=child.wait(timeout=max(.001,deadline-time.monotonic()))
+        child.stdout.close();child=None;log.flush();os.fsync(log.fileno())
+        return value
+    try:
+        ssrpc_static_write(out/'attempt.json',att)
+        with (out/'worker.log').open('xb') as log:
+            rc=drain(log,'producer')
+            ssrpc_static_write(out/'attempt_result.json',ptr_r7b_result(out,a,head,rc))
+            h4m12_require(rc==0,'PTR_R10B_HOST_PRODUCER_RC')
+            _,w=ptr_r25_focused_payload(root,out,a,head,reader=False)
+            h4m12_require(w['worker_pid']==producer_pid,'PTR_R10B_HOST_ACTUAL_PID')
+            rr=drain(log,'reader');h4m12_require(rr==0,'PTR_R10B_HOST_READER_RC')
+        h4x_storage(out)
+        h4m12_require(ptr_r25_focused_auth(root)==(a,head) and ssrpc_static_no_native()
+            and {p.name for p in out.iterdir()}==set(PTR_R25_FOCUSED_FILES),'PTR_R10B_HOST_FINAL')
+        ptr_r25_focused_payload(root,out,a,head,reader=True)
+        terminal=ptr_r25_focused_terminal(out,a,head,att,rc,rr,None)
+        ssrpc_static_write(out/'supervisor.terminal.json',terminal)
+        ptr_r7b_exact(ssrpc_read_json(out/'supervisor.terminal.json',65536),terminal,'PTR_R10B_HOST_TERMINAL')
+    except BaseException as exc:
+        if child is not None:
+            if child.poll() is None:
+                try:os.killpg(child.pid,signal.SIGKILL)
+                except ProcessLookupError:pass
+            value=child.wait()
+            if which=='producer':rc=value
+            else:rr=value
+            if child.stdout is not None:child.stdout.close()
+        if ptr_r7b_optional_hash(out,'attempt_result.json') is None:
+            ssrpc_static_write(out/'attempt_result.json',ptr_r7b_result(out,a,head,rc))
+        if ptr_r7b_optional_hash(out,'supervisor.terminal.json') is None:
+            ssrpc_static_write(out/'supervisor.failed.json',
+                ptr_r25_focused_terminal(out,a,head,att,rc,rr,repr(exc)[:2048]))
+        raise
+
+# H4M29_R25_RED_CAND_FOCUSED_HELD_END
