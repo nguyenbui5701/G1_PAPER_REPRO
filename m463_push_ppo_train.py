@@ -13026,6 +13026,37 @@ def ptr_validate_auth_evidence(root,auth):
         sr['generated_sha256'][auth['arm']]==auth['generated_sha256'],'PTR_STATIC_BINDING')
     return auth
 
+
+def ptr_runtime_marker_at(root,head,auth):
+    """Historical runtime authorization identity, independent of current marker."""
+    import re,subprocess
+    root=Path(root).resolve();ptr_auth_schema(auth)
+    h4m12_require(type(head) is str and re.fullmatch('[0-9a-f]{40}',head) is not None,'PTR_RUNTIME_HEAD')
+    git=lambda *args:subprocess.check_output(['git',*args],cwd=root,timeout=30)
+    h4m12_require(len(git('rev-list','--parents','-n','1',head).split())==2 and
+        git('diff','--name-only',head+'^',head).splitlines()==[b'G1_RESEARCH_RULES.md'],'PTR_RUNTIME_ROOT_ONLY')
+    prior=git('show',head+'^:G1_RESEARCH_RULES.md');current=git('show',head+':G1_RESEARCH_RULES.md')
+    h4m12_require(hashlib.sha1(b'blob '+str(len(prior)).encode()+b'\0'+prior).hexdigest()==
+        'e09c35a82f06a97fe5406ba36bb3fd9664913583','PTR_RUNTIME_CLOSED_ROOT')
+    line=b'H4PTR_ACTIVE_GO: '+json.dumps(auth,sort_keys=True,separators=(',',':'),allow_nan=False).encode()+b'\n'
+    h4m12_require(current.count(line)==1 and current.replace(line,b'',1)==prior and
+        re.findall(rb'(?m)^[A-Z0-9_]+_GO:.*$',current)==[line[:-1]],'PTR_RUNTIME_MARKER_BYTES')
+    for name in PTR_SOURCE_NAMES:
+        h4m12_require(git('show',head+':'+name)==git('show',auth['source_head']+':'+name),'PTR_RUNTIME_SOURCE_'+name)
+    return True
+
+def ptr_head(root):
+    import subprocess
+    return subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,timeout=30).decode().strip()
+
+def ptr_attempt_read(out,auth):
+    out=Path(out);root=out.parent.parent.resolve()
+    a=ssrpc_read_json(out/'attempt.json',65536)
+    h4m12_require(set(a)=={'authorization','authorization_head','parent_pid'} and a['authorization']==auth and
+        type(a['parent_pid']) is int and a['parent_pid']>0,'PTR_ATTEMPT_SCHEMA')
+    ptr_runtime_marker_at(root,a['authorization_head'],auth)
+    return a
+
 def ptr_authorization_held(root,arm):
     """Prospective root-only one-use parser; no marker has been issued."""
     import re,subprocess
@@ -13046,6 +13077,7 @@ def ptr_authorization_held(root,arm):
     auth=json.loads(raw)
     h4m12_require(raw==json.dumps(auth,sort_keys=True,separators=(',',':'),allow_nan=False).encode(),'PTR_CANONICAL_MARKER')
     ptr_auth_schema(auth);h4m12_require(auth['arm']==arm,'PTR_AUTH_ARM')
+    ptr_runtime_marker_at(root,ptr_head(root),auth)
     ptr_validate_auth_evidence(root,auth)
     ptr_execution_hold()  # R2C native admission remains held.
     return auth
@@ -13209,9 +13241,7 @@ def ptr_receipt_stages(out,auth):
         p=out/name
         if not p.exists() and not p.is_symlink():return None
         return ssrpc_read_json(p,65536)
-    a=ssrpc_read_json(out/'attempt.json',65536)
-    h4m12_require(set(a)=={'authorization','parent_pid'} and a['authorization']==auth and
-        type(a['parent_pid']) is int and a['parent_pid']>0,'PTR_STAGE_ATTEMPT')
+    a=ptr_attempt_read(out,auth)
     w=optional('worker.started.json');d=optional('dispatch.started.json')
     if w is not None:
         h4m12_require(set(w)=={'authorization','pid'} and w['authorization']==auth and
@@ -13231,7 +13261,7 @@ def ptr_receipt_stages(out,auth):
     n=log.stat().st_size if ls is not None else 0
     h4m12_require(n<=H4M12_SPEC['external_log_reserve'],'PTR_STAGE_LOG')
     return dict(stage=stage,report_sha256=rs,generated_sha256=gs,worker_log_sha256=ls,
-        stored_log_bytes=n,parent_pid=a['parent_pid'],worker_pid=None if w is None else w['pid'])
+        stored_log_bytes=n,authorization_head=a['authorization_head'],parent_pid=a['parent_pid'],worker_pid=None if w is None else w['pid'])
 
 def ptr_failure_record(out,auth,rc,error):
     return dict(status='STOP',authorization=auth,producer_rc=rc,error=repr(error)[:2048],
@@ -13289,10 +13319,9 @@ def ptr_read_final_held(root,expected_sha,auth,*,require_terminal=True):
     root=Path(root).resolve();out=root/ptr_spec(auth['arm'])['output']
     h4x_file_pin(out/'report.json',expected_sha)
     r=ssrpc_read_json(out/'report.json',H4X_SPEC['other_cap'])
-    attempt=ssrpc_read_json(out/'attempt.json',65536);worker=ssrpc_read_json(out/'worker.started.json',65536)
-    h4m12_require(set(attempt)=={'authorization','parent_pid'} and attempt['authorization']==auth and
-        type(attempt['parent_pid']) is int and attempt['parent_pid']>0 and set(worker)=={'authorization','pid'} and
-        worker['authorization']==auth and type(worker['pid']) is int and worker['pid']>0,'PTR_FINAL_RECEIPTS')
+    attempt=ptr_attempt_read(out,auth);worker=ssrpc_read_json(out/'worker.started.json',65536)
+    h4m12_require(set(worker)=={'authorization','pid'} and worker['authorization']==auth and type(worker['pid']) is int and
+        worker['pid']>0 and worker['pid']!=attempt['parent_pid'],'PTR_FINAL_RECEIPTS')
     h4m12_require(ssrpc_read_json(out/'dispatch.started.json',65536)=={'authorization':auth} and
         ssrpc_read_json(out/'attempt_result.json',65536)==dict(status='COMPLETE',authorization=auth,report_sha256=expected_sha,producer_rc=0),'PTR_FINAL_RECEIPT_LINK')
     h4m12_require(ptr_parent_evidence(root)==r['parent'],'PTR_FINAL_PARENT')
@@ -13361,8 +13390,7 @@ def ptr_worker_held(a,auth,root,out):
     import inspect
     import importlib.util
     from m463_instrument_brax import make_h4m12_integrated_source,h4c_git_blob
-    h4m12_require(json.loads((out/'attempt.json').read_bytes())==
-        {'authorization':auth,'parent_pid':os.getppid()},'WORKER_RESERVATION')
+    h4m12_require(ptr_attempt_read(out,auth)==dict(authorization=auth,authorization_head=ptr_head(root),parent_pid=os.getppid()),'PTR_WORKER_RESERVATION')
     h4x_write_json(out/'worker.started.json',{'authorization':auth,'pid':os.getpid()},exclusive=True)
     h4ffe_mode(red,r11,r12,ffe)
     parent=parent_check(root)
@@ -13637,7 +13665,7 @@ def ptr_supervisor_held(argv):
     ptr_bootstrap_held(a)
     h4m12_require(not out.exists() and not out.is_symlink() and out.parent.is_dir() and not out.parent.is_symlink(),'PTR_OUTPUT_USED')
     h4x_storage(out,initial=True);out.mkdir(exist_ok=False)
-    h4x_write_json(out/'attempt.json',dict(authorization=auth,parent_pid=os.getpid()),exclusive=True)
+    h4x_write_json(out/'attempt.json',dict(authorization=auth,authorization_head=ptr_head(root),parent_pid=os.getpid()),exclusive=True)
     child=None;rc=None;total=0
     try:
         child=subprocess.Popen([sys.executable,'-u',str(Path(__file__).resolve()),
@@ -13691,7 +13719,7 @@ def ptr_generated_guard(audit,generated_file,environment,resume,arm,abort_fn,chu
         Path(resume).resolve()==root/PTR_PARENT/PTR_FULL,'PTR_GENERATED_BINDING')
     h4x_file_pin(Path(generated_file),auth['generated_sha256'])
     h4x_file_pin(Path(resume),PTR_PARENT_PINS[PTR_FULL])
-    h4m12_require(ssrpc_read_json(out/'attempt.json',65536)==dict(authorization=auth,parent_pid=os.getppid()) and
+    h4m12_require(ptr_attempt_read(out,auth)==dict(authorization=auth,authorization_head=ptr_head(root),parent_pid=os.getppid()) and
         ssrpc_read_json(out/'worker.started.json',65536)==dict(authorization=auth,pid=os.getpid()),'PTR_GENERATED_RESERVATION')
     ptr_require_control(root,auth)
     # No release in R2C. The future reviewed guard may reach the exclusive
@@ -13711,7 +13739,9 @@ PTR_STATIC_CASES=(
     'batch_ctrl_stand','batch_cand_stand','batch_ctrl_moving','batch_cand_moving',
     'reject_reward','reject_command','reject_clock','reject_done','reject_support','reject_carry',
     'reject_dtype','rejected_consumed_zero','chunk_conservation','reject_chunk_partition',
-    'reject_chunk_delta','no_native_imports')
+    'reject_chunk_delta','report_prefix_schema','reject_report_unknown','reject_report_config',
+    'reject_report_budget','reject_report_promotion','reject_static_manifest','reject_static_report_keys',
+    'reject_candidate_no_control','no_native_imports')
 PTR_STATIC_REPORT_KEYS={'status','authorization','static_head','source_head','source_sha256',
     'source_files','parent_pins','bootstrap_sha256','generated_sha256','held_generated_sha256',
     'fixture_manifest_sha256','fixtures','zero_native_execution','zero_optimizer_updates','promotion_authorized'}
@@ -13930,6 +13960,27 @@ def ptr_static_fixtures(root,raw,record):
     reject('reject_chunk_partition',lambda:inst.ptr_check_chunk(q,0,0,'cand',d,broad),'SIDE_SUPPORT')
     q=dict(c);q['consumed_total_delta']=1
     reject('reject_chunk_delta',lambda:inst.ptr_check_chunk(q,0,0,'cand',d,broad),'SIGNS')
+
+    # Reader rejection fixtures use in-memory synthetic evidence only. No
+    # authorization marker, artifact reservation or training report is created.
+    fake=dict(id=ptr_spec('ctrl')['id'],arm='ctrl',output=ptr_spec('ctrl')['output'],
+        source_head='1'*40,source_sha256='2'*64,generated_sha256='3'*64,
+        static_sha256='4'*64,static_terminal_sha256='5'*64,ctrl_report_sha256='',ctrl_terminal_sha256='')
+    p=dict(config={},reward={},dependencies={})
+    r=dict(status='RUNNING',authorization=fake,spec=ptr_spec('ctrl'),parent=p,
+        operational_rows=[],budget=H4M12Budget().snapshot(),report_history=[],artifacts={},
+        promotion_authorized=False,hardware_scaled_config={},reward={},dependencies={},
+        h4_chunks=[],h4_epochs=[],r12_chunks=[],ptr_chunks=[])
+    check('report_prefix_schema',ptr_report_schema(r,fake,complete=False).snapshot()==r['budget'])
+    reject('reject_report_unknown',lambda:ptr_report_schema(dict(r,unexpected=True),fake,complete=False),'PTR_REPORT_PARTIAL_KEYS')
+    reject('reject_report_config',lambda:ptr_report_schema(dict(r,hardware_scaled_config={'gamma':.99}),fake,complete=False),'PTR_REPORT_PARENT_CONTRACT')
+    reject('reject_report_budget',lambda:ptr_report_schema(dict(r,budget={}),fake,complete=False),'PTR_REPORT_BUDGET')
+    reject('reject_report_promotion',lambda:ptr_report_schema(dict(r,promotion_authorized=True),fake,complete=False),'PTR_REPORT_ID')
+    bad_auth=dict(id=PTR_STATIC_ID,source_head='1'*40,source_sha256='2'*64,fixture_manifest_sha256='0'*64)
+    reject('reject_static_manifest',lambda:ptr_static_auth_schema(bad_auth),'PTR_STATIC_AUTH_SCHEMA')
+    reject('reject_static_report_keys',lambda:ptr_static_report_check(root,{}),'PTR_STATIC_REPORT_KEYS')
+    cand=dict(fake,id=ptr_spec('cand')['id'],arm='cand',output=ptr_spec('cand')['output'])
+    reject('reject_candidate_no_control',lambda:ptr_auth_schema(cand),'PTR_CTRL_BIND')
     check('no_native_imports',ssrpc_static_no_native())
     return generated,held
 
