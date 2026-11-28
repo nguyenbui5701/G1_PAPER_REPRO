@@ -493,3 +493,6 @@ Owner explicit GO at 58ea190ef0e4217d30d8cf56f740f3e9d74f2774; governance v2.0.0
 
 ## 2026-11-28 — H4-M29-R8A partial held implementation
 Governance v2.0.0 unchanged (task status only). R7C accepted and closed by 929c57164aeda6ab3d494347b7a5bb2535aa48b6; trainer-only draft b34e8f53b5dcc2b339c7516838b9f6d1cabcd2ad +136/-0, exact reverse, native STOP DESIGN HOLD. See CURRENT_STATE/ACTIVE_EXPERIMENT. No execution or new GO.
+
+## 2026-11-28 — H4-M29-R8A continuation
+Governance v2.0.0 unchanged (task status only). Held native integration source implemented; four reviewed trainer-only commits through 5d69c5aa72df85963015fe79479adf884179ac34, exact cumulative +740/-0 and R7C reverse, nine remote SHA256 rehashed. Native-ready freeze HOLD; no execution, new marker, or release. See CURRENT_STATE and ACTIVE_EXPERIMENT.
